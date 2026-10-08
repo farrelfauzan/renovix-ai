@@ -449,9 +449,11 @@ export class PortalController {
         providerId: cheapest.providerId,
         messages: tunedMessages,
         temperature: body.temperature,
-        max_tokens: outputFormat
-          ? Math.max(body.max_tokens ?? 4096, 8192)
-          : (body.max_tokens ?? 4096),
+        max_tokens: this.resolveMaxTokens(
+          body.max_tokens,
+          cheapest.maxOutputTokens,
+          outputFormat,
+        ),
       });
 
       let fullContent = "";
@@ -518,11 +520,10 @@ export class PortalController {
           .saveMessages(conversationId, body.messages, fullContent)
           .then(async () => {
             if (!body.conversation_id) {
-              const firstUserMsg = body.messages.find((m) => m.role === "user");
-              if (firstUserMsg) {
+              if (fullContent) {
                 await this.conversation.generateTitle(
                   conversationId,
-                  firstUserMsg.content,
+                  fullContent,
                 );
               }
             }
@@ -542,9 +543,13 @@ export class PortalController {
       // Track after successful response
       await this.tierService.trackFreeRequest(identity.sessionId);
     } catch (error: any) {
-      this.logger.error(`Stream error: ${error.message}`, error.stack);
+      const providerError = this.extractProviderError(error);
+      this.logger.error(
+        `Stream error${providerError.status ? ` (status ${providerError.status})` : ""}: ${providerError.message}`,
+        error.stack,
+      );
       res.raw.write(
-        `data: ${JSON.stringify({ error: { message: "Stream error" } })}\n\n`,
+        `data: ${JSON.stringify({ error: { message: providerError.clientMessage } })}\n\n`,
       );
       res.raw.end();
     }
@@ -670,9 +675,11 @@ export class PortalController {
         providerId: modelConfig.providerId,
         messages: tunedMessages,
         temperature: body.temperature,
-        max_tokens: outputFormat
-          ? Math.max(body.max_tokens ?? 4096, 8192)
-          : (body.max_tokens ?? 4096),
+        max_tokens: this.resolveMaxTokens(
+          body.max_tokens,
+          modelConfig.maxOutputTokens,
+          outputFormat,
+        ),
       });
 
       for await (const chunk of stream) {
@@ -781,11 +788,10 @@ export class PortalController {
           .saveMessages(conversationId, body.messages, fullContent)
           .then(async () => {
             if (!body.conversation_id) {
-              const firstUserMsg = body.messages.find((m) => m.role === "user");
-              if (firstUserMsg) {
+              if (fullContent) {
                 await this.conversation.generateTitle(
                   conversationId!,
-                  firstUserMsg.content,
+                  fullContent,
                 );
               }
             }
@@ -807,7 +813,11 @@ export class PortalController {
     } catch (error: any) {
       // Refund on failure
       await this.billing.refundReservation(user.id, reservedAmount);
-      this.logger.error(`Stream error: ${error.message}`, error.stack);
+      const providerError = this.extractProviderError(error);
+      this.logger.error(
+        `Stream error${providerError.status ? ` (status ${providerError.status})` : ""}: ${providerError.message}`,
+        error.stack,
+      );
 
       // Save partial conversation if we accumulated any content
       if (fullContent) {
@@ -825,9 +835,64 @@ export class PortalController {
       }
 
       res.raw.write(
-        `data: ${JSON.stringify({ error: { message: "Stream error. Balance refunded." } })}\n\n`,
+        `data: ${JSON.stringify({ error: { message: `${providerError.clientMessage}. Balance refunded.` } })}\n\n`,
       );
       res.raw.end();
     }
+  }
+
+  private resolveMaxTokens(
+    requestedMaxTokens: number | undefined,
+    modelMaxOutputTokens: number | null | undefined,
+    outputFormat: string | null,
+  ): number {
+    const desired = outputFormat
+      ? Math.max(requestedMaxTokens ?? 4096, 8192)
+      : (requestedMaxTokens ?? 4096);
+
+    if (!modelMaxOutputTokens || modelMaxOutputTokens <= 0) {
+      return desired;
+    }
+
+    return Math.min(desired, modelMaxOutputTokens);
+  }
+
+  private extractProviderError(error: any): {
+    status?: number;
+    message: string;
+    clientMessage: string;
+  } {
+    const status = error?.response?.status;
+    const responseData = error?.response?.data;
+
+    let details: string | undefined;
+    if (typeof responseData === "string") {
+      details = responseData;
+    } else if (responseData && typeof responseData === "object") {
+      details =
+        responseData?.error?.message ||
+        responseData?.message ||
+        JSON.stringify(responseData);
+    }
+
+    const normalizedDetails = details
+      ?.replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 300);
+    const message =
+      normalizedDetails || error?.message || "Unknown stream error";
+
+    let clientMessage = "Stream error";
+    if (status === 400) {
+      clientMessage = normalizedDetails
+        ? `Provider rejected request: ${normalizedDetails}`
+        : "Provider rejected request (HTTP 400)";
+    } else if (status) {
+      clientMessage = normalizedDetails
+        ? `Provider request failed (${status}): ${normalizedDetails}`
+        : `Provider request failed (${status})`;
+    }
+
+    return { status, message, clientMessage };
   }
 }

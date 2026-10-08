@@ -94,52 +94,69 @@ export class ConversationService {
 
   /**
    * Generates a short title for the conversation using the AI model,
-   * based on the first assistant response. Runs async (fire-and-forget).
+   * based on the assistant response. Runs async (fire-and-forget).
    */
   async generateTitle(
     conversationId: string,
-    firstAssistantResponse: string,
+    assistantResponse: string,
   ): Promise<void> {
-    try {
-      // Pick the cheapest available model for title generation
-      const models = await this.registry.getAllModels();
-      const cheapest = models.sort(
-        (a, b) => a.inputPrice.toNumber() - b.inputPrice.toNumber(),
-      )[0];
+    if (!assistantResponse?.trim()) {
+      return;
+    }
 
-      if (!cheapest) {
-        this.logger.warn("No models available for title generation");
-        return;
+    try {
+      // Try cheaper models first, then fall back to deterministic local title.
+      const models = (await this.registry.getAllModels()).sort(
+        (a, b) => a.inputPrice.toNumber() - b.inputPrice.toNumber(),
+      );
+
+      let title: string | undefined;
+
+      for (const model of models) {
+        try {
+          const response = await this.providerRouter.chat(model.provider, {
+            model: model.slug,
+            providerId: model.providerId,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Generate a short, concise title (max 6 words) for a conversation based on the following AI assistant response. Return ONLY the title text, nothing else. No quotes, no punctuation at the end.",
+              },
+              {
+                role: "user",
+                content: assistantResponse.slice(0, 500),
+              },
+            ],
+            temperature: 0.3,
+            max_tokens: 30,
+          });
+
+          title = response.choices[0]?.message?.content?.trim();
+          if (title) {
+            break;
+          }
+        } catch (error: any) {
+          this.logger.warn(
+            `Title generation failed with ${model.slug}: ${error.message}`,
+          );
+        }
       }
 
-      const response = await this.providerRouter.chat(cheapest.provider, {
-        model: cheapest.slug,
-        providerId: cheapest.providerId,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Generate a short, concise title (max 6 words) for a conversation based on the following AI assistant response. Return ONLY the title text, nothing else. No quotes, no punctuation at the end.",
-          },
-          {
-            role: "user",
-            content: firstAssistantResponse.slice(0, 500),
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 30,
-      });
+      if (!title) {
+        title = this.buildFallbackTitle(assistantResponse);
+      }
 
-      const title = response.choices[0]?.message?.content?.trim();
+      const normalizedTitle = this.normalizeTitle(title);
 
-      if (title) {
+      if (normalizedTitle) {
         await this.prisma.conversation.update({
           where: { id: conversationId },
-          data: { title },
+          data: { title: normalizedTitle },
         });
 
         this.logger.debug(
-          `Generated title for conversation ${conversationId}: "${title}"`,
+          `Generated title for conversation ${conversationId}: "${normalizedTitle}"`,
         );
       }
     } catch (error: any) {
@@ -147,6 +164,35 @@ export class ConversationService {
         `Failed to generate title for conversation ${conversationId}: ${error.message}`,
       );
     }
+  }
+
+  private buildFallbackTitle(content: string): string {
+    const cleaned = content
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!cleaned) {
+      return "New Conversation";
+    }
+
+    const words = cleaned.split(" ").filter(Boolean).slice(0, 6);
+
+    return words.join(" ");
+  }
+
+  private normalizeTitle(title: string | undefined): string {
+    if (!title) return "";
+
+    return title
+      .replace(/[\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^['"`\s]+|['"`\s]+$/g, "")
+      .replace(/[.?!,:;\-]+$/g, "")
+      .trim()
+      .slice(0, 120);
   }
 
   /**
