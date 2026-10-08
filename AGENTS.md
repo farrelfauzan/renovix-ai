@@ -125,6 +125,9 @@ Copy `.env.example` to `.env`. Key variables:
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `JWT_SECRET` | Yes | Legacy auth signing |
 | `BETTER_AUTH_SECRET` | Yes | SSO session signing |
+| `IP_HASH_SECRET` | Yes | HMAC key for client IPs (free-tier caps); raw IPs are never stored |
+| `CLIENT_IP_HEADER` | Prod | Header carrying the client IP (e.g. `x-client-ip`); a trusted proxy in front of the API must set it and overwrite client copies. Unset locally (socket address) |
+| `ANON_DAILY_IP_CAP` / `ANON_DAILY_GLOBAL_CAP` | -- | Free-tier daily caps per IP / in total (defaults 60 / 2000, day in Asia/Jakarta) |
 | `TOGETHER_API_KEY` | Yes | AI provider (all models) |
 | `S3_*` | Yes | S3/MinIO config (bucket, region, keys, endpoint) |
 | `MCP_ENCRYPTION_KEY` | For MCP | AES-256 key for OAuth token encryption |

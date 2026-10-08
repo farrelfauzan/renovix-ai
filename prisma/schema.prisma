@@ -240,6 +240,16 @@ model PortalSession {
   @@map("portal_sessions")
 }
 
+/// Daily free-tier request counters (RX-10). bucket: "ip:<hmac hex>" or "global"; day: Asia/Jakarta date.
+model AnonymousUsageCounter {
+  bucket String
+  day    DateTime @db.Date
+  count  Int      @default(0)
+
+  @@id([bucket, day])
+  @@map("anonymous_usage_counters")
+}
+
 model UserMemory {
   id                   String    @id @default(uuid())
   userId               String

@@ -124,6 +124,7 @@ bun run build:landing
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Secret key for JWT token signing |
+| `IP_HASH_SECRET` | Required. HMAC key for client IPs (free-tier caps) |
 | `TOGETHER_API_KEY` | Together AI API key for LLM and embeddings |
 | `STRIPE_SECRET_KEY` | Stripe secret key for payments |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |

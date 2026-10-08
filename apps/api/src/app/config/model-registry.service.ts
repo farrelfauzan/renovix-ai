@@ -120,9 +120,12 @@ export class ModelRegistryService implements OnModuleInit {
     };
   }
 
-  async getCheapestModel(): Promise<ModelConfig | undefined> {
+  /** Cheapest active model, optionally only among models of `tier`. */
+  async getCheapestModel(tier?: string): Promise<ModelConfig | undefined> {
     await this.ensureFresh();
-    const models = [...this.models.values()];
+    const models = [...this.models.values()].filter(
+      (m) => !tier || m.tier === tier,
+    );
     if (models.length === 0) return undefined;
     return models.sort(
       (a, b) =>
