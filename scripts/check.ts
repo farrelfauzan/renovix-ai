@@ -1,5 +1,6 @@
 // `bun run check`: the local check set (docs/testing.md). Exit 0 only if every step passes.
 // Never runs `docker build` (kept separate on purpose, D29).
+import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -15,32 +16,68 @@ const PROGRAMS = [
   // apps/landing/tsconfig.spec.json is left out: it fails with TS6310 on its own (no specs, broken reference).
 ];
 
+// A closed stdout/stderr (the parent went away) must never abort the cleanup: swallow write errors and SIGPIPE.
+process.on("SIGPIPE", () => {});
+for (const stream of [process.stdout, process.stderr]) stream.on?.("error", () => {});
+for (const m of ["log", "warn", "error"] as const) {
+  const orig = console[m].bind(console);
+  console[m] = (...args: unknown[]) => {
+    try {
+      orig(...args);
+    } catch {}
+  };
+}
+
 type Env = Record<string, string | undefined>;
 const env: Env = { ...process.env };
 env.DATABASE_URL ??= DUMMY_DB; // prisma.config.ts needs DATABASE_URL to exist
+env.NX_DAEMON = "false"; // no nx daemon left running after the check
 
 let child: ReturnType<typeof Bun.spawn> | undefined;
 const cleanups: Array<() => Promise<void> | void> = [];
-async function cleanup() {
-  while (cleanups.length) {
-    try {
-      await cleanups.pop()!();
-    } catch (e) {
-      console.error("cleanup failed:", e);
-    }
-  }
-}
-for (const sig of ["SIGINT", "SIGTERM"] as const) {
-  process.on(sig, async () => {
-    console.error(`\n${sig}: cleaning up`);
-    child?.kill();
-    await cleanup();
-    process.exit(sig === "SIGINT" ? 130 : 143);
+let cleanupRun: Promise<void> | undefined; // set while a cleanup is in progress (normal path or signal)
+let pendingExit: number | undefined; // set by a signal: exit with this code once the cleanup is done
+
+/** Cleanup commands run in their own process group (detached), so a Ctrl-C that signals the whole
+ * foreground group cannot kill them. Returns the exit code. */
+function detached(cmd: string[], opts: { cwd?: string; env?: Env } = {}): Promise<number> {
+  return new Promise((done) => {
+    const c = spawn(cmd[0], cmd.slice(1), { cwd: opts.cwd ?? ROOT, env: opts.env ?? env, detached: true, stdio: "ignore" });
+    c.on("error", () => done(127));
+    c.on("close", (code) => done(code ?? 1));
   });
 }
 
+function cleanup(): Promise<void> {
+  cleanupRun ??= (async () => {
+    while (cleanups.length) {
+      try {
+        await cleanups.pop()!();
+      } catch (e) {
+        console.error("cleanup failed:", e);
+      }
+    }
+  })().finally(() => {
+    cleanupRun = undefined;
+    if (pendingExit !== undefined) process.exit(pendingExit);
+  });
+  return cleanupRun;
+}
+for (const sig of ["SIGINT", "SIGTERM"] as const) {
+  process.on(sig, async () => {
+    pendingExit ??= sig === "SIGINT" ? 130 : 143;
+    if (cleanupRun) return void console.error(`\n${sig}: cleanup in progress, please wait`);
+    console.error(`\n${sig}: cleaning up`);
+    child?.kill();
+    await cleanup();
+  });
+}
+/** After a signal the cleanup owns the process: do not start anything new, it exits when done. */
+const halted = () => (pendingExit === undefined ? undefined : new Promise<never>(() => {}));
+
 /** Run a command; output goes to the terminal. Returns the exit code. */
 async function run(cmd: string[], opts: { cwd?: string; env?: Env } = {}) {
+  await halted();
   child = Bun.spawn(cmd, { cwd: opts.cwd ?? ROOT, env: opts.env ?? env, stdio: ["inherit", "inherit", "inherit"] });
   const code = await child.exited;
   child = undefined;
@@ -49,6 +86,7 @@ async function run(cmd: string[], opts: { cwd?: string; env?: Env } = {}) {
 
 /** Run a command and capture stdout+stderr. */
 async function capture(cmd: string[], cwd: string) {
+  await halted();
   child = Bun.spawn(cmd, { cwd, env, stdout: "pipe", stderr: "pipe" });
   const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
   const code = await child.exited;
@@ -76,7 +114,7 @@ async function testStep(): Promise<boolean> {
     const compose = ["docker", "compose", "-f", "docker-compose.test.yml", "-p", project];
     cleanups.push(async () => {
       console.log(`Test database: removing compose project ${project}`);
-      await run([...compose, "down", "-v"], { env: testEnv });
+      await detached([...compose, "down", "-v"], { env: testEnv });
     });
     console.log(`Test database: own compose project ${project} on 127.0.0.1:${port} (removed at the end)`);
     if ((await run([...compose, "up", "-d", "--wait"], { env: testEnv })) !== 0) {
@@ -111,13 +149,13 @@ async function withBaseline<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const ref = await capture(["git", "rev-parse", "--verify", "origin/main"], ROOT);
   if (ref.code !== 0) throw new Error(`no origin/main to compare against (git fetch failed: ${fetched.out.trim()})`);
   if (fetched.code !== 0) console.warn(`warning: git fetch origin main failed, using the local origin/main ref (${ref.out.trim().slice(0, 7)})`);
-  const tmp = mkdtempSync(join(tmpdir(), "renovix-check-baseline-"));
+  const tmp = mkdtempSync(join(tmpdir(), `renovix-check-baseline-${process.pid}-`));
   const dir = join(tmp, "wt");
   cleanups.push(async () => {
     for (const nm of ["node_modules", ...readdirSync(join(ROOT, "apps")).map((a) => `apps/${a}/node_modules`)]) {
       rmSync(join(dir, nm), { force: true }); // unlink the symlink only, never the target
     }
-    await capture(["git", "worktree", "remove", "--force", dir], ROOT);
+    await detached(["git", "worktree", "remove", "--force", dir]);
     rmSync(tmp, { recursive: true, force: true });
   });
   const add = await capture(["git", "worktree", "add", "--detach", dir, "origin/main"], ROOT);
