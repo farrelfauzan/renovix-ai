@@ -2,6 +2,18 @@ import { AgentToolService } from "./agent-tool.service";
 import { AttachToolSchema } from "./dto/agent-chat.dto";
 import { AgentService } from "./agent.service";
 
+// With emitDecoratorMetadata (main's tsconfig.spec.json) constructor types are
+// really imported, and those modules load the generated Prisma client and ESM
+// packages that Jest cannot load. Every dependency is a stub in these tests.
+jest.mock("../prisma/prisma.service", () => ({ PrismaService: class {} }));
+jest.mock("../mcp/mcp-client.service", () => ({ McpClientService: class {} }));
+jest.mock("../mcp/mcp.service", () => ({ McpService: class {} }));
+jest.mock("../mcp/mcp-user.service", () => ({ McpUserService: class {} }));
+jest.mock("../mcp/web-search.service", () => ({ WebSearchService: class {} }));
+jest.mock("./agent-memory.service", () => ({ AgentMemoryService: class {} }));
+jest.mock("../document/document.service", () => ({ DocumentService: class {} }));
+jest.mock("../providers/provider-router", () => ({ ProviderRouter: class {} }));
+
 function buildService() {
   const unused = {} as any;
   return new AgentToolService(
