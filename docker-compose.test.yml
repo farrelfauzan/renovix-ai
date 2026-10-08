@@ -1,0 +1,23 @@
+# Test database for the API tests (see docs/testing.md). Throwaway data only.
+# Usage: docker compose -f docker-compose.test.yml -p renovix-test up -d --wait
+# The database name must end in "_test": the test tooling refuses any other database.
+
+services:
+  postgres-test:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: renovix
+      POSTGRES_PASSWORD: renovix_test
+      POSTGRES_DB: renovix_test
+    ports:
+      - "${TEST_DB_PORT:-55432}:5432"
+    volumes:
+      - pgdata_test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renovix -d renovix_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  pgdata_test:
