@@ -16,6 +16,8 @@ locals {
     "STRIPE_WEBHOOK_SECRET",
     "S3_ACCESS_KEY_ID",
     "S3_SECRET_ACCESS_KEY",
+    "GOOGLE_CLOUD_PROJECT_ID",
+    "GOOGLE_CLOUD_BUCKET_NAME",
   ]
 
   all_secret_keys = concat(keys(local.auto_secrets), local.manual_secrets)
