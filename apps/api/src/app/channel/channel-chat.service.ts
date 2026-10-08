@@ -37,6 +37,9 @@ export class ChannelChatService {
     totalTokens: number;
     assistantMessageId?: string;
   }> {
+    console.log(
+      `chat called with userId=${userId} channelId=${channelId} agentId=${agentId} message=${message.length} chars options=${JSON.stringify(options)}`,
+    );
     // Resolve the channel agent (verifies access)
     const channelAgent = await this.channelService.resolveChannelAgent(
       userId,
@@ -138,6 +141,9 @@ export class ChannelChatService {
 
     // When generating a document, instruct agent to research first
     if (options?.documentFormat) {
+      console.log(
+        `Injecting document generation instructions for format=${options.documentFormat}`,
+      ); // Debug log
       const formatLabel =
         { pdf: "PDF", docx: "Word document", xlsx: "Excel spreadsheet" }[
           options.documentFormat
@@ -152,15 +158,20 @@ export class ChannelChatService {
     ];
 
     // Build tool schemas including MCP tools (auto-inject delegation for parent agents)
+    const workspaceId = channelAgent.channel?.workspace?.id || undefined;
     const toolSchemas = await this.toolService.buildToolSchemasWithMcp(
       agent.tools,
       agent.id,
       userId,
-      agent.workspaceId || undefined,
+      workspaceId,
       {
         injectDelegation: agent.agentType === "parent" && subAgents.length > 0,
       },
     );
+
+    console.log(
+      `Initial chat setup complete. model=${modelEntry.providerId} tools=${toolSchemas.length} messages=${currentMessages.length}`,
+    ); // Debug log
 
     // Tool execution loop
     let iterations = 0;

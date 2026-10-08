@@ -215,7 +215,7 @@ export class AgentToolService {
       function: {
         name: "create_document",
         description:
-          "Generate and export a document file (PDF, Word, or Excel) from markdown content. Use this when the user asks to create, generate, export, or download a document in PDF, DOCX, or XLSX format.",
+          "Generate and export a document file (PDF, Word, or Excel) from markdown content. Use this ONLY when the user explicitly asks for a PDF, DOCX, or XLSX file. DO NOT use this tool if the user asks for Google Sheets, Google Docs, or other cloud services. If they ask for Google Sheets, reply in plain text that you can only generate XLSX files, which can be directly uploaded to Google Sheets with 100% fidelity.",
         parameters: {
           type: "object",
           properties: {
@@ -227,7 +227,8 @@ export class AgentToolService {
             format: {
               type: "string",
               enum: ["pdf", "docx", "xlsx"],
-              description: "The output file format",
+              description:
+                "The output file format. Must be pdf, docx, or xlsx.",
             },
             filename: {
               type: "string",
@@ -290,14 +291,32 @@ export class AgentToolService {
 
     // 2. Discover MCP tools from user's connected providers
     if (!executingUserId || !workspaceId) {
+      this.logger.warn(
+        `[buildToolSchemasWithMcp] Skipping MCP discovery: userId=${executingUserId ? "SET" : "MISSING"} workspaceId=${workspaceId ? "SET" : "MISSING"}`,
+      );
       return schemas;
     }
 
     try {
+      this.logger.debug(
+        `[buildToolSchemasWithMcp] Discovering MCP tools for userId=${executingUserId} workspace=${workspaceId}`,
+      );
+
       const userCredMap = await this.mcpUserService.getUserConnectedProviders(
         executingUserId,
         workspaceId,
       );
+
+      this.logger.log(
+        `[buildToolSchemasWithMcp] userId=${executingUserId} workspace=${workspaceId} foundProviders=${userCredMap.size}`,
+      );
+
+      if (userCredMap.size === 0) {
+        this.logger.debug(
+          `[buildToolSchemasWithMcp] No MCP providers connected for this user/workspace. Using only built-in tools (${schemas.length}).`,
+        );
+        return schemas;
+      }
 
       for (const [provider, env] of userCredMap) {
         try {
@@ -315,6 +334,10 @@ export class AgentToolService {
 
           await this.mcpClient.connectServer(config);
           const mcpTools = await this.mcpClient.listTools(config.id);
+
+          this.logger.log(
+            `[buildToolSchemasWithMcp] Connected to ${provider} (${config.id}), found ${mcpTools.length} tools`,
+          );
 
           for (const tool of mcpTools) {
             const schema = this.mcpClient.mcpToolToOpenAI(tool);

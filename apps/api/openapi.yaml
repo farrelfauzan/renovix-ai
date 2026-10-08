@@ -1,19 +1,21 @@
 openapi: 3.1.0
 info:
-  title: Performa AI API
-  description: Unified AI API platform with pay-per-use billing
+  title: Renovix AI API
+  description: Unified AI platform with multi-LLM API, chat portal, admin dashboard, RAG knowledge base, AI agents, and MCP integrations.
   version: 1.0.0
   contact:
-    name: Performa AI
+    name: Renovix AI
 servers:
   - url: http://localhost:3000/api/v1
     description: Local development
+  - url: https://api.renovix.id/api/v1
+    description: Production
 
 security: []
 
 tags:
   - name: Auth
-    description: User authentication and API key management
+    description: User authentication, profile management, and API key management
   - name: Chat
     description: AI chat completions (OpenAI-compatible)
   - name: Models
@@ -23,7 +25,7 @@ tags:
   - name: Usage
     description: API usage logs
   - name: Webhooks
-    description: Stripe webhook handler
+    description: External webhook handlers (Stripe, GOWA)
   - name: Health
     description: Service health check
   - name: Conversations
@@ -32,8 +34,25 @@ tags:
     description: RAG knowledge base management
   - name: Memory
     description: User memory management (auto-extracted preferences and interests)
+  - name: Portal
+    description: Chat portal endpoints (free tier and paid user sessions)
+  - name: Workspaces
+    description: Workspace and team collaboration management
+  - name: Channels
+    description: Channel/Server management and chat
+  - name: Agents
+    description: AI Agent creation, configuration, and execution
+  - name: MCP
+    description: Model Context Protocol integrations and OAuth
+  - name: Codes
+    description: Invitation code redemption and administration
+  - name: Reminders
+    description: Scheduled agent reminders and cron jobs
+  - name: Documents
+    description: Document generation and export (PDF, DOCX, XLSX)
 
 paths:
+  # ─── Auth ──────────────────────────────────────────────────────────────────
   /auth/register:
     post:
       tags: [Auth]
@@ -89,6 +108,7 @@ paths:
       operationId: getProfile
       security:
         - BearerAuth: []
+        - SessionAuth: []
       responses:
         "200":
           description: User profile
@@ -96,6 +116,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+    patch:
+      tags: [Auth]
+      summary: Update current user profile
+      operationId: updateProfile
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Validation error
         "401":
           description: Unauthorized
 
@@ -106,6 +150,7 @@ paths:
       operationId: regenerateApiKey
       security:
         - BearerAuth: []
+        - SessionAuth: []
       responses:
         "200":
           description: New API key generated
@@ -120,6 +165,37 @@ paths:
         "401":
           description: Unauthorized
 
+  /auth/better/{path}:
+    get:
+      tags: [Auth]
+      summary: Better Auth handler (GET)
+      description: Forwards requests to Better Auth for SSO (Google/GitHub).
+      operationId: betterAuthGet
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Auth response
+    post:
+      tags: [Auth]
+      summary: Better Auth handler (POST)
+      description: Forwards requests to Better Auth for SSO callbacks.
+      operationId: betterAuthPost
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Auth response
+
+  # ─── Chat ──────────────────────────────────────────────────────────────────
   /chat/completions:
     post:
       tags: [Chat]
@@ -141,6 +217,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChatCompletionResponse"
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events (SSE) stream of completion chunks
         "400":
           description: Invalid request body
           content:
@@ -152,6 +232,7 @@ paths:
         "402":
           description: Insufficient balance
 
+  # ─── Models ────────────────────────────────────────────────────────────────
   /models:
     get:
       tags: [Models]
@@ -165,6 +246,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ModelList"
 
+  # ─── Billing ───────────────────────────────────────────────────────────────
   /billing/balance:
     get:
       tags: [Billing]
@@ -172,6 +254,7 @@ paths:
       operationId: getBalance
       security:
         - BearerAuth: []
+        - SessionAuth: []
       responses:
         "200":
           description: Current balance
@@ -194,6 +277,7 @@ paths:
       operationId: getTransactions
       security:
         - BearerAuth: []
+        - SessionAuth: []
       parameters:
         - name: limit
           in: query
@@ -222,6 +306,7 @@ paths:
       operationId: createCheckout
       security:
         - BearerAuth: []
+        - SessionAuth: []
       requestBody:
         required: true
         content:
@@ -250,7 +335,10 @@ paths:
           description: Invalid amount or Stripe not configured
         "401":
           description: Unauthorized
+        "503":
+          description: Stripe temporarily disabled
 
+  # ─── Usage ─────────────────────────────────────────────────────────────────
   /usage:
     get:
       tags: [Usage]
@@ -258,6 +346,7 @@ paths:
       operationId: getUsage
       security:
         - BearerAuth: []
+        - SessionAuth: []
       parameters:
         - name: limit
           in: query
@@ -296,6 +385,7 @@ paths:
         "401":
           description: Unauthorized
 
+  # ─── Webhooks ──────────────────────────────────────────────────────────────
   /webhooks/stripe:
     get:
       tags: [Webhooks]
@@ -345,6 +435,38 @@ paths:
         "400":
           description: Invalid signature or missing configuration
 
+  /webhooks/gowa:
+    post:
+      tags: [Webhooks]
+      summary: GOWA WhatsApp webhook endpoint
+      description: Receives inbound WhatsApp messages from GOWA and routes them to configured agents.
+      operationId: handleGowaWebhook
+      parameters:
+        - name: x-gowa-signature
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GowaInboundMessage"
+      responses:
+        "200":
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Invalid signature or payload
+
+  # ─── Health ────────────────────────────────────────────────────────────────
   /health:
     get:
       tags: [Health]
@@ -365,6 +487,7 @@ paths:
                     type: string
                     enum: [connected, disconnected]
 
+  # ─── Conversations ─────────────────────────────────────────────────────────
   /conversations:
     get:
       tags: [Conversations]
@@ -441,6 +564,7 @@ paths:
         "404":
           description: Conversation not found
 
+  # ─── Knowledge ─────────────────────────────────────────────────────────────
   /v1/knowledge/bases:
     post:
       tags: [Knowledge]
@@ -489,7 +613,7 @@ paths:
       summary: Get a knowledge base
       operationId: getKnowledgeBase
       security:
-        - ApiKeyAuth: []
+        - ApiKeyAuth:
       parameters:
         - name: id
           in: path
@@ -731,14 +855,391 @@ paths:
         "401":
           description: Unauthorized
 
+  /v1/admin/system-kb/sync:
+    post:
+      tags: [Knowledge]
+      summary: Trigger system knowledge base sync
+      operationId: syncSystemKnowledge
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Sync triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "401":
+          description: Unauthorized
+
+  # ─── Portal ────────────────────────────────────────────────────────────────
+  /chat/portal/completions:
+    post:
+      tags: [Portal]
+      summary: Create a portal chat completion
+      description: Handles both free-tier (rate-limited, cheapest model) and paid-tier (user balance) chat completions with SSE streaming.
+      operationId: createPortalCompletion
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalChatCompletionRequest"
+      responses:
+        "200":
+          description: Chat completion response (SSE stream)
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events (SSE) stream of completion chunks, status updates, and document metadata
+        "400":
+          description: Invalid request or rate limit reached
+        "401":
+          description: Unauthorized
+
+  /chat/portal/usage:
+    get:
+      tags: [Portal]
+      summary: Get portal usage statistics
+      operationId: getPortalUsage
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+      responses:
+        "200":
+          description: Portal usage statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestsUsed:
+                    type: integer
+                  requestsLimit:
+                    type: integer
+                  balance:
+                    type: string
+                    nullable: true
+        "400":
+          description: Authentication required
+
+  /chat/portal/models:
+    get:
+      tags: [Portal]
+      summary: Get available models for portal
+      operationId: getPortalModels
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+      responses:
+        "200":
+          description: List of available models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        slug:
+                          type: string
+                        name:
+                          type: string
+                        inputPrice:
+                          type: string
+                        outputPrice:
+                          type: string
+        "400":
+          description: Authentication required
+
+  /chat/portal/link-session:
+    post:
+      tags: [Portal]
+      summary: Link portal session to authenticated user
+      description: Associates the current anonymous portal session with the authenticated user account.
+      operationId: linkPortalSession
+      security:
+        - PortalSessionAuth: []
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+      responses:
+        "200":
+          description: Session linked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  linked:
+                    type: boolean
+                    example: true
+        "400":
+          description: Authentication required
+
+  /chat/portal/conversations:
+    get:
+      tags: [Portal]
+      summary: List portal conversations
+      operationId: listPortalConversations
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Paginated conversation list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationList"
+        "400":
+          description: Authentication required
+
+  /chat/portal/conversations/{id}:
+    get:
+      tags: [Portal]
+      summary: Get a portal conversation
+      operationId: getPortalConversation
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Conversation details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetail"
+        "400":
+          description: Authentication required
+        "404":
+          description: Conversation not found
+    delete:
+      tags: [Portal]
+      summary: Delete a portal conversation
+      operationId: deletePortalConversation
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Conversation deleted
+        "400":
+          description: Authentication required
+        "404":
+          description: Conversation not found
+
+  /chat/portal/knowledge:
+    get:
+      tags: [Portal]
+      summary: List portal knowledge bases
+      operationId: listPortalKnowledgeBases
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+      responses:
+        "200":
+          description: List of knowledge bases
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeBase"
+        "400":
+          description: Authentication required or top-up needed
+    post:
+      tags: [Portal]
+      summary: Create a portal knowledge base
+      operationId: createPortalKnowledgeBase
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKnowledgeBaseRequest"
+      responses:
+        "201":
+          description: Knowledge base created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeBase"
+        "400":
+          description: Validation error or top-up needed
+
+  /chat/portal/knowledge/{id}:
+    delete:
+      tags: [Portal]
+      summary: Delete a portal knowledge base
+      operationId: deletePortalKnowledgeBase
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Knowledge base deleted
+        "400":
+          description: Authentication required
+
+  /chat/portal/knowledge/{id}/upload:
+    post:
+      tags: [Portal]
+      summary: Upload a file to a portal knowledge base
+      operationId: uploadPortalKnowledge
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: File processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chunksCreated:
+                    type: integer
+        "400":
+          description: Authentication required, top-up needed, or invalid file
+
+  /chat/portal/knowledge/{id}/chunks:
+    get:
+      tags: [Portal]
+      summary: List chunks in a portal knowledge base
+      operationId: listPortalChunks
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of chunks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChunkList"
+        "400":
+          description: Authentication required
+    delete:
+      tags: [Portal]
+      summary: Delete a chunk from a portal knowledge base
+      operationId: deletePortalChunk
+      security:
+        - PortalSessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PortalSessionHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: chunkId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Chunk deleted
+        "400":
+          description: Authentication required
+
   /chat/portal/memory:
     get:
       tags: [Memory]
       summary: List all user memories
-      description: Returns all active memory items for the authenticated user. Memories are automatically extracted from conversations and include interests, preferences, context, and exclusions.
+      description: Returns all active memory items for the authenticated user.
       operationId: listMemories
       security:
         - BearerAuth: []
+        - SessionAuth: []
       parameters:
         - $ref: "#/components/parameters/PortalSessionHeader"
       responses:
@@ -762,10 +1263,10 @@ paths:
     patch:
       tags: [Memory]
       summary: Update a memory item
-      description: Update the content or pin status of a specific memory item. At least one field (content or isUserPinned) must be provided.
       operationId: updateMemory
       security:
         - BearerAuth: []
+        - SessionAuth: []
       parameters:
         - $ref: "#/components/parameters/PortalSessionHeader"
         - name: id
@@ -774,7 +1275,6 @@ paths:
           schema:
             type: string
             format: uuid
-          description: Memory item ID
       requestBody:
         required: true
         content:
@@ -792,14 +1292,13 @@ paths:
           description: Validation error or authentication required
         "404":
           description: Memory not found
-
     delete:
       tags: [Memory]
       summary: Delete a memory item
-      description: Permanently delete a specific memory item.
       operationId: deleteMemory
       security:
         - BearerAuth: []
+        - SessionAuth: []
       parameters:
         - $ref: "#/components/parameters/PortalSessionHeader"
         - name: id
@@ -808,7 +1307,6 @@ paths:
           schema:
             type: string
             format: uuid
-          description: Memory item ID
       responses:
         "204":
           description: Memory deleted successfully
@@ -821,10 +1319,10 @@ paths:
     post:
       tags: [Memory]
       summary: Clear all memories
-      description: Delete all memory items for the authenticated user. Returns the count of cleared items.
       operationId: clearMemories
       security:
         - BearerAuth: []
+        - SessionAuth: []
       parameters:
         - $ref: "#/components/parameters/PortalSessionHeader"
       responses:
@@ -838,9 +1336,2184 @@ paths:
                   cleared:
                     type: integer
                     description: Number of memory items deleted
-                    example: 5
         "400":
           description: Authentication required
+
+  # ─── Workspaces ────────────────────────────────────────────────────────────
+  /workspaces:
+    post:
+      tags: [Workspaces]
+      summary: Create a workspace
+      operationId: createWorkspace
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+      responses:
+        "201":
+          description: Workspace created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "400":
+          description: Validation error
+    get:
+      tags: [Workspaces]
+      summary: List user workspaces
+      operationId: listWorkspaces
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: List of workspaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workspace"
+
+  /workspaces/{id}:
+    get:
+      tags: [Workspaces]
+      summary: Get workspace details
+      operationId: getWorkspace
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Workspace details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          description: Workspace not found
+    patch:
+      tags: [Workspaces]
+      summary: Update workspace
+      operationId: updateWorkspace
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceRequest"
+      responses:
+        "200":
+          description: Workspace updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          description: Workspace not found
+    delete:
+      tags: [Workspaces]
+      summary: Archive workspace
+      operationId: archiveWorkspace
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Workspace archived
+
+  /workspaces/{id}/quota:
+    get:
+      tags: [Workspaces]
+      summary: Get workspace quota usage
+      operationId: getWorkspaceQuota
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Quota usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceQuota"
+
+  /workspaces/{id}/members:
+    get:
+      tags: [Workspaces]
+      summary: List workspace members
+      operationId: listWorkspaceMembers
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkspaceMember"
+    patch:
+      tags: [Workspaces]
+      summary: Update workspace member role
+      operationId: updateWorkspaceMember
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRequest"
+      responses:
+        "200":
+          description: Member updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMember"
+    delete:
+      tags: [Workspaces]
+      summary: Remove workspace member
+      operationId: removeWorkspaceMember
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Member removed
+
+  /workspaces/{id}/invites:
+    get:
+      tags: [Workspaces]
+      summary: List workspace invites
+      operationId: listWorkspaceInvites
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of invites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkspaceInvite"
+    post:
+      tags: [Workspaces]
+      summary: Create workspace invite
+      operationId: createWorkspaceInvite
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceInvite"
+
+  /workspaces/{id}/invites/{inviteId}/resend:
+    post:
+      tags: [Workspaces]
+      summary: Resend workspace invite
+      operationId: resendWorkspaceInvite
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Invite resent
+
+  /workspaces/{id}/invites/{inviteId}/revoke:
+    post:
+      tags: [Workspaces]
+      summary: Revoke workspace invite
+      operationId: revokeWorkspaceInvite
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Invite revoked
+
+  /workspace-invites/accept:
+    get:
+      tags: [Workspaces]
+      summary: Resolve workspace invite token
+      operationId: resolveWorkspaceInvite
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workspaceName:
+                    type: string
+                  inviterEmail:
+                    type: string
+    post:
+      tags: [Workspaces]
+      summary: Accept workspace invite
+      operationId: acceptWorkspaceInvite
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+
+  # ─── Channels ──────────────────────────────────────────────────────────────
+  /channels:
+    post:
+      tags: [Channels]
+      summary: Create a channel
+      operationId: createChannel
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChannelRequest"
+      responses:
+        "201":
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+    get:
+      tags: [Channels]
+      summary: List user channels
+      operationId: listChannels
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+
+  /channels/upload-icon:
+    post:
+      tags: [Channels]
+      summary: Upload channel icon (standalone)
+      operationId: uploadChannelIconStandalone
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Icon uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  icon:
+                    type: string
+
+  /channels/{id}:
+    get:
+      tags: [Channels]
+      summary: Get channel details
+      operationId: getChannel
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Channel details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+    patch:
+      tags: [Channels]
+      summary: Update channel
+      operationId: updateChannel
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChannelRequest"
+      responses:
+        "200":
+          description: Channel updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+    delete:
+      tags: [Channels]
+      summary: Delete channel
+      operationId: deleteChannel
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Channel deleted
+
+  /channels/{id}/icon:
+    post:
+      tags: [Channels]
+      summary: Upload channel icon
+      operationId: uploadChannelIcon
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Icon uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  icon:
+                    type: string
+
+  /channels/{id}/agents:
+    post:
+      tags: [Channels]
+      summary: Add agent to channel
+      operationId: addAgentToChannel
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddAgentRequest"
+      responses:
+        "201":
+          description: Agent added
+
+  /channels/{id}/agents/{agentId}:
+    delete:
+      tags: [Channels]
+      summary: Remove agent from channel
+      operationId: removeAgentFromChannel
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Agent removed
+
+  /channels/{id}/agents/{agentId}/messages:
+    get:
+      tags: [Channels]
+      summary: Get channel messages
+      operationId: getChannelMessages
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChannelMessage"
+    delete:
+      tags: [Channels]
+      summary: Clear channel messages
+      operationId: clearChannelMessages
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Messages cleared
+
+  /channels/{id}/agents/{agentId}/chat:
+    post:
+      tags: [Channels]
+      summary: Chat with agent in channel
+      description: SSE streaming endpoint for channel-agent conversations.
+      operationId: chatWithChannelAgent
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelChatRequest"
+      responses:
+        "200":
+          description: Chat response (SSE stream)
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /channels/{channelId}/workspace:
+    get:
+      tags: [Channels]
+      summary: Get channel workspace details
+      operationId: getChannelWorkspace
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "Workspace details or exists: false"
+    post:
+      tags: [Channels]
+      summary: Create workspace for channel
+      operationId: createChannelWorkspace
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Workspace created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+
+  /channels/{channelId}/workspace/members:
+    get:
+      tags: [Channels]
+      summary: List channel workspace members
+      operationId: listChannelWorkspaceMembers
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of members
+    patch:
+      tags: [Channels]
+      summary: Update channel workspace member
+      operationId: updateChannelWorkspaceMember
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRequest"
+      responses:
+        "200":
+          description: Member updated
+    delete:
+      tags: [Channels]
+      summary: Remove channel workspace member
+      operationId: removeChannelWorkspaceMember
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Member removed
+
+  /channels/{channelId}/workspace/invites:
+    get:
+      tags: [Channels]
+      summary: List channel workspace invites
+      operationId: listChannelWorkspaceInvites
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of invites
+    post:
+      tags: [Channels]
+      summary: Create channel workspace invite
+      operationId: createChannelWorkspaceInvite
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "201":
+          description: Invite created
+
+  /channels/{channelId}/workspace/invites/{inviteId}/resend:
+    post:
+      tags: [Channels]
+      summary: Resend channel workspace invite
+      operationId: resendChannelWorkspaceInvite
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Invite resent
+
+  /channels/{channelId}/workspace/invites/{inviteId}/revoke:
+    post:
+      tags: [Channels]
+      summary: Revoke channel workspace invite
+      operationId: revokeChannelWorkspaceInvite
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Invite revoked
+
+  /channels/{channelId}/workspace/quota:
+    get:
+      tags: [Channels]
+      summary: Get channel workspace quota
+      operationId: getChannelWorkspaceQuota
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Quota usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceQuota"
+
+  /channels/{channelId}/workspace/knowledge:
+    get:
+      tags: [Channels]
+      summary: List channel workspace knowledge bases
+      operationId: listChannelWorkspaceKnowledge
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of knowledge bases
+    post:
+      tags: [Channels]
+      summary: Create channel workspace knowledge base
+      operationId: createChannelWorkspaceKnowledge
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKnowledgeBaseRequest"
+      responses:
+        "201":
+          description: Knowledge base created
+
+  /channels/{channelId}/workspace/knowledge/{kbId}:
+    delete:
+      tags: [Channels]
+      summary: Delete channel workspace knowledge base
+      operationId: deleteChannelWorkspaceKnowledge
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: kbId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Knowledge base deleted
+
+  /channels/{channelId}/workspace/knowledge/{kbId}/chunks:
+    get:
+      tags: [Channels]
+      summary: List channel workspace knowledge chunks
+      operationId: listChannelWorkspaceKnowledgeChunks
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: kbId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of chunks
+    post:
+      tags: [Channels]
+      summary: Add chunks to channel workspace knowledge base
+      operationId: addChannelWorkspaceKnowledgeChunks
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: kbId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chunks]
+              properties:
+                chunks:
+                  type: array
+                  items:
+                    type: object
+                    required: [content]
+                    properties:
+                      content:
+                        type: string
+                      metadata:
+                        type: object
+      responses:
+        "201":
+          description: Chunks added
+
+  /channels/{channelId}/workspace/knowledge/search:
+    post:
+      tags: [Channels]
+      summary: Search channel workspace knowledge
+      operationId: searchChannelWorkspaceKnowledge
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                topK:
+                  type: integer
+                  default: 5
+      responses:
+        "200":
+          description: Search results
+
+  # ─── Agents ────────────────────────────────────────────────────────────────
+  /agents:
+    post:
+      tags: [Agents]
+      summary: Create an agent
+      operationId: createAgent
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+      responses:
+        "201":
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+    get:
+      tags: [Agents]
+      summary: List user agents
+      operationId: listAgents
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+
+  /agents/tools/available:
+    get:
+      tags: [Agents]
+      summary: Get available agent tools
+      operationId: getAvailableAgentTools
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: List of available tools
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /agents/public:
+    get:
+      tags: [Agents]
+      summary: List public agents
+      operationId: listPublicAgents
+      responses:
+        "200":
+          description: List of public agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+
+  /agents/generate-prompt:
+    post:
+      tags: [Agents]
+      summary: Generate agent prompt
+      operationId: generateAgentPrompt
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        "200":
+          description: Generated prompt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prompt:
+                    type: string
+
+  /agents/clone/{templateId}:
+    post:
+      tags: [Agents]
+      summary: Clone agent from template
+      operationId: cloneAgentFromTemplate
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Agent cloned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+
+  /agents/subscription:
+    get:
+      tags: [Agents]
+      summary: Get agent subscription
+      operationId: getAgentSubscription
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: Subscription details
+    post:
+      tags: [Agents]
+      summary: Subscribe to agent tier
+      operationId: subscribeAgent
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tier]
+              properties:
+                tier:
+                  type: string
+                  enum: [starter, pro, enterprise]
+      responses:
+        "200":
+          description: Subscribed successfully
+
+  /agents/{id}:
+    get:
+      tags: [Agents]
+      summary: Get agent details
+      operationId: getAgent
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+    patch:
+      tags: [Agents]
+      summary: Update agent
+      operationId: updateAgent
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentRequest"
+      responses:
+        "200":
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+    delete:
+      tags: [Agents]
+      summary: Delete agent
+      operationId: deleteAgent
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Agent deleted
+
+  /agents/{id}/status:
+    patch:
+      tags: [Agents]
+      summary: Update agent status
+      operationId: updateAgentStatus
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, draft, archived]
+      responses:
+        "200":
+          description: Status updated
+
+  /agents/{id}/publish:
+    post:
+      tags: [Agents]
+      summary: Publish agent
+      operationId: publishAgent
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Agent published
+
+  /agents/{id}/tools:
+    post:
+      tags: [Agents]
+      summary: Attach tool to agent
+      operationId: attachAgentTool
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachToolRequest"
+      responses:
+        "201":
+          description: Tool attached
+
+  /agents/{id}/tools/{toolId}:
+    delete:
+      tags: [Agents]
+      summary: Remove tool from agent
+      operationId: removeAgentTool
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: toolId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Tool removed
+
+  /agents/{id}/integrations:
+    post:
+      tags: [Agents]
+      summary: Attach integration to agent
+      operationId: attachAgentIntegration
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachIntegrationRequest"
+      responses:
+        "201":
+          description: Integration attached
+
+  /agents/{id}/integrations/{integrationId}:
+    delete:
+      tags: [Agents]
+      summary: Remove integration from agent
+      operationId: removeAgentIntegration
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Integration removed
+
+  /agents/{id}/knowledge-bases:
+    post:
+      tags: [Agents]
+      summary: Attach knowledge base to agent
+      operationId: attachAgentKnowledgeBase
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachKnowledgeBaseRequest"
+      responses:
+        "201":
+          description: Knowledge base attached
+
+  /agents/{id}/knowledge-bases/{kbId}:
+    delete:
+      tags: [Agents]
+      summary: Remove knowledge base from agent
+      operationId: removeAgentKnowledgeBase
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: kbId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Knowledge base removed
+
+  /agents/{id}/channels:
+    post:
+      tags: [Agents]
+      summary: Deploy agent to channel
+      operationId: deployAgentToChannel
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeployChannelRequest"
+      responses:
+        "201":
+          description: Channel deployed
+
+  /agents/{id}/channels/{channelId}:
+    patch:
+      tags: [Agents]
+      summary: Update agent channel config
+      operationId: updateAgentChannel
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Channel config updated
+    delete:
+      tags: [Agents]
+      summary: Remove agent from channel
+      operationId: removeAgentFromChannelConfig
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Channel removed
+
+  /agents/{id}/chat:
+    post:
+      tags: [Agents]
+      summary: Chat with agent
+      description: SSE streaming endpoint for agent conversations.
+      operationId: chatWithAgent
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentChatRequest"
+      responses:
+        "200":
+          description: Chat response (SSE stream)
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /agents/{id}/runs:
+    get:
+      tags: [Agents]
+      summary: List agent runs
+      operationId: listAgentRuns
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentRun"
+
+  /agents/{id}/runs/{runId}:
+    get:
+      tags: [Agents]
+      summary: Get agent run details
+      operationId: getAgentRun
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRun"
+    delete:
+      tags: [Agents]
+      summary: Delete agent run
+      operationId: deleteAgentRun
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Run deleted
+
+  # ─── MCP ───────────────────────────────────────────────────────────────────
+  /mcp/registry:
+    get:
+      tags: [MCP]
+      summary: List available MCP server packages
+      operationId: getMcpRegistry
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: List of MCP packages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /mcp/servers:
+    get:
+      tags: [MCP]
+      summary: List user's connected MCP integrations
+      operationId: listMcpServers
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: List of connected servers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/McpServer"
+
+  /mcp/servers/{id}/test:
+    post:
+      tags: [MCP]
+      summary: Test connection to MCP integration
+      operationId: testMcpConnection
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /mcp/servers/{id}:
+    delete:
+      tags: [MCP]
+      summary: Disconnect MCP integration
+      operationId: deleteMcpServer
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Server disconnected
+
+  /mcp/user/oauth/start:
+    get:
+      tags: [MCP]
+      summary: Start MCP OAuth flow
+      operationId: startMcpOAuth
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: workspaceId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OAuth URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authUrl:
+                    type: string
+
+  /mcp/user/oauth/callback:
+    get:
+      tags: [MCP]
+      summary: MCP OAuth callback handler
+      description: Exchanges code for tokens and redirects to frontend.
+      operationId: mcpOAuthCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to frontend
+
+  /mcp/user/connect:
+    post:
+      tags: [MCP]
+      summary: Connect token-based MCP provider
+      operationId: connectMcpWithToken
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, workspaceId, env]
+              properties:
+                provider:
+                  type: string
+                workspaceId:
+                  type: string
+                  format: uuid
+                env:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        "200":
+          description: Provider connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpCredential"
+
+  /mcp/user/credentials:
+    get:
+      tags: [MCP]
+      summary: List user's MCP credentials for workspace
+      operationId: listMcpCredentials
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: List of credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/McpCredential"
+
+  /mcp/user/credentials/{provider}:
+    delete:
+      tags: [MCP]
+      summary: Disconnect MCP provider for user
+      operationId: disconnectMcpProvider
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: workspaceId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Provider disconnected
+
+  # ─── Codes ─────────────────────────────────────────────────────────────────
+  /codes/redeem:
+    post:
+      tags: [Codes]
+      summary: Redeem invitation code
+      operationId: redeemCode
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        "200":
+          description: Code redeemed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  amount:
+                    type: string
+                  success:
+                    type: boolean
+
+  /codes/history:
+    get:
+      tags: [Codes]
+      summary: Get user's code redemption history
+      operationId: getCodeHistory
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: Code history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CodeHistory"
+
+  /admin/codes:
+    post:
+      tags: [Codes]
+      summary: Create invitation code (Admin)
+      operationId: createCode
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, quantity]
+              properties:
+                amount:
+                  type: number
+                quantity:
+                  type: integer
+                expiresAt:
+                  type: string
+                  format: date-time
+      responses:
+        "201":
+          description: Codes created
+    get:
+      tags: [Codes]
+      summary: List invitation codes (Admin)
+      operationId: listCodes
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: List of codes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Code"
+                  total:
+                    type: integer
+
+  /admin/codes/{id}:
+    patch:
+      tags: [Codes]
+      summary: Update invitation code (Admin)
+      operationId: updateCode
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [active, revoked]
+      responses:
+        "200":
+          description: Code updated
+
+  # ─── Reminders ─────────────────────────────────────────────────────────────
+  /reminders:
+    post:
+      tags: [Reminders]
+      summary: Create a reminder
+      operationId: createReminder
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReminderRequest"
+      responses:
+        "201":
+          description: Reminder created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reminder"
+    get:
+      tags: [Reminders]
+      summary: List user reminders
+      operationId: listReminders
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      responses:
+        "200":
+          description: List of reminders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Reminder"
+
+  /reminders/{id}:
+    get:
+      tags: [Reminders]
+      summary: Get reminder details
+      operationId: getReminder
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reminder details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reminder"
+    patch:
+      tags: [Reminders]
+      summary: Update reminder
+      operationId: updateReminder
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateReminderRequest"
+      responses:
+        "200":
+          description: Reminder updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reminder"
+    delete:
+      tags: [Reminders]
+      summary: Delete reminder
+      operationId: deleteReminder
+      security:
+        - BearerAuth: []
+        - SessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Reminder deleted
+
+  # ─── Documents ─────────────────────────────────────────────────────────────
+  /export:
+    post:
+      tags: [Documents]
+      summary: Export markdown to document
+      operationId: exportDocument
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportRequest"
+      responses:
+        "200":
+          description: Document generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentExportResponse"
+        "400":
+          description: Invalid request
 
 components:
   securitySchemes:
@@ -849,11 +3522,21 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: JWT token from /auth/login
+    SessionAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: session
+      description: Better Auth session token
     ApiKeyAuth:
       type: apiKey
       in: header
       name: Authorization
       description: "API key with Bearer prefix: `Bearer sk_live_*`"
+    PortalSessionAuth:
+      type: apiKey
+      in: header
+      name: X-Portal-Session
+      description: Portal session token for anonymous/free-tier users
 
   parameters:
     PortalSessionHeader:
@@ -892,6 +3575,15 @@ components:
           minLength: 1
           example: mypassword123
 
+    UpdateProfileRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+
     AuthResponse:
       type: object
       properties:
@@ -912,6 +3604,9 @@ components:
         email:
           type: string
           format: email
+        name:
+          type: string
+          nullable: true
         balance:
           type: string
           description: Current balance in USD
@@ -944,6 +3639,23 @@ components:
           minimum: 1
           maximum: 128000
           description: Maximum tokens to generate
+        conversation_id:
+          type: string
+          format: uuid
+          description: Optional conversation ID to continue existing chat
+        output_format:
+          type: string
+          enum: [pdf, docx, xlsx]
+          description: Optional document output format
+
+    PortalChatCompletionRequest:
+      allOf:
+        - $ref: "#/components/schemas/ChatCompletionRequest"
+        - type: object
+          properties:
+            model:
+              type: string
+              description: Model ID (optional for free tier, required for paid)
 
     ChatMessage:
       type: object
@@ -1027,15 +3739,9 @@ components:
       properties:
         id:
           type: string
-          enum:
-            - gemma-3n-e4b
-            - lfm2-24b
-            - gpt-oss-20b
-            - qwen-3.5-9b
-            - llama-3-8b-lite
-            - rnj-1
-            - qwen-2.5-7b-turbo
           example: gpt-oss-20b
+        name:
+          type: string
         provider:
           type: string
           example: together
@@ -1378,22 +4084,20 @@ components:
           description: Conversation the memory was extracted from
         isUserPinned:
           type: boolean
-          description: Whether the user has pinned this memory (pinned memories are never auto-archived)
+          description: Whether the user has pinned this memory
           default: false
         status:
           type: string
-          enum: [active, archived]
+          enum: [active, archived, deleted]
           description: Current status of the memory
         lastConfirmedAt:
           type: string
           format: date-time
           nullable: true
-          description: Last time this memory was re-confirmed by a conversation
         expiresAt:
           type: string
           format: date-time
           nullable: true
-          description: Optional expiration date
         createdAt:
           type: string
           format: date-time
@@ -1411,3 +4115,600 @@ components:
           type: boolean
           description: Pin or unpin the memory
       description: At least one field must be provided
+
+    Workspace:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        channelId:
+          type: string
+          format: uuid
+          nullable: true
+        ownerId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+          enum: [active, archived]
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateWorkspaceRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    UpdateWorkspaceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+
+    WorkspaceMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [owner, admin, member]
+        status:
+          type: string
+          enum: [active, inactive]
+        joinedAt:
+          type: string
+          format: date-time
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+
+    UpdateMemberRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [admin, member]
+
+    WorkspaceInvite:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, member]
+        token:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, expired, revoked]
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    InviteMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, member]
+
+    WorkspaceQuota:
+      type: object
+      properties:
+        membersUsed:
+          type: integer
+        membersLimit:
+          type: integer
+        knowledgeBasesUsed:
+          type: integer
+        knowledgeBasesLimit:
+          type: integer
+
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        icon:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateChannelRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        icon:
+          type: string
+        color:
+          type: string
+
+    UpdateChannelRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        icon:
+          type: string
+        color:
+          type: string
+
+    AddAgentRequest:
+      type: object
+      required: [agentId]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [primary, sub]
+          default: primary
+
+    ChannelMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        channelId:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        document:
+          type: object
+          nullable: true
+          properties:
+            format:
+              type: string
+            url:
+              type: string
+            filename:
+              type: string
+            expiresAt:
+              type: string
+              format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    ChannelChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 32000
+        output_format:
+          type: string
+          enum: [pdf, docx, xlsx]
+
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        prompt:
+          type: string
+        status:
+          type: string
+          enum: [draft, active, archived]
+        isPublic:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateAgentRequest:
+      type: object
+      required: [name, prompt]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+        prompt:
+          type: string
+        isPublic:
+          type: boolean
+          default: false
+
+    UpdateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+        prompt:
+          type: string
+        isPublic:
+          type: boolean
+
+    AttachToolRequest:
+      type: object
+      required: [toolType]
+      properties:
+        toolType:
+          type: string
+        config:
+          type: object
+        enabled:
+          type: boolean
+          default: true
+
+    AttachIntegrationRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+        config:
+          type: object
+        scopes:
+          type: array
+          items:
+            type: string
+
+    AttachKnowledgeBaseRequest:
+      type: object
+      required: [knowledgeBaseId]
+      properties:
+        knowledgeBaseId:
+          type: string
+          format: uuid
+
+    DeployChannelRequest:
+      type: object
+      required: [channelType]
+      properties:
+        channelType:
+          type: string
+        config:
+          type: object
+
+    AgentChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 32000
+        sessionId:
+          type: string
+        output_format:
+          type: string
+          enum: [pdf, docx, xlsx]
+
+    AgentRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, failed]
+        input:
+          type: string
+        output:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    McpServer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        provider:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [connected, disconnected, error]
+        createdAt:
+          type: string
+          format: date-time
+
+    McpCredential:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        workspaceId:
+          type: string
+          format: uuid
+        provider:
+          type: string
+        status:
+          type: string
+          enum: [active, expired, revoked]
+        createdAt:
+          type: string
+          format: date-time
+
+    Code:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        amount:
+          type: string
+        quantity:
+          type: integer
+        status:
+          type: string
+          enum: [active, used, revoked]
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CodeHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        amount:
+          type: string
+        redeemedAt:
+          type: string
+          format: date-time
+
+    Reminder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        channelId:
+          type: string
+          format: uuid
+        chatRoomId:
+          type: string
+          format: uuid
+        prompt:
+          type: string
+        description:
+          type: string
+          nullable: true
+        cronExpression:
+          type: string
+        timezone:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED, DELETED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateReminderRequest:
+      type: object
+      required: [agentId, channelId, chatRoomId, prompt, cronExpression]
+      properties:
+        agentId:
+          type: string
+          format: uuid
+        channelId:
+          type: string
+          format: uuid
+        chatRoomId:
+          type: string
+          format: uuid
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        description:
+          type: string
+          maxLength: 200
+        cronExpression:
+          type: string
+          minLength: 1
+          maxLength: 100
+        timezone:
+          type: string
+          default: UTC
+
+    UpdateReminderRequest:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        description:
+          type: string
+          maxLength: 200
+        cronExpression:
+          type: string
+          minLength: 1
+          maxLength: 100
+        timezone:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED]
+
+    ExportRequest:
+      type: object
+      required: [markdown, format]
+      properties:
+        markdown:
+          type: string
+        format:
+          type: string
+          enum: [pdf, docx, xlsx]
+        filename:
+          type: string
+
+    DocumentExportResponse:
+      type: object
+      properties:
+        format:
+          type: string
+        url:
+          type: string
+        filename:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    GowaInboundMessage:
+      type: object
+      properties:
+        event:
+          type: string
+          example: message.received
+        from:
+          type: string
+          description: Sender phone number
+        to:
+          type: string
+          description: Recipient phone number (agent number)
+        message:
+          type: object
+          properties:
+            id:
+              type: string
+            type:
+              type: string
+              example: text
+            text:
+              type: object
+              properties:
+                body:
+                  type: string
+        timestamp:
+          type: integer

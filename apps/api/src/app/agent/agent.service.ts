@@ -1,23 +1,18 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { ModelRegistryService } from "../config/model-registry.service";
 import { ProviderRouter } from "../providers/provider-router";
 import type { CreateAgentDto } from "./dto/create-agent.dto";
 import type { UpdateAgentDto } from "./dto/update-agent.dto";
 
 @Injectable()
 export class AgentService {
-  private readonly logger = new Logger(AgentService.name);
-
   constructor(
     private readonly prisma: PrismaService,
-    private readonly registry: ModelRegistryService,
     private readonly providerRouter: ProviderRouter,
   ) {}
 
@@ -625,9 +620,9 @@ export class AgentService {
       ? `Agent name: "${name}"\nDescription: "${description}"`
       : `Agent name: "${name}"`;
 
-    const response = await this.providerRouter.chat("together", {
-      providerId: "deepseek-ai/DeepSeek-V4-Pro",
-      model: "deepseek-ai/DeepSeek-V4-Pro",
+    const response = await this.providerRouter.chat("openrouter", {
+      providerId: "deepseek/deepseek-v4-pro",
+      model: "deepseek/deepseek-v4-pro",
       messages: [
         {
           role: "system",

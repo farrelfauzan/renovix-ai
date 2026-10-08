@@ -329,12 +329,14 @@ export class ChannelService {
   ) {
     const channel = await this.prisma.channel.findFirst({
       where: { id: channelId, userId },
+      include: { workspace: true },
     });
     if (!channel) throw new NotFoundException("Channel not found");
 
     const channelAgent = await this.prisma.channelAgent.findFirst({
       where: { channelId, agentId },
       include: {
+        channel: { include: { workspace: true } },
         agent: {
           include: {
             tools: { where: { enabled: true } },

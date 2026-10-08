@@ -56,7 +56,6 @@ export class AgentRunController {
 
     const { message, sessionId, output_format } = parsed.data;
     const userId = req.user.userId;
-    const origin = req.headers.origin || req.headers.Origin || "*";
 
     // Classify document intent via LLM
     const detectedFormat =
@@ -67,8 +66,7 @@ export class AgentRunController {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Allow-Origin": "*",
     });
 
     // Increase timeout for long-running agent chats (3 minutes)
@@ -201,9 +199,9 @@ export class AgentRunController {
     message: string,
   ): Promise<string | null> {
     try {
-      const response = await this.providerRouter.chat("together", {
+      const response = await this.providerRouter.chat("openrouter", {
         model: "classifier",
-        providerId: "deepseek-ai/DeepSeek-V4-Pro",
+        providerId: "deepseek/deepseek-v4-pro",
         messages: [
           {
             role: "system",

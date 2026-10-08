@@ -16,10 +16,20 @@ export class XlsxConverter implements DocumentConverter {
 
     if (tables.length > 0) {
       // Each markdown table becomes a sheet
+      // Track used names to avoid duplicates
+      const usedNames = new Set<string>();
+
       tables.forEach((table, i) => {
-        const sheetName = this.sanitizeSheetName(
-          table.title || `Sheet${i + 1}`,
-        );
+        let sheetName = this.sanitizeSheetName(table.title || `Sheet${i + 1}`);
+
+        // If name already exists, append a counter
+        let counter = 1;
+        const originalName = sheetName;
+        while (usedNames.has(sheetName)) {
+          sheetName = `${originalName.substring(0, 28)} ${++counter}`;
+        }
+        usedNames.add(sheetName);
+
         const sheet = workbook.addWorksheet(sheetName);
 
         // Header row

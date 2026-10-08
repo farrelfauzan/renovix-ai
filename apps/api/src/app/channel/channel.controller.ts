@@ -431,9 +431,9 @@ export class ChannelController {
     message: string,
   ): Promise<string | null> {
     try {
-      const response = await this.providerRouter.chat("together", {
+      const response = await this.providerRouter.chat("openrouter", {
         model: "classifier",
-        providerId: "deepseek-ai/DeepSeek-V4-Pro",
+        providerId: "deepseek/deepseek-chat-v3.1",
         messages: [
           {
             role: "system",
