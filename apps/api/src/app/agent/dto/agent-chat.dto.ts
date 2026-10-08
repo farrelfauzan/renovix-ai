@@ -12,7 +12,6 @@ export const AttachToolSchema = z.object({
   toolType: z.enum([
     "web_search",
     "calculator",
-    "code_exec",
     "api_call",
     "knowledge_retrieval",
     "memory_store",

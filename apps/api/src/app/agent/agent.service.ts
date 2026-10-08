@@ -372,12 +372,6 @@ export class AgentService {
         configRequired: false,
       },
       {
-        type: "code_exec",
-        name: "Code Execution",
-        description: "Run sandboxed code snippets",
-        configRequired: false,
-      },
-      {
         type: "api_call",
         name: "API Call",
         description: "Call external HTTP APIs",
