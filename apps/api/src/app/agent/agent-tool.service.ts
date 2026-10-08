@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { McpClientService } from "../mcp/mcp-client.service";
 import { McpService } from "../mcp/mcp.service";
 import { McpUserService } from "../mcp/mcp-user.service";
+import { WebSearchService } from "../mcp/web-search.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { DocumentService } from "../document/document.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -51,6 +52,7 @@ export class AgentToolService {
     private readonly mcpClient: McpClientService,
     private readonly mcpService: McpService,
     private readonly mcpUserService: McpUserService,
+    private readonly webSearchService: WebSearchService,
     private readonly memoryService: AgentMemoryService,
     private readonly documentService: DocumentService,
     private readonly prisma: PrismaService,
@@ -69,6 +71,10 @@ export class AgentToolService {
             query: {
               type: "string",
               description: "The search query",
+            },
+            maxResults: {
+              type: "number",
+              description: "Optional maximum number of results to return (1-10)",
             },
           },
           required: ["query"],
@@ -390,7 +396,7 @@ export class AgentToolService {
         case "calculator":
           return this.executeCalculator(args);
         case "web_search":
-          return this.executeWebSearch(args);
+          return this.executeWebSearch(args, userId, agent?.workspaceId);
         case "knowledge_retrieval":
           return this.executeKnowledgeRetrieval(args, agent);
         case "memory_store":
@@ -484,9 +490,25 @@ export class AgentToolService {
     return result;
   }
 
-  private async executeWebSearch(args: { query: string }): Promise<string> {
-    // Placeholder - integrate with a search API (e.g., Brave, Serper, etc.)
-    return `Web search results for "${args.query}": [Web search integration pending. Please configure a search provider.]`;
+  private async executeWebSearch(
+    args: { query: string; maxResults?: number },
+    userId?: string,
+    workspaceId?: string,
+  ): Promise<string> {
+    if (!userId || !workspaceId) {
+      return "Web search is unavailable because user or workspace context is missing.";
+    }
+
+    try {
+      return await this.webSearchService.search(
+        userId,
+        workspaceId,
+        args.query,
+        args.maxResults,
+      );
+    } catch (err: any) {
+      return `Web search failed: ${err.message}`;
+    }
   }
 
   private async executeKnowledgeRetrieval(

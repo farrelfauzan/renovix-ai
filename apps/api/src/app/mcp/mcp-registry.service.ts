@@ -11,6 +11,7 @@ export interface McpPackageInfo {
   envKeys: string[]; // Required env vars for this server
   authType: "oauth" | "token" | "api_key";
   tools: string[]; // Known tool names exposed by this server
+  docsUrl?: string;
 }
 
 @Injectable()
@@ -121,6 +122,7 @@ export class McpRegistryService {
       envKeys: ["BRAVE_API_KEY"],
       authType: "api_key",
       tools: ["brave_web_search", "brave_local_search"],
+      docsUrl: "https://api.search.brave.com/",
     },
   };
 
