@@ -3637,7 +3637,7 @@ components:
           type: string
         provider:
           type: string
-          example: together
+          example: openrouter
         pricing:
           type: object
           properties:

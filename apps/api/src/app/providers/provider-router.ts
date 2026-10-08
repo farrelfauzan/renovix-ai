@@ -35,7 +35,7 @@ export class ProviderRouter {
         error.stack,
       );
 
-      // TODO: Add fallback provider logic here (e.g. try Groq if Together fails)
+      // TODO: Add fallback provider logic here (e.g. try another provider if the primary fails)
       throw error;
     }
   }
