@@ -224,6 +224,8 @@ export class WorkspaceKnowledgeService {
         JOIN "knowledge_bases" kb ON kb.id = kc."knowledgeBaseId"
         WHERE kb.workspace_id = ${workspaceId}
           AND kb.active = true
+          AND kc.embedding IS NOT NULL
+          AND vector_dims(kc.embedding) = vector_dims(${vector}::vector)
         ORDER BY kc.embedding <=> ${vector}::vector
         LIMIT ${topK}
       `,

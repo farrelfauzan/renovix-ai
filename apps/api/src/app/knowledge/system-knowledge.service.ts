@@ -239,6 +239,7 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
         FROM "knowledge_chunks" kc
         WHERE kc."knowledgeBaseId" = ${kb.id}
           AND kc.embedding IS NOT NULL
+          AND vector_dims(kc.embedding) = vector_dims(${vector}::vector)
           AND 1 - (kc.embedding <=> ${vector}::vector) >= ${threshold}
         ORDER BY kc.embedding <=> ${vector}::vector
         LIMIT ${topK}
