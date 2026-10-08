@@ -258,6 +258,7 @@ export class KnowledgeService {
           FROM "knowledge_chunks" kc
           WHERE kc."knowledgeBaseId" = ${options.knowledgeBaseId}
             AND kc.embedding IS NOT NULL
+            AND vector_dims(kc.embedding) = vector_dims(${vector}::vector)
           ORDER BY kc.embedding <=> ${vector}::vector
           LIMIT ${topK}
         `,
@@ -297,6 +298,7 @@ export class KnowledgeService {
         WHERE kb."userId" = ${userId}
           AND kb.active = true
           AND kc.embedding IS NOT NULL
+          AND vector_dims(kc.embedding) = vector_dims(${vector}::vector)
         ORDER BY kc.embedding <=> ${vector}::vector
         LIMIT ${topK}
       `,
