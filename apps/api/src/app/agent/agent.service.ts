@@ -363,7 +363,7 @@ export class AgentService {
         type: "web_search",
         name: "Web Search",
         description: "Search the internet for real-time information",
-        configRequired: false,
+        configRequired: true,
       },
       {
         type: "calculator",
