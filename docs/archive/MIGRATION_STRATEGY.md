@@ -109,9 +109,11 @@ model CodeRedemption {
 |--------|------|-------------|
 | `POST` | `/codes/redeem` | User submits a code → validates → grants credits/plan |
 | `GET`  | `/codes/history` | User sees their redemption history |
-| `POST` | `/admin/codes` | Admin creates invitation codes |
-| `GET`  | `/admin/codes` | Admin lists all codes with usage stats |
-| `PATCH`| `/admin/codes/:id` | Admin deactivates/modifies a code |
+| ~~`POST`~~ | ~~`/admin/codes`~~ | ~~Admin creates invitation codes~~ **Removed (D33, RX-66)** |
+| ~~`GET`~~ | ~~`/admin/codes`~~ | ~~Admin lists all codes with usage stats~~ **Removed (D33, RX-66)** |
+| ~~`PATCH`~~ | ~~`/admin/codes/:id`~~ | ~~Admin deactivates/modifies a code~~ **Removed (D33, RX-66)** |
+
+> The three `/admin/codes` routes were removed (Tech Lead decision D33, ticket RX-66) until an admin role exists (RX-37).
 
 ### Redemption Flow
 
