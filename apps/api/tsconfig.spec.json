@@ -1,3 +1,4 @@
+// Used only by ts-jest (diagnostics are off: this file alone fails with TS5110). RX-8 owns the real test setup.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
