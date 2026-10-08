@@ -12,16 +12,11 @@ import {
   useClearMessages,
 } from "@/hooks/use-channels";
 import { useChannelChat } from "@/hooks/use-channel-chat";
-import {
-  useAgents,
-  useAgentSubscription,
-  useSubscribe,
-} from "@/hooks/use-agents";
+import { useAgents, useAgentSubscription } from "@/hooks/use-agents";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import Link from "next/link";
 import {
   Bot,
-  Check,
   MessageSquare,
   Trash2,
   Loader2,
@@ -45,7 +40,6 @@ import {
   Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
@@ -93,7 +87,6 @@ export default function AgentsPageClient() {
   const { data: channels, isLoading: channelsLoading } = useChannels();
   const { data: subscriptionData, isLoading: subLoading } =
     useAgentSubscription();
-  const subscribeMutation = useSubscribe();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -182,17 +175,7 @@ export default function AgentsPageClient() {
   }
 
   if (!subscription) {
-    return (
-      <SubscriptionPricing
-        onSubscribe={(tier) => {
-          subscribeMutation.mutate(tier, {
-            onSuccess: () => toast.success(`Subscribed to ${tier} plan!`),
-            onError: () => toast.error("Failed to subscribe"),
-          });
-        }}
-        isLoading={subscribeMutation.isPending}
-      />
-    );
+    return <SubscriptionPricing />;
   }
 
   return (
@@ -1064,67 +1047,7 @@ function ChannelChatPanel({
 
 // ─── Subscription Pricing ───
 
-const plans = [
-  {
-    tier: "starter",
-    name: "Starter",
-    price: 19,
-    description: "For individuals getting started with AI agents",
-    features: [
-      "Up to 3 servers",
-      "1M tokens/month",
-      "3 agents per server",
-      "Web channel only",
-      "Basic tools (web search, calculator)",
-      "Community support",
-    ],
-  },
-  {
-    tier: "pro",
-    name: "Pro",
-    price: 49,
-    popular: true,
-    description: "For professionals and small teams",
-    features: [
-      "Up to 10 servers",
-      "5M tokens/month",
-      "10 agents per server",
-      "Web + API channels",
-      "All tools (Jira, Notion, Slack, GitHub, Calendar)",
-      "MCP server integrations",
-      "Sub-agent delegation",
-      "Knowledge base RAG",
-      "Agent memory",
-      "Priority support",
-    ],
-  },
-  {
-    tier: "enterprise",
-    name: "Enterprise",
-    price: 149,
-    description: "For teams and organizations at scale",
-    features: [
-      "Unlimited servers",
-      "20M tokens/month",
-      "Unlimited agents per server",
-      "All channels (Web, API, WhatsApp)",
-      "All tools + custom MCP servers",
-      "Sub-agent orchestration",
-      "Knowledge base RAG",
-      "Advanced memory & context",
-      "WhatsApp (GOWA) channel",
-      "Dedicated support",
-    ],
-  },
-];
-
-function SubscriptionPricing({
-  onSubscribe,
-  isLoading,
-}: {
-  onSubscribe: (tier: string) => void;
-  isLoading: boolean;
-}) {
+function SubscriptionPricing() {
   const [code, setCode] = useState("");
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [redeemResult, setRedeemResult] = useState<{
@@ -1175,10 +1098,10 @@ function SubscriptionPricing({
             <Zap className="h-4 w-4" />
             AI Agent Portal
           </div>
-          <h1 className="text-3xl font-bold mb-3">Choose your plan</h1>
+          <h1 className="text-3xl font-bold mb-3">Get access</h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            Subscribe to unlock AI Agents that automate your workflows, manage
-            projects, and integrate with your favorite tools.
+            Redeem a code to unlock AI Agents that automate your workflows,
+            manage projects, and integrate with your favorite tools.
           </p>
         </div>
 
@@ -1186,7 +1109,7 @@ function SubscriptionPricing({
         <div className="max-w-md mx-auto mb-10 border rounded-xl p-6 bg-secondary/20">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">Have an invitation code?</span>
+            <span className="text-sm font-medium">Redeem a code</span>
           </div>
           <form onSubmit={handleRedeem} className="flex gap-2">
             <Input
@@ -1222,58 +1145,16 @@ function SubscriptionPricing({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plans.map((plan) => (
-            <div
-              key={plan.tier}
-              className={`relative border rounded-xl p-6 flex flex-col ${
-                plan.popular
-                  ? "border-primary shadow-lg shadow-primary/10 ring-1 ring-primary"
-                  : "border-border"
-              }`}
-            >
-              {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-primary text-primary-foreground text-xs px-3">
-                    Most Popular
-                  </Badge>
-                </div>
-              )}
-
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold">{plan.name}</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {plan.description}
-                </p>
-                <div className="mt-4">
-                  <span className="text-3xl font-bold">${plan.price}</span>
-                  <span className="text-muted-foreground text-sm">/month</span>
-                </div>
-              </div>
-
-              <ul className="space-y-2.5 mb-6 flex-1">
-                {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-start gap-2 text-sm">
-                    <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                    <span>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Button
-                onClick={() => onSubscribe(plan.tier)}
-                disabled={isLoading}
-                variant={plan.popular ? "default" : "outline"}
-                className="w-full"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  `Get ${plan.name}`
-                )}
-              </Button>
-            </div>
-          ))}
+        {/* Enterprise request (form comes in RX-32) */}
+        <div className="max-w-md mx-auto border rounded-xl p-6 bg-secondary/20">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">Need Enterprise?</span>
+          </div>
+          <Button disabled variant="outline" size="sm">
+            Request Enterprise
+          </Button>
+          <p className="text-xs text-muted-foreground mt-2">Coming soon</p>
         </div>
       </div>
     </div>

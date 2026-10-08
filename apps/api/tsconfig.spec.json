@@ -1,0 +1,12 @@
+// Used only by ts-jest (diagnostics are off: this file alone fails with TS5110). RX-8 owns the real test setup.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc",
+    "module": "commonjs",
+    "types": ["jest", "node"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["jest.config.js", "src/**/*.spec.ts", "src/**/*.d.ts"]
+}

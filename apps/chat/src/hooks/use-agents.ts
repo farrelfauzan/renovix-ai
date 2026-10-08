@@ -350,27 +350,11 @@ async function fetchSubscription(): Promise<{ subscription: any | null }> {
   return apiClient.get("/agents/subscription");
 }
 
-async function subscribe(tier: string): Promise<{ subscription: any }> {
-  return apiClient.post("/agents/subscribe", { tier });
-}
-
 export function useAgentSubscription() {
   return useQuery({
     queryKey: [...agentKeys.all, "subscription"] as const,
     queryFn: fetchSubscription,
     staleTime: 60_000,
-  });
-}
-
-export function useSubscribe() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (tier: string) => subscribe(tier),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: [...agentKeys.all, "subscription"],
-      });
-    },
   });
 }
 

@@ -2557,27 +2557,6 @@ paths:
       responses:
         "200":
           description: Subscription details
-    post:
-      tags: [Agents]
-      summary: Subscribe to agent tier
-      operationId: subscribeAgent
-      security:
-        - BearerAuth: []
-        - SessionAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [tier]
-              properties:
-                tier:
-                  type: string
-                  enum: [starter, pro, enterprise]
-      responses:
-        "200":
-          description: Subscribed successfully
 
   /agents/{id}:
     get:
