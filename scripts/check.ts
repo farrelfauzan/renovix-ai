@@ -1,9 +1,9 @@
 // `bun run check`: the local check set (docs/testing.md). Exit 0 only if every step passes.
 // Never runs `docker build` (kept separate on purpose, D29).
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const DUMMY_DB = "postgresql://x:x@localhost:5/x";
@@ -214,67 +214,6 @@ const steps: Array<[string, () => Promise<boolean>]> = [
   ["api tests", testStep],
   ["typecheck (vs origin/main baseline)", typecheckStep],
 ];
-
-/** Remove leftovers of dead runs: `renovix-check-<pid>-<rand>` compose projects and
- * `renovix-check-baseline-<pid>-*` temp dirs/worktrees. A live pid belongs to another run: left alone. */
-function alive(pid: number) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
-async function sweep() {
-  const swept: string[] = [];
-  const projects = new Set<string>();
-  if ((await capture(["docker", "info"], ROOT)).code === 0) {
-    for (const kind of [["ps", "-a"], ["volume", "ls"], ["network", "ls"]]) {
-      const fmt = '{{.Label "com.docker.compose.project"}}';
-      const r = await capture(["docker", ...kind, "--filter", "label=com.docker.compose.project", "--format", fmt], ROOT);
-      for (const name of r.out.split("\n")) {
-        const m = name.trim().match(/^renovix-check-(\d+)-[a-z0-9]+$/);
-        if (m && !alive(Number(m[1]))) projects.add(m[0]);
-      }
-    }
-  }
-  for (const project of projects) {
-    const e: Env = { ...env, TEST_DB_PORT: "5" };
-    await detached(["docker", "compose", "-f", "docker-compose.test.yml", "-p", project, "down", "-v"], { env: e });
-    swept.push(`compose project ${project}`);
-  }
-  const tmpRoot = realpathSync(tmpdir());
-  const isBaseline = (tmp: string) => {
-    const m = basename(tmp).match(/^renovix-check-baseline-(\d+)-/);
-    return !!m && !alive(Number(m[1]));
-  };
-  const worktrees = (await capture(["git", "worktree", "list", "--porcelain"], ROOT)).out
-    .split("\n")
-    .filter((l) => l.startsWith("worktree "))
-    .map((l) => l.slice(9));
-  for (const wt of worktrees) {
-    const tmp = dirname(wt);
-    if (basename(wt) !== "wt" || dirname(tmp) !== tmpRoot || !isBaseline(tmp)) continue;
-    for (const nm of ["node_modules", ...(existsSync(join(wt, "apps")) ? readdirSync(join(wt, "apps")) : []).map((a) => `apps/${a}/node_modules`)]) {
-      rmSync(join(wt, nm), { force: true }); // unlink the symlink only, never the target
-    }
-    await detached(["git", "worktree", "remove", "--force", wt]);
-    rmSync(tmp, { recursive: true, force: true });
-    swept.push(`baseline worktree ${wt}`);
-  }
-  for (const name of readdirSync(tmpRoot)) {
-    const tmp = join(tmpRoot, name);
-    if (!isBaseline(tmp)) continue;
-    rmSync(tmp, { recursive: true, force: true }); // symlinks inside are removed, never followed
-    swept.push(`baseline temp dir ${tmp}`);
-  }
-  console.log(swept.length ? `Sweep: removed leftovers of dead runs: ${swept.join(", ")}` : "Sweep: no leftovers of dead runs");
-}
-try {
-  await sweep();
-} catch (e) {
-  console.error("Sweep failed:", e instanceof Error ? e.message : e);
-}
 
 const started = Date.now();
 const results: Array<[string, boolean]> = [];

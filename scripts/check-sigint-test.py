@@ -63,15 +63,6 @@ class Run:
         except (ProcessLookupError, PermissionError):  # group already gone (macOS: EPERM on a zombie)
             pass
 
-    def finish(self):
-        try:
-            self.p.wait(timeout=EXIT_WAIT)
-        except subprocess.TimeoutExpired:
-            self.signal_group(signal.SIGKILL)
-            self.p.wait()
-        time.sleep(4)  # let anything detached finish
-        return self.p.returncode
-
     def dispose(self):
         self.signal_group(signal.SIGKILL)
         try:
@@ -208,33 +199,6 @@ def scenario_baseline_closed():
     return phase("baseline", BASE, extra=3, closepipe=True)
 
 
-def scenario_sweep():
-    a, b, project = Run(), None, None
-    try:
-        line = a.wait_for("Test database: own compose project renovix-check-")
-        project = re.search(r"renovix-check-\d+-[a-z0-9]+", line).group(0)
-        time.sleep(5)  # container created
-        a.signal_group(signal.SIGKILL)
-        a.p.wait()
-        time.sleep(1)
-        left = project_residue(project)
-        print(f"  run A ({project}) SIGKILLed; residue expected: " + (", ".join(left) or "NONE (scenario invalid)"))
-        if not left:
-            return ["scenario invalid: SIGKILL left no residue to sweep"]
-        b = Run()
-        sweep = b.wait_for("Sweep:")
-        print(f"  run B printed: {sweep}")
-        b.signal_group(signal.SIGINT)
-        b.finish()
-        return project_residue(project)
-    finally:
-        a.dispose()
-        if b:
-            b.dispose()
-        if project:
-            remove_project(project)
-
-
 SCENARIOS = {
     "test": scenario_test,
     "baseline": scenario_baseline,
@@ -242,7 +206,6 @@ SCENARIOS = {
     "baseline-double": scenario_baseline_double,
     "test-closed": scenario_test_closed,
     "baseline-closed": scenario_baseline_closed,
-    "sweep": scenario_sweep,
 }
 
 
