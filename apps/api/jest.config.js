@@ -17,6 +17,7 @@ module.exports = {
   moduleNameMapper: {
     // tsconfig path alias, and the ".js" suffixes in ESM-style imports (generated Prisma client).
     '^@generated/prisma/(.*)\\.js$': '<rootDir>/src/generated/prisma/$1',
+    // Also applies to relative imports inside node_modules.
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   globalSetup: '<rootDir>/test/global-setup.ts',

@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: renovix_test
       POSTGRES_DB: renovix_test
     ports:
-      - "${TEST_DB_PORT:-55432}:5432"
+      - "127.0.0.1:${TEST_DB_PORT:-55432}:5432"
     volumes:
       - pgdata_test:/var/lib/postgresql/data
     healthcheck:

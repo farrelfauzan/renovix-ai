@@ -19,7 +19,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "check": "bun scripts/check.ts"
   },
   "devDependencies": {
     "@nestjs/schematics": "^11.0.0",
