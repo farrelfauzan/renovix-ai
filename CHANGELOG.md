@@ -38,5 +38,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configure cross-subdomain cookies (`SameSite`, `Secure`, domain) for production deployment
   - Enable session cookie caching (5min) to reduce database lookups
 
-[0.1.4]: https://github.com/farrelfauzan/revonix-ai/compare/v0.0.4...v0.1.4
-[0.0.2]: https://github.com/farrelfauzan/revonix-ai/compare/v0.0.1...v0.0.2
+[0.1.4]: https://github.com/farrelfauzan/renovix-ai/compare/v0.0.4...v0.1.4
+[0.0.2]: https://github.com/farrelfauzan/renovix-ai/compare/v0.0.1...v0.0.2
