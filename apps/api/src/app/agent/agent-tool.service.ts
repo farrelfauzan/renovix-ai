@@ -160,28 +160,6 @@ export class AgentToolService {
         },
       },
     },
-    code_exec: {
-      type: "function",
-      function: {
-        name: "code_exec",
-        description: "Execute a code snippet in a sandboxed environment",
-        parameters: {
-          type: "object",
-          properties: {
-            language: {
-              type: "string",
-              enum: ["javascript", "python"],
-              description: "Programming language",
-            },
-            code: {
-              type: "string",
-              description: "The code to execute",
-            },
-          },
-          required: ["language", "code"],
-        },
-      },
-    },
     create_reminder: {
       type: "function",
       function: {
@@ -401,8 +379,6 @@ export class AgentToolService {
           return this.executeKnowledgeRetrieval(args, agent);
         case "memory_store":
           return this.executeMemoryStore(args, agent, userId, channelId);
-        case "code_exec":
-          return this.executeCodeExec(args);
         case "create_reminder":
           return this.executeCreateReminder(args, agent, userId, channelId);
         case "create_document":
@@ -547,23 +523,6 @@ export class AgentToolService {
       this.logger.error(`Memory store failed: ${err.message}`, err.stack);
       return `Failed to store memory: ${err.message}`;
     }
-  }
-
-  private async executeCodeExec(args: {
-    language: string;
-    code: string;
-  }): Promise<string> {
-    // Simple sandboxed JS execution (production should use isolated-vm or similar)
-    if (args.language === "javascript") {
-      try {
-        const fn = new Function(`"use strict";\n${args.code}`);
-        const result = fn();
-        return `Output: ${JSON.stringify(result)}`;
-      } catch (err: any) {
-        return `Execution error: ${err.message}`;
-      }
-    }
-    return `Language "${args.language}" execution is not yet supported.`;
   }
 
   private async executeCreateDocument(args: {

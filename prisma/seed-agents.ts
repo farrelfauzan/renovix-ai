@@ -58,7 +58,7 @@ Be thorough but respectful. Prioritize critical issues over style preferences.`,
     model: DEFAULT_AGENT_MODEL,
     temperature: 0.3,
     agentType: "standalone",
-    tools: ["github_create_issue", "web_search", "code_exec"],
+    tools: ["github_create_issue", "web_search"],
   },
   {
     name: "Research Assistant",

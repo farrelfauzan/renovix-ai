@@ -323,7 +323,7 @@ model AgentTool {
   id        String   @id @default(uuid())
   agentId   String
   agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  toolType  String   @map("tool_type") // "web_search" | "calculator" | "code_exec" | "api_call" | "knowledge_retrieval"
+  toolType  String   @map("tool_type") // "web_search" | "calculator" | "api_call" | "knowledge_retrieval"
   config    Json?
   enabled   Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz()
