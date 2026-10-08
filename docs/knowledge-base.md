@@ -17,7 +17,7 @@ The Knowledge Base module enables **Retrieval-Augmented Generation (RAG)** for P
 ```
 User uploads text chunks
         ↓
-  Embedding Service (Together AI)
+  Embedding Service (OpenRouter)
         ↓
   Vectors stored in PostgreSQL (pgvector)
         ↓
@@ -37,7 +37,7 @@ User uploads text chunks
 | `knowledge.module.ts` | NestJS module registration |
 | `knowledge.controller.ts` | REST API endpoints |
 | `knowledge.service.ts` | Business logic (CRUD + vector search) |
-| `embedding.service.ts` | Calls Together AI embedding API |
+| `embedding.service.ts` | Calls the OpenRouter embeddings API |
 | `dto/knowledge.dto.ts` | Zod validation schemas |
 
 ### Database Models
@@ -86,7 +86,7 @@ Authorization: Bearer sk_live_xxx
 **What happens internally:**
 
 1. Validates that the knowledge base belongs to the authenticated user
-2. Sends all chunk texts to Together AI's embedding API in a single batch
+2. Sends all chunk texts to the OpenRouter embeddings API in a single batch
 3. Receives vector embeddings (one per chunk)
 4. Inserts each chunk + embedding into `knowledge_chunks` table in a DB transaction
 
@@ -105,7 +105,7 @@ Authorization: Bearer sk_live_xxx
 
 **What happens internally:**
 
-1. The query string is embedded into a vector via Together AI
+1. The query string is embedded into a vector via OpenRouter
 2. pgvector performs cosine similarity search (`<=>` operator)
 3. Returns the top-K most similar chunks with similarity scores
 
@@ -175,12 +175,12 @@ ON knowledge_chunks USING hnsw (embedding vector_cosine_ops);
 
 | Env Variable | Required | Description |
 |-------------|----------|-------------|
-| `TOGETHER_API_KEY` | Yes | API key for Together AI (used for embeddings) |
+| `OPENROUTER_API_KEY` | Yes | API key for OpenRouter (chat models and embeddings) |
 | `DATABASE_URL` | Yes | PostgreSQL connection string (must support pgvector) |
 
 ### Embedding Model
 
-Currently uses `togethercomputer/m2-bert-80M-8k-retrieval`. The vector dimension in the schema is `vector(1536)`. If you change the embedding model, update the dimension in `prisma/schema.prisma` accordingly.
+Currently uses `intfloat/multilingual-e5-large-instruct` (`apps/api/src/app/knowledge/embedding.service.ts`). The vector dimension in the schema is `vector(1024)`. If you change the embedding model, update the dimension in `prisma/schema.prisma` accordingly.
 
 ---
 

@@ -8,7 +8,7 @@ A unified AI platform that provides access to multiple LLM models through a sing
 
 Renovix AI solves the complexity of working with multiple AI providers by offering:
 
-- **Unified API** — Single endpoint compatible with OpenAI's format, routing to models like LLaMA, Qwen, and more via Together AI
+- **Unified API** — Single endpoint compatible with OpenAI's format, routing to models like LLaMA, Qwen, and more via OpenRouter
 - **Chat Portal** — Web-based chat interface with free tier (20 requests/day) and paid tier with model selection
 - **Per-User Knowledge Base** — Upload `.md` files for RAG-powered contextual responses
 - **Conversation History** — Persistent chat history for logged-in users
@@ -25,7 +25,7 @@ Renovix AI solves the complexity of working with multiple AI providers by offeri
 | **Dashboard** | Next.js |
 | **Landing Page** | Next.js + Tailwind CSS |
 | **State Management** | Zustand + TanStack React Query |
-| **AI Provider** | Together AI (chat + embeddings) |
+| **AI Provider** | OpenRouter (chat + embeddings) |
 | **Payments** | Stripe |
 | **File Storage** | AWS S3 (MinIO for local dev) |
 | **Monorepo** | Nx |
@@ -125,7 +125,7 @@ bun run build:landing
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Secret key for JWT token signing |
 | `IP_HASH_SECRET` | Required. HMAC key for client IPs (free-tier caps) |
-| `TOGETHER_API_KEY` | Together AI API key for LLM and embeddings |
+| `OPENROUTER_API_KEY` | OpenRouter API key for LLM and embeddings |
 | `STRIPE_SECRET_KEY` | Stripe secret key for payments |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
 | `S3_BUCKET` | S3 bucket name for file storage |

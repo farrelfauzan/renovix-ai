@@ -25,7 +25,7 @@ User Request
          ▼
 ┌─────────────────────┐
 │  ProviderRouter     │
-│  (Together, etc.)   │
+│  (OpenRouter)       │
 └────────┬────────────┘
          │
          ▼
@@ -41,7 +41,7 @@ User Request
    - If the user already provided a `system` message, it **prepends** our system prompt to theirs (separated by a newline).
    - If no `system` message exists, it **inserts** one at position 0.
    - Returns the augmented messages array.
-4. The augmented messages are sent to the provider (Together AI, etc.).
+4. The augmented messages are sent to the provider (OpenRouter).
 5. The response is returned to the user as normal.
 
 ## Configuration

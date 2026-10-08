@@ -1,9 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import axios from "axios";
 import { UserMemoryService } from "./user-memory.service";
 import { MemoryPolicyService } from "./memory-policy.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ProviderRouter } from "../providers/provider-router";
+import { ModelRegistryService } from "../config/model-registry.service";
 
 interface ChatMessage {
   role: string;
@@ -38,18 +38,14 @@ Example: [{"type":"interest","content":"Focuses on fintech products","confidence
 @Injectable()
 export class MemoryExtractionService {
   private readonly logger = new Logger(MemoryExtractionService.name);
-  private readonly apiKey: string;
-  private readonly baseUrl = "https://api.together.xyz/v1";
-  private readonly extractionModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly memoryService: UserMemoryService,
     private readonly policyService: MemoryPolicyService,
     private readonly prisma: PrismaService,
-  ) {
-    this.apiKey = this.configService.getOrThrow<string>("OPENROUTER_API_KEY");
-  }
+    private readonly providerRouter: ProviderRouter,
+    private readonly modelRegistry: ModelRegistryService,
+  ) {}
 
   /**
    * Extract memory facts from a conversation.
@@ -167,30 +163,29 @@ export class MemoryExtractionService {
       .map((m) => m.content)
       .join("\n---\n");
 
-    const response = await axios.post(
-      `${this.baseUrl}/chat/completions`,
-      {
-        model: this.extractionModel,
-        messages: [
-          { role: "system", content: EXTRACTION_PROMPT },
-          {
-            role: "user",
-            content: `Extract memory facts from these user messages:\n\n${userContent}`,
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 500,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        timeout: 15000,
-      },
-    );
+    const model = await this.modelRegistry.getCheapestModel("standard");
+    if (!model) {
+      this.logger.warn(
+        "Skipping memory extraction: no active standard-tier model",
+      );
+      return [];
+    }
 
-    const content = response.data.choices?.[0]?.message?.content?.trim();
+    const response = await this.providerRouter.chat("openrouter", {
+      model: model.slug,
+      providerId: model.providerId,
+      messages: [
+        { role: "system", content: EXTRACTION_PROMPT },
+        {
+          role: "user",
+          content: `Extract memory facts from these user messages:\n\n${userContent}`,
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: 500,
+    });
+
+    const content = response.choices?.[0]?.message?.content?.trim();
     if (!content) return [];
 
     try {
@@ -212,7 +207,10 @@ export class MemoryExtractionService {
           item.confidence <= 1.0,
       );
     } catch {
-      this.logger.warn(`Failed to parse extraction response: ${content}`);
+      // The model output may contain user facts: log its size only.
+      this.logger.warn(
+        `Failed to parse extraction response (${content.length} chars)`,
+      );
       return [];
     }
   }
