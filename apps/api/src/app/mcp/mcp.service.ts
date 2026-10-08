@@ -43,7 +43,9 @@ export class McpService {
 
     const allPackages = this.registry.getAllPackages();
 
-    return credentials.map((cred) => {
+    return credentials
+      .filter((cred) => !!allPackages[cred.provider])
+      .map((cred) => {
       const pkg = allPackages[cred.provider];
       return {
         id: cred.id,
@@ -54,7 +56,7 @@ export class McpService {
         isGlobal: false,
         createdAt: cred.connectedAt,
       };
-    });
+      });
   }
 
   /**
