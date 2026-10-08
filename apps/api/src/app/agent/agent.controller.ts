@@ -93,22 +93,6 @@ export class AgentController {
     return this.agentService.getSubscription(req.user.userId);
   }
 
-  @Post("subscribe")
-  @HttpCode(200)
-  @Throttle({ default: { ttl: 60000, limit: 5 } })
-  async subscribe(@Body() body: unknown, @Req() req: any) {
-    const tier = (body as any)?.tier;
-    if (!tier || !["starter", "pro", "enterprise"].includes(tier)) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid tier. Must be one of: starter, pro, enterprise",
-          type: "invalid_request_error",
-        },
-      });
-    }
-    return this.agentService.subscribe(req.user.userId, tier);
-  }
-
   @Get(":id")
   async findById(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
     return this.agentService.findById(req.user.userId, id);

@@ -2,10 +2,7 @@ import {
   Controller,
   Post,
   Get,
-  Patch,
   Body,
-  Param,
-  Query,
   Req,
   UseGuards,
   BadRequestException,
@@ -13,11 +10,7 @@ import {
 import { Throttle } from "@nestjs/throttler";
 import { CombinedAuthGuard } from "../guards/combined-auth.guard";
 import { CodesService } from "./codes.service";
-import {
-  RedeemCodeDto,
-  CreateCodeDto,
-  UpdateCodeDto,
-} from "./dto/redeem-code.dto";
+import { RedeemCodeDto } from "./dto/redeem-code.dto";
 
 @Controller("codes")
 export class CodesController {
@@ -38,40 +31,5 @@ export class CodesController {
   @UseGuards(CombinedAuthGuard)
   async getHistory(@Req() req: any) {
     return this.codesService.getHistory(req.user.userId);
-  }
-}
-
-@Controller("admin/codes")
-@UseGuards(CombinedAuthGuard)
-export class AdminCodesController {
-  constructor(private readonly codesService: CodesService) {}
-
-  @Post()
-  async createCode(@Req() req: any, @Body() body: unknown) {
-    const parsed = CreateCodeDto.safeParse(body);
-    if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
-    }
-    return this.codesService.createCode(parsed.data, req.user.userId);
-  }
-
-  @Get()
-  async listCodes(
-    @Query("page") page?: string,
-    @Query("limit") limit?: string,
-  ) {
-    return this.codesService.listCodes(
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 50,
-    );
-  }
-
-  @Patch(":id")
-  async updateCode(@Param("id") id: string, @Body() body: unknown) {
-    const parsed = UpdateCodeDto.safeParse(body);
-    if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
-    }
-    return this.codesService.updateCode(id, parsed.data);
   }
 }
