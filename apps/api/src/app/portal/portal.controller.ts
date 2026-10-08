@@ -11,6 +11,8 @@ import {
   UseGuards,
   BadRequestException,
   HttpCode,
+  HttpException,
+  HttpStatus,
   Logger,
   InternalServerErrorException,
   NotFoundException,
@@ -19,7 +21,11 @@ import {
 import { Throttle } from "@nestjs/throttler";
 import type { FastifyReply } from "fastify";
 import { PortalGuard, PortalIdentity } from "./portal.guard";
-import { PortalTierService } from "./portal-tier.service";
+import {
+  PortalTierService,
+  FreeReservation,
+  clientIp,
+} from "./portal-tier.service";
 import { ModelRegistryService } from "../config/model-registry.service";
 import { BillingService } from "../billing/billing.service";
 import { ProviderRouter } from "../providers/provider-router";
@@ -38,6 +44,13 @@ import type { Decimal } from "@prisma/client/runtime/client";
 const PortalCompletionSchema = ChatCompletionRequestSchema.extend({
   model: ChatCompletionRequestSchema.shape.model.optional(),
 });
+
+const FREE_CAP_MESSAGES: Record<Exclude<FreeReservation, "ok">, string> = {
+  free_limit_reached:
+    "You've reached today's free chat limit. It resets at 00:00 WIB. Sign in with a package or an invitation code to keep chatting.",
+  free_capacity_reached:
+    "Free chat is very busy right now. Please try again later, or sign in with a package or an invitation code to keep chatting.",
+};
 
 @Controller("chat/portal")
 export class PortalController {
@@ -80,11 +93,7 @@ export class PortalController {
 
     const requestData = parsed.data as ChatCompletionRequest;
 
-    // Extract IP for session creation
-    const ip =
-      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-      req.ip ||
-      undefined;
+    const ip = clientIp(req);
 
     const origin = req.headers["origin"] || "*";
 
@@ -111,7 +120,7 @@ export class PortalController {
     const identity: PortalIdentity = req.portalIdentity;
 
     if (identity.tier === "free") {
-      const cheapest = await this.registry.getCheapestModel();
+      const cheapest = await this.registry.getCheapestModel("standard");
       if (!cheapest) return { models: [] };
       return {
         models: [{ slug: cheapest.slug, name: cheapest.modelName }],
@@ -349,7 +358,7 @@ export class PortalController {
   private async handleFreeRequest(
     identity: PortalIdentity,
     body: ChatCompletionRequest,
-    ip: string | undefined,
+    ip: string,
     res: FastifyReply,
     origin: string,
   ) {
@@ -365,24 +374,26 @@ export class PortalController {
       );
     }
 
-    // Check limit
-    const { allowed } = await this.tierService.canMakeRequest(
+    // Reserve the session, per-IP and global daily counters before the model call
+    const reservation = await this.tierService.reserveFreeRequest(
       identity.sessionId,
+      ip,
     );
-    if (!allowed) {
-      throw new BadRequestException({
-        error: {
-          message:
-            "Free request limit reached. Register and add credits to continue.",
-          type: "rate_limit_error",
-          remaining: 0,
-          limit: 20,
+    if (reservation !== "ok") {
+      throw new HttpException(
+        {
+          error: {
+            code: reservation,
+            message: FREE_CAP_MESSAGES[reservation],
+            type: "rate_limit_error",
+          },
         },
-      });
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
-    // Force cheapest model
-    const cheapest = await this.registry.getCheapestModel();
+    // Force cheapest standard-tier model
+    const cheapest = await this.registry.getCheapestModel("standard");
     if (!cheapest) {
       throw new InternalServerErrorException("No models available");
     }
@@ -539,9 +550,6 @@ export class PortalController {
 
       res.raw.write("data: [DONE]\n\n");
       res.raw.end();
-
-      // Track after successful response
-      await this.tierService.trackFreeRequest(identity.sessionId);
     } catch (error: any) {
       const providerError = this.extractProviderError(error);
       this.logger.error(
