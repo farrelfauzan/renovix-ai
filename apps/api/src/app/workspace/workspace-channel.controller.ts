@@ -65,6 +65,11 @@ export class WorkspaceChannelController {
       }
     }
 
+    // Non-owners need a plan that allows collaboration (RX-113, D64)
+    if (channel.workspace && channel.workspace.ownerId !== userId) {
+      await this.quotaService.enforceCollaboration(channel.workspace.id);
+    }
+
     return { channel, workspace: channel.workspace };
   }
 
@@ -358,9 +363,9 @@ export class WorkspaceChannelController {
       channelId,
       req.user.userId,
     );
+    // Only the workspace owner adds a knowledge base (RX-113, D63)
     await this.workspaceService.requireRole(workspace.id, req.user.userId, [
       "owner",
-      "admin",
     ]);
     return this.knowledgeService.createKnowledgeBase(
       workspace.id,

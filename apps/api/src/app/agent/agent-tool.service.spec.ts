@@ -60,7 +60,7 @@ describe("RX-1: code_exec tool is removed", () => {
   });
 
   it("is not offered in the tool catalog", async () => {
-    const service = new AgentService({} as any, {} as any);
+    const service = new AgentService({} as any, {} as any, {} as any);
     const types = (await service.getAvailableTools()).map((t: any) => t.type);
     expect(types).not.toContain("code_exec");
   });

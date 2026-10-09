@@ -4,6 +4,8 @@ import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "./agent.service";
 import { ProviderRouter } from "../providers/provider-router";
+import { WorkspaceService } from "../workspace/workspace.service";
+import { WorkspaceQuotaService } from "../workspace/workspace-quota.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
@@ -29,7 +31,8 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController],
-      providers: [AgentService, { provide: ProviderRouter, useValue: {} }],
+      // RX-113: attaching a workspace knowledge base checks the workspace role
+      providers: [AgentService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }],
     }));
     app = await createFastifyApp(moduleRef);
   });

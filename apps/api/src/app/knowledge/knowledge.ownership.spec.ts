@@ -161,11 +161,11 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
     expect(await prisma.knowledgeChunk.count({ where: { id: chunk.id } })).toBe(1);
   });
 
-  // HOLE (RX-15): a workspace knowledge base keeps the creator's userId, and
-  // /v1/knowledge only checks kb.userId. A workspace admin who created a base
-  // and was then removed from the workspace still reads (and can delete) the
-  // workspace's base, including chunks other members added.
-  test.failing(
+  // Was HOLE (RX-15), fixed by RX-113: a workspace knowledge base keeps the
+  // creator's userId, and /v1/knowledge only checked kb.userId, so a removed
+  // workspace admin still read the base they created. /v1/knowledge now serves
+  // personal bases only.
+  it(
     "a removed workspace admin cannot read the workspace knowledge base they created",
     async () => {
       const owner = await createUser(prisma);

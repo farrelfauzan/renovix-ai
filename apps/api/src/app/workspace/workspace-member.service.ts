@@ -5,10 +5,14 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { UpdateMemberDto } from "./dto/update-member.dto";
+import { WorkspaceQuotaService } from "./workspace-quota.service";
 
 @Injectable()
 export class WorkspaceMemberService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly quotaService: WorkspaceQuotaService,
+  ) {}
 
   async listMembers(workspaceId: string) {
     return this.prisma.workspaceMember.findMany({
@@ -35,6 +39,11 @@ export class WorkspaceMemberService {
 
     if (member.role === "owner") {
       throw new BadRequestException("Cannot modify the workspace owner");
+    }
+
+    // Reactivating a removed member adds a member
+    if (dto.status === "active" && member.status !== "active") {
+      await this.quotaService.enforceCollaboration(workspaceId);
     }
 
     return this.prisma.workspaceMember.update({

@@ -105,6 +105,10 @@ export class WorkspaceService {
       throw new NotFoundException("Workspace not found");
     }
 
+    if (workspace.ownerId !== userId) {
+      await this.quotaService.enforceCollaboration(workspaceId);
+    }
+
     return workspace;
   }
 
@@ -135,15 +139,7 @@ export class WorkspaceService {
     userId: string,
     allowedRoles: string[],
   ) {
-    const member = await this.prisma.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: { workspaceId, userId },
-      },
-    });
-
-    if (!member || member.status !== "active") {
-      throw new ForbiddenException("Not a member of this workspace");
-    }
+    const member = await this.requireMembership(workspaceId, userId);
 
     if (!allowedRoles.includes(member.role)) {
       throw new ForbiddenException("Insufficient workspace permissions");
@@ -161,6 +157,12 @@ export class WorkspaceService {
 
     if (!member || member.status !== "active") {
       throw new ForbiddenException("Not a member of this workspace");
+    }
+
+    // Only the owner holds the "owner" role. Everyone else needs a workspace
+    // whose owner's plan allows collaboration (RX-113, D64).
+    if (member.role !== "owner") {
+      await this.quotaService.enforceCollaboration(workspaceId);
     }
 
     return member;
