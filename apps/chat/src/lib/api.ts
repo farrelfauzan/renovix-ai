@@ -117,6 +117,8 @@ export function streamCompletion(
       if (!reader) throw new Error("No response body");
       const decoder = new TextDecoder();
       let buffer = "";
+      // A provider failure after the 200 arrives as `data: {"error":{...}}`
+      let streamError: PortalError | undefined;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -134,6 +136,12 @@ export function streamCompletion(
             }
             try {
               const parsed = JSON.parse(data);
+              // Mid-stream error event (RX-92): stop and report it below,
+              // outside this try, whose catch would swallow a throw
+              if (parsed.error) {
+                streamError = portalError(parsed);
+                break;
+              }
               // Check for status event
               if (parsed.status) {
                 onStatus?.(parsed.status);
@@ -155,6 +163,10 @@ export function streamCompletion(
               // skip non-JSON lines
             }
           }
+        }
+        if (streamError) {
+          await reader.cancel().catch(() => {});
+          throw streamError;
         }
       }
       onDone?.(receivedConversationId);
