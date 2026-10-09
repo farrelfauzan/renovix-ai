@@ -23,7 +23,8 @@ describe("email auth cookie (RX-68, Fastify, test database)", () => {
   let app: NestFastifyApplication;
   const savedEnv = {
     NODE_ENV: process.env.NODE_ENV,
-    AUTH_COOKIE_DOMAIN: process.env.AUTH_COOKIE_DOMAIN,
+    COOKIE_DOMAIN: process.env.COOKIE_DOMAIN,
+    API_PUBLIC_URL: process.env.API_PUBLIC_URL,
   };
 
   beforeAll(async () => {
@@ -38,7 +39,8 @@ describe("email auth cookie (RX-68, Fastify, test database)", () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    delete process.env.AUTH_COOKIE_DOMAIN;
+    delete process.env.COOKIE_DOMAIN;
+    delete process.env.API_PUBLIC_URL;
   });
 
   afterEach(() => {
@@ -97,14 +99,42 @@ describe("email auth cookie (RX-68, Fastify, test database)", () => {
     ]);
   });
 
-  it("with AUTH_COOKIE_DOMAIN set the cookie carries that Domain", async () => {
-    process.env.AUTH_COOKIE_DOMAIN = ".renovix.test";
+  // Same domain as the Better Auth session cookie (getCookieDomain): the chat
+  // host and the API host share the parent domain in production.
+  it("in production the Domain is derived from API_PUBLIC_URL (api.renovix.id → .renovix.id)", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.API_PUBLIC_URL = "https://api.renovix.id";
     const user = await withPassword();
 
     const res = await login(user.email);
 
     expect(setCookies(res)).toEqual([
-      `jwt=${res.json().token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${JWT_LIFETIME_SECONDS}; Domain=.renovix.test`,
+      `jwt=${res.json().token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${JWT_LIFETIME_SECONDS}; Secure; Domain=.renovix.id`,
+    ]);
+  });
+
+  it("COOKIE_DOMAIN overrides the derived Domain", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.API_PUBLIC_URL = "https://api.renovix.id";
+    process.env.COOKIE_DOMAIN = ".override.test";
+    const user = await withPassword();
+
+    const res = await login(user.email);
+
+    expect(setCookies(res)).toEqual([
+      `jwt=${res.json().token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${JWT_LIFETIME_SECONDS}; Secure; Domain=.override.test`,
+    ]);
+  });
+
+  it("in development no Domain is derived, even with API_PUBLIC_URL set", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.API_PUBLIC_URL = "https://api.renovix.id";
+    const user = await withPassword();
+
+    const res = await login(user.email);
+
+    expect(setCookies(res)).toEqual([
+      `jwt=${res.json().token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${JWT_LIFETIME_SECONDS}`,
     ]);
   });
 
@@ -170,14 +200,14 @@ describe("email auth cookie (RX-68, Fastify, test database)", () => {
     ]);
   });
 
-  it("logout in production with AUTH_COOKIE_DOMAIN clears the Secure, Domain cookie", async () => {
+  it("logout in production clears the Secure cookie on the same derived Domain", async () => {
     process.env.NODE_ENV = "production";
-    process.env.AUTH_COOKIE_DOMAIN = ".renovix.test";
+    process.env.API_PUBLIC_URL = "https://api.renovix.id";
 
     const res = await app.inject({ method: "POST", url: "/auth/logout" });
 
     expect(setCookies(res)).toEqual([
-      "jwt=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure; Domain=.renovix.test",
+      "jwt=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure; Domain=.renovix.id",
     ]);
   });
 

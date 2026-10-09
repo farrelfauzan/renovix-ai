@@ -132,7 +132,7 @@ Copy `.env.example` to `.env`. Key variables:
 | `S3_*` | Yes | S3/MinIO config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_CDN_DOMAIN` required; `S3_ENDPOINT` optional (MinIO) |
 | `MCP_ENCRYPTION_KEY` | For MCP | AES-256 key for OAuth token encryption; if unset the code uses a hard-coded dev key, so always set it outside local dev |
 | `CORS_ORIGIN` | Prod | Comma-separated allowed origins (not in `.env.example`) |
-| `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`); optional, derived from `API_PUBLIC_URL` in production if unset (not in `.env.example`) |
+| `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |
 
 Frontend apps need `NEXT_PUBLIC_API_URL` (build-time Docker ARG for chat/dashboard).
