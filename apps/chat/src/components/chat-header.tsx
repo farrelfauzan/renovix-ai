@@ -21,6 +21,7 @@ import {
 import { LogIn, LogOut, User, HelpCircle, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "@/lib/auth-client";
+import { apiClient } from "@/lib/api-client";
 
 export function ChatHeader() {
   const { data: usage } = usePortalUsage();
@@ -33,6 +34,9 @@ export function ChatHeader() {
   const handleLogout = async () => {
     if (sessionAuth) {
       await signOut().catch(() => {});
+    } else {
+      // Clears the API's httpOnly jwt cookie (RX-68)
+      await apiClient.post("/auth/logout").catch(() => {});
     }
     logout();
     queryClient.invalidateQueries({ queryKey: ["portal-usage"] });

@@ -3,7 +3,8 @@ import type { NextRequest } from "next/server";
 
 /**
  * Middleware to protect authenticated routes.
- * Checks for Better Auth session cookie or JWT cookie.
+ * Checks for Better Auth session cookie or JWT cookie. The `jwt` cookie is
+ * the httpOnly cookie the API sets on email login/register (RX-68).
  * Redirects to /login if neither is present.
  */
 export function proxy(request: NextRequest) {

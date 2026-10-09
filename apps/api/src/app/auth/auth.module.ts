@@ -6,6 +6,7 @@ import { AuthService } from "./auth.service";
 import { AuthController } from "./auth.controller";
 import { BetterAuthController } from "./better-auth.controller";
 import { JwtStrategy } from "./strategies/jwt.strategy";
+import { JWT_LIFETIME_SECONDS } from "./auth-cookie";
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>("JWT_SECRET"),
-        signOptions: { expiresIn: "7d" },
+        signOptions: { expiresIn: JWT_LIFETIME_SECONDS },
       }),
     }),
   ],
