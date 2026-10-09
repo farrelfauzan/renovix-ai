@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import apiClient from "@/lib/api-client";
 import { signIn } from "@/lib/auth-client";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -39,7 +40,11 @@ export default function LoginPage() {
       apiClient.post("/chat/portal/link-session").catch(() => {});
       queryClient.invalidateQueries({ queryKey: ["portal-usage"] });
       queryClient.invalidateQueries({ queryKey: ["portal-models"] });
-      router.push("/");
+      router.push(
+        safeRedirectPath(
+          new URLSearchParams(window.location.search).get("redirect"),
+        ),
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -53,7 +58,11 @@ export default function LoginPage() {
     try {
       await signIn.social({
         provider,
-        callbackURL: window.location.origin,
+        callbackURL:
+          window.location.origin +
+          safeRedirectPath(
+            new URLSearchParams(window.location.search).get("redirect"),
+          ),
       });
     } catch (err: unknown) {
       setError(
