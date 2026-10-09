@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -8,9 +9,12 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ProviderRouter } from "../providers/provider-router";
 import type { CreateAgentDto } from "./dto/create-agent.dto";
 import type { UpdateAgentDto } from "./dto/update-agent.dto";
+import { ownSubAgents } from "./own-sub-agents";
 
 @Injectable()
 export class AgentService {
+  private readonly logger = new Logger(AgentService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly providerRouter: ProviderRouter,
@@ -48,8 +52,14 @@ export class AgentService {
     // Check agent limit
     await this.checkAgentLimit(userId);
 
-    // If sub_agent, validate parent
-    if (dto.agentType === "sub_agent" && dto.parentAgentId) {
+    // A parentAgentId is only allowed on a sub-agent and must be one of the
+    // caller's own parent agents (RX-112)
+    if (dto.parentAgentId) {
+      if (dto.agentType !== "sub_agent") {
+        throw new BadRequestException(
+          "Only a sub-agent can have a parentAgentId",
+        );
+      }
       const parent = await this.prisma.agent.findFirst({
         where: { id: dto.parentAgentId, userId },
       });
@@ -91,18 +101,24 @@ export class AgentService {
   }
 
   async list(userId: string) {
-    return this.prisma.agent.findMany({
+    const agents = await this.prisma.agent.findMany({
       where: { userId, parentAgentId: null },
       include: {
         tools: true,
         integrations: true,
         knowledgeBases: true,
         channels: true,
-        subAgents: { select: { id: true, name: true, status: true } },
+        subAgents: {
+          select: { id: true, name: true, status: true, userId: true },
+        },
         _count: { select: { runs: true } },
       },
       orderBy: { updatedAt: "desc" },
     });
+    return agents.map((agent) => ({
+      ...agent,
+      subAgents: ownSubAgents(agent, agent.subAgents, this.logger),
+    }));
   }
 
   async findById(userId: string, agentId: string) {
@@ -127,6 +143,7 @@ export class AgentService {
       throw new NotFoundException("Agent not found");
     }
 
+    agent.subAgents = ownSubAgents(agent, agent.subAgents, this.logger);
     return agent;
   }
 
@@ -145,6 +162,11 @@ export class AgentService {
     const nextParentAgentId =
       dto.parentAgentId !== undefined ? dto.parentAgentId : agent.parentAgentId;
 
+    if (nextAgentType !== "sub_agent" && dto.parentAgentId) {
+      throw new BadRequestException(
+        "Only a sub-agent can have a parentAgentId",
+      );
+    }
     if (nextAgentType === "sub_agent") {
       if (!nextParentAgentId) {
         throw new BadRequestException("Sub-agent must have a parentAgentId");
