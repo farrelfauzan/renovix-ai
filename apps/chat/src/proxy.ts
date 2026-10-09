@@ -29,5 +29,11 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/agents/:path*", "/top-up/:path*"],
+  matcher: [
+    "/agents/:path*",
+    "/top-up/:path*",
+    "/profile/:path*",
+    "/knowledge/:path*",
+    "/memory/:path*",
+  ],
 };
