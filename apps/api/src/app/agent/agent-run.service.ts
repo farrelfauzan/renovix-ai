@@ -14,6 +14,7 @@ import { KnowledgeService } from "../knowledge/knowledge.service";
 import { UsageService } from "../usage/usage.service";
 import { GuardrailService } from "../guardrail/guardrail.service";
 import { Decimal } from "@prisma/client/runtime/client";
+import { ownSubAgents } from "./own-sub-agents";
 
 const MAX_TOOL_ITERATIONS = 15;
 
@@ -86,6 +87,7 @@ export class AgentRunService {
             description: true,
             status: true,
             model: true,
+            userId: true,
           },
         },
       },
@@ -94,6 +96,7 @@ export class AgentRunService {
     if (!agent) {
       throw new NotFoundException("Agent not found");
     }
+    agent.subAgents = ownSubAgents(agent, agent.subAgents, this.logger);
 
     // Input guardrail check — soft decline, never blocks the user
     const inputCheck = await this.guardrail.checkInput(
@@ -287,6 +290,7 @@ export class AgentRunService {
             description: true,
             status: true,
             model: true,
+            userId: true,
           },
         },
       },
@@ -297,6 +301,7 @@ export class AgentRunService {
     if (!agent) {
       throw new NotFoundException("Agent not found");
     }
+    agent.subAgents = ownSubAgents(agent, agent.subAgents, this.logger);
 
     // Input guardrail check — soft decline, never blocks the user
     const inputCheck = await this.guardrail.checkInput(
@@ -970,6 +975,7 @@ export class AgentRunService {
     const subAgent = await this.prisma.agent.findFirst({
       where: {
         parentAgentId: agent.id,
+        userId: agent.userId,
         agentType: "sub_agent",
         OR: [
           { id: rawIdentifier },
