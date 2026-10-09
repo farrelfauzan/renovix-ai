@@ -6,12 +6,16 @@ import {
 } from "@nestjs/platform-fastify";
 import helmet from "@fastify/helmet";
 import { AppModule } from "./app/app.module";
+import { resolveLlmProvider } from "./app/providers/llm-provider";
 import { ConfigService } from "@nestjs/config";
 import * as yaml from "js-yaml";
 import { readFileSync } from "fs";
 import { join } from "path";
 
 async function bootstrap(): Promise<NestFastifyApplication> {
+  // RX-88: refuse LLM_PROVIDER=fake in production or next to a real key, before anything starts.
+  resolveLlmProvider(process.env);
+
   const isDev = process.env.NODE_ENV === "development";
   const corsOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(",")

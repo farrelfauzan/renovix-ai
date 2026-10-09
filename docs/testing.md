@@ -82,6 +82,16 @@ const { moduleRef } = await createTestModule({ imports: [ProvidersModule] }, (b)
 
 `withFakeProvider` replaces `OpenRouterAdapter`, so `ProviderRouter`'s `"openrouter"` adapter is the fake and no real adapter (or API key) is created. Its output has the same shape as the real adapter: `chat` returns tool calls on `choices[0].message.tool_calls`; `chatStream` yields the JSON payload of each SSE `data:` line (no `[DONE]`): content deltas, tool-call deltas (`id` and name first, then argument fragments), a `finish_reason` chunk, and OpenRouter's final usage chunk. Running out of turns throws. Example: `providers/provider-router.fake.spec.ts`.
 
+## Running the API with the fake LLM provider
+
+`LLM_PROVIDER=fake` (RX-88) runs the whole API without a model provider: every LLM call goes to the canned `FakeProviderAdapter` (`apps/api/src/app/providers/fake.adapter.ts`), whatever provider name the model row has. Only the environment selects it; no header, query parameter, body field or database setting can.
+
+- Env: `LLM_PROVIDER=fake`, no `OPENROUTER_API_KEY` (also not in `.env`), `NODE_ENV` not `production`. The API refuses to start otherwise (`LLM_PROVIDER=fake is not allowed in production`; `... refuses to start while OPENROUTER_API_KEY is set ...`), and also on any `LLM_PROVIDER` other than unset, `openrouter` or `fake`. At startup it logs `LLM provider: FAKE — no real model calls. Never use in production.`
+- Reply: always `This is a canned reply from the fake LLM provider. No real model was called.` Streamed, it comes one word per chunk, then a `finish_reason: "stop"` chunk and a usage chunk.
+- Tool call: when the last user message contains `[[fake:tool]]` and the request offers tools, the reply is one call to the first offered tool with `{}` as arguments. The next call (its last message is the tool result) gets the canned text, so the agent loop ends.
+- Usage: `prompt_tokens` = characters of all messages / 4, `completion_tokens` = characters of the reply (or tool name) / 4, rounded up, at least 1. Metering and billing see these numbers.
+- Embeddings are fake too: `EmbeddingService` returns a 1024-dimension vector (the `vector(1024)` column) derived from SHA-256 of the text: same text, same vector; no network, no key.
+
 ## Auth and ownership map
 
 Current behaviour, characterized in RX-15 (paths under `apps/api/src/app/`). A `test.failing` marked `HOLE (RX-15)` asserts the secure behaviour: it passes while the hole exists and fails once it is fixed; then turn it into a normal test.
