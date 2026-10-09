@@ -24,17 +24,50 @@ export class WorkspaceQuotaService {
     return subscription;
   }
 
-  async getMaxUsers(workspaceOwnerId: string): Promise<number> {
+  private async getActivePlan(workspaceOwnerId: string) {
     const subscription = await this.prisma.userSubscription.findUnique({
       where: { userId: workspaceOwnerId },
       include: { plan: true },
     });
 
     if (!subscription || subscription.status !== "active") {
-      return 0;
+      return null;
     }
 
-    return subscription.plan.maxWorkspaceUsers;
+    return subscription.plan;
+  }
+
+  async getMaxUsers(workspaceOwnerId: string): Promise<number> {
+    const plan = await this.getActivePlan(workspaceOwnerId);
+    return plan ? plan.maxWorkspaceUsers : 0;
+  }
+
+  /**
+   * Collaboration (members, invites, shared access) is Enterprise only (D64):
+   * the workspace owner's active plan must be "enterprise". The one place this
+   * is decided; RX-76 replaces it with an entitlement.
+   * With `userId`, the workspace owner (by `ownerId`, not by member role)
+   * always passes: the owner keeps full use of their own workspace.
+   */
+  async isCollaborationAllowed(
+    workspaceId: string,
+    userId?: string,
+  ): Promise<boolean> {
+    const workspace = await this.prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { ownerId: true },
+    });
+    if (userId && workspace.ownerId === userId) return true;
+    const plan = await this.getActivePlan(workspace.ownerId);
+    return plan?.slug === "enterprise";
+  }
+
+  async enforceCollaboration(workspaceId: string, userId?: string) {
+    if (!(await this.isCollaborationAllowed(workspaceId, userId))) {
+      throw new ForbiddenException(
+        "Workspace collaboration requires an Enterprise plan.",
+      );
+    }
   }
 
   async getActiveCount(workspaceId: string): Promise<number> {

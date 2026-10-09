@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { ProviderRouter } from "../providers/provider-router";
+import { WorkspaceService } from "../workspace/workspace.service";
 import type { CreateAgentDto } from "./dto/create-agent.dto";
 import type { UpdateAgentDto } from "./dto/update-agent.dto";
 import { ownSubAgents } from "./own-sub-agents";
@@ -18,6 +19,7 @@ export class AgentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly providerRouter: ProviderRouter,
+    private readonly workspaceService: WorkspaceService,
   ) {}
 
   private slugify(name: string): string {
@@ -460,13 +462,27 @@ export class AgentService {
     agentId: string,
     knowledgeBaseId: string,
   ) {
-    await this.verifyOwnership(userId, agentId);
+    const agent = await this.verifyOwnership(userId, agentId);
 
-    // Verify KB belongs to user
-    const kb = await this.prisma.knowledgeBase.findFirst({
-      where: { id: knowledgeBaseId, userId },
+    const kb = await this.prisma.knowledgeBase.findUnique({
+      where: { id: knowledgeBaseId },
     });
     if (!kb) throw new NotFoundException("Knowledge base not found");
+
+    if (kb.workspaceId) {
+      // A workspace base: only to an agent in the same workspace, by a
+      // current owner or admin of that workspace (RX-113)
+      if (agent.workspaceId !== kb.workspaceId) {
+        throw new NotFoundException("Knowledge base not found");
+      }
+      await this.workspaceService.requireRole(kb.workspaceId, userId, [
+        "owner",
+        "admin",
+      ]);
+    } else if (kb.userId !== userId) {
+      // A personal base: only its owner's own agents
+      throw new NotFoundException("Knowledge base not found");
+    }
 
     return this.prisma.agentKnowledgeBase.create({
       data: { agentId, knowledgeBaseId },

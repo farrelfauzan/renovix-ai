@@ -12,6 +12,7 @@ import { KnowledgeModule } from "../knowledge/knowledge.module";
 import { ConfigRegistryModule } from "../config/config-registry.module";
 import { DocumentModule } from "../document/document.module";
 import { McpModule } from "../mcp/mcp.module";
+import { WorkspaceModule } from "../workspace/workspace.module";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { McpModule } from "../mcp/mcp.module";
     ConfigRegistryModule,
     DocumentModule,
     McpModule,
+    WorkspaceModule,
   ],
   controllers: [AgentController, AgentRunController],
   providers: [

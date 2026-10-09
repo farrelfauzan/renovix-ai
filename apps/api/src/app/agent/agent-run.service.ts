@@ -1234,21 +1234,21 @@ export class AgentRunService {
   ): Promise<string> {
     if (knowledgeBaseIds.length === 0) return "";
 
-    try {
-      const allResults: { content: string }[] = [];
-      for (const kbId of knowledgeBaseIds) {
+    const allResults: { content: string }[] = [];
+    for (const kbId of knowledgeBaseIds) {
+      try {
         const results = await this.knowledge.searchChunks(userId, query, {
           knowledgeBaseId: kbId,
           topK: 3,
         });
         if (results?.length) allResults.push(...results);
+      } catch {
+        // A base the caller cannot search is skipped; the others still count
       }
-      if (allResults.length === 0) return "";
-
-      return allResults.map((r) => r.content).join("\n\n---\n\n");
-    } catch {
-      return "";
     }
+    if (allResults.length === 0) return "";
+
+    return allResults.map((r) => r.content).join("\n\n---\n\n");
   }
 
   private async getOrCreateRun(agentId: string, sessionId?: string) {

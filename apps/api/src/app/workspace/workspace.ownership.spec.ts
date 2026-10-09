@@ -14,7 +14,7 @@ import { S3Service } from "../knowledge/s3.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
-import { createUser, createWorkspace } from "../../../test/factories";
+import { createPlan, createSubscription, createUser, createWorkspace } from "../../../test/factories";
 
 // RX-15 characterization: workspace membership and roles as they are today,
 // through the real controllers and services (CombinedAuthGuard JWT path, test
@@ -71,6 +71,11 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
   const setup = async () => {
     const users = {} as Record<Actor, { id: string; email: string }>;
     for (const actor of [...MEMBERS, ...NON_MEMBERS]) users[actor] = await createUser(prisma);
+    // RX-113: only an Enterprise owner's workspace has other members (D64).
+    // These tests are about roles, so the owner is on Enterprise; the
+    // Starter/Pro rules are in workspace.collaboration.spec.ts.
+    const enterprise = await createPlan(prisma, { slug: "enterprise", maxWorkspaceUsers: 100 });
+    await createSubscription(prisma, { userId: users.owner.id, planId: enterprise.id });
     const channel = await prisma.channel.create({ data: { userId: users.owner.id, name: "Team" } });
     const workspace = await createWorkspace(prisma, { ownerId: users.owner.id, channelId: channel.id });
     const memberIds = {} as Record<string, string>;
@@ -294,7 +299,8 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
       expect(await prisma.workspace.count({ where: { channelId: bare.id } })).toBe(0);
     });
 
-    it.each([...MEMBERS, ...NON_MEMBERS])("POST knowledge (create base) as %s (owner, admin)", async (actor) => {
+    // RX-113 (D63): only the owner adds a knowledge base (was owner, admin)
+    it.each([...MEMBERS, ...NON_MEMBERS])("POST knowledge (create base) as %s (owner only)", async (actor) => {
       const { channel, as } = await setup();
 
       const res = await app.inject({
@@ -304,7 +310,8 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         payload: { name: `by ${actor}` },
       });
 
-      expect(res.statusCode).toBe(expectFor({ owner: 201, admin: 201 }, actor));
+      expect(res.statusCode).toBe(expectFor({ owner: 201 }, actor));
+      expect(await prisma.knowledgeBase.count()).toBe(res.statusCode === 201 ? 1 : 0);
     });
 
     it.each([...MEMBERS, ...NON_MEMBERS])("POST knowledge chunks as %s (owner, admin, member)", async (actor) => {

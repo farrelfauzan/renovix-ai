@@ -38,7 +38,7 @@ export class KnowledgeService {
 
   async listKnowledgeBases(userId: string) {
     return this.prisma.knowledgeBase.findMany({
-      where: { userId },
+      where: { userId, workspaceId: null },
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { chunks: true } } },
     });
@@ -50,7 +50,11 @@ export class KnowledgeService {
       include: { _count: { select: { chunks: true } } },
     });
 
-    if (!kb) throw new NotFoundException("Knowledge base not found");
+    // Personal bases only: a workspace base is reached through the workspace
+    // routes, which check current membership (RX-113)
+    if (!kb || kb.workspaceId) {
+      throw new NotFoundException("Knowledge base not found");
+    }
     if (kb.userId !== userId) throw new ForbiddenException("Access denied");
 
     return kb;
@@ -227,6 +231,11 @@ export class KnowledgeService {
   ) {
     const topK = options?.topK ?? 5;
 
+    // Verify access before paying for an embedding (RX-113)
+    if (options?.knowledgeBaseId) {
+      await this.getKnowledgeBase(userId, options.knowledgeBaseId);
+    }
+
     // Generate embedding for the query
     const { embedding } = await this.embeddingService.embedSingle(query);
     const vector = `[${embedding.join(",")}]`;
@@ -234,9 +243,6 @@ export class KnowledgeService {
     // Build the similarity search query using safe Prisma.sql tagged template
     // Filter by user's knowledge bases and optionally by specific knowledge base
     if (options?.knowledgeBaseId) {
-      // Verify access
-      await this.getKnowledgeBase(userId, options.knowledgeBaseId);
-
       const results = await this.prisma.$queryRaw<
         {
           id: string;
@@ -295,6 +301,7 @@ export class KnowledgeService {
         FROM "knowledge_chunks" kc
         INNER JOIN "knowledge_bases" kb ON kb.id = kc."knowledgeBaseId"
         WHERE kb."userId" = ${userId}
+          AND kb.workspace_id IS NULL
           AND kb.active = true
           AND kc.embedding IS NOT NULL
         ORDER BY kc.embedding <=> ${vector}::vector
