@@ -159,11 +159,9 @@ export class WorkspaceService {
       throw new ForbiddenException("Not a member of this workspace");
     }
 
-    // Only the owner holds the "owner" role. Everyone else needs a workspace
-    // whose owner's plan allows collaboration (RX-113, D64).
-    if (member.role !== "owner") {
-      await this.quotaService.enforceCollaboration(workspaceId);
-    }
+    // Everyone but the workspace owner (by ownerId) needs a workspace whose
+    // owner's plan allows collaboration (RX-113, D64).
+    await this.quotaService.enforceCollaboration(workspaceId, userId);
 
     return member;
   }

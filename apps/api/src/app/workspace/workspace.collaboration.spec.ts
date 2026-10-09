@@ -206,6 +206,33 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
 
         expect(res.statusCode).toBe(method === "POST" && url(ctx).endsWith("/chunks") ? 201 : 200);
       });
+
+      // The owner is recognised by workspace.ownerId, never by a member row's
+      // role: a non-owner whose row says "owner" is still refused. Members list
+      // goes only through requireMembership, GET workspace through getById,
+      // the channel route through resolveWorkspace.
+      it("a non-owner whose member row has role \"owner\" → 403 on members, workspace and channel routes; the real owner → 200", async () => {
+        const ctx = await setup(plan);
+        const fakeOwner = await createUser(prisma);
+        await prisma.workspaceMember.create({
+          data: { workspaceId: ctx.workspace.id, userId: fakeOwner.id, role: "owner", status: "active", joinedAt: new Date() },
+        });
+        const urls = [
+          `/workspaces/${ctx.workspace.id}/members`,
+          `/workspaces/${ctx.workspace.id}`,
+          `/channels/${ctx.channel.id}/workspace`,
+        ];
+
+        const fake = [];
+        const real = [];
+        for (const url of urls) {
+          fake.push((await app.inject({ method: "GET", url, headers: auth(fakeOwner) })).statusCode);
+          real.push((await app.inject({ method: "GET", url, headers: auth(ctx.owner) })).statusCode);
+        }
+
+        expect(fake).toEqual([403, 403, 403]);
+        expect(real).toEqual([200, 200, 200]);
+      });
     });
   });
 

@@ -124,4 +124,35 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     // The refused workspace base costs no embedding call: access is checked first
     expect(embedSingle).toHaveBeenCalledTimes(1);
   });
+
+  // D71 (option 1): agent chat does not use workspace knowledge bases yet, not
+  // even for a current admin of an Enterprise workspace; membership-aware
+  // retrieval is a follow-up ticket. Pins today's deny-without-cost behaviour.
+  it("a current Enterprise admin's workspace agent does not use the attached workspace base and spends no embedding call", async () => {
+    const owner = await createUser(prisma);
+    const admin = await createUser(prisma);
+    const plan = await createPlan(prisma, { slug: "enterprise", maxWorkspaceUsers: 100 });
+    await createSubscription(prisma, { userId: owner.id, planId: plan.id });
+    await createSubscription(prisma, { userId: admin.id, planId: plan.id });
+    const workspace = await createWorkspace(prisma, { ownerId: owner.id });
+    await prisma.workspaceMember.createMany({
+      data: [
+        { workspaceId: workspace.id, userId: owner.id, role: "owner", status: "active", joinedAt: new Date() },
+        { workspaceId: workspace.id, userId: admin.id, role: "admin", status: "active", joinedAt: new Date() },
+      ],
+    });
+    const workspaceKb = await prisma.knowledgeBase.create({
+      data: { userId: owner.id, workspaceId: workspace.id, name: "Team KB" },
+    });
+    await insertChunk(workspaceKb.id, "workspace base text");
+    const agent = await createAgent(prisma, { userId: admin.id, workspaceId: workspace.id });
+    await prisma.agentKnowledgeBase.create({ data: { agentId: agent.id, knowledgeBaseId: workspaceKb.id } });
+    fake.enqueue({ content: "ok", usage: { prompt_tokens: 10, completion_tokens: 1 } });
+
+    const res = await runs.chat(admin.id, agent.id, "what does the team know?");
+
+    expect(res.message.content).toBe("ok");
+    expect(JSON.stringify(fake.requests.at(-1)?.messages)).not.toContain("workspace base text");
+    expect(embedSingle).not.toHaveBeenCalled();
+  });
 });
