@@ -13,6 +13,42 @@ export function getOrCreateSessionToken(): string {
   return token;
 }
 
+/** Free-tier daily caps (RX-10): the message is the agreed copy. */
+export const FREE_LIMIT_CODES = ["free_limit_reached", "free_capacity_reached"];
+
+export class PortalError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Error from a failed portal response (RX-92): the portal envelope
+ * `{ error: { code, message } }`, else Nest's `{ message }`, else a generic
+ * text. Never a raw status line.
+ */
+export function portalError(body: unknown): PortalError {
+  const b = (body ?? {}) as {
+    error?: { code?: unknown; message?: unknown } | string;
+    message?: unknown;
+  };
+  const envelope = typeof b.error === "object" && b.error ? b.error : undefined;
+  const raw = envelope?.message ?? b.message;
+  const message = Array.isArray(raw)
+    ? raw.filter((m) => typeof m === "string").join(" ")
+    : typeof raw === "string"
+      ? raw
+      : "";
+  const code = typeof envelope?.code === "string" ? envelope.code : undefined;
+  return new PortalError(
+    message || "Something went wrong. Please try again.",
+    code,
+  );
+}
+
 export type StreamStatus =
   | "understanding"
   | "searching_knowledge"
@@ -75,12 +111,14 @@ export function streamCompletion(
     .then(async (res) => {
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.message || `Request failed: ${res.status}`);
+        throw portalError(body);
       }
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No response body");
       const decoder = new TextDecoder();
       let buffer = "";
+      // A provider failure after the 200 arrives as `data: {"error":{...}}`
+      let streamError: PortalError | undefined;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -98,6 +136,12 @@ export function streamCompletion(
             }
             try {
               const parsed = JSON.parse(data);
+              // Mid-stream error event (RX-92): stop and report it below,
+              // outside this try, whose catch would swallow a throw
+              if (parsed.error) {
+                streamError = portalError(parsed);
+                break;
+              }
               // Check for status event
               if (parsed.status) {
                 onStatus?.(parsed.status);
@@ -119,6 +163,10 @@ export function streamCompletion(
               // skip non-JSON lines
             }
           }
+        }
+        if (streamError) {
+          await reader.cancel().catch(() => {});
+          throw streamError;
         }
       }
       onDone?.(receivedConversationId);

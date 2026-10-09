@@ -12,7 +12,12 @@ import {
 import { ArrowUp, Square, Sparkles, LogIn } from "lucide-react";
 import { useAuthStore, useChatStore, useHydrated } from "@/lib/stores";
 import { usePortalUsage, usePortalModels } from "@/hooks/use-portal";
-import { streamCompletion, type ResponseFormat } from "@/lib/api";
+import {
+  FREE_LIMIT_CODES,
+  PortalError,
+  streamCompletion,
+  type ResponseFormat,
+} from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -143,7 +148,17 @@ export function ChatInput() {
 
         finalizeStream(undefined, shouldCommitMessage);
         if (shouldCommitMessage) {
-          addMessage({ role: "assistant", content: `Error: ${err.message}` });
+          // Free-tier caps: the agreed copy plus ways to keep chatting (RX-92)
+          const freeLimit =
+            err instanceof PortalError &&
+            !!err.code &&
+            FREE_LIMIT_CODES.includes(err.code);
+          addMessage({
+            role: "assistant",
+            content: freeLimit
+              ? `${err.message}\n\n[Sign in](/login) · [Redeem an invitation code](/top-up)`
+              : `Error: ${err.message}`,
+          });
         }
       },
       conversationId || undefined,
