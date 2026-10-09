@@ -855,26 +855,6 @@ paths:
         "401":
           description: Unauthorized
 
-  /v1/admin/system-kb/sync:
-    post:
-      tags: [Knowledge]
-      summary: Trigger system knowledge base sync
-      operationId: syncSystemKnowledge
-      security:
-        - ApiKeyAuth: []
-      responses:
-        "200":
-          description: Sync triggered
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-        "401":
-          description: Unauthorized
-
   # ─── Portal ────────────────────────────────────────────────────────────────
   /chat/portal/completions:
     post:
