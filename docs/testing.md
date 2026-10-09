@@ -82,6 +82,28 @@ const { moduleRef } = await createTestModule({ imports: [ProvidersModule] }, (b)
 
 `withFakeProvider` replaces `OpenRouterAdapter`, so `ProviderRouter`'s `"openrouter"` adapter is the fake and no real adapter (or API key) is created. Its output has the same shape as the real adapter: `chat` returns tool calls on `choices[0].message.tool_calls`; `chatStream` yields the JSON payload of each SSE `data:` line (no `[DONE]`): content deltas, tool-call deltas (`id` and name first, then argument fragments), a `finish_reason` chunk, and OpenRouter's final usage chunk. Running out of turns throws. Example: `providers/provider-router.fake.spec.ts`.
 
+## Auth and ownership map
+
+Current behaviour, characterized in RX-15 (paths under `apps/api/src/app/`). A `test.failing` marked `HOLE (RX-15)` asserts the secure behaviour: it passes while the hole exists and fails once it is fixed; then turn it into a normal test.
+
+| Guard | Accepts | Rejects | Spec |
+|---|---|---|---|
+| `CombinedAuthGuard` (guards/combined-auth.guard.ts:26) | `Bearer` JWT signed with `JWT_SECRET` (`exp` checked, no DB lookup, payload shape not checked); else a Better Auth session from the cookie (expiry is `getSession`'s job) | 401: no credential, expired, other secret, `alg: none`, API key, `bearer`/`Basic`, no session | guards/combined-auth.guard.spec.ts |
+| `SessionGuard` (guards/session.guard.ts:16) | Better Auth session only. Not used by any route | 401 otherwise | guards/session.guard.spec.ts |
+| `ApiKeyGuard` (guards/api-key.guard.ts:18) | `Bearer sk_live_…` matching `users.apiKey` (no expiry; `user.status` not checked) | 401: no header, JWT, wrong prefix/scheme, unknown or replaced key | guards/api-key.guard.spec.ts |
+| `PortalGuard` (portal/portal.guard.ts:31) | Always allows when `X-Portal-Session` is set; user from a valid JWT, else the cookie session; anything else is anonymous (free tier) | 400 without `X-Portal-Session`. Routes needing a user answer 400 "Authentication required", not 401 | portal/portal.guard.spec.ts |
+
+| Resource | Routes | Guard | Ownership / role check | Spec |
+|---|---|---|---|---|
+| Agents | `/agents/:id…` | Combined | `where: { id, userId }` in agent/agent.service.ts:108, :133, :201; `verifyOwnership` :639 → 404. **Hole:** `parentAgentId` not checked on update/create unless `sub_agent` | agent/agent.ownership.spec.ts |
+| Channels | `/channels/:id…` | Combined | `where: { id, userId }` in channel/channel.service.ts:60, :86, :117, :129; `resolveChannelAgent` :325 → 404. Public active agents of others may be added (by design) | channel/channel.ownership.spec.ts |
+| Workspaces | `/workspaces/:id…` | Combined | `getById` workspace/workspace.service.ts:88 (active member, else 404); `requireMembership` :155 / `requireRole` :133 (403). Read: any active member. PATCH workspace, members, invites: owner, admin. Archive: owner | workspace/workspace.ownership.spec.ts |
+| Workspace via channel | `/channels/:channelId/workspace…` | Combined | `resolveWorkspace` workspace/workspace-channel.controller.ts:41 (channel owner or active member, else 403) + `requireRole`; KB scoped by workspace-knowledge.service.ts:43 (404). KB create/delete: owner, admin; add chunks: owner, admin, member | workspace/workspace.ownership.spec.ts |
+| Conversations | `/conversations/:id` | ApiKey | `where: { id, userId }` chat/conversation.service.ts:225, :289 → 404 | chat/conversation.ownership.spec.ts |
+| Conversations (portal) | `/chat/portal/conversations/:id` | Portal | same service → 404 | portal/portal.ownership.spec.ts |
+| Knowledge | `/v1/knowledge/bases/:id…` | ApiKey | `getKnowledgeBase` knowledge/knowledge.service.ts:47 (`kb.userId`) → 403. **Hole:** a workspace KB stays readable by its creator after removal from the workspace | knowledge/knowledge.ownership.spec.ts |
+| Knowledge (portal) | `/chat/portal/knowledge/:id…` | Portal | same service → 403 | portal/portal.ownership.spec.ts |
+
 ## Notes
 
 - The Prisma client is generated as CommonJS (`moduleFormat = "cjs"`, RX-64); `jest.config.js` maps its `@generated/prisma/*.js` alias and the `.js` suffixes of its relative imports.
