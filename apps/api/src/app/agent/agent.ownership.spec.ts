@@ -122,12 +122,12 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
     expect(await prisma.agentTool.count({ where: { agentId: agent.id } })).toBe(0);
   });
 
-  // HOLE (RX-15): PATCH /agents/:id only checks parentAgentId against the
-  // caller's agents when the agent ends up as "sub_agent". With agentType left
-  // out on a standalone agent, Bob can point his agent at Alice's parent agent;
-  // it then shows up in Alice's subAgents and is offered to her agent for
-  // delegation (agent-run.service / channel-chat.service load subAgents by parentAgentId).
-  test.failing(
+  // Was HOLE (RX-15), fixed by RX-112: PATCH /agents/:id only checked
+  // parentAgentId against the caller's agents when the agent ended up as
+  // "sub_agent". With agentType left out on a standalone agent, Bob could point
+  // his agent at Alice's parent agent; it then showed up in Alice's subAgents
+  // and was offered to her agent for delegation.
+  it(
     "another user cannot hang their agent under someone else's parent agent (PATCH parentAgentId)",
     async () => {
       const { alice, bob } = await setup();
@@ -151,10 +151,10 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
     },
   );
 
-  // HOLE (RX-15): same gap on create. POST /agents only checks parentAgentId
-  // when agentType is "sub_agent"; with agentType "standalone" (the default)
-  // the new agent is created under Alice's parent agent.
-  test.failing(
+  // Was HOLE (RX-15), fixed by RX-112: same gap on create. POST /agents only
+  // checked parentAgentId when agentType was "sub_agent"; with agentType
+  // "standalone" (the default) the new agent was created under Alice's parent agent.
+  it(
     "another user cannot create an agent under someone else's parent agent (POST parentAgentId)",
     async () => {
       const { alice, bob } = await setup();

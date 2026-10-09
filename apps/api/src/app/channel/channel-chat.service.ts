@@ -8,6 +8,7 @@ import { AgentToolService } from "../agent/agent-tool.service";
 import { AgentMemoryService } from "../agent/agent-memory.service";
 import { UsageService } from "../usage/usage.service";
 import { GuardrailService } from "../guardrail/guardrail.service";
+import { ownSubAgents } from "../agent/own-sub-agents";
 
 const MAX_TOOL_ITERATIONS = 30;
 
@@ -77,16 +78,21 @@ export class ChannelChatService {
     // Load sub-agents if this is a parent agent
     const subAgents =
       agent.agentType === "parent"
-        ? await this.prisma.agent.findMany({
-            where: { parentAgentId: agent.id, status: "active" },
-            select: {
-              id: true,
-              name: true,
-              description: true,
-              status: true,
-              model: true,
-            },
-          })
+        ? ownSubAgents(
+            agent,
+            await this.prisma.agent.findMany({
+              where: { parentAgentId: agent.id, status: "active" },
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                status: true,
+                model: true,
+                userId: true,
+              },
+            }),
+            this.logger,
+          )
         : [];
 
     // Save user message
@@ -424,6 +430,7 @@ export class ChannelChatService {
     const subAgent = await this.prisma.agent.findFirst({
       where: {
         parentAgentId: parentAgent.id,
+        userId: parentAgent.userId,
         agentType: "sub_agent",
         OR: [
           { id: rawIdentifier },
