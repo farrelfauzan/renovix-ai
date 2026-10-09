@@ -4,10 +4,9 @@ import { KnowledgeController } from "./knowledge.controller";
 import { EmbeddingService } from "./embedding.service";
 import { S3Service } from "./s3.service";
 import { SystemKnowledgeService } from "./system-knowledge.service";
-import { SystemKnowledgeController } from "./system-knowledge.controller";
 
 @Module({
-  controllers: [KnowledgeController, SystemKnowledgeController],
+  controllers: [KnowledgeController],
   providers: [
     KnowledgeService,
     EmbeddingService,
