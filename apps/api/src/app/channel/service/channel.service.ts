@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 
 @Injectable()
@@ -117,8 +121,16 @@ export class ChannelService {
   async delete(userId: string, channelId: string) {
     const channel = await this.prisma.channel.findFirst({
       where: { id: channelId, userId },
+      select: { workspace: { select: { id: true } } },
     });
     if (!channel) throw new NotFoundException("Channel not found");
+    // The workspace row cascades from its channel (schema: Workspace.channel onDelete: Cascade),
+    // so deleting the channel would delete the workspace and everything under it (RX-144).
+    if (channel.workspace) {
+      throw new ConflictException(
+        "This channel belongs to a workspace and cannot be deleted",
+      );
+    }
 
     await this.prisma.channel.delete({ where: { id: channelId } });
     return { deleted: true };
