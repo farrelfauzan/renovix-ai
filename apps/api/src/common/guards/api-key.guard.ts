@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { timingSafeEqual, createHash } from "crypto";
-import { PrismaService } from "../prisma/prisma.service";
+import { PrismaService } from "../../app/prisma/prisma.service";
 
 function hashApiKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");

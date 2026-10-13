@@ -13,7 +13,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import { WorkspaceService } from "../service/workspace.service";
 import { WorkspaceMemberService } from "../service/workspace-member.service";
 import { WorkspaceInviteService } from "../service/workspace-invite.service";

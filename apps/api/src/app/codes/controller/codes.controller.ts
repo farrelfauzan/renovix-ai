@@ -8,7 +8,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import { CodesService } from "../service/codes.service";
 import { RedeemCodeDto } from "../dto/redeem-code.dto";
 

@@ -10,7 +10,7 @@ import {
   HttpCode,
   ParseUUIDPipe,
 } from "@nestjs/common";
-import { ApiKeyGuard } from "../../guards/api-key.guard";
+import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { ConversationService } from "../service/conversation.service";
 
 @Controller("conversations")

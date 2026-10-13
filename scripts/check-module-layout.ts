@@ -7,9 +7,9 @@ import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const APP = "apps/api/src/app";
-// Folders of apps/api/src/app that are not feature modules: guards moves to common/ in RX-129,
-// the others are infrastructure shared by the modules. Every other folder is a feature module.
-const NOT_FEATURE_MODULES = ["guards", "prisma", "config", "providers", "google-storage"];
+// Folders of apps/api/src/app that are not feature modules: infrastructure shared by the modules.
+// Every other folder is a feature module.
+const NOT_FEATURE_MODULES = ["prisma", "config", "providers", "google-storage"];
 
 const stray: string[] = [];
 for (const dir of readdirSync(join(ROOT, APP), { withFileTypes: true })) {

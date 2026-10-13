@@ -8,7 +8,7 @@ import { CodesModule } from "../codes.module";
 import { CodesService } from "../service/codes.service";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { PrismaService } from "../../prisma/prisma.service";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 
 // The real guard imports better-auth (ESM) and the real PrismaService imports
 // the generated Prisma client at load time; both are replaced below anyway.

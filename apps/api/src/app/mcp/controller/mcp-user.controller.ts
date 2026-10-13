@@ -11,7 +11,7 @@ import {
   UseGuards,
   BadRequestException,
 } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import { ConfigService } from "@nestjs/config";
 import type { FastifyReply } from "fastify";
 import { McpUserService } from "../service/mcp-user.service";

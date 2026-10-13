@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WebSearchService } from "../service/web-search.service";
 

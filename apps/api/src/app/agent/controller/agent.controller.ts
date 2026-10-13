@@ -13,7 +13,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import { AgentService } from "../service/agent.service";
 import { CreateAgentSchema } from "../dto/create-agent.dto";
 import { UpdateAgentSchema } from "../dto/update-agent.dto";

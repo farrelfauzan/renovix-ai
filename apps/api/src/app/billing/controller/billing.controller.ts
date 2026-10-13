@@ -9,7 +9,7 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import { ConfigService } from "@nestjs/config";
 import type Stripe from "stripe";
 import { BillingService } from "../service/billing.service";
