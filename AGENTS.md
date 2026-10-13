@@ -83,7 +83,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 
 - A feature module is every folder of `apps/api/src/app/` except `prisma`, `config`, `providers` and `google-storage` (18 today).
 - Code shared by the modules lives in `apps/api/src/common/`, in a folder named for its kind (today: `guards/`). A folder is created when its first file arrives.
-- Inside a feature module, files are arranged by layer: `controller/`, `service/`, `repository/` (none yet), `dto/`. A file of another kind goes into a folder named for its kind (today: `guard/`, `scheduler/`, `strategy/`, `converter/`, `config/`, `utils/` for helpers, `types/`).
+- Inside a feature module, files are arranged by layer: `controller/`, `service/`, `repository/` (today: codes), `dto/`. A file of another kind goes into a folder named for its kind (today: `guard/`, `scheduler/`, `strategy/`, `converter/`, `config/`, `utils/` for helpers, `types/`).
 - Only the `<module>.module.ts` file stays at the module root.
 - A test file sits in the folder of the file it tests; a test that covers several files sits next to its main subject (HTTP tests in `controller/`).
 - `bun run check` enforces it (step "module layout", `scripts/check-module-layout.ts`): it fails and names any source file that lies directly in a feature module folder.
@@ -95,6 +95,15 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - A helper does not stay in a service, controller, guard or scheduler class. It goes into the `utils/` folder of its module, one function per file, the file named for the function in kebab-case (`billing/utils/estimate-cost.ts` exports `estimateCost`), with its test beside it.
 - The module that owns a helper keeps it, and other modules import it from there (chat and portal import the billing helpers from `billing/utils/`). Identical copies with no owner go to `apps/api/src/common/utils`.
 - `bun run check` enforces test 1 (step "helper rule", `scripts/check-helper-rule.ts`): it fails and names any class method in those files that never uses `this`, unless `scripts/helper-rule-exceptions.ts` lists it with its reason (it fails test 2 or 3, or a named ticket will move it). A list entry that matches no such method any more fails too, so the list can only shrink.
+
+### Repositories
+
+- New code reaches the database only through a repository: `<module>/repository/<name>.repository.ts`, an injectable class that takes `PrismaService`. Only repositories and the Prisma module (`apps/api/src/app/prisma/`) import `PrismaService` or the generated Prisma client; `import type` from the generated client is allowed everywhere. Controllers, guards and schedulers use services, never repositories.
+- A repository holds queries only. Its methods are named for the operation (`findRedemption(codeId, userId)`), take the user or workspace as a required argument and return Prisma's generated types. A service never builds a query condition; who may do what stays in the service. Raw SQL lives only in repositories.
+- Every repository method takes the transaction (`DbTransaction`) as its last argument: optional, and required on a method that changes a balance or writes a ledger or redemption row. A service runs several repository calls in one transaction with `TransactionService.run(work, options?, tx?)`; given `tx` it joins that transaction. Both come from the Prisma module. Never keep a transaction open across a model call or a stream.
+- `PrismaService` carries the default filter for soft-deleted rows (no model on it yet). It covers top-level reads only: a relation in `include` or `select`, `_count`, a relation filter, raw SQL and every write need the condition written in the repository.
+- `bun run check` enforces the import rule (step "prisma imports", `scripts/check-prisma-imports.ts`). `scripts/prisma-import-exceptions.ts` lists the files not moved yet; it may only shrink, never add a file to it.
+- In tests `createTestModule` provides the repositories; add a new one to the list in `apps/api/test/test-module.ts`. Pilot: `apps/api/src/app/codes/`. Rules, decisions and measurements: `docs/repository-layer.md`.
 
 ## Database
 

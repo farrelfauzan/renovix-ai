@@ -6,12 +6,16 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { Decimal } from "@prisma/client/runtime/client";
-import { PrismaService } from "../../prisma/prisma.service";
+import { TransactionService } from "../../prisma/transaction.service";
 import { CreateCodeDto } from "../dto/redeem-code.dto";
+import { CodesRepository } from "../repository/codes.repository";
 
 @Injectable()
 export class CodesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly codes: CodesRepository,
+    private readonly transactions: TransactionService,
+  ) {}
 
   /**
    * Generate a unique invitation code in format PERF-XXXX-XXXX
@@ -26,10 +30,7 @@ export class CodesService {
    * Grants credits and/or subscription plan based on the code type.
    */
   async redeemCode(userId: string, codeString: string) {
-    const code = await this.prisma.invitationCode.findUnique({
-      where: { code: codeString },
-      include: { plan: true },
-    });
+    const code = await this.codes.findCodeWithPlan(codeString);
 
     if (!code) {
       throw new NotFoundException("Invalid invitation code");
@@ -50,16 +51,14 @@ export class CodesService {
     }
 
     // Check if user already redeemed this code
-    const existingRedemption = await this.prisma.codeRedemption.findUnique({
-      where: { codeId_userId: { codeId: code.id, userId } },
-    });
+    const existingRedemption = await this.codes.findRedemption(code.id, userId);
 
     if (existingRedemption) {
       throw new ConflictException("You have already redeemed this code");
     }
 
     // Execute redemption in a transaction
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.transactions.run(async (tx) => {
       let creditsGranted: Decimal | null = null;
       let planGranted: string | null = null;
       let daysGranted: number | null = null;
@@ -70,23 +69,15 @@ export class CodesService {
         code.creditAmount
       ) {
         creditsGranted = code.creditAmount;
-        await tx.user.update({
-          where: { id: userId },
-          data: {
-            balance: { increment: code.creditAmount },
-          },
-        });
+        await this.codes.incrementUserBalance(userId, code.creditAmount, tx);
 
         // Create transaction record
-        await tx.transaction.create({
-          data: {
-            userId,
-            amount: code.creditAmount,
-            type: "topup",
-            status: "success",
-            reference: `code:${code.code}`,
-          },
-        });
+        await this.codes.createTopupTransaction(
+          userId,
+          code.creditAmount,
+          `code:${code.code}`,
+          tx,
+        );
       }
 
       // Grant subscription if applicable
@@ -104,9 +95,7 @@ export class CodesService {
         );
 
         // Upsert user subscription
-        const existing = await tx.userSubscription.findUnique({
-          where: { userId },
-        });
+        const existing = await this.codes.findSubscriptionByUserId(userId, tx);
 
         if (existing) {
           // Extend or upgrade the existing subscription
@@ -119,9 +108,9 @@ export class CodesService {
                 )
               : periodEnd;
 
-          await tx.userSubscription.update({
-            where: { userId },
-            data: {
+          await this.codes.updateSubscription(
+            userId,
+            {
               planId: code.planId,
               status: "active",
               currentPeriodStart: periodStart,
@@ -129,36 +118,32 @@ export class CodesService {
               messagesUsed: 0,
               tokensUsed: 0,
             },
-          });
+            tx,
+          );
         } else {
-          await tx.userSubscription.create({
-            data: {
-              userId,
+          await this.codes.createSubscription(
+            userId,
+            {
               planId: code.planId,
               status: "active",
               currentPeriodStart: periodStart,
               currentPeriodEnd: periodEnd,
             },
-          });
+            tx,
+          );
         }
       }
 
       // Increment times redeemed
-      await tx.invitationCode.update({
-        where: { id: code.id },
-        data: { timesRedeemed: { increment: 1 } },
-      });
+      await this.codes.incrementTimesRedeemed(code.id, tx);
 
       // Create redemption record
-      await tx.codeRedemption.create({
-        data: {
-          codeId: code.id,
-          userId,
-          creditsGranted,
-          planGranted,
-          daysGranted,
-        },
-      });
+      await this.codes.createRedemption(
+        code.id,
+        userId,
+        { creditsGranted, planGranted, daysGranted },
+        tx,
+      );
 
       return { creditsGranted, planGranted, daysGranted };
     });
@@ -177,13 +162,7 @@ export class CodesService {
    * Get redemption history for a user
    */
   async getHistory(userId: string) {
-    const redemptions = await this.prisma.codeRedemption.findMany({
-      where: { userId },
-      include: {
-        code: { select: { code: true, type: true } },
-      },
-      orderBy: { redeemedAt: "desc" },
-    });
+    const redemptions = await this.codes.findRedemptionsByUser(userId);
 
     return { redemptions };
   }
@@ -212,25 +191,20 @@ export class CodesService {
 
     // Verify plan exists if specified
     if (dto.planId) {
-      const plan = await this.prisma.subscriptionPlan.findUnique({
-        where: { id: dto.planId },
-      });
+      const plan = await this.codes.findPlanById(dto.planId);
       if (!plan) {
         throw new NotFoundException("Subscription plan not found");
       }
     }
 
-    const created = await this.prisma.invitationCode.create({
-      data: {
-        code,
-        type: dto.type,
-        creditAmount: dto.creditAmount ?? null,
-        planId: dto.planId ?? null,
-        durationDays: dto.durationDays ?? null,
-        maxRedemptions: dto.maxRedemptions,
-        createdById: createdById ?? null,
-      },
-      include: { plan: true },
+    const created = await this.codes.createCode({
+      code,
+      type: dto.type,
+      creditAmount: dto.creditAmount ?? null,
+      planId: dto.planId ?? null,
+      durationDays: dto.durationDays ?? null,
+      maxRedemptions: dto.maxRedemptions,
+      createdById: createdById ?? null,
     });
 
     return { code: created };
@@ -242,16 +216,8 @@ export class CodesService {
   async listCodes(page = 1, limit = 50) {
     const skip = (page - 1) * limit;
     const [codes, total] = await Promise.all([
-      this.prisma.invitationCode.findMany({
-        include: {
-          plan: { select: { slug: true, name: true } },
-          _count: { select: { redemptions: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        skip,
-      }),
-      this.prisma.invitationCode.count(),
+      this.codes.listCodes(skip, limit),
+      this.codes.countCodes(),
     ]);
 
     return { codes, total, page, limit };
@@ -264,17 +230,12 @@ export class CodesService {
     id: string,
     data: { isActive?: boolean; maxRedemptions?: number },
   ) {
-    const code = await this.prisma.invitationCode.findUnique({
-      where: { id },
-    });
+    const code = await this.codes.findCodeById(id);
     if (!code) {
       throw new NotFoundException("Code not found");
     }
 
-    const updated = await this.prisma.invitationCode.update({
-      where: { id },
-      data,
-    });
+    const updated = await this.codes.updateCode(id, data);
 
     return { code: updated };
   }

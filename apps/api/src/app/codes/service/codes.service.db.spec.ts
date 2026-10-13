@@ -1,6 +1,7 @@
 import { ConflictException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { CodesService } from "./codes.service";
+import { CodesRepository } from "../repository/codes.repository";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -66,5 +67,31 @@ describe("CodesService.redeemCode (test database)", () => {
 
     await expect(service.redeemCode(user.id, code.code)).rejects.toBeInstanceOf(ConflictException);
     expect(await prisma.codeRedemption.count()).toBe(1);
+  });
+
+  it("rolls back every earlier step of a redemption when a later step fails", async () => {
+    const user = await createUser(prisma);
+    const plan = await createPlan(prisma, { slug: "pro" });
+    const code = await prisma.invitationCode.create({
+      data: { code: "PERF-BOTH-0001", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30 },
+    });
+    jest
+      .spyOn(moduleRef.get(CodesRepository), "createRedemption")
+      .mockRejectedValueOnce(new Error("the redemption row cannot be written"));
+
+    const redeem = service.redeemCode(user.id, code.code);
+
+    await expect(redeem).rejects.toThrow("the redemption row cannot be written");
+    const after = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      include: { transactions: true, subscription: true, codeRedemptions: true },
+    });
+    expect(after.balance.toNumber()).toBe(0);
+    expect(after.transactions).toEqual([]);
+    expect(after.subscription).toBeNull();
+    expect(after.codeRedemptions).toEqual([]);
+    expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
+      timesRedeemed: 0,
+    });
   });
 });
