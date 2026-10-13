@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
-import { ReminderController } from "./reminder.controller";
-import { ReminderService } from "./reminder.service";
-import { ReminderScheduler } from "./reminder.scheduler";
+import { ReminderController } from "./controller/reminder.controller";
+import { ReminderService } from "./service/reminder.service";
+import { ReminderScheduler } from "./scheduler/reminder.scheduler";
 import { ChannelModule } from "../channel/channel.module";
 import { AgentModule } from "../agent/agent.module";
 import { ProvidersModule } from "../providers/providers.module";

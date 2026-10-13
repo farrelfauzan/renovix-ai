@@ -68,7 +68,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 
 ## API Architecture
 
-- 21 feature modules (`*.module.ts`) in `apps/api/src/app/`, plus the root `AppModule`; `AppModule` imports 20 of them, `MemoryModule` is imported by `ChatModule` and `PortalModule`
+- 21 modules (`*.module.ts`) in `apps/api/src/app/`, plus the root `AppModule`; `AppModule` imports 20 of them, `MemoryModule` is imported by `ChatModule` and `PortalModule`
 - Request validation: Zod schemas parsed manually with `safeParse` in the controllers (`nestjs-zod` is in package.json but unused)
 - Path alias: `@generated/prisma` -> `./src/generated/prisma`
 - OpenAI-compatible endpoint: `POST /api/v1/chat/completions` (API key auth via `ApiKeyGuard`)
@@ -78,6 +78,15 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - AI provider routing: `ProviderRouter` -> adapters (currently only `OpenRouterAdapter`, provider key `openrouter`; chat models and embeddings go through OpenRouter)
 - Prompt tuning: keyword-based intent matching on `PromptTemplate` injects specialized system prompts
 - Document generation: detects output format from prompt templates, converts markdown to PDF/DOCX/XLSX, uploads to S3
+
+### API module layout
+
+- A feature module is every folder of `apps/api/src/app/` except `guards`, `prisma`, `config`, `providers` and `google-storage` (18 today).
+- Inside a feature module, files are arranged by layer: `controller/`, `service/`, `repository/` (none yet), `dto/`. A file of another kind goes into a folder named for its kind (today: `guard/`, `scheduler/`, `strategy/`, `converter/`, `config/`, `utils/` for helpers, `types/`).
+- Only the `<module>.module.ts` file stays at the module root.
+- A test file sits in the folder of the file it tests; a test that covers several files sits next to its main subject (HTTP tests in `controller/`).
+- `bun run check` enforces it (step "module layout", `scripts/check-module-layout.ts`): it fails and names any source file that lies directly in a feature module folder.
+- Code rules: `.claude/rules/nestjs-clean-typescript.md` and `.claude/rules/nextjs-frontend.md` (tracked in git).
 
 ## Database
 

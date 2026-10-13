@@ -1,11 +1,11 @@
 import { Global, Module } from "@nestjs/common";
-import { GuardrailService } from "./guardrail.service";
-import { InputGuardrailService } from "./input-guardrail.service";
-import { OutputGuardrailService } from "./output-guardrail.service";
-import { InjectionDetectorService } from "./injection-detector.service";
-import { ContentPolicyService } from "./content-policy.service";
-import { PiiDetectorService } from "./pii-detector.service";
-import { ViolationTrackerService } from "./violation-tracker.service";
+import { GuardrailService } from "./service/guardrail.service";
+import { InputGuardrailService } from "./service/input-guardrail.service";
+import { OutputGuardrailService } from "./service/output-guardrail.service";
+import { InjectionDetectorService } from "./service/injection-detector.service";
+import { ContentPolicyService } from "./service/content-policy.service";
+import { PiiDetectorService } from "./service/pii-detector.service";
+import { ViolationTrackerService } from "./service/violation-tracker.service";
 
 @Global()
 @Module({
