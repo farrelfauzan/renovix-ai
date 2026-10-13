@@ -89,6 +89,13 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - `bun run check` enforces it (step "module layout", `scripts/check-module-layout.ts`): it fails and names any source file that lies directly in a feature module folder.
 - Code rules: `.claude/rules/nestjs-clean-typescript.md` and `.claude/rules/nextjs-frontend.md` (tracked in git).
 
+### Helpers
+
+- A helper is a function that passes three tests: (1) it uses nothing injected (never uses `this`); (2) plain values in, plain values out: no database, network or file, nothing like a client or transaction passed in, no `await`, no clock, randomness or environment; (3) it is not an entry point (route handler, guard `canActivate`, sign-in strategy `validate`, interceptor, lifecycle hook, scheduled job).
+- A helper does not stay in a service, controller, guard or scheduler class. It goes into the `utils/` folder of its module, one function per file, the file named for the function in kebab-case (`billing/utils/estimate-cost.ts` exports `estimateCost`), with its test beside it.
+- The module that owns a helper keeps it, and other modules import it from there (chat and portal import the billing helpers from `billing/utils/`). Identical copies with no owner go to `apps/api/src/common/utils`.
+- `bun run check` enforces test 1 (step "helper rule", `scripts/check-helper-rule.ts`): it fails and names any class method in those files that never uses `this`, unless `scripts/helper-rule-exceptions.ts` lists it with its reason (it fails test 2 or 3, or a named ticket will move it). A list entry that matches no such method any more fails too, so the list can only shrink.
+
 ## Database
 
 - PostgreSQL 16 with pgvector extension (1024-dim embeddings for knowledge base)

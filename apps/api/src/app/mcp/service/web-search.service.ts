@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { McpUserService } from "./mcp-user.service";
+import { maskKey } from "../utils/mask-key";
 
 type WebSearchProvider = "brave-search" | "duckduckgo";
 
@@ -169,7 +170,7 @@ export class WebSearchService {
     return {
       connected: true,
       provider: "brave-search",
-      maskedKey: this.maskKey(trimmed),
+      maskedKey: maskKey(trimmed),
     };
   }
 
@@ -200,7 +201,7 @@ export class WebSearchService {
       connected: !!creds?.BRAVE_API_KEY,
       provider: "brave-search",
       maskedKey: creds?.BRAVE_API_KEY
-        ? this.maskKey(creds.BRAVE_API_KEY)
+        ? maskKey(creds.BRAVE_API_KEY)
         : null,
       policy,
       supportedProviders: this.getSupportedProviders(),
@@ -507,12 +508,6 @@ export class WebSearchService {
     const num = Number(value);
     if (!Number.isFinite(num)) return fallback;
     return Math.min(max, Math.max(min, Math.floor(num)));
-  }
-
-  private maskKey(value: string): string {
-    if (!value) return "";
-    if (value.length <= 8) return "****";
-    return `${value.slice(0, 4)}****${value.slice(-3)}`;
   }
 
   private cleanUrl(url: string): string {

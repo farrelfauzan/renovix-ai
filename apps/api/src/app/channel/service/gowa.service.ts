@@ -1,5 +1,4 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { createHmac, timingSafeEqual } from "crypto";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { GowaOutboundMessage } from "../types/gowa.types";
 
@@ -49,25 +48,6 @@ export class GowaService {
       if (chunks.length > 1) {
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
-    }
-  }
-
-  /**
-   * Verify webhook signature
-   */
-  verifySignature(payload: string, signature: string, secret: string): boolean {
-    try {
-      const expectedSignature = createHmac("sha256", secret)
-        .update(payload)
-        .digest("hex");
-
-      const sigBuffer = Buffer.from(signature, "hex");
-      const expectedBuffer = Buffer.from(expectedSignature, "hex");
-
-      if (sigBuffer.length !== expectedBuffer.length) return false;
-      return timingSafeEqual(sigBuffer, expectedBuffer);
-    } catch {
-      return false;
     }
   }
 

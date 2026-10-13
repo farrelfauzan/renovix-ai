@@ -221,6 +221,7 @@ async function typecheckStep(): Promise<boolean> {
 
 const steps: Array<[string, () => Promise<boolean>]> = [
   ["module layout", async () => (await run(["bun", "scripts/check-module-layout.ts"])) === 0],
+  ["helper rule", async () => (await run(["bun", "scripts/check-helper-rule.ts"])) === 0],
   ["prisma generate", async () => (await run(["bun", "run", "prisma:generate"])) === 0],
   ["prisma validate", async () => (await run(["bunx", "prisma", "validate"])) === 0],
   ["api tests", testStep],

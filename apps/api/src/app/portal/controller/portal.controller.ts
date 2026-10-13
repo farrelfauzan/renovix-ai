@@ -28,6 +28,9 @@ import {
 } from "../service/portal-tier.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { BillingService } from "../../billing/service/billing.service";
+import { estimateTokens } from "../../billing/utils/estimate-tokens";
+import { estimateCost } from "../../billing/utils/estimate-cost";
+import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { ProviderRouter } from "../../providers/provider-router";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
@@ -614,8 +617,8 @@ export class PortalController {
     }
 
     // Estimate + reserve credits
-    const estimatedTokens = this.billing.estimateTokens(body.messages);
-    const estimatedCost = this.billing.estimateCost(
+    const estimatedTokens = estimateTokens(body.messages);
+    const estimatedCost = estimateCost(
       estimatedTokens,
       pricing.inputPrice.toNumber(),
       pricing.creditMultiplier.toNumber(),
@@ -759,7 +762,7 @@ export class PortalController {
               total_tokens: estimatedTokens + Math.ceil(fullContent.length / 4),
             };
 
-      const actualCost = this.billing.calculateActualCost(
+      const actualCost = calculateActualCost(
         actualTokens.prompt_tokens,
         actualTokens.completion_tokens,
         pricing.inputPrice.toNumber(),

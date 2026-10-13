@@ -7,6 +7,9 @@ import {
 import type { Decimal } from "@prisma/client/runtime/client";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { BillingService } from "../../billing/service/billing.service";
+import { estimateTokens } from "../../billing/utils/estimate-tokens";
+import { estimateCost } from "../../billing/utils/estimate-cost";
+import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { ProviderRouter } from "../../providers/provider-router";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "./prompt-tuning.service";
@@ -54,8 +57,8 @@ export class ChatService {
     }
 
     // 2. Estimate cost
-    const estimatedTokens = this.billing.estimateTokens(body.messages);
-    const estimatedCost = this.billing.estimateCost(
+    const estimatedTokens = estimateTokens(body.messages);
+    const estimatedCost = estimateCost(
       estimatedTokens,
       pricing.inputPrice.toNumber(),
       pricing.creditMultiplier.toNumber(),
@@ -100,7 +103,7 @@ export class ChatService {
     const latencyMs = Date.now() - startTime;
 
     // 6. Calculate actual cost
-    const actualCost = this.billing.calculateActualCost(
+    const actualCost = calculateActualCost(
       providerResponse.usage.prompt_tokens,
       providerResponse.usage.completion_tokens,
       pricing.inputPrice.toNumber(),

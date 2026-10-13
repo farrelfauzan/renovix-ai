@@ -6,8 +6,9 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
 import { EmailJobService } from "../../email/service/email-job.service";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import type { InviteMemberDto } from "../dto/invite-member.dto";
+import { hashToken } from "../utils/hash-token";
 
 @Injectable()
 export class WorkspaceInviteService {
@@ -16,10 +17,6 @@ export class WorkspaceInviteService {
     private readonly quotaService: WorkspaceQuotaService,
     private readonly emailJobService: EmailJobService,
   ) {}
-
-  private hashToken(token: string): string {
-    return createHash("sha256").update(token).digest("hex");
-  }
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
@@ -68,7 +65,7 @@ export class WorkspaceInviteService {
 
     // Generate token
     const rawToken = randomBytes(32).toString("hex");
-    const tokenHash = this.hashToken(rawToken);
+    const tokenHash = hashToken(rawToken);
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -118,7 +115,7 @@ export class WorkspaceInviteService {
   }
 
   async acceptInvite(token: string, userId: string) {
-    const tokenHash = this.hashToken(token);
+    const tokenHash = hashToken(token);
 
     const invite = await this.prisma.workspaceInvite.findUnique({
       where: { tokenHash },
@@ -265,7 +262,7 @@ export class WorkspaceInviteService {
 
     // Generate a new token for resend
     const rawToken = randomBytes(32).toString("hex");
-    const tokenHash = this.hashToken(rawToken);
+    const tokenHash = hashToken(rawToken);
 
     await this.prisma.workspaceInvite.update({
       where: { id: inviteId },
@@ -304,7 +301,7 @@ export class WorkspaceInviteService {
   }
 
   async resolveToken(token: string) {
-    const tokenHash = this.hashToken(token);
+    const tokenHash = hashToken(token);
 
     const invite = await this.prisma.workspaceInvite.findUnique({
       where: { tokenHash },
