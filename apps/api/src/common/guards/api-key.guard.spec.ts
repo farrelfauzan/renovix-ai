@@ -2,7 +2,7 @@ import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import * as jwt from "jsonwebtoken";
 import { ApiKeyGuard } from "./api-key.guard";
-import { PrismaService } from "../prisma/prisma.service";
+import { PrismaService } from "../../app/prisma/prisma.service";
 import { createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import { createUser } from "../../../test/factories";

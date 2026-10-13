@@ -14,7 +14,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import type { FastifyReply } from "fastify";
 import { AgentRunService } from "../service/agent-run.service";
 import { AgentToolService } from "../service/agent-tool.service";

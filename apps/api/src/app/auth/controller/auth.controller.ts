@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { FastifyReply } from "fastify";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import { AuthService } from "../service/auth.service";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../dto/create-auth.dto";
 import { authCookie, clearedAuthCookie } from "../utils/auth-cookie";

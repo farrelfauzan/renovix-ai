@@ -7,7 +7,7 @@ import {
   HttpCode,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { ApiKeyGuard } from "../../guards/api-key.guard";
+import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { DocumentService } from "../service/document.service";
 import { ExportRequestSchema } from "../dto/export-request.dto";
 

@@ -5,7 +5,7 @@ import {
 } from "@nestjs/platform-fastify";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 
 // The real guard imports better-auth (ESM) and the real service imports the
 // generated Prisma client at load time; both are replaced below anyway.

@@ -9,7 +9,7 @@ import {
   HttpCode,
   BadRequestException,
 } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../guards/combined-auth.guard";
+import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 import { WorkspaceInviteService } from "../service/workspace-invite.service";
 import { AcceptInviteSchema } from "../dto/accept-invite.dto";
 

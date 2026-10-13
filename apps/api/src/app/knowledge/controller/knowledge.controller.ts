@@ -14,7 +14,7 @@ import {
   ParseUUIDPipe,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { ApiKeyGuard } from "../../guards/api-key.guard";
+import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { KnowledgeService } from "../service/knowledge.service";
 import {
   CreateKnowledgeBaseSchema,

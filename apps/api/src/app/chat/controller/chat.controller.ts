@@ -8,7 +8,7 @@ import {
   HttpCode,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { ApiKeyGuard } from "../../guards/api-key.guard";
+import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { ChatService } from "../service/chat.service";
 import {
   ChatCompletionRequest,
