@@ -60,7 +60,7 @@ In `apps/api/src/app/prisma/`:
 The seven points as decided:
 
 1. A repository method takes the transaction as its optional last argument and runs on the normal client without it. A method that changes a balance or writes a ledger or redemption row takes it as a required argument, so the compiler refuses a call outside a transaction.
-2. Join: when the caller passes `tx`, `run` uses that transaction and opens nothing. An error anywhere rolls back the whole outer transaction. No nested transaction, no savepoint.
+2. Join: when the caller passes `tx`, `run` uses that transaction and opens nothing. An error that reaches the outer `run` rolls back the whole outer transaction. An error of a joined `run` that the outer work catches undoes nothing: the inner writes stay and are committed, so never catch one and go on. No nested transaction, no savepoint.
 3. No transaction across a model call or a stream. The helper has no begin and commit handle, so it cannot be kept open that way. For the credit service (RX-22) this means reserve, each ledger line and settle are separate short transactions, and a killed request is undone by a `release` call, not by a rollback.
 4. `options` may hold `isolationLevel`, `timeout` and `maxWait`. They are passed to Prisma only when `run` opens the transaction. Given together with `tx` they cannot be honoured, so `run` throws.
 5. No retry. A ticket that chooses a stricter isolation level adds it, in the helper.
@@ -74,7 +74,8 @@ Step "prisma imports" of `bun run check` (`scripts/check-prisma-imports.ts`).
 - Forbidden outside `apps/api/src/app/prisma/` and `<module>/repository/*.repository.ts`: a value import of `PrismaService` or of the generated Prisma client.
 - Allowed everywhere: `import type` from the generated client, because a service has to name the row types a repository returns (rule c) and a type cannot reach the database. `Decimal` from `@prisma/client/runtime/client` is not the generated client and stays allowed.
 - The list `scripts/prisma-import-exceptions.ts` may only shrink. The check fails on a file that has such an import and is not listed, on a listed file that no longer has one, and on a list entry that the list on `origin/main` does not have (a renamed file keeps its entry).
-- Not read: spec files, `apps/api/test/`, the seed, `require()` and dynamic `import()` (none exist in `apps/api/src`).
+- Not read: spec files, `apps/api/test/`, the seed, `require()`, `import x = require()` and dynamic `import()` (none exist in `apps/api/src`), and `@prisma/client` itself. Not seen at all: a service that runs a query on the `tx` it gets from `run`; it needs no import, so only review catches it.
+- A path with a file suffix (`prisma.service.js`, `.ts`) counts like the bare path.
 
 ## PrismaService and the default filter (decision 26, D93)
 
@@ -92,7 +93,7 @@ Costs, all known when the form was chosen or found while building it:
 
 - The declared type stays the plain client's. The true type of an extended client is not assignable to `PrismaClient`, and using it would change the type of every `tx` parameter, of the test factories and of `resetDatabase`.
 - `$on` is in the type but does not exist at run time on an extended client. Nothing uses it.
-- A transaction of an extended client cannot be enumerated or printed: `Object.keys(tx)`, `util.inspect(tx)` and `"$on" in tx` throw a `TypeError` ("'ownKeys' on proxy: trap result did not include '$on'"). The client itself is not affected, and queries on `tx` work. This comes with any `$extends`, also an empty one (Prisma 7.8.0), so it is a cost of decision 26 in every form. No code in `apps/api` does this today. In practice: do not log a `tx`, and a failing Jest matcher that has to print a `tx` shows this error in place of its diff.
+- A transaction of an extended client cannot be enumerated or printed: `Object.keys(tx)`, `util.inspect(tx)`, `"$on" in tx` and `JSON.stringify` of an object that holds a `tx` throw a `TypeError` ("'ownKeys' on proxy: trap result did not include '$on'"). The client itself is not affected, and queries on `tx` work. This comes with any `$extends`, also an empty one (Prisma 7.8.0), so it is a cost of decision 26 in every form. No code in `apps/api` does this today. In practice: do not log a `tx`, and a failing Jest matcher that has to print a `tx` shows this error in place of its diff.
 - Three clients are built without the filter and stay so: the sign-in library's own client in `apps/api/src/lib/auth.ts`, and the two seed scripts (`prisma/seed.ts`, `prisma/seed-agents.ts`).
 
 ### What the filter reaches (measured)
@@ -107,7 +108,7 @@ Measured on 2026-10-13 with Prisma 7.8.0 and `@prisma/adapter-pg`, by a throwawa
 | The same reads inside `$transaction`, callback form | yes |
 | The same reads inside `$transaction`, array form | yes |
 | Both transaction forms still roll back as one transaction | yes |
-| A condition the caller writes on the same column (to read deleted rows on purpose) | the caller's wins |
+| A condition the caller writes on the same column (to read deleted rows on purpose) | the caller's wins. A key left `undefined` does not count as a condition (the default stays); `{}` reads every row |
 | The caller's condition on that column inside `OR` | not seen: the default is still added |
 | Rows loaded through `include` or `select` of a relation, in either direction | **no** |
 | The fluent form (`agent.findUnique(...).reminders()`) | **no** |

@@ -34,7 +34,7 @@ describe("PrismaService (test database)", () => {
   }
 
   /** The same three top-level reads outside a transaction, in the callback form and in the array form. */
-  async function readEverywhere(client: PrismaService, where: { deletedAt?: { not: null } } = {}) {
+  async function readEverywhere(client: PrismaService, where: { deletedAt?: { not: null } | Record<string, never> } = {}) {
     const read = async (db: Pick<PrismaService, "reminder">) => ({
       ids: (await db.reminder.findMany({ where, orderBy: { description: "asc" } })).map((r) => r.id),
       count: await db.reminder.count({ where }),
@@ -90,6 +90,43 @@ describe("PrismaService (test database)", () => {
     expect(actual.outside).toEqual(onlyDeleted);
     expect(actual.callbackForm).toEqual(onlyDeleted);
     expect(actual.arrayForm).toEqual(onlyDeleted);
+  });
+
+  it("a key the caller leaves undefined is not a condition: the deleted row stays hidden, in all three places", async () => {
+    const hidden = { ids: [rows.visible.id], count: 1, deletedById: null };
+
+    const actual = await readEverywhere(filtering, { deletedAt: undefined });
+
+    expect(actual.outside).toEqual(hidden);
+    expect(actual.callbackForm).toEqual(hidden);
+    expect(actual.arrayForm).toEqual(hidden);
+  });
+
+  it("an empty condition the caller writes on the column reads every row, in all three places", async () => {
+    const all = { ids: [rows.deleted.id, rows.visible.id], count: 2, deletedById: rows.deleted.id };
+
+    const actual = await readEverywhere(filtering, { deletedAt: {} });
+
+    expect(actual.outside).toEqual(all);
+    expect(actual.callbackForm).toEqual(all);
+    expect(actual.arrayForm).toEqual(all);
+  });
+
+  it("the other filtered reads (findFirst, findFirstOrThrow, findUniqueOrThrow, aggregate, groupBy) hide the deleted row too, outside a transaction and in the callback form", async () => {
+    const codeOf = (e: { code?: string }) => e.code;
+    const read = async (db: Pick<PrismaService, "reminder">) => ({
+      first: (await db.reminder.findFirst({ where: { description: "deleted" } }))?.id ?? null,
+      firstOrThrow: await db.reminder.findFirstOrThrow({ where: { description: "deleted" } }).then(() => "found", codeOf),
+      uniqueOrThrow: await db.reminder.findUniqueOrThrow({ where: { id: rows.deleted.id } }).then(() => "found", codeOf),
+      aggregate: (await db.reminder.aggregate({ _count: true }))._count,
+      groupBy: (await db.reminder.groupBy({ by: ["userId"], _count: true })).map((g) => g._count),
+    });
+    const hidden = { first: null, firstOrThrow: "P2025", uniqueOrThrow: "P2025", aggregate: 1, groupBy: [1] };
+    const shown = { first: rows.deleted.id, firstOrThrow: "found", uniqueOrThrow: "found", aggregate: 2, groupBy: [2] };
+
+    expect(await read(filtering)).toEqual(hidden);
+    expect(await filtering.$transaction((tx) => read(tx))).toEqual(hidden);
+    expect(await read(prisma)).toEqual(shown); // the empty map, as shipped
   });
 
   it("with the empty map (as shipped), the same reads return the deleted row", async () => {

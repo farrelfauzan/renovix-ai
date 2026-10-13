@@ -10,8 +10,9 @@ export class TransactionService {
   /**
    * Runs `work` in one transaction and gives it the transaction to pass to every repository call.
    * Without `tx` it opens a transaction, with `options` (isolationLevel, timeout, maxWait) if given.
-   * With `tx` it joins that open transaction and opens nothing: a failure anywhere rolls back the
-   * whole outer transaction, and `options` are refused because they could not be honoured.
+   * With `tx` it joins that open transaction and opens nothing: a failure that reaches the outer `run`
+   * rolls back the whole outer transaction (one the outer work catches undoes nothing), and `options`
+   * are refused because they could not be honoured.
    * Never hold a transaction open across a model call or a stream.
    */
   async run<T>(

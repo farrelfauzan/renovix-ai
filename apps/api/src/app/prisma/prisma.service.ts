@@ -22,7 +22,8 @@ const FILTERED_READS: readonly string[] = [
 
 /**
  * Query extension that adds a model's default condition to the `where` of its top-level reads,
- * outside and inside `$transaction`. A condition the caller writes on the same column wins.
+ * outside and inside `$transaction`. A condition the caller writes on the same column wins; a key the
+ * caller leaves `undefined` is not a condition, so the default stays.
  */
 function hideByDefault(visibleOnly: VisibleOnly) {
   return Prisma.defineExtension({
@@ -32,8 +33,11 @@ function hideByDefault(visibleOnly: VisibleOnly) {
         $allOperations({ model, operation, args, query }) {
           const condition = visibleOnly[model];
           if (!condition || !FILTERED_READS.includes(operation)) return query(args);
-          const where = (args as { where?: object }).where;
-          return query({ ...args, where: { ...condition, ...where } } as typeof args);
+          const where = (args as { where?: Record<string, unknown> }).where ?? {};
+          const defaults = Object.fromEntries(
+            Object.entries(condition).filter(([column]) => where[column] === undefined),
+          );
+          return query({ ...args, where: { ...where, ...defaults } } as typeof args);
         },
       },
     },

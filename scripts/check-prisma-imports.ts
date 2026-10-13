@@ -7,7 +7,9 @@
 // The list may only shrink: an entry that no longer has such an import fails, and so does an entry that the
 // list on the base branch (default origin/main, or the ref given as the first argument) does not have, unless
 // git sees the file as renamed from a listed one. While the base branch has no list, that last rule is skipped.
-// Not looked at: `require()` and dynamic `import()` (none exist in apps/api/src).
+// Not looked at: `require()`, `import x = require()` and dynamic `import()` (none exist in apps/api/src), and
+// `@prisma/client` itself (the client is generated into apps/api/src/generated). Not seen at all: a service that
+// runs a query on the transaction it gets from TransactionService.run; that needs no import, so review holds it.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
@@ -18,7 +20,7 @@ const SRC = "apps/api/src";
 const LIST = "scripts/prisma-import-exceptions.ts";
 const BASE = process.argv[2] ?? "origin/main";
 const ALLOWED = /^apps\/api\/src\/app\/(prisma\/|[^/]+\/repository\/[^/]+\.repository\.ts$)/;
-const FORBIDDEN = /(^|\/)prisma\/prisma\.service$|^\.\/prisma\.service$|(^@|\/)generated\/prisma(\/|$)/;
+const FORBIDDEN = /(^|\/)prisma\/prisma\.service(\.[cm]?[jt]s)?$|^\.\/prisma\.service(\.[cm]?[jt]s)?$|(^@|\/)generated\/prisma(\/|$)/;
 
 function git(args: string[]): { ok: boolean; out: string } {
   const r = Bun.spawnSync(["git", ...args], { cwd: ROOT });

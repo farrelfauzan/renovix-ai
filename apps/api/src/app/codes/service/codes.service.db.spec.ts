@@ -94,4 +94,25 @@ describe("CodesService.redeemCode (test database)", () => {
       timesRedeemed: 0,
     });
   });
+
+  it("leaves an existing subscription as it was when a later step of the redemption fails", async () => {
+    const user = await createUser(prisma);
+    const basic = await createPlan(prisma, { slug: "basic" });
+    const pro = await createPlan(prisma, { slug: "pro" });
+    const before = await createSubscription(prisma, { userId: user.id, planId: basic.id, status: "active", messagesUsed: 7 });
+    const code = await subscriptionCode(pro.id);
+    jest
+      .spyOn(moduleRef.get(CodesRepository), "createRedemption")
+      .mockRejectedValueOnce(new Error("the redemption row cannot be written"));
+
+    const redeem = service.redeemCode(user.id, code.code);
+
+    await expect(redeem).rejects.toThrow("the redemption row cannot be written");
+    const after = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
+    expect(after).toMatchObject({
+      planId: basic.id,
+      messagesUsed: 7,
+      currentPeriodEnd: before.currentPeriodEnd,
+    });
+  });
 });
