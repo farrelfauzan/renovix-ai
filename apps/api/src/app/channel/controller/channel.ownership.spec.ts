@@ -11,7 +11,7 @@ import { ProviderRouter } from "../../providers/provider-router";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createUser } from "../../../../test/factories";
+import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
 
 // RX-15 characterization: channel ownership through the real controller and
 // ChannelService (CombinedAuthGuard JWT path, test database). The chat, upload
@@ -177,5 +177,69 @@ describe("Channels: ownership (RX-15, Fastify, test database)", () => {
 
     expect(privateRes.statusCode).toBe(404);
     expect(publicRes.statusCode).toBe(201);
+  });
+
+  // RX-144: a workspace is linked to its channel with onDelete: Cascade, so deleting
+  // the channel would delete the workspace and everything under it.
+  describe("DELETE /channels/:id and the channel's workspace (RX-144)", () => {
+    const readRows = () =>
+      Promise.all([
+        prisma.channel.findMany(),
+        prisma.channelAgent.findMany(),
+        prisma.workspace.findMany(),
+        prisma.workspaceMember.findMany({ orderBy: { createdAt: "asc" } }),
+        prisma.workspaceInvite.findMany(),
+        prisma.workspaceMemory.findMany(),
+        prisma.knowledgeBase.findMany(),
+      ]);
+
+    const setupWorkspace = async () => {
+      const { alice, bob, channel } = await setup();
+      const workspace = await createWorkspace(prisma, { ownerId: alice.id, channelId: channel.id });
+      await prisma.workspaceMember.create({ data: { workspaceId: workspace.id, userId: alice.id, role: "owner" } });
+      await prisma.workspaceMember.create({ data: { workspaceId: workspace.id, userId: bob.id } });
+      await prisma.workspaceInvite.create({
+        data: {
+          workspaceId: workspace.id,
+          email: "carol@test.local",
+          emailNormalized: "carol@test.local",
+          tokenHash: "rx144-token-hash",
+          expiresAt: new Date(Date.now() + 86_400_000),
+          invitedById: alice.id,
+        },
+      });
+      await prisma.workspaceMemory.create({ data: { workspaceId: workspace.id, type: "fact", content: "kept" } });
+      await prisma.knowledgeBase.create({ data: { userId: alice.id, workspaceId: workspace.id, name: "Workspace KB" } });
+      return { alice, bob, channel };
+    };
+
+    it("the owner cannot delete a channel that belongs to a workspace: 409, nothing is deleted", async () => {
+      const { alice, channel } = await setupWorkspace();
+      const rowsBefore = await readRows();
+
+      const res = await app.inject({ method: "DELETE", url: `/channels/${channel.id}`, headers: auth(alice) });
+
+      expect({ status: res.statusCode, rows: await readRows() }).toEqual({ status: 409, rows: rowsBefore });
+      expect(rowsBefore.map((rows) => rows.length)).toEqual([1, 1, 1, 2, 1, 1, 1]);
+      expect(res.json().message).toBe("This channel belongs to a workspace and cannot be deleted");
+    });
+
+    it("a workspace member who does not own the channel gets 404, nothing is deleted", async () => {
+      const { bob, channel } = await setupWorkspace();
+      const rowsBefore = await readRows();
+
+      const res = await app.inject({ method: "DELETE", url: `/channels/${channel.id}`, headers: auth(bob) });
+
+      expect({ status: res.statusCode, rows: await readRows() }).toEqual({ status: 404, rows: rowsBefore });
+    });
+
+    it("the owner can delete a channel that has no workspace (positive control)", async () => {
+      const { alice, channel } = await setup();
+
+      const res = await app.inject({ method: "DELETE", url: `/channels/${channel.id}`, headers: auth(alice) });
+
+      expect(res.statusCode).toBe(204);
+      expect(await prisma.channel.findUnique({ where: { id: channel.id } })).toBeNull();
+    });
   });
 });
