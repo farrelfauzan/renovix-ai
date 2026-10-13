@@ -1,4 +1,4 @@
-import { BillingService } from "./billing.service";
+import { estimateCost } from "./estimate-cost";
 
 describe("RX-130: estimateCost (tokens x input price x credit multiplier)", () => {
   it.each([
@@ -13,7 +13,7 @@ describe("RX-130: estimateCost (tokens x input price x credit multiplier)", () =
     { name: "no binary float error (3 x 0.1)", tokens: 3, inputPrice: 0.1, multiplier: 1, expected: "0.3" },
     { name: "no binary float error (7 x 0.1 x 3)", tokens: 7, inputPrice: 0.1, multiplier: 3, expected: "2.1" },
   ])("$name: $tokens x $inputPrice x $multiplier = $expected", ({ tokens, inputPrice, multiplier, expected }) => {
-    const actual = new BillingService(undefined as never).estimateCost(tokens, inputPrice, multiplier);
+    const actual = estimateCost(tokens, inputPrice, multiplier);
 
     expect(actual.toFixed()).toBe(expected);
   });

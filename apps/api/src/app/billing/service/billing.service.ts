@@ -10,27 +10,6 @@ export class BillingService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Estimate token count from messages using char count / 4 approximation.
-   */
-  estimateTokens(messages: { content: string }[]): number {
-    const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
-    return Math.ceil(totalChars / 4);
-  }
-
-  /**
-   * Estimate cost based on estimated input tokens, model pricing, and credit multiplier.
-   */
-  estimateCost(
-    estimatedTokens: number,
-    inputPrice: number,
-    creditMultiplier: number,
-  ): Decimal {
-    return new Decimal(estimatedTokens)
-      .mul(new Decimal(inputPrice))
-      .mul(new Decimal(creditMultiplier));
-  }
-
-  /**
    * Atomically reserve credits for a request. Returns the reserved amount.
    * Uses an atomic UPDATE with balance check to prevent race conditions.
    */
@@ -59,21 +38,6 @@ export class BillingService {
     });
 
     return estimatedCost;
-  }
-
-  /**
-   * Calculate actual cost from provider usage response, including credit multiplier.
-   */
-  calculateActualCost(
-    inputTokens: number,
-    outputTokens: number,
-    inputPrice: number,
-    outputPrice: number,
-    creditMultiplier: number,
-  ): Decimal {
-    const inputCost = new Decimal(inputTokens).mul(new Decimal(inputPrice));
-    const outputCost = new Decimal(outputTokens).mul(new Decimal(outputPrice));
-    return inputCost.add(outputCost).mul(new Decimal(creditMultiplier));
   }
 
   /**

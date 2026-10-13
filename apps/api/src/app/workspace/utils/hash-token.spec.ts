@@ -1,4 +1,4 @@
-import { WorkspaceInviteService } from "./workspace-invite.service";
+import { hashToken } from "./hash-token";
 
 // Made-up tokens. The hashes were computed outside the code under test: printf '%s' "$TOKEN" | shasum -a 256
 const TOKEN = "made-up-invite-token";
@@ -12,7 +12,7 @@ describe("RX-130: hashToken (workspace invite token, SHA-256 in hex)", () => {
     { name: "a space at the end (not trimmed)", token: "made-up-invite-token ", expected: "b8fd014e588329b0072c86131b58b6d9f2620923dcc6b01e389b1d433678e04d" },
     { name: "an empty token (hashed, not refused)", token: "", expected: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" },
   ])("$name -> $expected", ({ token, expected }) => {
-    const actual = new WorkspaceInviteService(undefined as never, undefined as never, undefined as never)["hashToken"](token);
+    const actual = hashToken(token);
 
     expect(actual).toBe(expected);
   });
@@ -25,7 +25,7 @@ describe("RX-130: hashToken (workspace invite token, SHA-256 in hex)", () => {
     { name: "an empty token", token: "", expected: false },
     { name: "the stored hash itself sent as the token", token: STORED_HASH, expected: false },
   ])("$name matches the stored hash: $expected", ({ token, expected }) => {
-    const actual = new WorkspaceInviteService(undefined as never, undefined as never, undefined as never)["hashToken"](token);
+    const actual = hashToken(token);
 
     expect(actual === STORED_HASH).toBe(expected);
   });

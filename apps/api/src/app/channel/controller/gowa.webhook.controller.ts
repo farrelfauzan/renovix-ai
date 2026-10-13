@@ -8,6 +8,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { GowaService } from "../service/gowa.service";
+import { verifySignature } from "../utils/verify-signature";
 import { AgentRunService } from "../../agent/service/agent-run.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { GowaInboundMessage } from "../types/gowa.types";
@@ -37,7 +38,7 @@ export class GowaWebhookController {
         const secret = (resolved.channel.config as any)?.webhookSecret;
         if (
           secret &&
-          !this.gowaService.verifySignature(rawBody, signature, secret)
+          !verifySignature(rawBody, signature, secret)
         ) {
           throw new BadRequestException("Invalid webhook signature");
         }

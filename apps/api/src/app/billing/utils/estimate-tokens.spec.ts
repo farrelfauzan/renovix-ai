@@ -1,4 +1,4 @@
-import { BillingService } from "./billing.service";
+import { estimateTokens } from "./estimate-tokens";
 
 describe("RX-130: estimateTokens (characters / 4, rounded up)", () => {
   it.each([
@@ -22,7 +22,7 @@ describe("RX-130: estimateTokens (characters / 4, rounded up)", () => {
     { name: "long input, remainder (100001 characters)", messages: [{ content: "x".repeat(100_001) }], expected: 25_001 },
     { name: "an emoji counts as 2 characters (3 emoji = 6)", messages: [{ content: "😀😀😀" }], expected: 2 },
   ])("$name -> $expected", ({ messages, expected }) => {
-    const actual = new BillingService(undefined as never).estimateTokens(messages);
+    const actual = estimateTokens(messages);
 
     expect(actual).toBe(expected);
   });

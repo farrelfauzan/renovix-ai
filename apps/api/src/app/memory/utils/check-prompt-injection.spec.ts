@@ -1,4 +1,4 @@
-import { MemoryPolicyService } from "./memory-policy.service";
+import { checkPromptInjection } from "./check-prompt-injection";
 
 const ALLOWED = { allowed: true };
 const INJECTION = { allowed: false, reason: "Detected prompt injection attempt" };
@@ -25,7 +25,7 @@ describe("RX-130: checkPromptInjection", () => {
     { rule: "ordinary sentence", content: "The user prefers short answers in Indonesian", expected: ALLOWED },
     { rule: "empty text", content: "", expected: ALLOWED },
   ])("$rule: $content", ({ content, expected }) => {
-    const actual = new MemoryPolicyService().checkPromptInjection(content);
+    const actual = checkPromptInjection(content);
 
     expect(actual).toEqual(expected);
   });

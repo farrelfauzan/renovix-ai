@@ -1,4 +1,4 @@
-import { GowaService } from "./gowa.service";
+import { verifySignature } from "./verify-signature";
 
 // Made-up values. The signatures were computed outside the code under test:
 // printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET"
@@ -32,7 +32,7 @@ describe("RX-130: verifySignature (GOWA webhook, HMAC-SHA256 in hex)", () => {
     { name: "the right signature followed by text that is not hex (today: accepted)", payload: PAYLOAD, signature: SIGNATURE + "zz", secret: SECRET, expected: true },
     { name: "a signature that is not a string (today: rejected, no throw)", payload: PAYLOAD, signature: undefined as unknown as string, secret: SECRET, expected: false },
   ])("$name -> $expected", ({ payload, signature, secret, expected }) => {
-    const actual = new GowaService(undefined as never).verifySignature(payload, signature, secret);
+    const actual = verifySignature(payload, signature, secret);
 
     expect(actual).toBe(expected);
   });

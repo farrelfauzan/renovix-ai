@@ -1,4 +1,4 @@
-import { MemoryPolicyService } from "./memory-policy.service";
+import { checkSensitivity } from "./check-sensitivity";
 
 const ALLOWED = { allowed: true };
 const SENSITIVE = { allowed: false, reason: "Contains sensitive data (credentials, PII, or tokens)" };
@@ -30,7 +30,7 @@ describe("RX-130: checkSensitivity", () => {
     { rule: "ordinary sentence", content: "The user prefers short answers in Indonesian", expected: ALLOWED },
     { rule: "empty text", content: "", expected: ALLOWED },
   ])("$rule: $content", ({ content, expected }) => {
-    const actual = new MemoryPolicyService().checkSensitivity(content);
+    const actual = checkSensitivity(content);
 
     expect(actual).toEqual(expected);
   });
@@ -38,7 +38,7 @@ describe("RX-130: checkSensitivity", () => {
   it("gives the same verdict when the same text is checked again (the patterns keep no state between calls)", () => {
     const content = "write to budi@example.co.id please";
 
-    const actual = [1, 2, 3].map(() => new MemoryPolicyService().checkSensitivity(content));
+    const actual = [1, 2, 3].map(() => checkSensitivity(content));
 
     expect(actual).toEqual([SENSITIVE, SENSITIVE, SENSITIVE]);
   });

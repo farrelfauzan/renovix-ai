@@ -1,4 +1,4 @@
-import { MemoryPolicyService } from "./memory-policy.service";
+import { checkRelevance } from "./check-relevance";
 
 const ALLOWED = { allowed: true };
 const TOO_SHORT = { allowed: false, reason: "Content too short to be meaningful" };
@@ -29,7 +29,7 @@ describe("RX-130: checkRelevance", () => {
     { rule: "another 'what can' question", content: "what can your team offer", expected: ALLOWED },
     { rule: "ordinary fact", content: "User works in finance", expected: ALLOWED },
   ])("$rule: '$content'", ({ content, expected }) => {
-    const actual = new MemoryPolicyService().checkRelevance(content);
+    const actual = checkRelevance(content);
 
     expect(actual).toEqual(expected);
   });

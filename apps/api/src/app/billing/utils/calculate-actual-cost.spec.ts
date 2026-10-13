@@ -1,4 +1,4 @@
-import { BillingService } from "./billing.service";
+import { calculateActualCost } from "./calculate-actual-cost";
 
 describe("RX-130: calculateActualCost ((input tokens x input price + output tokens x output price) x credit multiplier)", () => {
   it.each([
@@ -16,7 +16,7 @@ describe("RX-130: calculateActualCost ((input tokens x input price + output toke
   ])(
     "$name: ($inputTokens x $inputPrice + $outputTokens x $outputPrice) x $multiplier = $expected",
     ({ inputTokens, outputTokens, inputPrice, outputPrice, multiplier, expected }) => {
-      const actual = new BillingService(undefined as never).calculateActualCost(inputTokens, outputTokens, inputPrice, outputPrice, multiplier);
+      const actual = calculateActualCost(inputTokens, outputTokens, inputPrice, outputPrice, multiplier);
 
       expect(actual.toFixed()).toBe(expected);
     },
