@@ -58,13 +58,13 @@ This can be updated at any time via a database update or future admin endpointâ€
 
 | File | Purpose |
 |------|---------|
-| `apps/api/src/app/chat/prompt-tuning.service.ts` | Service that reads the system prompt from `AppConfig` and augments user messages |
+| `apps/api/src/app/chat/service/prompt-tuning.service.ts` | Service that reads the system prompt from `AppConfig` and augments user messages |
 
 ## Modified Files
 
 | File | Change |
 |------|--------|
-| `apps/api/src/app/chat/chat.service.ts` | Call `PromptTuningService.applyTuning()` before sending messages to the provider |
+| `apps/api/src/app/chat/service/chat.service.ts` | Call `PromptTuningService.applyTuning()` before sending messages to the provider |
 | `apps/api/src/app/chat/chat.module.ts` | Import `PrismaModule`, register `PromptTuningService` as a provider |
 | `prisma/seed.ts` | Seed a default `system_prompt` row in `app_configs` |
 

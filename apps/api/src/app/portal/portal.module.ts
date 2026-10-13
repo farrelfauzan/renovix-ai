@@ -1,9 +1,9 @@
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { PortalController } from "./portal.controller";
-import { PortalTierService } from "./portal-tier.service";
-import { PortalGuard } from "./portal.guard";
+import { PortalController } from "./controller/portal.controller";
+import { PortalTierService } from "./service/portal-tier.service";
+import { PortalGuard } from "./guard/portal.guard";
 import { BillingModule } from "../billing/billing.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { UsageModule } from "../usage/usage.module";

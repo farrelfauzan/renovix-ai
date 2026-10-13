@@ -1,8 +1,8 @@
 import { Global, Module } from "@nestjs/common";
-import { EmailService } from "./email.service";
-import { EmailJobService } from "./email-job.service";
-import { EmailTemplateService } from "./email-template.service";
-import { EmailScheduler } from "./email.scheduler";
+import { EmailService } from "./service/email.service";
+import { EmailJobService } from "./service/email-job.service";
+import { EmailTemplateService } from "./service/email-template.service";
+import { EmailScheduler } from "./scheduler/email.scheduler";
 
 @Global()
 @Module({

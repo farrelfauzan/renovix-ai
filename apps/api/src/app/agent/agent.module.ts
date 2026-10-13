@@ -1,10 +1,10 @@
 import { Module } from "@nestjs/common";
-import { AgentController } from "./agent.controller";
-import { AgentRunController } from "./agent-run.controller";
-import { AgentService } from "./agent.service";
-import { AgentRunService } from "./agent-run.service";
-import { AgentToolService } from "./agent-tool.service";
-import { AgentMemoryService } from "./agent-memory.service";
+import { AgentController } from "./controller/agent.controller";
+import { AgentRunController } from "./controller/agent-run.controller";
+import { AgentService } from "./service/agent.service";
+import { AgentRunService } from "./service/agent-run.service";
+import { AgentToolService } from "./service/agent-tool.service";
+import { AgentMemoryService } from "./service/agent-memory.service";
 import { BillingModule } from "../billing/billing.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { UsageModule } from "../usage/usage.module";

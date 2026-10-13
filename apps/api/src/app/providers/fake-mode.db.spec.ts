@@ -7,22 +7,22 @@ import { ProvidersModule } from "./providers.module";
 import { FAKE_REPLY, FAKE_TOOL_KEYWORD } from "./fake.adapter";
 import { PrismaService } from "../prisma/prisma.service";
 import { ModelRegistryService } from "../config/model-registry.service";
-import { PortalController } from "../portal/portal.controller";
-import { PortalTierService } from "../portal/portal-tier.service";
-import { PortalGuard } from "../portal/portal.guard";
-import { BillingService } from "../billing/billing.service";
-import { UsageService } from "../usage/usage.service";
-import { PromptTuningService } from "../chat/prompt-tuning.service";
-import { ConversationService } from "../chat/conversation.service";
-import { KnowledgeService } from "../knowledge/knowledge.service";
-import { KnowledgeController } from "../knowledge/knowledge.controller";
-import { EmbeddingService } from "../knowledge/embedding.service";
-import { S3Service } from "../knowledge/s3.service";
-import { GuardrailService } from "../guardrail/guardrail.service";
-import { DocumentService } from "../document/document.service";
-import { AgentRunService } from "../agent/agent-run.service";
-import { AgentToolService } from "../agent/agent-tool.service";
-import { AgentMemoryService } from "../agent/agent-memory.service";
+import { PortalController } from "../portal/controller/portal.controller";
+import { PortalTierService } from "../portal/service/portal-tier.service";
+import { PortalGuard } from "../portal/guard/portal.guard";
+import { BillingService } from "../billing/service/billing.service";
+import { UsageService } from "../usage/service/usage.service";
+import { PromptTuningService } from "../chat/service/prompt-tuning.service";
+import { ConversationService } from "../chat/service/conversation.service";
+import { KnowledgeService } from "../knowledge/service/knowledge.service";
+import { KnowledgeController } from "../knowledge/controller/knowledge.controller";
+import { EmbeddingService } from "../knowledge/service/embedding.service";
+import { S3Service } from "../knowledge/service/s3.service";
+import { GuardrailService } from "../guardrail/service/guardrail.service";
+import { DocumentService } from "../document/service/document.service";
+import { AgentRunService } from "../agent/service/agent-run.service";
+import { AgentToolService } from "../agent/service/agent-tool.service";
+import { AgentMemoryService } from "../agent/service/agent-memory.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import {
@@ -38,14 +38,14 @@ import {
 jest.mock("../../lib/auth", () => ({
   auth: { api: { getSession: async () => null } },
 }));
-jest.mock("../billing/billing.service", () => ({ BillingService: class {} }));
-jest.mock("../usage/usage.service", () => ({ UsageService: class {} }));
-jest.mock("../chat/prompt-tuning.service", () => ({ PromptTuningService: class {} }));
-jest.mock("../chat/conversation.service", () => ({ ConversationService: class {} }));
-jest.mock("../guardrail/guardrail.service", () => ({ GuardrailService: class {} }));
-jest.mock("../document/document.service", () => ({ DocumentService: class {} }));
-jest.mock("../agent/agent-tool.service", () => ({ AgentToolService: class {} }));
-jest.mock("../knowledge/s3.service", () => ({ S3Service: class {} }));
+jest.mock("../billing/service/billing.service", () => ({ BillingService: class {} }));
+jest.mock("../usage/service/usage.service", () => ({ UsageService: class {} }));
+jest.mock("../chat/service/prompt-tuning.service", () => ({ PromptTuningService: class {} }));
+jest.mock("../chat/service/conversation.service", () => ({ ConversationService: class {} }));
+jest.mock("../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
+jest.mock("../document/service/document.service", () => ({ DocumentService: class {} }));
+jest.mock("../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
+jest.mock("../knowledge/service/s3.service", () => ({ S3Service: class {} }));
 
 // The module objects themselves (a namespace import's properties cannot be spied on).
 const http: typeof import("http") = require("http");

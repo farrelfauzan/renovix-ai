@@ -1,9 +1,9 @@
 import { Module } from "@nestjs/common";
-import { KnowledgeService } from "./knowledge.service";
-import { KnowledgeController } from "./knowledge.controller";
-import { EmbeddingService } from "./embedding.service";
-import { S3Service } from "./s3.service";
-import { SystemKnowledgeService } from "./system-knowledge.service";
+import { KnowledgeService } from "./service/knowledge.service";
+import { KnowledgeController } from "./controller/knowledge.controller";
+import { EmbeddingService } from "./service/embedding.service";
+import { S3Service } from "./service/s3.service";
+import { SystemKnowledgeService } from "./service/system-knowledge.service";
 
 @Module({
   controllers: [KnowledgeController],

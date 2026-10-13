@@ -186,10 +186,21 @@ async function typecheckStep(): Promise<boolean> {
     for (const p of PROGRAMS) r[p] = await tsc(dir, p);
     return r;
   });
+  // A file that git sees as renamed since origin/main keeps its baseline errors under the new path.
+  const renamed = new Map<string, string>();
+  const diff = await capture(["git", "diff", "-M", "--diff-filter=R", "--name-status", "origin/main"], ROOT);
+  for (const line of diff.out.split("\n")) {
+    const [, from, to] = line.split("\t");
+    if (to) renamed.set(from, to);
+  }
   for (const p of PROGRAMS) {
     const cur = await tsc(ROOT, p);
     const counts = new Map<string, number>();
-    for (const e of base[p].errs) counts.set(e.key, (counts.get(e.key) ?? 0) + 1);
+    for (const e of base[p].errs) {
+      const [program, file, ...rest] = e.key.split("\t");
+      const key = [program, renamed.get(file) ?? file, ...rest].join("\t");
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
     const known: Err[] = [];
     const fresh: Err[] = [];
     for (const e of cur.errs) {
@@ -209,6 +220,7 @@ async function typecheckStep(): Promise<boolean> {
 }
 
 const steps: Array<[string, () => Promise<boolean>]> = [
+  ["module layout", async () => (await run(["bun", "scripts/check-module-layout.ts"])) === 0],
   ["prisma generate", async () => (await run(["bun", "run", "prisma:generate"])) === 0],
   ["prisma validate", async () => (await run(["bunx", "prisma", "validate"])) === 0],
   ["api tests", testStep],

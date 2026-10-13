@@ -2,11 +2,11 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { PassportModule } from "@nestjs/passport";
-import { AuthService } from "./auth.service";
-import { AuthController } from "./auth.controller";
-import { BetterAuthController } from "./better-auth.controller";
-import { JwtStrategy } from "./strategies/jwt.strategy";
-import { JWT_LIFETIME_SECONDS } from "./auth-cookie";
+import { AuthService } from "./service/auth.service";
+import { AuthController } from "./controller/auth.controller";
+import { BetterAuthController } from "./controller/better-auth.controller";
+import { JwtStrategy } from "./strategy/jwt.strategy";
+import { JWT_LIFETIME_SECONDS } from "./utils/auth-cookie";
 
 @Module({
   imports: [

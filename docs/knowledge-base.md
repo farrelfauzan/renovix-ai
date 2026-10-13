@@ -180,7 +180,7 @@ ON knowledge_chunks USING hnsw (embedding vector_cosine_ops);
 
 ### Embedding Model
 
-Currently uses `intfloat/multilingual-e5-large-instruct` (`apps/api/src/app/knowledge/embedding.service.ts`). The vector dimension in the schema is `vector(1024)`. If you change the embedding model, update the dimension in `prisma/schema.prisma` accordingly.
+Currently uses `intfloat/multilingual-e5-large-instruct` (`apps/api/src/app/knowledge/service/embedding.service.ts`). The vector dimension in the schema is `vector(1024)`. If you change the embedding model, update the dimension in `prisma/schema.prisma` accordingly.
 
 ---
 

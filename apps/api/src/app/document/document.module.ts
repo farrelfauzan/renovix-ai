@@ -1,10 +1,10 @@
 import { Module } from "@nestjs/common";
 import { KnowledgeModule } from "../knowledge/knowledge.module";
-import { DocumentController } from "./document.controller";
-import { DocumentService } from "./document.service";
-import { PdfConverter } from "./converters/pdf.converter";
-import { DocxConverter } from "./converters/docx.converter";
-import { XlsxConverter } from "./converters/xlsx.converter";
+import { DocumentController } from "./controller/document.controller";
+import { DocumentService } from "./service/document.service";
+import { PdfConverter } from "./converter/pdf.converter";
+import { DocxConverter } from "./converter/docx.converter";
+import { XlsxConverter } from "./converter/xlsx.converter";
 
 @Module({
   imports: [KnowledgeModule],
