@@ -81,6 +81,7 @@ docs/           # Documentation
    ```bash
    bun run prisma:migrate
    ```
+   The history is one baseline migration (RX-90). A local database created before it must be recreated with `bun run prisma:reset` (drops its data).
 
 6. **Generate Prisma client**
    ```bash

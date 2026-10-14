@@ -481,7 +481,7 @@ model InvitationCode {
   timesRedeemed   Int       @default(0) @map("times_redeemed")
 
   // Validity (defaults to 2 months from creation)
-  expiresAt       DateTime  @default(dbgenerated("NOW() + INTERVAL '2 months'")) @map("expires_at") @db.Timestamptz()
+  expiresAt       DateTime  @default(dbgenerated("(now() + '2 mons'::interval)")) @map("expires_at") @db.Timestamptz()
   isActive        Boolean   @default(true) @map("is_active")
 
   // Tracking

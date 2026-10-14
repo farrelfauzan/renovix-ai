@@ -22,6 +22,8 @@ Port 55432 taken? Start with `TEST_DB_PORT=55433` and use that port in `TEST_DAT
 
 `prisma migrate deploy` runs once per test run (Jest `globalSetup`). Without `TEST_DATABASE_URL` the unit tests still run and the database tests fail with a hint.
 
+**Recreating the test database.** RX-90 replaced the migration history with one baseline (`prisma/migrations/20261014200000_baseline`). A test database migrated before that still lists the old migrations and `migrate deploy` refuses it; remove its volume and start it again: `docker compose -f docker-compose.test.yml -p renovix-test down -v`, then step 1. `bun run check` always starts a fresh one.
+
 ## `bun run check`
 
 One command for the local check set (`scripts/check.ts`). It runs every step, prints a PASS/FAIL table, and exits 1 if any step failed (naming them), otherwise 0.
@@ -63,7 +65,7 @@ afterAll(() => moduleRef?.close());
 
 - `createTestModule(metadata, override?)` builds a Nest testing module with the real `PrismaService` (on the test database), every repository (the list `REPOSITORIES` in `apps/api/test/test-module.ts`; add a new repository there), the global `AccessGuard` registered as in `AppModule` (RX-114: a route without `@Access` answers 403) plus your `metadata`. `override` receives the builder for `overrideProvider` / `overrideGuard`.
 - `createFastifyApp(moduleRef)` starts it as a Fastify app for `app.inject(...)`; close it with `app.close()`.
-- `resetDatabase(prisma)` truncates every table except `_prisma_migrations`. This also removes the three plans the migrations seed; create the plans a test needs with `createPlan`. The same goes for the five built-in back-office roles (RX-96): `seedAdminRoles(prisma)` in `apps/api/test/admin-auth.ts` runs the migration's own INSERT again (`createAdmin` there calls it).
+- `resetDatabase(prisma)` truncates every table except `_prisma_migrations`. The migrations insert no plans (RX-90); create the plans a test needs with `createPlan`. The truncate also removes the five built-in back-office roles (RX-96): `seedAdminRoles(prisma)` in `apps/api/test/admin-auth.ts` runs the baseline migration's own INSERT again (`createAdmin` there calls it).
 - Files run one at a time (`maxWorkers: 1`) because they share one database.
 - The guards load better-auth, which is ESM-only; `apps/api/test/setup-env.ts` mocks it for every spec (no session) and sets `JWT_SECRET` and a fake 32-byte `MCP_ENCRYPTION_KEY` (both required, no fallback: RX-110; `NODE_ENV` is `test`, so test values need not be 32 characters). A spec that needs a session mocks it itself: `jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: (...args) => mockGetSession(...args) } } }))` (the path is relative to the spec's folder; this one is for a spec in a module's layer folder). JWTs signed with `process.env.JWT_SECRET` still go through the real guard.
 
