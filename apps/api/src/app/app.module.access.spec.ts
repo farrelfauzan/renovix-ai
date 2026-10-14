@@ -96,4 +96,64 @@ describe("RX-114: every route of AppModule declares its access", () => {
   it("no controller or route uses @UseGuards", () => {
     expect(labels(routes.filter((route) => route.usesGuards))).toEqual([]);
   });
+
+  // The decided declaration of every route (RX-114 inventory; 12 public routes per D112).
+  // A route that changes kind, or a new route that is not jwt/session, must be added here on purpose.
+  const PUBLIC_ROUTES = [
+    "ALL /auth/better/* (BetterAuthController.handleAuth)",
+    "GET / (AppController.getData)",
+    "GET /health (HealthController.check)",
+    "GET /mcp/user/oauth/callback (McpUserController.oauthCallback)",
+    "GET /models (ModelsController.listModels)",
+    "GET /webhooks/stripe (WebhookController.healthCheck)",
+    "GET /workspace-invites/accept (WorkspaceInviteController.resolveInvite)",
+    "POST /auth/login (AuthController.login)",
+    "POST /auth/logout (AuthController.logout)",
+    "POST /auth/register (AuthController.register)",
+    "POST /webhooks/gowa (GowaWebhookController.handleInbound)",
+    "POST /webhooks/stripe (WebhookController.handleStripeWebhook)",
+  ];
+  const API_KEY_ROUTES = [
+    "DELETE /conversations/:id (ConversationController.delete)",
+    "DELETE /v1/knowledge/bases/:id (KnowledgeController.deleteKnowledgeBase)",
+    "DELETE /v1/knowledge/bases/:id/chunks/:chunkId (KnowledgeController.deleteChunk)",
+    "GET /conversations (ConversationController.list)",
+    "GET /conversations/:id (ConversationController.get)",
+    "GET /v1/knowledge/bases (KnowledgeController.listKnowledgeBases)",
+    "GET /v1/knowledge/bases/:id (KnowledgeController.getKnowledgeBase)",
+    "GET /v1/knowledge/bases/:id/chunks (KnowledgeController.listChunks)",
+    "POST /chat/completions (ChatController.createCompletion)",
+    "POST /export (DocumentController.exportDocument)",
+    "POST /v1/knowledge/bases (KnowledgeController.createKnowledgeBase)",
+    "POST /v1/knowledge/bases/:id/chunks (KnowledgeController.addChunks)",
+    "POST /v1/knowledge/bases/:id/upload (KnowledgeController.uploadMarkdown)",
+    "POST /v1/knowledge/search (KnowledgeController.searchChunks)",
+    "PUT /v1/knowledge/bases/:id (KnowledgeController.updateKnowledgeBase)",
+  ];
+  const PORTAL_ROUTES = [
+    "DELETE /chat/portal/conversations/:id (PortalController.deleteConversation)",
+    "DELETE /chat/portal/knowledge/:id (PortalController.deleteKnowledgeBase)",
+    "DELETE /chat/portal/knowledge/:id/chunks/:chunkId (PortalController.deleteChunk)",
+    "GET /chat/portal/conversations (PortalController.listConversations)",
+    "GET /chat/portal/conversations/:id (PortalController.getConversation)",
+    "GET /chat/portal/knowledge (PortalController.listKnowledgeBases)",
+    "GET /chat/portal/knowledge/:id/chunks (PortalController.listChunks)",
+    "GET /chat/portal/models (PortalController.getModels)",
+    "GET /chat/portal/usage (PortalController.getUsage)",
+    "POST /chat/portal/completions (PortalController.createCompletion)",
+    "POST /chat/portal/knowledge (PortalController.createKnowledgeBase)",
+    "POST /chat/portal/knowledge/:id/upload (PortalController.uploadToKnowledgeBase)",
+    "POST /chat/portal/link-session (PortalController.linkSession)",
+  ];
+  const declares = (route: Route, methods: string[]) =>
+    !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
+
+  it("each route declares the methods decided for it; every other route is jwt/session", () => {
+    expect(labels(routes.filter((route) => route.access?.public))).toEqual(PUBLIC_ROUTES);
+    expect(labels(routes.filter((route) => declares(route, ["apiKey"])))).toEqual(API_KEY_ROUTES);
+    expect(labels(routes.filter((route) => declares(route, ["portal"])))).toEqual(PORTAL_ROUTES);
+    const known = [...PUBLIC_ROUTES, ...API_KEY_ROUTES, ...PORTAL_ROUTES];
+    const others = routes.filter((route) => !known.includes(route.label));
+    expect(labels(others.filter((route) => !declares(route, ["jwt", "session"])))).toEqual([]);
+  });
 });
