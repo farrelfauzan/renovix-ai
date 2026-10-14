@@ -5,16 +5,15 @@ import {
   Param,
   Query,
   Req,
-  UseGuards,
   NotFoundException,
   HttpCode,
   ParseUUIDPipe,
 } from "@nestjs/common";
-import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { ConversationService } from "../service/conversation.service";
 
 @Controller("conversations")
-@UseGuards(ApiKeyGuard)
+@Access({ auth: ["apiKey"] })
 export class ConversationController {
   constructor(private readonly conversationService: ConversationService) {}
 

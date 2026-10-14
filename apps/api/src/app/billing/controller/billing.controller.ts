@@ -5,11 +5,10 @@ import {
   Body,
   Query,
   Req,
-  UseGuards,
   BadRequestException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { ConfigService } from "@nestjs/config";
 import type Stripe from "stripe";
 import { BillingService } from "../service/billing.service";
@@ -36,14 +35,14 @@ export class BillingController {
   }
 
   @Get("balance")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async getBalance(@Req() req: any) {
     const balance = await this.billing.getBalance(req.user.userId);
     return { balance };
   }
 
   @Get("transactions")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async getTransactions(
     @Req() req: any,
     @Query("limit") limit?: string,
@@ -68,7 +67,7 @@ export class BillingController {
   }
 
   @Post("checkout")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async createCheckout(@Req() req: any, @Body() body: { amount?: number }) {
     if (
       !this.configService.get<string>("STRIPE_ENABLED") ||

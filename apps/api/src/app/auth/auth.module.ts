@@ -5,7 +5,6 @@ import { PassportModule } from "@nestjs/passport";
 import { AuthService } from "./service/auth.service";
 import { AuthController } from "./controller/auth.controller";
 import { BetterAuthController } from "./controller/better-auth.controller";
-import { JwtStrategy } from "./strategy/jwt.strategy";
 import { JWT_LIFETIME_SECONDS } from "./utils/auth-cookie";
 
 @Module({
@@ -21,7 +20,7 @@ import { JWT_LIFETIME_SECONDS } from "./utils/auth-cookie";
     }),
   ],
   controllers: [AuthController, BetterAuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService],
   exports: [AuthService],
 })
 export class AuthModule {}

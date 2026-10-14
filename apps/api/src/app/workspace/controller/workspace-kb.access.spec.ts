@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { JwtModule, JwtService } from "@nestjs/jwt";
+import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
 import * as jwt from "jsonwebtoken";
@@ -17,7 +17,6 @@ import { AgentController } from "../../agent/controller/agent.controller";
 import { AgentService } from "../../agent/service/agent.service";
 import { PortalController } from "../../portal/controller/portal.controller";
 import { PortalTierService } from "../../portal/service/portal-tier.service";
-import { PortalGuard } from "../../portal/guard/portal.guard";
 import { ConversationService } from "../../chat/service/conversation.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -77,7 +76,6 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
-      imports: [JwtModule.register({ secret: "rx113-portal-jwt" })],
       controllers: [KnowledgeController, WorkspaceChannelController, AgentController, PortalController],
       providers: [
         KnowledgeService,
@@ -87,7 +85,6 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
         WorkspaceQuotaService,
         WorkspaceKnowledgeService,
         AgentService,
-        PortalGuard,
         ConversationService,
         { provide: EmbeddingService, useValue: embedding },
         { provide: S3Service, useValue: {} },

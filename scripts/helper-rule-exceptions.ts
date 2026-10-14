@@ -12,9 +12,9 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
   // Entry points (test 3)
   [`${SRC}/auth/controller/auth.controller.ts AuthController.logout`]: "test 3: route handler",
   [`${SRC}/auth/controller/better-auth.controller.ts BetterAuthController.handleAuth`]: "test 3: route handler (also test 2: await, process.env)",
-  ["apps/api/src/common/guards/session.guard.ts SessionGuard.canActivate"]: "test 3: guard canActivate (also test 2: await)",
 
   // Outside world, clock, randomness (test 2)
+  ["apps/api/src/common/guards/combined-auth.guard.ts CombinedAuthGuard.trySession"]: "test 2: await, network (the Better Auth session lookup)",
   [`${SRC}/auth/service/auth.service.ts AuthService.generateApiKey`]: "test 2: randomness (crypto.randomBytes); RX-18 owns the API key helpers",
   [`${SRC}/codes/service/codes.service.ts CodesService.generateCode`]: "test 2: randomness (crypto.randomBytes)",
   [`${SRC}/knowledge/service/s3.service.ts S3Service.buildKey`]: "test 2: clock (Date.now)",

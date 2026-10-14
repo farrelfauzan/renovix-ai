@@ -60,6 +60,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - **Fastify, not Express** -- the API uses `@nestjs/platform-fastify`. Do not import Express-specific middleware or use Express request/response types.
 - **Global API prefix** is `/api` with URI versioning defaulting to `/v1`. All routes resolve to `/api/v1/...` except health (`/api/health` is version-neutral).
 - **Dual auth system** -- JWT Bearer tokens (legacy) + Better Auth sessions (SSO via Google/GitHub). `CombinedAuthGuard` tries JWT first, falls back to session cookie. Portal endpoints use `X-Portal-Session` header.
+- **Every route declares `@Access`** (RX-114, `apps/api/src/common/decorators/access.decorator.ts`): the accepted methods (`auth: ["jwt", "session"]`, `["apiKey"]`, `["portal"]`) or `public: true` with a `reason`. The global `AccessGuard` denies a route without it (403); no `@UseGuards` for authentication. `apps/api/src/app/app.module.access.spec.ts` fails on a route that breaks this.
 - **Body limit differs by env** -- dev: 50MB, production: 1MB (configured in `apps/api/src/main.ts`).
 - **TypeScript build errors are ignored** in all Next.js apps (`ignoreBuildErrors: true` in next.config). The build will succeed even with TS errors.
 - **No ESLint or Prettier** is configured. No lint step exists.
@@ -82,7 +83,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 ### API module layout
 
 - A feature module is every folder of `apps/api/src/app/` except `prisma`, `config`, `providers` and `google-storage` (18 today).
-- Code shared by the modules lives in `apps/api/src/common/`, in a folder named for its kind (today: `guards/`). A folder is created when its first file arrives.
+- Code shared by the modules lives in `apps/api/src/common/`, in a folder named for its kind (today: `guards/`, `decorators/`, `types/`; `access.module.ts` at its root). A folder is created when its first file arrives.
 - Inside a feature module, files are arranged by layer: `controller/`, `service/`, `repository/` (today: codes), `dto/`. A file of another kind goes into a folder named for its kind (today: `guard/`, `scheduler/`, `strategy/`, `converter/`, `config/`, `utils/` for helpers, `types/`).
 - Only the `<module>.module.ts` file stays at the module root.
 - A test file sits in the folder of the file it tests; a test that covers several files sits next to its main subject (HTTP tests in `controller/`).

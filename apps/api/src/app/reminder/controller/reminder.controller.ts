@@ -7,13 +7,12 @@ import {
   Body,
   Param,
   Req,
-  UseGuards,
   HttpCode,
   ParseUUIDPipe,
   BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { ReminderService } from "../service/reminder.service";
 import { ReminderStatus } from "@generated/prisma/client.js";
 import { z } from "zod";
@@ -37,7 +36,7 @@ const UpdateReminderSchema = z.object({
 });
 
 @Controller("reminders")
-@UseGuards(CombinedAuthGuard)
+@Access({ auth: ["jwt", "session"] })
 export class ReminderController {
   constructor(private readonly reminderService: ReminderService) {}
 

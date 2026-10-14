@@ -2,12 +2,11 @@ import {
   Controller,
   Post,
   Body,
-  UseGuards,
   BadRequestException,
   HttpCode,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { DocumentService } from "../service/document.service";
 import { ExportRequestSchema } from "../dto/export-request.dto";
 
@@ -16,7 +15,7 @@ export class DocumentController {
   constructor(private readonly documentService: DocumentService) {}
 
   @Post()
-  @UseGuards(ApiKeyGuard)
+  @Access({ auth: ["apiKey"] })
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   async exportDocument(@Body() body: unknown) {

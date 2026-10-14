@@ -2,7 +2,7 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  BadRequestException,
+  UnauthorizedException,
   Logger,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -34,7 +34,7 @@ export class PortalGuard implements CanActivate {
     // 1. Session token is always required
     const sessionToken = request.headers["x-portal-session"];
     if (!sessionToken || typeof sessionToken !== "string") {
-      throw new BadRequestException("Missing X-Portal-Session header");
+      throw new UnauthorizedException("Missing X-Portal-Session header");
     }
 
     // 2. Try to extract user identity (JWT or Better Auth session)

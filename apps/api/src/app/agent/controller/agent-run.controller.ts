@@ -7,14 +7,13 @@ import {
   Param,
   Req,
   Res,
-  UseGuards,
   HttpCode,
   ParseUUIDPipe,
   BadRequestException,
   Logger,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import type { FastifyReply } from "fastify";
 import { AgentRunService } from "../service/agent-run.service";
 import { AgentToolService } from "../service/agent-tool.service";
@@ -23,7 +22,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
 
 @Controller("agents")
-@UseGuards(CombinedAuthGuard)
+@Access({ auth: ["jwt", "session"] })
 export class AgentRunController {
   private readonly logger = new Logger(AgentRunController.name);
 

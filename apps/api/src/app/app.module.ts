@@ -25,6 +25,8 @@ import { McpModule } from "./mcp/mcp.module";
 import { GuardrailModule } from "./guardrail/guardrail.module";
 import { ReminderModule } from "./reminder/reminder.module";
 import { CodesModule } from "./codes/codes.module";
+import { AccessModule } from "../common/access.module";
+import { AccessGuard } from "../common/guards/access.guard";
 
 @Module({
   imports: [
@@ -56,8 +58,13 @@ import { CodesModule } from "./codes/codes.module";
     GuardrailModule,
     ReminderModule,
     CodesModule,
+    AccessModule,
   ],
   controllers: [AppController],
-  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useExisting: AccessGuard },
+  ],
 })
 export class AppModule {}

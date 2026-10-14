@@ -1,3 +1,4 @@
+import { APP_GUARD } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import {
   FastifyAdapter,
@@ -5,11 +6,9 @@ import {
 } from "@nestjs/platform-fastify";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 
-// The real guard imports better-auth (ESM) and the real service imports the
-// generated Prisma client at load time; both are replaced below anyway.
-jest.mock("../../../lib/auth", () => ({ auth: {} }));
+// The real service imports the generated Prisma client at load time; it is
+// replaced below anyway. A stand-in global guard signs every request in.
 jest.mock("../service/agent.service", () => ({ AgentService: class {} }));
 
 describe("RX-2: POST /agents/subscribe is closed", () => {
@@ -22,16 +21,19 @@ describe("RX-2: POST /agents/subscribe is closed", () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [AgentController],
-      providers: [{ provide: AgentService, useValue: mock }],
-    })
-      .overrideGuard(CombinedAuthGuard)
-      .useValue({
-        canActivate: (ctx: any) => {
-          ctx.switchToHttp().getRequest().user = { userId: "user-1" };
-          return true;
+      providers: [
+        { provide: AgentService, useValue: mock },
+        {
+          provide: APP_GUARD,
+          useValue: {
+            canActivate: (ctx: any) => {
+              ctx.switchToHttp().getRequest().user = { userId: "user-1" };
+              return true;
+            },
+          },
         },
-      })
-      .compile();
+      ],
+    }).compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),

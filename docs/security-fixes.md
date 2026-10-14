@@ -6,7 +6,7 @@
 
 ### 1. CRITICAL — Remove Hardcoded JWT Secret Fallback
 
-**Files:** `apps/api/src/app/auth/auth.module.ts`, `apps/api/src/app/auth/strategies/jwt.strategy.ts`
+**Files:** `apps/api/src/app/auth/auth.module.ts`, `apps/api/src/app/auth/strategy/jwt.strategy.ts` (removed by RX-114)
 
 **Problem:** JWT secret defaults to `"change-me-in-production"` if `JWT_SECRET` env var is missing. Attackers can forge tokens.
 
@@ -24,7 +24,7 @@ secretOrKey: configService.getOrThrow<string>("JWT_SECRET"),
 
 ### 2. CRITICAL — Migrate `$executeRawUnsafe` to Safe Prisma Queries
 
-**File:** `apps/api/src/app/billing/billing.service.ts`
+**File:** `apps/api/src/app/billing/service/billing.service.ts`
 
 **Problem:** `$executeRawUnsafe` is fragile — future edits may introduce SQL injection via string concatenation.
 
@@ -51,7 +51,7 @@ Apply to all 5+ occurrences in `billing.service.ts` and the health check in `hea
 
 ### 3. HIGH — Add Rate Limiting
 
-**Files:** `apps/api/src/app/app.module.ts`, `apps/api/src/app/auth/auth.controller.ts`, `apps/api/src/app/chat/chat.controller.ts`
+**Files:** `apps/api/src/app/app.module.ts`, `apps/api/src/app/auth/controller/auth.controller.ts`, `apps/api/src/app/chat/controller/chat.controller.ts`
 
 **Problem:** No rate limiting on auth (brute force) or chat (cost abuse) endpoints.
 
@@ -97,7 +97,7 @@ import { Throttle } from "@nestjs/throttler";
 
 ### 4. HIGH — Stop Returning Raw API Keys in Responses
 
-**File:** `apps/api/src/app/auth/auth.service.ts`
+**File:** `apps/api/src/app/auth/service/auth.service.ts`
 
 **Problem:** `register`, `getProfile`, and `regenerateApiKey` return the full API key in plain text.
 
@@ -140,7 +140,7 @@ export const LoginDtoSchema = z.object({
 
 ### 6. HIGH — Constant-Time API Key Comparison
 
-**File:** `apps/api/src/app/guards/api-key.guard.ts`
+**File:** `apps/api/src/common/guards/api-key.guard.ts`
 
 **Problem:** Database lookup timing may leak whether a key prefix is valid.
 
@@ -194,7 +194,7 @@ export const ChatCompletionRequestSchema = z.object({
 
 ### 8. MEDIUM — Atomic Balance Adjustment with Transaction
 
-**File:** `apps/api/src/app/billing/billing.service.ts`
+**File:** `apps/api/src/app/billing/service/billing.service.ts`
 
 **Problem:** `adjustBalance()` runs multiple SQL statements non-atomically — race condition can cause negative balance.
 
@@ -232,7 +232,7 @@ async adjustBalance(userId: string, reserved: Decimal, actualCost: number) {
 
 ### 9. MEDIUM — Webhook Idempotency via Unique Constraint
 
-**File:** `apps/api/src/app/webhooks/webhook.controller.ts`, `prisma/schema.prisma`
+**File:** `apps/api/src/app/webhooks/controller/webhook.controller.ts`, `prisma/schema.prisma`
 
 **Problem:** Gap between existence check and insert allows double-credit on webhook replay.
 

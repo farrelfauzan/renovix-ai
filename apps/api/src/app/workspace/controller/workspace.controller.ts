@@ -7,13 +7,12 @@ import {
   Body,
   Param,
   Req,
-  UseGuards,
   HttpCode,
   ParseUUIDPipe,
   BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { WorkspaceService } from "../service/workspace.service";
 import { WorkspaceMemberService } from "../service/workspace-member.service";
 import { WorkspaceInviteService } from "../service/workspace-invite.service";
@@ -24,7 +23,7 @@ import { InviteMemberSchema } from "../dto/invite-member.dto";
 import { UpdateMemberSchema } from "../dto/update-member.dto";
 
 @Controller("workspaces")
-@UseGuards(CombinedAuthGuard)
+@Access({ auth: ["jwt", "session"] })
 export class WorkspaceController {
   constructor(
     private readonly workspaceService: WorkspaceService,

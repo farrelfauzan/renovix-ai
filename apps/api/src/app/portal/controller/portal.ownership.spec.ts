@@ -1,9 +1,8 @@
-import { JwtModule, JwtService } from "@nestjs/jwt";
+import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
 import { PortalTierService } from "../service/portal-tier.service";
-import { PortalGuard } from "../guard/portal.guard";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -43,10 +42,8 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
-      imports: [JwtModule.register({ secret: "rx15-portal-jwt" })],
       controllers: [PortalController],
       providers: [
-        PortalGuard,
         ConversationService,
         KnowledgeService,
         { provide: PortalTierService, useValue: {} },
@@ -90,8 +87,13 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
     return { alice, bob, conversation, kb, chunk };
   };
 
+  it("not signed in (no X-Portal-Session header): portal conversation list is 401 (RX-114: was 400)", async () => {
+    const res = await app.inject({ method: "GET", url: "/chat/portal/conversations" });
+
+    expect(res.statusCode).toBe(401);
+  });
+
   it.each([
-    ["no X-Portal-Session header", {}],
     ["a portal session but no user (anonymous)", { "x-portal-session": SESSION }],
     ["an expired-or-invalid JWT (treated as anonymous)", { "x-portal-session": SESSION, authorization: "Bearer not.a.jwt" }],
   ])("not signed in (%s): portal conversation list is 400, not 401", async (_case, headers: Record<string, string>) => {

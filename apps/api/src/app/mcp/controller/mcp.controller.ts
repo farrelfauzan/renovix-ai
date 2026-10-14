@@ -5,13 +5,12 @@ import {
   Delete,
   Param,
   Req,
-  UseGuards,
 } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { McpService } from "../service/mcp.service";
 
 @Controller("mcp")
-@UseGuards(CombinedAuthGuard)
+@Access({ auth: ["jwt", "session"] })
 export class McpController {
   constructor(private readonly mcpService: McpService) {}
 

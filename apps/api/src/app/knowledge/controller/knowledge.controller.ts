@@ -8,13 +8,12 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   HttpCode,
   BadRequestException,
   ParseUUIDPipe,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { KnowledgeService } from "../service/knowledge.service";
 import {
   CreateKnowledgeBaseSchema,
@@ -24,7 +23,7 @@ import {
 } from "../dto/knowledge.dto";
 
 @Controller("v1/knowledge")
-@UseGuards(ApiKeyGuard)
+@Access({ auth: ["apiKey"] })
 export class KnowledgeController {
   constructor(private readonly knowledgeService: KnowledgeService) {}
 

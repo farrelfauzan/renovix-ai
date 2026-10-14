@@ -7,7 +7,6 @@ import {
   Body,
   Param,
   Req,
-  UseGuards,
   HttpCode,
   ParseUUIDPipe,
   BadRequestException,
@@ -15,7 +14,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { PrismaService } from "../../prisma/prisma.service";
 import { WorkspaceService } from "../service/workspace.service";
 import { WorkspaceMemberService } from "../service/workspace-member.service";
@@ -26,7 +25,7 @@ import { UpdateMemberSchema } from "../dto/update-member.dto";
 import { WorkspaceKnowledgeService } from "../service/workspace-knowledge.service";
 
 @Controller("channels/:channelId/workspace")
-@UseGuards(CombinedAuthGuard)
+@Access({ auth: ["jwt", "session"] })
 export class WorkspaceChannelController {
   constructor(
     private readonly prisma: PrismaService,

@@ -1,5 +1,6 @@
 import { Controller, All, Req, Res, VERSION_NEUTRAL } from "@nestjs/common";
 import { auth } from "../../../lib/auth";
+import { Access } from "../../../common/decorators/access.decorator";
 
 /**
  * Forwards all /api/auth/better/* requests to Better Auth handler.
@@ -8,6 +9,7 @@ import { auth } from "../../../lib/auth";
 @Controller({ path: "auth/better", version: VERSION_NEUTRAL })
 export class BetterAuthController {
   @All("*")
+  @Access({ public: true, reason: "better-auth's own endpoints (sign-in, OAuth callbacks, session); better-auth checks the session itself" })
   async handleAuth(@Req() req: any, @Res() res: any) {
     // Build the canonical URL using API_PUBLIC_URL for production correctness
     // (Cloud Run may use internal hostnames behind the LB)

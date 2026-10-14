@@ -11,6 +11,7 @@ import type Stripe from "stripe";
 import { Decimal } from "@prisma/client/runtime/client";
 import { BillingService } from "../../billing/service/billing.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { Access } from "../../../common/decorators/access.decorator";
 
 @Controller("webhooks")
 export class WebhookController {
@@ -38,11 +39,13 @@ export class WebhookController {
   }
 
   @Get("stripe")
+  @Access({ public: true, reason: "tells whether Stripe is configured, no data behind it" })
   healthCheck() {
     return { status: "ok", configured: !!this.stripe };
   }
 
   @Post("stripe")
+  @Access({ public: true, reason: "Stripe calls it without a login; the signature is checked in the handler" })
   async handleStripeWebhook(@Req() req: any) {
     if (
       !this.configService.get<string>("STRIPE_ENABLED") ||
