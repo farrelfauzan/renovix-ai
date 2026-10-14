@@ -16,4 +16,6 @@ process.env.JWT_SECRET = "test-jwt-secret";
 // fallback: obviously fake test values (a spec may set its own before it builds its module).
 process.env.ADMIN_JWT_SECRET = "test-admin-jwt-secret-not-a-real-secret";
 process.env.ADMIN_TOTP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+// MCP credential encryption (RX-110): required, no fallback; an obviously fake 32-byte test key.
+process.env.MCP_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("hex");
 jest.mock("../src/lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));

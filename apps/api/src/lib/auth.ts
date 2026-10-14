@@ -4,6 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@generated/prisma/client.js";
 import crypto from "crypto";
 import { getCookieDomain } from "./cookie-domain";
+import { readRequiredSecret } from "../common/utils/read-required-secret";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -67,8 +68,7 @@ export const auth = betterAuth({
       sameSite: isProduction ? "none" : "lax",
     },
   },
-  secret:
-    process.env.BETTER_AUTH_SECRET || process.env.JWT_SECRET || "change-me",
+  secret: readRequiredSecret(process.env, "BETTER_AUTH_SECRET"),
   trustedOrigins: [
     process.env.DASHBOARD_URL || "http://localhost:4200",
     process.env.CHAT_APP_URL || "http://localhost:4201",

@@ -7,6 +7,7 @@ import {
 import helmet from "@fastify/helmet";
 import { AppModule } from "./app/app.module";
 import { resolveLlmProvider } from "./app/providers/llm-provider";
+import { assertRequiredSecrets } from "./common/utils/assert-required-secrets";
 import { ConfigService } from "@nestjs/config";
 import * as yaml from "js-yaml";
 import { readFileSync } from "fs";
@@ -15,6 +16,8 @@ import { join } from "path";
 async function bootstrap(): Promise<NestFastifyApplication> {
   // RX-88: refuse LLM_PROVIDER=fake in production or next to a real key, before anything starts.
   resolveLlmProvider(process.env);
+  // RX-110: refuse missing, placeholder or too-short auth and encryption secrets, before anything starts.
+  assertRequiredSecrets(process.env);
 
   const isDev = process.env.NODE_ENV === "development";
   const corsOrigins = process.env.CORS_ORIGIN
