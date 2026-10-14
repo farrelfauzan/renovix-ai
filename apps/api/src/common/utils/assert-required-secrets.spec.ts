@@ -11,9 +11,10 @@ const productionEnv = (): NodeJS.ProcessEnv => ({
   BETTER_AUTH_SECRET: randomBytes(48).toString("base64"),
   IP_HASH_SECRET: randomBytes(48).toString("base64"),
   MCP_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
+  MCP_OAUTH_STATE_SECRET: randomBytes(48).toString("base64"),
 });
 
-const SECRETS = ["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_ENCRYPTION_KEY"];
+const SECRETS = ["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_ENCRYPTION_KEY", "MCP_OAUTH_STATE_SECRET"];
 
 describe("assertRequiredSecrets", () => {
   it("control: starts in production with real values", () => {
@@ -30,7 +31,7 @@ describe("assertRequiredSecrets", () => {
     expect(() => assertRequiredSecrets({ ...productionEnv(), [name]: "" })).toThrow(`${name} is required`);
   });
 
-  it.each(["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET"])(
+  it.each(["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_OAUTH_STATE_SECRET"])(
     "refuses to start in production when %s is the placeholder \"change-me-in-production\"",
     (name) => {
       expect(() => assertRequiredSecrets({ ...productionEnv(), [name]: "change-me-in-production" })).toThrow(
@@ -39,7 +40,7 @@ describe("assertRequiredSecrets", () => {
     },
   );
 
-  it.each(["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET"])(
+  it.each(["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_OAUTH_STATE_SECRET"])(
     "refuses to start in production when %s is shorter than 32 characters",
     (name) => {
       expect(() => assertRequiredSecrets({ ...productionEnv(), [name]: "x".repeat(31) })).toThrow(

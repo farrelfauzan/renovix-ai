@@ -36,7 +36,7 @@ const withKey = <T>(key: string | undefined, build: () => T): T => {
 };
 
 const userService = (store: ReturnType<typeof createCredentialStore>, key: string | undefined) =>
-  withKey(key, () => new McpUserService(new ConfigService({}), store as never));
+  withKey(key, () => new McpUserService(new ConfigService({}), store as never, {} as never));
 
 describe("MCP credentials and MCP_ENCRYPTION_KEY (RX-110)", () => {
   let errorLog: jest.SpyInstance;

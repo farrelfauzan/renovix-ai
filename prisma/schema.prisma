@@ -59,6 +59,7 @@ model User {
   workspaceMemberships WorkspaceMember[]
   workspaceInvitesSent WorkspaceInvite[] @relation("InviteSender")
   mcpCredentials UserMcpCredential[]
+  mcpOAuthStates McpOAuthState[]
   guardrailViolations GuardrailViolation[]
   reminders       Reminder[]
 
@@ -647,6 +648,7 @@ model Workspace {
   knowledgeBases KnowledgeBase[]
   agents      Agent[]
   userMcpCredentials UserMcpCredential[]
+  mcpOAuthStates McpOAuthState[]
   createdAt   DateTime          @default(now()) @db.Timestamptz()
   updatedAt   DateTime          @updatedAt @db.Timestamptz()
 
@@ -757,6 +759,22 @@ model UserMcpCredential {
   @@index([userId, workspaceId])
   @@index([workspaceId, provider])
   @@map("user_mcp_credentials")
+}
+
+// One-time values of the MCP OAuth flows that were started and not yet finished (RX-151).
+// The callback deletes the row that matches its signed state; a second use finds none.
+model McpOAuthState {
+  nonce       String    @id
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String    @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider    String
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([expiresAt])
+  @@map("mcp_oauth_states")
 }
 
 // ─── Guardrail Models ───────────────────────────────────────────────────────────

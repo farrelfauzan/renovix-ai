@@ -147,7 +147,7 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 Copy `.env.example` to `.env`. Key variables:
 
-`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET` and `MCP_ENCRYPTION_KEY` are required in every mode (RX-110, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` that is not 32 bytes.
+`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY` and `MCP_OAUTH_STATE_SECRET` are required in every mode (RX-110, RX-151, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` that is not 32 bytes.
 
 | Variable | Required | Notes |
 |----------|----------|-------|
@@ -162,6 +162,8 @@ Copy `.env.example` to `.env`. Key variables:
 | `OPENROUTER_API_KEY` | Yes | AI provider (chat models and embeddings); `OPENROUTER_APP_TITLE` / `OPENROUTER_APP_URL` are optional |
 | `S3_*` | Yes | S3/MinIO config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_CDN_DOMAIN` required; `S3_ENDPOINT` optional (MinIO) |
 | `MCP_ENCRYPTION_KEY` | Yes | AES-256-GCM key for stored MCP credentials: exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback, no padding (RX-110) |
+| `MCP_OAUTH_STATE_SECRET` | Yes | HMAC key that signs the state of the MCP OAuth flows (RX-151); no fallback, no flow starts without it. At least 32 characters; generate with `openssl rand -base64 48` |
+| `MCP_OAUTH_STATE_TTL_SECONDS` | -- | How long a started MCP OAuth flow stays valid (default 600); its one-time value is in `mcp_oauth_states` |
 | `CORS_ORIGIN` | Prod | Comma-separated allowed origins (not in `.env.example`) |
 | `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |
