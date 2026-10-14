@@ -223,12 +223,12 @@ Three kinds of rows. Field names are proposals for RX-20; the column types are R
 | `id` | Entry id. | always |
 | `accountId`, `wallet` | The wallet the entry changes. | always |
 | `seq` | 1, 2, 3, … per wallet, no gaps. | always |
-| `type` | `plan_grant` (package purchase, package code, Enterprise period credits), `top_up` (top-up pack), `bonus` (credits-only code, promotion), `weekly_reset` (free allowance, RX-58), `usage` (one model call), `demo_overage` (D43), `refund` (D24), `adjustment` (back office, RX-99). | always |
+| `type` | `plan_grant` (package purchase, package code, Enterprise period credits), `top_up` (top-up pack), `bonus` (credits-only code, promotion), `weekly_reset` (free allowance, RX-58), `usage` (one model call), `refund` (D24), `adjustment` (back office, RX-99). | always |
 | `amount` | Signed credits, whole micro-credits. Positive adds, negative removes. `usage` is ≤ 0. | always |
 | `balanceAfter` | The wallet balance right after this entry. | always |
 | `uncharged` | Credits a model call consumed that were not charged: provider error, demo overage, estimate overrun (section 3). 0 otherwise. | always (0 if none) |
 | `memberUserId` | The person behind the entry: the runner for usage, the buyer for a purchase, the admin for an adjustment. On a company pool this is how spend is attributed (section 5). | always |
-| `requestId` | The request. | `usage`, `demo_overage` |
+| `requestId` | The request. | `usage` |
 | `callId` | The model call. Unique among `usage` entries. | `usage` |
 | `runId`, `agentId`, `parentCallId` | The run, the agent that made the call, and the caller's model call that started this hop (null for the root agent's calls). | `usage` in an agent run; `agentId` null in home chat |
 | `modelId`, `tier`, `rateNew`, `rateCached`, `rateOut` | The model and the rates used, copied at the time of the call. | `usage` |
@@ -257,7 +257,7 @@ Cost: every model call writes one ledger entry and one usage row (PRD 10 R7) and
 |---|---|
 | I1 | For every wallet: `balance` = sum of `amount` over its entries, exactly. |
 | I2 | For every entry: `balanceAfter` = previous entry's `balanceAfter` + `amount` (the first entry's previous value is 0), and the newest entry's `balanceAfter` = the account row's `balance`. This makes the I1 check one row read per wallet instead of a sum. |
-| I3 | Every `usage` and `demo_overage` entry has a `requestId`; every `usage` entry has a `callId`, and a `callId` appears on at most one `usage` entry. |
+| I3 | Every `usage` entry has a `requestId` and a `callId`, and a `callId` appears on at most one `usage` entry. |
 | I4 | `held` = sum of (`amountHeld` − `consumed`) over the wallet's `open` reservations; 0 ≤ `consumed` ≤ `amountHeld`. |
 | I5 | `balance` ≥ 0 and `available` = `balance` − `held` ≥ 0 at all times. No path makes a balance negative, including demo overage (D43) and estimate overrun. |
 | I6 | For a settled reservation: sum of −`amount` of its usage entries = `consumed` + any overrun charged from `available`, and the released part = `amountHeld` − `consumed`. |
@@ -395,7 +395,7 @@ Follows: D8 (credits never expire), D3 and D9 (zero locks everything except hist
 
 - **One balance.** Package grants, top-ups, credits-only codes and Enterprise period credits all go into the same `paid` wallet. None expires (D8). There is no per-grant bucket and no expiry job. The free weekly allowance is a separate wallet that resets (section 6).
 - **Low-credit warnings.** The trigger is the projected run-out date (section 12), not a percentage. The Scope line's "20%, 10% and 5%" (D9) is superseded by D45 and D47; open item 6 asks the Tech Lead to record that.
-- **Locked.** An account is locked when it has no available credits it may spend: `paid` available is 0 and the `weekly_free` available is 0 (or the request is not eligible for it). Locked is computed, not stored. A request whose estimate exceeds the available balance is refused with HTTP 402 `CREDITS_EXHAUSTED` even when the balance is above 0 (RX-22); the locked screen is shown at 0 (RX-29).
+- **Locked.** An account is locked when it has no credits it may spend: the `paid` balance is 0 and the `weekly_free` balance is 0 (or the request is not eligible for it). Locked uses `balance`, not `available`: a run's own hold can bring `available` to 0 for a few minutes (section 13.3) without locking the account. Locked is computed, not stored. A request whose estimate exceeds the available balance is refused with HTTP 402 `CREDITS_EXHAUSTED` even when the balance is above 0 (RX-22); the locked screen is shown when the balance is 0 (RX-29).
 - **Blocked when locked** (PRD 02, RX-29): home chat, agent and channel chat, creating or editing agents and prompts, knowledge uploads, MCP connect or change, web search, document generation, public API requests (402 `CREDITS_EXHAUSTED`), and scheduled reminders that would run an agent (paused, owner notified).
 - **Open when locked** (D3, D36, RX-29): reading history (conversations, agent runs, channel messages, generated documents), sign in and out, profile, redeem a code, and billing: buy a package, or top up if the account has a package. A free account is offered a package or a code and the next weekly reset time, never a top-up.
 - **Frozen pool** (D23): a company pool whose renewal is unpaid is frozen: reservations on it are refused, history stays readable, the credits are kept, and paying unfreezes it (RX-60).
@@ -422,7 +422,7 @@ Follows: D36 (no credits-only state; top-up requires a package), D5 (2 credits a
 | Package: Starter or Pro | Buy it, or redeem a code that grants it | `paid`; also `weekly_free` for home chat on Standard (RX-58: "spent before paid credits") | Yes, any time (D37) | Yes | Every tier by default; a back-office setting per package (D111) |
 | Package: Enterprise | Sales-assisted activation (D12) | The company pool for workspace agents (section 5); the member's own wallets for their own use | Pool: D18 (open) | Yes | Every tier by default; the contract's allowed tiers (D111, RX-86) |
 
-- A **weekly reset** (RX-58) writes one `weekly_reset` entry with `amount = allowance − balance` computed in the update itself, so the wallet ends at the allowance with no carry-over. The allowance is a platform setting; its value is 2 credits a week (D5). Paid credits are never touched by the reset.
+- A **weekly reset** (RX-58) writes one `weekly_reset` entry with `amount = max(allowance, held) − balance`, computed in the same conditional update, so the wallet ends at the allowance with no carry-over and never below what its open reservations hold (I5). The amount is negative when the balance is above the allowance (the allowance setting was lowered); if an open hold is larger than the new allowance, the wallet stays at the held amount and reaches the allowance at the next reset after the hold is settled. RX-58 tests that case: a reset with an open hold larger than the new allowance. The allowance is a platform setting; its value is 2 credits a week (D5). Paid credits are never touched by the reset.
 - A request draws from **one wallet** (open item 9): the `weekly_free` wallet when the request is eligible (home chat on a Standard model, or the demo agent) and its available covers the estimate; otherwise the `paid` wallet.
 - A free account cannot buy a top-up pack or redeem a credits-only code; checkout (RX-35) and redemption refuse it on the server, with a negative test each.
 
@@ -475,14 +475,14 @@ Follows: D43 (amends D5), D47 (the Product Manager's demo proposal approved), D5
 - **Paid from** the `weekly_free` wallet (D43). Before the run: estimate (section 13.3) and start only if the wallet's available covers it; otherwise offer Starter (RX-39).
 - **Anti-farming caps** (RX-39): demo runs per account per week and demo runs per IP per day (reusing RX-10's counters). Both are platform settings without decided values.
 - **Excluded for free accounts** (RX-39): scheduled runs, agent calls to other agents, API and WhatsApp, Premium and Frontier models, a second agent, changing the model.
-- **Demo overage** (RX-22): a demo run that started may finish even if it costs more than the wallet holds, up to the demo overage cap (a platform setting). The wallet is charged what it holds, never below 0 (I5); the excess is written as one `demo_overage` entry with `amount` 0 and `uncharged` = the excess. Before each model call the run checks `consumed + E_call ≤ wallet balance at start + demo overage cap`; above it the run stops.
+- **Demo overage** (RX-22): a demo run that started may finish even if it costs more than the wallet holds, up to the demo overage cap (a platform setting). The wallet is charged what it holds, never below 0 (I5); the excess goes into the `uncharged` field of the demo call's own usage entry, like any overrun (rule 3.1.4). There is no separate entry for it; a demo call is known by its `agentId`, the account's demo agent. Before each model call the run checks `consumed + E_call ≤ wallet balance at start + demo overage cap`; above it the run stops.
 
 Example, weekly wallet balance 0.037686 (Standard 1 / 1 / 1):
 
 | Outcome | Run cost | Entries | Weekly balance after |
 |---|---|---|---|
 | (d1) within the balance: 21,544 new, 9,012 cached, 3,877 output | 21,544 + 9,012 + 3,877 = 34,433 micro-credits = 0.034433 | usage −0.034433 | 0.003253 |
-| (d2) above the balance: 29,871 new, 10,430 cached, 4,102 output | 29,871 + 10,430 + 4,102 = 44,403 micro-credits = 0.044403 | usage −0.037686; demo_overage amount 0.000000, uncharged 0.006717 (if the cap is at least 0.006717) | 0.000000 |
+| (d2) above the balance: 29,871 new, 10,430 cached, 4,102 output | 29,871 + 10,430 + 4,102 = 44,403 micro-credits = 0.044403 | usage −0.037686, uncharged 0.006717 (if the cap is at least 0.006717) | 0.000000 |
 
 ## 12. Run-out projection, warnings and emails
 
@@ -490,7 +490,7 @@ Follows: D45 (message: projected run-out date), D47 (trigger rules approved: 7-d
 
 - **Spent in the last 7 days** comes from a daily counter row per wallet (`accountId`, `day`, `spent`), incremented with each usage entry. The projection reads at most 7 rows. Cost: one more row update per model call.
 - **Rate** = credits spent in the last 7 days ÷ 7 (credits per day).
-- **Run-out** = now + available ÷ rate, shown in the profile timezone as "At this rate your credits run out on DD/MM/YYYY HH:00", the hour rounded down (PROPOSED; the earlier hour is the safer one).
+- **Run-out** = now + available ÷ rate, shown in the profile timezone as "At this rate your credits run out on DD/MM/YYYY HH:MM" (D45), the time rounded down to the minute.
 - **Not enough use yet** with fewer than 3 days of use or a spend below a platform setting; **more than a year at your current pace** when the run-out is more than a year away (RX-30).
 - **Banners:** amber when run-out is within 7 days, red within 2 days. **Floor:** always warn when the available balance is below 1 credit or below the estimate of the next scheduled run. The red state lists scheduled runs due before the run-out. Thresholds are platform settings (section 9).
 - **Emails:** at the 7-day projection, the 2-day projection and the floor, each once per purchase cycle; buying credits resets them. Individual: the account owner. Enterprise pool: the company owner only (D78), and only when the run-out is within 7 days and before the renewal date. Members' own warnings stay per member; per-member projections wait for D2.
