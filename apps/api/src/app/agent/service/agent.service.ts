@@ -10,6 +10,10 @@ import { ProviderRouter } from "../../providers/provider-router";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import type { CreateAgentDto } from "../dto/create-agent.dto";
 import type { UpdateAgentDto } from "../dto/update-agent.dto";
+import {
+  WHATSAPP_WEBHOOK_SECRET_REQUIRED,
+  WhatsappChannelConfigSchema,
+} from "../dto/agent-chat.dto";
 import { ownSubAgents } from "../utils/own-sub-agents";
 
 @Injectable()
@@ -534,6 +538,18 @@ export class AgentService {
       where: { id: channelId, agentId },
     });
     if (!channel) throw new NotFoundException("Channel not found");
+    if (
+      channel.channelType === "whatsapp" &&
+      !WhatsappChannelConfigSchema.safeParse(config).success
+    ) {
+      throw new BadRequestException({
+        error: {
+          message: "Invalid request body",
+          type: "invalid_request_error",
+          details: { webhookSecret: [WHATSAPP_WEBHOOK_SECRET_REQUIRED] },
+        },
+      });
+    }
 
     return this.prisma.agentChannel.update({
       where: { id: channelId },

@@ -8,6 +8,7 @@ const SIGNATURE = "2f64cb6e1dd79818f14d81765d8cb8708d44567004b092870602e50c58435
 const SIGNATURE_OF_OTHER_SECRET = "94946a128a2e1826709e4977a038893851271fc749456ba9d880601f68516014";
 const SIGNATURE_OF_OTHER_PAYLOAD = "5e10b9e8c1b2c16b51c63c7b55e5011ec8d534cd31a334deaabbb5474c6e88db";
 const SIGNATURE_OF_EMPTY_PAYLOAD = "06082c9fddbefddc28f42135f98b7ae4237dadf545b3b388fdecb24cd90b58b9";
+const SIGNATURE_OF_EMPTY_SECRET = "aef0cb01464150bd75af0970b3d9313aea898ba5cddc6c8c3e49f18cca955fad";
 
 describe("RX-130: verifySignature (GOWA webhook, HMAC-SHA256 in hex)", () => {
   it.each([
@@ -27,10 +28,12 @@ describe("RX-130: verifySignature (GOWA webhook, HMAC-SHA256 in hex)", () => {
     { name: "text that is not hex", payload: PAYLOAD, signature: "not-a-hex-signature", secret: SECRET, expected: false },
     { name: "the right signature with a 'sha256=' prefix", payload: PAYLOAD, signature: "sha256=" + SIGNATURE, secret: SECRET, expected: false },
     { name: "the secret itself sent as the signature", payload: PAYLOAD, signature: SECRET, secret: SECRET, expected: false },
-    // Today's behaviour, pinned as it is: hex decoding stops at the first character that is not hex,
-    // so text after a complete right signature is ignored.
-    { name: "the right signature followed by text that is not hex (today: accepted)", payload: PAYLOAD, signature: SIGNATURE + "zz", secret: SECRET, expected: true },
+    // RX-115: was accepted (hex decoding stopped at the first character that is not hex).
+    { name: "the right signature followed by text that is not hex", payload: PAYLOAD, signature: SIGNATURE + "zz", secret: SECRET, expected: false },
     { name: "a signature that is not a string (today: rejected, no throw)", payload: PAYLOAD, signature: undefined as unknown as string, secret: SECRET, expected: false },
+    // RX-115: the raw request body arrives as a Buffer; an empty secret never verifies.
+    { name: "the right signature over the raw bytes (Buffer)", payload: Buffer.from(PAYLOAD), signature: SIGNATURE, secret: SECRET, expected: true },
+    { name: "a signature made with an empty secret, checked with an empty secret", payload: PAYLOAD, signature: SIGNATURE_OF_EMPTY_SECRET, secret: "", expected: false },
   ])("$name -> $expected", ({ payload, signature, secret, expected }) => {
     const actual = verifySignature(payload, signature, secret);
 

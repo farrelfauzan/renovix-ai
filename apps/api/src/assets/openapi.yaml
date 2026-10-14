@@ -442,9 +442,10 @@ paths:
       description: Receives inbound WhatsApp messages from GOWA and routes them to configured agents.
       operationId: handleGowaWebhook
       parameters:
-        - name: x-gowa-signature
+        - name: x-hub-signature-256
           in: header
-          required: false
+          required: true
+          description: "sha256= followed by the hex HMAC-SHA256 of the raw body with the channel's webhookSecret (RX-115)"
           schema:
             type: string
       requestBody:
@@ -463,8 +464,8 @@ paths:
                 properties:
                   ok:
                     type: boolean
-        "400":
-          description: Invalid signature or payload
+        "401":
+          description: Missing or invalid signature, or no channel with a webhookSecret for this number
 
   # ─── Health ────────────────────────────────────────────────────────────────
   /health:
