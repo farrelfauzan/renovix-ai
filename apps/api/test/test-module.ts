@@ -5,6 +5,10 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from "@nestjs/platform-fastify";
+import { AdminNotificationRepository } from "../src/app/admin-auth/repository/admin-notification.repository";
+import { AdminRecoveryCodeRepository } from "../src/app/admin-auth/repository/admin-recovery-code.repository";
+import { AdminSessionRepository } from "../src/app/admin-auth/repository/admin-session.repository";
+import { AdminUserRepository } from "../src/app/admin-auth/repository/admin-user.repository";
 import { CodesRepository } from "../src/app/codes/repository/codes.repository";
 import { PrismaModule } from "../src/app/prisma/prisma.module";
 import { PrismaService } from "../src/app/prisma/prisma.service";
@@ -13,7 +17,13 @@ import { AccessGuard } from "../src/common/guards/access.guard";
 import { testDatabaseUrl } from "./test-database";
 
 /** Every repository of the API: a new repository is added here, so a test lists only the service it tests. */
-const REPOSITORIES = [CodesRepository];
+const REPOSITORIES = [
+  CodesRepository,
+  AdminUserRepository,
+  AdminSessionRepository,
+  AdminRecoveryCodeRepository,
+  AdminNotificationRepository,
+];
 
 /**
  * Builds a Nest testing module with the real PrismaService on the test

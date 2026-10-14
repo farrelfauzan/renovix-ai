@@ -6,9 +6,13 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import { ADMIN_COOKIES } from "../../app/admin-auth/config/admin-cookies";
+import { AdminSessionService } from "../../app/admin-auth/service/admin-session.service";
+import { readCookie } from "../../app/admin-auth/utils/read-cookie";
 import { PortalGuard } from "../../app/portal/guard/portal.guard";
 import { Access } from "../decorators/access.decorator";
 import { AccessMethod } from "../types/access-method";
+import { AccessOptions } from "../types/access-options";
 import { ApiKeyGuard } from "./api-key.guard";
 import { CombinedAuthGuard } from "./combined-auth.guard";
 
@@ -32,13 +36,15 @@ export class AccessGuard implements CanActivate {
     private readonly combinedAuthGuard: CombinedAuthGuard,
     private readonly apiKeyGuard: ApiKeyGuard,
     private readonly portalGuard: PortalGuard,
+    private readonly adminSessions: AdminSessionService,
   ) {}
 
   /**
    * 403 without a declaration, or with one this guard cannot check yet
-   * (`staff`, `permissions`, `plan`, `reauth`, `webhook`); 401 when no listed
-   * method accepts the request; 403 when a method the route does not list does
-   * (not on a portal route).
+   * (`permissions`, `plan`, `webhook`; `reauth` or `staffScope` without
+   * `staff`; `staff` next to another method); a `staff` route goes to
+   * `attemptStaff`; 401 when no listed method accepts the request; 403 when a
+   * method the route does not list does (not on a portal route).
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const access = this.reflector.getAllAndOverride(Access, [
@@ -49,14 +55,14 @@ export class AccessGuard implements CanActivate {
     if (access.public) return true;
     const accepted = access.auth ?? [];
     if (
-      accepted.includes("staff") ||
       access.permissions?.length ||
       access.plan !== undefined ||
-      access.reauth ||
       access.webhook !== undefined
     ) {
       throw new ForbiddenException();
     }
+    if (accepted.includes("staff")) return this.attemptStaff(access, context);
+    if (access.reauth || access.staffScope !== undefined) throw new ForbiddenException();
     let rejection: UnauthorizedException | undefined;
     for (const method of accepted) {
       const result = await this.attempt(method, context);
@@ -68,13 +74,42 @@ export class AccessGuard implements CanActivate {
     const others = accepted.includes("portal")
       ? []
       : CREDENTIAL_METHODS.filter((method) => !accepted.includes(method));
-    for (const method of others) {
+    await this.refuseOtherCredential(others, context);
+    throw rejection ?? new UnauthorizedException("Authentication required");
+  }
+
+  /**
+   * A back-office route (RX-94): `staff` is its only method. The admin access
+   * cookie must name a live session whose scope (and re-authentication, if
+   * declared) fits the route: 401 when there is none, 403 when it does not fit.
+   * Product credentials are not looked at: without a valid admin session the
+   * answer is 401 whatever else the request carries, so a back-office client
+   * that refreshes on 401 also does so in a browser signed into the product.
+   */
+  private async attemptStaff(
+    access: Extract<AccessOptions, { readonly public?: never }>,
+    context: ExecutionContext,
+  ): Promise<true> {
+    if (access.auth?.length !== 1) throw new ForbiddenException();
+    const request = context.switchToHttp().getRequest();
+    request.admin = await this.adminSessions.authenticate(
+      readCookie(request.headers.cookie, ADMIN_COOKIES.access),
+      { scope: access.staffScope, reauth: access.reauth === true },
+    );
+    return true;
+  }
+
+  /** 403 when one of these methods accepts the request (a valid credential of a method the route does not list). */
+  private async refuseOtherCredential(
+    methods: readonly AccessMethod[],
+    context: ExecutionContext,
+  ): Promise<void> {
+    for (const method of methods) {
       if ((await this.attempt(method, context)) === true) {
         context.switchToHttp().getRequest().user = undefined;
         throw new ForbiddenException();
       }
     }
-    throw rejection ?? new UnauthorizedException("Authentication required");
   }
 
   /** One method's check: true when it accepts the request, otherwise false or the 401 it answered. */
@@ -93,7 +128,7 @@ export class AccessGuard implements CanActivate {
         case "portal":
           return await this.portalGuard.canActivate(context);
         default:
-          return false; // staff (RX-94): nothing checks it yet
+          return false; // staff: only through attemptStaff, never next to another method
       }
     } catch (err) {
       if (err instanceof UnauthorizedException) return err;

@@ -5,6 +5,12 @@ module.exports = {
   preset: '../../jest.preset.js',
   testEnvironment: 'node',
   transform: {
+    // otplib's dependencies @scure/base 2 and @noble/hashes 2 ship ESM only, which Jest's CommonJS runtime
+    // cannot load (RX-94): those two packages, and nothing else in node_modules, are compiled to CommonJS.
+    '/node_modules/.+\\.js$': [
+      'ts-jest',
+      { tsconfig: { allowJs: true, module: 'commonjs', moduleResolution: 'node' }, diagnostics: false },
+    ],
     '^.+\\.[tj]s$': [
       'ts-jest',
       {
@@ -20,6 +26,8 @@ module.exports = {
     // Also applies to relative imports inside node_modules.
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
+  // Bun's layout: node_modules/.bun/<name>@<version>/node_modules/<name>/...; both segments must be let through.
+  transformIgnorePatterns: ['/node_modules/(?!\\.bun/@scure\\+base@2|\\.bun/@noble\\+hashes@2|@scure/base/|@noble/hashes/)'],
   globalSetup: '<rootDir>/test/global-setup.ts',
   setupFiles: ['<rootDir>/test/setup-env.ts'],
   // Database tests share one database and truncate it, so files run one at a time.
