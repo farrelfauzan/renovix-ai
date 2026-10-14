@@ -93,15 +93,13 @@ describe("CombinedAuthGuard (RX-15 characterization)", () => {
       expect(mockGetSession).not.toHaveBeenCalled();
     });
 
-    it("401 for every token when JWT_SECRET is unset at construction", async () => {
+    it("refuses to be built when JWT_SECRET is unset (RX-110: required, no empty fallback)", () => {
       delete process.env.JWT_SECRET;
-      const unconfigured = new CombinedAuthGuard();
-      process.env.JWT_SECRET = SECRET;
-      const request: TestRequest = { headers: { authorization: `Bearer ${sign({ userId: "u" })}` } };
-
-      await expect(unconfigured.canActivate(contextFor(request))).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
+      try {
+        expect(() => new CombinedAuthGuard()).toThrow("JWT_SECRET is required and is not set");
+      } finally {
+        process.env.JWT_SECRET = SECRET;
+      }
     });
   });
 

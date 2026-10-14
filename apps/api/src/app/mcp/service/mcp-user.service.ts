@@ -7,6 +7,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
 import * as crypto from "crypto";
+import { readEncryptionKey } from "../../../common/utils/read-encryption-key";
 
 interface OAuthApp {
   clientId: string;
@@ -45,10 +46,7 @@ export class McpUserService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    const key =
-      this.configService.get<string>("MCP_ENCRYPTION_KEY") ||
-      "default-dev-key-32-bytes-long!!";
-    this.encryptionKey = Buffer.from(key.padEnd(32, "0").slice(0, 32));
+    this.encryptionKey = readEncryptionKey(process.env, "MCP_ENCRYPTION_KEY");
 
     this.oauthApps = {
       google: {
@@ -512,7 +510,7 @@ export class McpUserService {
   private decryptJson(encrypted: string): Record<string, string> {
     try {
       const parts = encrypted.split(":");
-      if (parts.length !== 3) return {};
+      if (parts.length !== 3) throw new Error("not in iv:tag:data form");
       const [ivHex, tagHex, data] = parts;
       const iv = Buffer.from(ivHex, "hex");
       const tag = Buffer.from(tagHex, "hex");
@@ -525,8 +523,10 @@ export class McpUserService {
       let decrypted = decipher.update(data, "hex", "utf8");
       decrypted += decipher.final("utf8");
       return JSON.parse(decrypted);
-    } catch {
-      return {};
+    } catch (err) {
+      // RX-110: a wrong MCP_ENCRYPTION_KEY or damaged data is an error, never an empty credential.
+      this.logger.error(`MCP credential could not be decrypted: ${(err as Error).message}`);
+      throw new Error("MCP credential could not be decrypted");
     }
   }
 }

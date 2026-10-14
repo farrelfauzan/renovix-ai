@@ -147,11 +147,13 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 Copy `.env.example` to `.env`. Key variables:
 
+`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET` and `MCP_ENCRYPTION_KEY` are required in every mode (RX-110, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` that is not 32 bytes.
+
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `JWT_SECRET` | Yes | Legacy auth signing |
-| `BETTER_AUTH_SECRET` | Yes | SSO session signing (code falls back to `JWT_SECRET`, then a placeholder, if unset) |
+| `BETTER_AUTH_SECRET` | Yes | SSO session signing; no fallback (RX-110) |
 | `ADMIN_JWT_SECRET` | Yes | Signs the back-office access token (RX-94); no fallback, the API does not start without it. At least 32 characters and never the same as `JWT_SECRET`; generate with `openssl rand -base64 48` |
 | `ADMIN_TOTP_ENCRYPTION_KEY` | Yes | AES-256-GCM key for the back-office admins' TOTP secrets at rest (RX-94); no fallback. 32 bytes, base64; generate with `openssl rand -base64 32` |
 | `IP_HASH_SECRET` | Yes | HMAC key for client IPs (free-tier caps); raw IPs are never stored |
@@ -159,7 +161,7 @@ Copy `.env.example` to `.env`. Key variables:
 | `ANON_DAILY_IP_CAP` / `ANON_DAILY_GLOBAL_CAP` | -- | Free-tier daily caps per IP / in total (defaults 60 / 2000, day in Asia/Jakarta) |
 | `OPENROUTER_API_KEY` | Yes | AI provider (chat models and embeddings); `OPENROUTER_APP_TITLE` / `OPENROUTER_APP_URL` are optional |
 | `S3_*` | Yes | S3/MinIO config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_CDN_DOMAIN` required; `S3_ENDPOINT` optional (MinIO) |
-| `MCP_ENCRYPTION_KEY` | For MCP | AES-256 key for OAuth token encryption; if unset the code uses a hard-coded dev key, so always set it outside local dev |
+| `MCP_ENCRYPTION_KEY` | Yes | AES-256-GCM key for stored MCP credentials: exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback, no padding (RX-110) |
 | `CORS_ORIGIN` | Prod | Comma-separated allowed origins (not in `.env.example`) |
 | `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |

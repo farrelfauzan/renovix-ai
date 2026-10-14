@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import * as jwt from "jsonwebtoken";
 import { auth } from "../../lib/auth";
+import { readRequiredSecret } from "../utils/read-required-secret";
 
 /**
  * Combined auth guard that accepts either:
@@ -20,7 +21,7 @@ export class CombinedAuthGuard implements CanActivate {
   private readonly jwtSecret: string;
 
   constructor() {
-    this.jwtSecret = process.env.JWT_SECRET || "";
+    this.jwtSecret = readRequiredSecret(process.env, "JWT_SECRET");
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
