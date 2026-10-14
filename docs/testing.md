@@ -38,6 +38,8 @@ One command for the local check set (`scripts/check.ts`). It runs every step, pr
 
 `docker build` is not part of it; run it separately when a Dockerfile or its inputs change.
 
+**In CI** (RX-149): `.github/workflows/check.yml` runs `bun run check` on every pull request to main and every push to main, with Bun 1.3.11 and Node 22, after `bun install --frozen-lockfile` and a fetch of `origin/main`. The check starts its own test database on the runner; no secret is used. The Docker image builds are not part of it (`ci.yml`, which builds them, stays switched off). On a push to main the comparison base is the pushed commit itself, so the typecheck baseline and the "added to the list" rule of the Prisma import check only guard pull requests.
+
 ## Safety rule
 
 Tests only use `TEST_DATABASE_URL`, and only if the **database name ends in `_test`**. Anything else is refused before migrating or connecting. During tests `DATABASE_URL` is always overwritten: with `TEST_DATABASE_URL`, or with an address where nothing listens. `resetDatabase` checks `current_database()` again before it truncates.

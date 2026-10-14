@@ -1,0 +1,43 @@
+# RX-149: runs `bun run check` on every pull request to main and every push to main.
+# ci.yml (the Docker image builds) stays switched off (D29, D108). This workflow uses no secret.
+name: Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The typecheck step compares with origin/main and the "prisma imports" step reads the
+      # exception list of origin/main; the checkout above fetches only the commit under test.
+      - name: Fetch origin/main
+        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # Starts its own test database with docker-compose.test.yml (Docker is on the runner).
+      - name: bun run check
+        run: bun run check
