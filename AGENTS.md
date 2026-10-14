@@ -47,6 +47,9 @@ bun run prisma:generate  # Outputs to apps/api/src/generated/prisma (gitignored)
 bun run prisma:migrate   # Dev migrations
 bun run prisma:reset     # Reset + re-seed
 bun run prisma:seed      # Seed models, configs, prompts, plans, codes
+# RX-90: prisma/migrations is one baseline (20261014200000_baseline); migrations insert no plans,
+# prices or limits (those come from the catalog seed, RX-86). A local database created before
+# RX-90 must be recreated: `bun run prisma:reset` (drops all its data, then migrates and seeds).
 
 # Nx targets (alternative)
 nx run api:prisma-studio  # Visual DB browser

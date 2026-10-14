@@ -51,7 +51,7 @@ export class BackOfficeProbeController {
 }
 
 /** The migration that seeds the built-in roles (RX-96); its INSERT is the only copy of PRD 09 F5's role table. */
-const ROLES_MIGRATION = resolve(__dirname, "../../../prisma/migrations/20261014120000_admin_roles/migration.sql");
+const ROLES_MIGRATION = resolve(__dirname, "../../../prisma/migrations/20261014200000_baseline/migration.sql");
 
 /**
  * Inserts the built-in roles again, with the migration's own INSERT statement (resetDatabase empties
