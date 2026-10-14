@@ -12,6 +12,7 @@ import {
 } from "@nestjs/core";
 import { Access } from "../common/decorators/access.decorator";
 import { AccessOptions } from "../common/types/access-options";
+import { STAFF_PERMISSIONS } from "./admin-auth/config/staff-permissions";
 
 // RX-114 coverage: the route table of the real AppModule, as Nest's own
 // scanner sees it (preview mode: every module reachable from AppModule is
@@ -27,6 +28,8 @@ const { AppModule }: { AppModule: Type<unknown> } = require("./app.module");
 
 type Route = {
   readonly label: string;
+  /** The route's path without the global prefix, e.g. "/admin/auth/sessions/:id". */
+  readonly path: string;
   readonly access: AccessOptions | undefined;
   readonly usesGuards: boolean;
 };
@@ -51,6 +54,7 @@ function listRoutes(modules: ModulesContainer): Route[] {
           .join("/");
         routes.push({
           label: `${RequestMethod[method]} /${path} (${controller.name}.${name})`,
+          path: `/${path}`.replace(/\/{2,}/g, "/"),
           access: reflector.getAllAndOverride(Access, [handler, controller]),
           usesGuards: hasGuards(controller) || hasGuards(handler),
         });
@@ -159,6 +163,9 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/auth/totp/enrol (AdminAuthController.enrol)",
   ];
   const STAFF_ANY_SCOPE_ROUTES = ["POST /admin/auth/sign-out (AdminAuthController.signOut)"];
+  // Back-office routes that declare staff permissions (RX-96). RX-94's routes are self-service (an admin
+  // manages their own session) and need none.
+  const STAFF_PERMISSION_ROUTES: string[] = [];
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
   const declaresStaff = (route: Route, staffScope: string | undefined) =>
@@ -185,5 +192,27 @@ describe("RX-114: every route of AppModule declares its access", () => {
     ];
     const others = routes.filter((route) => !known.includes(route.label));
     expect(labels(others.filter((route) => !declares(route, ["jwt", "session"])))).toEqual([]);
+  });
+
+  // RX-96 criterion 4: the back office is /admin, and /admin is the back office.
+  const isAdminPath = (route: Route) => /^\/admin(\/|$)/.test(route.path);
+  const listsStaff = (route: Route) => !route.access?.public && route.access?.auth?.includes("staff") === true;
+
+  it("every non-public /admin route lists staff (and only staff); every staff route is under /admin", () => {
+    const adminRoutes = routes.filter(isAdminPath);
+
+    expect(adminRoutes.length).toBeGreaterThan(0);
+    expect(labels(adminRoutes.filter((route) => !route.access?.public && !declares(route, ["staff"])))).toEqual([]);
+    expect(labels(routes.filter((route) => listsStaff(route) && !isAdminPath(route)))).toEqual([]);
+  });
+
+  it("staff routes declare only staff permissions; the routes that declare any are pinned", () => {
+    const staffRoutes = routes.filter(listsStaff);
+    const declared = staffRoutes.flatMap((route) => (route.access?.public ? [] : route.access?.permissions ?? []));
+
+    expect(declared.filter((permission) => !(STAFF_PERMISSIONS as readonly string[]).includes(permission))).toEqual([]);
+    expect(labels(staffRoutes.filter((route) => !route.access?.public && route.access?.permissions?.length))).toEqual(
+      STAFF_PERMISSION_ROUTES,
+    );
   });
 });

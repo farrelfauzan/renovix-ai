@@ -10,7 +10,10 @@ export type AccessOptions =
       readonly public?: never;
       /** Accepted sign-in methods, tried in this order. */
       readonly auth?: readonly AccessMethod[];
-      /** Permission names the caller needs (none by default). */
+      /**
+       * Permission names the caller needs, all of them (none by default). On a `staff` route: staff
+       * permissions of the admin's role (RX-96); any other route that declares some is refused until RX-41.
+       */
       readonly permissions?: readonly string[];
       /** Plan the caller needs, for example Enterprise only. */
       readonly plan?: string;

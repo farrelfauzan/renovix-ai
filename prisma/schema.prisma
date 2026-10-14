@@ -846,12 +846,13 @@ model Reminder {
 // Separate from User: staff never sign in with a product account (D60). No route creates an
 // AdminUser; the first one comes from scripts/create-admin.ts, the next ones from invitations (RX-95).
 
-/// A back-office staff account. email is stored lowercased. role: "owner" | "admin".
+/// A back-office staff account. email is stored lowercased. role: the name of an AdminRole (RX-96).
 model AdminUser {
   id                   String    @id @default(uuid())
   email                String    @unique
   passwordHash         String    @map("password_hash") // Argon2id, PHC string
   role                 String
+  adminRole            AdminRole @relation(fields: [role], references: [name], onDelete: Restrict, onUpdate: Cascade)
   totpSecretEncrypted  String?   @map("totp_secret_encrypted") // AES-256-GCM; set at enrolment, active once totpEnrolledAt is set
   totpEnrolledAt       DateTime? @map("totp_enrolled_at") @db.Timestamptz()
   lastAcceptedTimeStep Int?      @map("last_accepted_time_step") // TOTP step last accepted: a code of this step or earlier is refused
@@ -863,8 +864,43 @@ model AdminUser {
   recoveryCodes      AdminRecoveryCode[]
   sessions           AdminSession[]
   notificationsAbout AdminNotification[]
+  piiGrants          AdminPiiGrant[]     @relation("PiiGrantHolder")
+  piiGrantsGiven     AdminPiiGrant[]     @relation("PiiGrantGranter")
 
+  @@index([role])
   @@map("admin_users")
+}
+
+/// A back-office role (RX-96, PRD 09 F5): a named set of `resource:action` staff permissions. The five
+/// built-in roles (owner, operations, finance, support, viewer) are seeded by their migration.
+model AdminRole {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  builtIn     Boolean  @default(false) @map("built_in")
+  permissions String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  admins AdminUser[]
+
+  @@map("admin_roles")
+}
+
+/// A per-case grant (D56): the admin may reveal the personal data of one user until expiresAt.
+model AdminPiiGrant {
+  id               String    @id @default(uuid())
+  adminId          String    @map("admin_id")
+  admin            AdminUser @relation("PiiGrantHolder", fields: [adminId], references: [id], onDelete: Cascade)
+  subjectUserId    String    @map("subject_user_id")
+  reason           String
+  grantedByAdminId String    @map("granted_by_admin_id")
+  grantedBy        AdminUser @relation("PiiGrantGranter", fields: [grantedByAdminId], references: [id], onDelete: Restrict)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz()
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([adminId, subjectUserId, expiresAt])
+  @@index([grantedByAdminId])
+  @@map("admin_pii_grants")
 }
 
 /// One recovery code of an admin, stored as its SHA-256 hash; shown once at enrolment, usable once.
