@@ -6,7 +6,7 @@ dist
 .gitignore
 **/.env
 **/.env.*
-**/.envrc
+**/.envrc*
 !**/.env.example
 **/*.pem
 **/*.key
