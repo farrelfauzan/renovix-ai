@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
+import type { FastifyRequest } from "fastify";
 import { ScheduleModule } from "@nestjs/schedule";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
@@ -28,17 +29,22 @@ import { CodesModule } from "./codes/codes.module";
 import { AdminAuthModule } from "./admin-auth/admin-auth.module";
 import { AccessModule } from "../common/access.module";
 import { AccessGuard } from "../common/guards/access.guard";
+import { clientIp } from "../common/utils/client-ip";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000,
-        limit: 60,
-      },
-    ]),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: 60000,
+          limit: 60,
+        },
+      ],
+      // RX-155: count per client with the D48 rule, not per proxy (request.ip).
+      getTracker: (req) => clientIp(req as FastifyRequest),
+    }),
     PrismaModule,
     ConfigRegistryModule,
     AuthModule,
