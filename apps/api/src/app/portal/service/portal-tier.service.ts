@@ -22,40 +22,6 @@ export function startOfJakartaDay(now: Date = new Date()): Date {
   return new Date(`${jakartaDay(now)}T00:00:00+07:00`);
 }
 
-interface ClientIpRequest {
-  headers: Record<string, string | string[] | undefined>;
-  raw?: { socket?: { remoteAddress?: string } };
-  socket?: { remoteAddress?: string };
-}
-
-const clientIpLogger = new Logger("clientIp");
-let warnedMissingIpHeader = false;
-
-/**
- * The client IP for the free-tier caps. With CLIENT_IP_HEADER set, only that
- * header counts (a trusted proxy in front of the API must set it and overwrite
- * any client-sent copy); without it (local, tests) the socket address. Never
- * X-Forwarded-For or request.ip.
- */
-export function clientIp(req: ClientIpRequest): string {
-  const headerName = process.env.CLIENT_IP_HEADER?.trim().toLowerCase();
-  if (headerName) {
-    const value = req.headers[headerName];
-    const ip = (Array.isArray(value) ? value[0] : value)?.split(",")[0].trim();
-    if (ip) return ip;
-    if (!warnedMissingIpHeader) {
-      warnedMissingIpHeader = true;
-      clientIpLogger.warn(
-        `Header ${headerName} missing: requests without it share the "unknown" IP bucket`,
-      );
-    }
-    return "unknown";
-  }
-  return (
-    req.raw?.socket?.remoteAddress ?? req.socket?.remoteAddress ?? "unknown"
-  );
-}
-
 export type FreeReservation =
   "ok" | "free_limit_reached" | "free_capacity_reached";
 
