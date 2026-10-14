@@ -23,8 +23,8 @@ import { PortalIdentity } from "../guard/portal.guard";
 import {
   PortalTierService,
   FreeReservation,
-  clientIp,
 } from "../service/portal-tier.service";
+import { clientIp } from "../../../common/utils/client-ip";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { BillingService } from "../../billing/service/billing.service";
 import { estimateTokens } from "../../billing/utils/estimate-tokens";

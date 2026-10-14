@@ -83,7 +83,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 ### API module layout
 
 - A feature module is every folder of `apps/api/src/app/` except `prisma`, `config`, `providers` and `google-storage` (18 today).
-- Code shared by the modules lives in `apps/api/src/common/`, in a folder named for its kind (today: `guards/`, `decorators/`, `types/`; `access.module.ts` at its root). A folder is created when its first file arrives.
+- Code shared by the modules lives in `apps/api/src/common/`, in a folder named for its kind (today: `guards/`, `decorators/`, `types/`, `utils/`; `access.module.ts` at its root). A folder is created when its first file arrives.
 - Inside a feature module, files are arranged by layer: `controller/`, `service/`, `repository/` (today: codes), `dto/`. A file of another kind goes into a folder named for its kind (today: `guard/`, `scheduler/`, `strategy/`, `converter/`, `config/`, `utils/` for helpers, `types/`).
 - Only the `<module>.module.ts` file stays at the module root.
 - A test file sits in the folder of the file it tests; a test that covers several files sits next to its main subject (HTTP tests in `controller/`).
