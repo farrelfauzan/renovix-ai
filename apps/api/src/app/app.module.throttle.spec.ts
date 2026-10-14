@@ -4,6 +4,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import type { LightMyRequestResponse } from "fastify";
 import { createFastifyApp } from "../../test/test-module";
 import { testDatabaseUrl } from "../../test/test-database";
+import { BACK_OFFICE_ORIGIN } from "../../test/admin-auth";
 
 // RX-155: the throttler of the real AppModule counts per client with the D48 client-IP rule
 // (CLIENT_IP_HEADER when set, otherwise the socket address; never X-Forwarded-For or request.ip).
@@ -33,9 +34,15 @@ describe("RX-155: the real AppModule's throttler counts per client (D48 client-I
   let app: NestFastifyApplication;
   const original = process.env.CLIENT_IP_HEADER;
 
-  /** One admin sign-in attempt from a socket address, with the given headers. */
+  /** One admin sign-in attempt from a socket address, with the given headers (plus the back-office Origin, RX-156). */
   const signIn = (remoteAddress: string, headers: Record<string, string> = {}): Promise<LightMyRequestResponse> =>
-    app.inject({ method: "POST", url: "/admin/auth/sign-in", remoteAddress, headers, payload: { email: "not-an-email" } });
+    app.inject({
+      method: "POST",
+      url: "/admin/auth/sign-in",
+      remoteAddress,
+      headers: { ...BACK_OFFICE_ORIGIN, ...headers },
+      payload: { email: "not-an-email" },
+    });
 
   /** The status codes of 11 sign-in attempts; `send(i)` makes attempt i. */
   const elevenAttempts = async (send: (i: number) => Promise<LightMyRequestResponse>): Promise<number[]> => {
