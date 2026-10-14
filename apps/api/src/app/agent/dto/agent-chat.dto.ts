@@ -41,10 +41,25 @@ export const AttachIntegrationSchema = z.object({
 
 export type AttachIntegrationDto = z.infer<typeof AttachIntegrationSchema>;
 
-export const DeployChannelSchema = z.object({
-  channelType: z.enum(["web", "whatsapp", "api"]),
-  config: z.record(z.any()).optional(),
+export const WHATSAPP_WEBHOOK_SECRET_REQUIRED =
+  "webhookSecret is required for a whatsapp (GOWA) channel";
+
+/** RX-115: the GOWA webhook refuses every call for a whatsapp channel without a webhookSecret. */
+export const WhatsappChannelConfigSchema = z.object({
+  webhookSecret: z.string().min(1),
 });
+
+export const DeployChannelSchema = z
+  .object({
+    channelType: z.enum(["web", "whatsapp", "api"]),
+    config: z.record(z.any()).optional(),
+  })
+  .refine(
+    (data) =>
+      data.channelType !== "whatsapp" ||
+      WhatsappChannelConfigSchema.safeParse(data.config).success,
+    { path: ["config", "webhookSecret"], error: WHATSAPP_WEBHOOK_SECRET_REQUIRED },
+  );
 
 export type DeployChannelDto = z.infer<typeof DeployChannelSchema>;
 

@@ -11,7 +11,6 @@ export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   "apps/api/src/app/auth/service/auth.service.ts",
   "apps/api/src/app/billing/controller/billing.controller.ts",
   "apps/api/src/app/billing/service/billing.service.ts",
-  "apps/api/src/app/channel/controller/gowa.webhook.controller.ts",
   "apps/api/src/app/channel/service/channel-chat.service.ts",
   "apps/api/src/app/channel/service/channel.service.ts",
   "apps/api/src/app/channel/service/gowa.service.ts",

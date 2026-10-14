@@ -5,14 +5,18 @@ import {
   Req,
   Logger,
   HttpCode,
-  BadRequestException,
+  UnauthorizedException,
+  type RawBodyRequest,
 } from "@nestjs/common";
+import type { FastifyRequest } from "fastify";
 import { GowaService } from "../service/gowa.service";
 import { verifySignature } from "../utils/verify-signature";
 import { AgentRunService } from "../../agent/service/agent-run.service";
-import { PrismaService } from "../../prisma/prisma.service";
 import type { GowaInboundMessage } from "../types/gowa.types";
 import { Access } from "../../../common/decorators/access.decorator";
+
+/** GOWA sends `X-Hub-Signature-256: sha256=<hex>` (note R-8, GOWA v9.6.0). */
+const SIGNATURE_PREFIX = "sha256=";
 
 @Controller("webhooks/gowa")
 export class GowaWebhookController {
@@ -21,30 +25,37 @@ export class GowaWebhookController {
   constructor(
     private readonly gowaService: GowaService,
     private readonly runService: AgentRunService,
-    private readonly prisma: PrismaService,
   ) {}
 
   @Post()
-  @Access({ public: true, reason: "GOWA calls it without a login; the signature check is in the handler (RX-115)" })
+  @Access({
+    public: true,
+    reason:
+      "GOWA calls it without a login; the handler checks X-Hub-Signature-256 over the raw body with the channel's webhookSecret first (RX-115)",
+  })
   @HttpCode(200)
-  async handleInbound(@Body() body: unknown, @Req() req: any) {
+  async handleInbound(
+    @Body() body: unknown,
+    @Req() req: RawBodyRequest<FastifyRequest>,
+  ) {
     const payload = body as GowaInboundMessage;
 
-    // Verify webhook signature
-    const signature = req.headers["x-gowa-signature"] as string;
-    if (signature) {
-      const rawBody = JSON.stringify(body);
-      // Get secret from first matching channel config
-      const resolved = await this.gowaService.resolveAgent(payload.to);
-      if (resolved) {
-        const secret = (resolved.channel.config as any)?.webhookSecret;
-        if (
-          secret &&
-          !verifySignature(rawBody, signature, secret)
-        ) {
-          throw new BadRequestException("Invalid webhook signature");
-        }
-      }
+    // Verify the webhook signature before anything else (RX-115): "sha256=" + HMAC-SHA256 of the
+    // raw body with the webhookSecret of a channel for payload.to. Several tenants can save the same
+    // number, so the call belongs to the channel whose secret verifies it. Every refusal is the same 401.
+    const signature = req.headers["x-hub-signature-256"];
+    const hex =
+      typeof signature === "string" && signature.startsWith(SIGNATURE_PREFIX)
+        ? signature.slice(SIGNATURE_PREFIX.length)
+        : undefined;
+    const rawBody = req.rawBody;
+    const candidates =
+      hex && rawBody ? await this.gowaService.findWhatsappChannels(payload?.to) : [];
+    const resolved = candidates.find(({ channel }) =>
+      verifySignature(rawBody!, hex!, (channel.config as any)?.webhookSecret),
+    );
+    if (!resolved) {
+      throw new UnauthorizedException("Invalid webhook signature");
     }
 
     // Validate event type
@@ -63,13 +74,6 @@ export class GowaWebhookController {
     if (messageText.toUpperCase() === "STOP") {
       this.logger.log(`User ${payload.from} opted out`);
       return { ok: true, optedOut: true };
-    }
-
-    // Resolve agent by phone number
-    const resolved = await this.gowaService.resolveAgent(payload.to);
-    if (!resolved) {
-      this.logger.warn(`No agent found for number: ${payload.to}`);
-      return { ok: true, skipped: true, reason: "no agent configured" };
     }
 
     const { agent, channel } = resolved;
