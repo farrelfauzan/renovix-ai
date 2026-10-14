@@ -5,14 +5,13 @@ import {
   Patch,
   Body,
   Req,
-  UseGuards,
   BadRequestException,
   HttpCode,
   Res,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { FastifyReply } from "fastify";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { AuthService } from "../service/auth.service";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../dto/create-auth.dto";
 import { authCookie, clearedAuthCookie } from "../utils/auth-cookie";
@@ -22,6 +21,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post("register")
+  @Access({ public: true, reason: "sign-up: the caller has no account yet" })
   @Throttle({ default: { ttl: 60000, limit: 3 } })
   async register(
     @Body() body: unknown,
@@ -37,6 +37,7 @@ export class AuthController {
   }
 
   @Post("login")
+  @Access({ public: true, reason: "sign-in: the caller has no token yet" })
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   async login(
@@ -53,19 +54,20 @@ export class AuthController {
   }
 
   @Post("logout")
+  @Access({ public: true, reason: "only clears the login cookie; must work with an expired token" })
   @HttpCode(204)
   logout(@Res({ passthrough: true }) reply: FastifyReply) {
     reply.header("set-cookie", clearedAuthCookie());
   }
 
   @Get("me")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async getProfile(@Req() req: any) {
     return this.authService.getProfile(req.user.userId);
   }
 
   @Patch("me")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async updateProfile(@Req() req: any, @Body() body: unknown) {
     const parsed = UpdateProfileDto.safeParse(body);
     if (!parsed.success) {
@@ -75,7 +77,7 @@ export class AuthController {
   }
 
   @Post("keys/regenerate")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   @HttpCode(200)
   async regenerateApiKey(@Req() req: any) {
     return this.authService.regenerateApiKey(req.user.userId);

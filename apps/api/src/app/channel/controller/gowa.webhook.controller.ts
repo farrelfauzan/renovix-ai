@@ -12,6 +12,7 @@ import { verifySignature } from "../utils/verify-signature";
 import { AgentRunService } from "../../agent/service/agent-run.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { GowaInboundMessage } from "../types/gowa.types";
+import { Access } from "../../../common/decorators/access.decorator";
 
 @Controller("webhooks/gowa")
 export class GowaWebhookController {
@@ -24,6 +25,7 @@ export class GowaWebhookController {
   ) {}
 
   @Post()
+  @Access({ public: true, reason: "GOWA calls it without a login; the signature check is in the handler (RX-115)" })
   @HttpCode(200)
   async handleInbound(@Body() body: unknown, @Req() req: any) {
     const payload = body as GowaInboundMessage;

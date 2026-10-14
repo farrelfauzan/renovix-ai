@@ -3,12 +3,11 @@ import {
   Post,
   Body,
   Req,
-  UseGuards,
   BadRequestException,
   HttpCode,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { ChatService } from "../service/chat.service";
 import {
   ChatCompletionRequest,
@@ -20,7 +19,7 @@ export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Post("completions")
-  @UseGuards(ApiKeyGuard)
+  @Access({ auth: ["apiKey"] })
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 30 } })
   async createCompletion(@Body() body: unknown, @Req() req: any) {

@@ -9,14 +9,13 @@ import {
   Query,
   Req,
   Res,
-  UseGuards,
   HttpCode,
   ParseUUIDPipe,
   BadRequestException,
   Logger,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
@@ -49,7 +48,7 @@ const ChatMessageSchema = z.object({
 });
 
 @Controller("channels")
-@UseGuards(CombinedAuthGuard)
+@Access({ auth: ["jwt", "session"] })
 export class ChannelController {
   private readonly logger = new Logger(ChannelController.name);
 

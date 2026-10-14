@@ -1,5 +1,5 @@
-import { BadRequestException, ExecutionContext } from "@nestjs/common";
-import { JwtModule, JwtService } from "@nestjs/jwt";
+import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import * as jwt from "jsonwebtoken";
 import { PortalGuard, PortalIdentity } from "./portal.guard";
@@ -15,7 +15,6 @@ jest.mock("../../../lib/auth", () => ({
   auth: { api: { getSession: (...args: unknown[]) => mockGetSession(...args) } },
 }));
 
-const SECRET = "rx15-portal-jwt";
 const SESSION = "11111111-1111-4111-8111-111111111111";
 
 type TestRequest = { headers: Record<string, string>; portalIdentity?: PortalIdentity };
@@ -28,10 +27,8 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
   let guard: PortalGuard;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({
-      imports: [JwtModule.register({ secret: SECRET })],
-      providers: [PortalGuard],
-    }));
+    // PortalGuard and its JwtService come with the test module (AccessModule)
+    ({ moduleRef, prisma } = await createTestModule({}));
     guard = moduleRef.get(PortalGuard);
   });
 
@@ -52,15 +49,15 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
     return request.portalIdentity!;
   };
 
-  it("400 without X-Portal-Session, even with a valid JWT", async () => {
+  it("401 without X-Portal-Session, even with a valid JWT (RX-114: was 400)", async () => {
     const user = await createUser(prisma, { balance: 5 });
 
     await expect(
       guard.canActivate(contextFor({ headers: { authorization: `Bearer ${token(user.id)}` } })),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it("session header only: allowed as anonymous free tier (the guard never answers 401)", async () => {
+  it("session header only: allowed as anonymous free tier (with the header the guard never answers 401)", async () => {
     expect(await identityFor({ "x-portal-session": SESSION })).toEqual({
       sessionId: SESSION,
       tier: "free",

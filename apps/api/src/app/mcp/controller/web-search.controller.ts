@@ -8,14 +8,13 @@ import {
   Put,
   Query,
   Req,
-  UseGuards,
 } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WebSearchService } from "../service/web-search.service";
 
 @Controller("integrations/web-search")
-@UseGuards(CombinedAuthGuard)
+@Access({ auth: ["jwt", "session"] })
 export class WebSearchController {
   constructor(
     private readonly webSearchService: WebSearchService,

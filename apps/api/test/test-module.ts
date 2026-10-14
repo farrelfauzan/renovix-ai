@@ -1,4 +1,5 @@
 import { ModuleMetadata } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 import { Test, TestingModule, TestingModuleBuilder } from "@nestjs/testing";
 import {
   FastifyAdapter,
@@ -7,6 +8,8 @@ import {
 import { CodesRepository } from "../src/app/codes/repository/codes.repository";
 import { PrismaModule } from "../src/app/prisma/prisma.module";
 import { PrismaService } from "../src/app/prisma/prisma.service";
+import { AccessModule } from "../src/common/access.module";
+import { AccessGuard } from "../src/common/guards/access.guard";
 import { testDatabaseUrl } from "./test-database";
 
 /** Every repository of the API: a new repository is added here, so a test lists only the service it tests. */
@@ -14,7 +17,8 @@ const REPOSITORIES = [CodesRepository];
 
 /**
  * Builds a Nest testing module with the real PrismaService on the test
- * database and every repository. `override` gets the builder for
+ * database, every repository and the global AccessGuard, registered the way
+ * AppModule does it (a route without `@Access` answers 403). `override` gets the builder for
  * overrideProvider/overrideGuard (e.g. `withFakeProvider`). Close it with
  * `moduleRef.close()` in afterAll.
  */
@@ -26,8 +30,12 @@ export async function createTestModule(
   const moduleRef = await override(
     Test.createTestingModule({
       ...metadata,
-      imports: [PrismaModule, ...(metadata.imports ?? [])],
-      providers: [...REPOSITORIES, ...(metadata.providers ?? [])],
+      imports: [PrismaModule, AccessModule, ...(metadata.imports ?? [])],
+      providers: [
+        ...REPOSITORIES,
+        { provide: APP_GUARD, useExisting: AccessGuard },
+        ...(metadata.providers ?? []),
+      ],
     }),
   ).compile();
   return { moduleRef, prisma: moduleRef.get(PrismaService) };

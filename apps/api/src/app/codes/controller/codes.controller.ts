@@ -4,11 +4,10 @@ import {
   Get,
   Body,
   Req,
-  UseGuards,
   BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { CodesService } from "../service/codes.service";
 import { RedeemCodeDto } from "../dto/redeem-code.dto";
 
@@ -17,7 +16,7 @@ export class CodesController {
   constructor(private readonly codesService: CodesService) {}
 
   @Post("redeem")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   async redeemCode(@Req() req: any, @Body() body: unknown) {
     const parsed = RedeemCodeDto.safeParse(body);
@@ -28,7 +27,7 @@ export class CodesController {
   }
 
   @Get("history")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async getHistory(@Req() req: any) {
     return this.codesService.getHistory(req.user.userId);
   }

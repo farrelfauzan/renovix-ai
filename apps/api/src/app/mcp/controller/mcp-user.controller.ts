@@ -8,10 +8,9 @@ import {
   Body,
   Req,
   Res,
-  UseGuards,
   BadRequestException,
 } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Access } from "../../../common/decorators/access.decorator";
 import { ConfigService } from "@nestjs/config";
 import type { FastifyReply } from "fastify";
 import { McpUserService } from "../service/mcp-user.service";
@@ -33,7 +32,7 @@ export class McpUserController {
    * Returns an auth URL to redirect the user to.
    */
   @Get("oauth/start")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async startOAuth(
     @Req() req: any,
     @Query("provider") provider: string,
@@ -59,6 +58,7 @@ export class McpUserController {
    * then redirects to frontend.
    */
   @Get("oauth/callback")
+  @Access({ public: true, reason: "the OAuth provider redirects the browser here; the state parameter names the user" })
   async oauthCallback(
     @Query("code") code: string,
     @Query("state") state: string,
@@ -94,7 +94,7 @@ export class McpUserController {
    * Connect a token-based MCP provider (e.g., Notion with API key).
    */
   @Post("connect")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async connectWithToken(
     @Req() req: any,
     @Body()
@@ -121,7 +121,7 @@ export class McpUserController {
    * List current user's connected credentials for a workspace.
    */
   @Get("credentials")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async listCredentials(
     @Req() req: any,
     @Query("workspaceId") workspaceId: string,
@@ -136,7 +136,7 @@ export class McpUserController {
    * Disconnect (revoke) a provider for the current user.
    */
   @Delete("credentials/:provider")
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async disconnect(
     @Req() req: any,
     @Param("provider") provider: string,

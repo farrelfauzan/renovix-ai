@@ -1,6 +1,5 @@
 import axios from "axios";
 import { ConfigModule } from "@nestjs/config";
-import { JwtModule } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ProvidersModule } from "./providers.module";
@@ -9,7 +8,6 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ModelRegistryService } from "../config/model-registry.service";
 import { PortalController } from "../portal/controller/portal.controller";
 import { PortalTierService } from "../portal/service/portal-tier.service";
-import { PortalGuard } from "../portal/guard/portal.guard";
 import { BillingService } from "../billing/service/billing.service";
 import { UsageService } from "../usage/service/usage.service";
 import { PromptTuningService } from "../chat/service/prompt-tuning.service";
@@ -111,13 +109,11 @@ describe("RX-88: POST /chat/portal/completions with LLM_PROVIDER=fake", () => {
     ({ moduleRef, prisma } = await createTestModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
-        JwtModule.register({ secret: "rx88-test-jwt" }),
         ProvidersModule,
       ],
       controllers: [PortalController],
       providers: [
         PortalTierService,
-        PortalGuard,
         ModelRegistryService,
         {
           provide: PromptTuningService,

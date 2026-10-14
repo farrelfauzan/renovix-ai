@@ -1,3 +1,4 @@
+import { APP_GUARD } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import { UnauthorizedException } from "@nestjs/common";
 import {
@@ -8,11 +9,9 @@ import { CodesModule } from "../codes.module";
 import { CodesService } from "../service/codes.service";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { PrismaService } from "../../prisma/prisma.service";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
 
-// The real guard imports better-auth (ESM) and the real PrismaService imports
-// the generated Prisma client at load time; both are replaced below anyway.
-jest.mock("../../../lib/auth", () => ({ auth: {} }));
+// The real PrismaService imports the generated Prisma client at load time; it
+// is replaced below anyway. A stand-in global guard reads the test user.
 jest.mock("../../prisma/prisma.service", () => ({ PrismaService: class {} }));
 
 const ENTERPRISE_PLAN_ID = "3f1c2a4e-8b7d-4c1a-9e2f-1a2b3c4d5e6f";
@@ -87,19 +86,23 @@ describe("RX-66: /admin/codes routes are removed", () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [PrismaModule, CodesModule],
+      providers: [
+        {
+          provide: APP_GUARD,
+          useValue: {
+            canActivate: (ctx: any) => {
+              const req = ctx.switchToHttp().getRequest();
+              const userId = req.headers["x-test-user"];
+              if (!userId) throw new UnauthorizedException();
+              req.user = { userId };
+              return true;
+            },
+          },
+        },
+      ],
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)
-      .overrideGuard(CombinedAuthGuard)
-      .useValue({
-        canActivate: (ctx: any) => {
-          const req = ctx.switchToHttp().getRequest();
-          const userId = req.headers["x-test-user"];
-          if (!userId) throw new UnauthorizedException();
-          req.user = { userId };
-          return true;
-        },
-      })
       .compile();
 
     service = moduleRef.get(CodesService);

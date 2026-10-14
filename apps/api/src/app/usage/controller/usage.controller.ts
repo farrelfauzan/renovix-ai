@@ -1,5 +1,5 @@
-import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
-import { CombinedAuthGuard } from "../../../common/guards/combined-auth.guard";
+import { Controller, Get, Query, Req } from "@nestjs/common";
+import { Access } from "../../../common/decorators/access.decorator";
 import { UsageService } from "../service/usage.service";
 
 @Controller("usage")
@@ -7,7 +7,7 @@ export class UsageController {
   constructor(private readonly usageService: UsageService) {}
 
   @Get()
-  @UseGuards(CombinedAuthGuard)
+  @Access({ auth: ["jwt", "session"] })
   async getUsage(
     @Req() req: any,
     @Query("limit") limit?: string,

@@ -16,7 +16,8 @@ describe("ApiKeyGuard (test database)", () => {
   let guard: ApiKeyGuard;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ providers: [ApiKeyGuard] }));
+    // ApiKeyGuard comes with the test module (AccessModule)
+    ({ moduleRef, prisma } = await createTestModule({}));
     guard = moduleRef.get(ApiKeyGuard);
   });
 

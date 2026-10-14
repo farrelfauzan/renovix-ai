@@ -8,7 +8,6 @@ import {
   Query,
   Req,
   Res,
-  UseGuards,
   BadRequestException,
   HttpCode,
   HttpException,
@@ -20,7 +19,7 @@ import {
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { FastifyReply } from "fastify";
-import { PortalGuard, PortalIdentity } from "../guard/portal.guard";
+import { PortalIdentity } from "../guard/portal.guard";
 import {
   PortalTierService,
   FreeReservation,
@@ -43,6 +42,7 @@ import {
   ChatCompletionRequestSchema,
 } from "../../chat/dto/chat-completion.dto";
 import type { Decimal } from "@prisma/client/runtime/client";
+import { Access } from "../../../common/decorators/access.decorator";
 
 const PortalCompletionSchema = ChatCompletionRequestSchema.extend({
   model: ChatCompletionRequestSchema.shape.model.optional(),
@@ -73,7 +73,7 @@ export class PortalController {
   ) {}
 
   @Post("completions")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 30 } })
   async createCompletion(
@@ -108,7 +108,7 @@ export class PortalController {
   }
 
   @Get("usage")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   async getUsage(@Req() req: any) {
     const identity: PortalIdentity = req.portalIdentity;
     return this.tierService.getUsage(
@@ -118,7 +118,7 @@ export class PortalController {
   }
 
   @Get("models")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   async getModels(@Req() req: any) {
     const identity: PortalIdentity = req.portalIdentity;
 
@@ -144,7 +144,7 @@ export class PortalController {
   }
 
   @Post("link-session")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   @HttpCode(200)
   async linkSession(@Req() req: any) {
     const identity: PortalIdentity = req.portalIdentity;
@@ -164,7 +164,7 @@ export class PortalController {
   // ─── Conversation History Endpoints ───
 
   @Get("conversations")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   async listConversations(
     @Req() req: any,
     @Query("limit") limit?: string,
@@ -188,7 +188,7 @@ export class PortalController {
   }
 
   @Get("conversations/:id")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   async getConversation(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: any,
@@ -206,7 +206,7 @@ export class PortalController {
   }
 
   @Delete("conversations/:id")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   @HttpCode(204)
   async deleteConversation(
     @Param("id", ParseUUIDPipe) id: string,
@@ -229,7 +229,7 @@ export class PortalController {
   // ─── Knowledge Base Endpoints ───
 
   @Get("knowledge")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   async listKnowledgeBases(@Req() req: any) {
     const identity: PortalIdentity = req.portalIdentity;
     if (!identity.user) {
@@ -245,7 +245,7 @@ export class PortalController {
   }
 
   @Post("knowledge")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   @HttpCode(201)
   async createKnowledgeBase(@Body() body: unknown, @Req() req: any) {
     const identity: PortalIdentity = req.portalIdentity;
@@ -273,7 +273,7 @@ export class PortalController {
   }
 
   @Delete("knowledge/:id")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   @HttpCode(204)
   async deleteKnowledgeBase(
     @Param("id", ParseUUIDPipe) id: string,
@@ -288,7 +288,7 @@ export class PortalController {
   }
 
   @Post("knowledge/:id/upload")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   async uploadToKnowledgeBase(
     @Param("id", ParseUUIDPipe) id: string,
@@ -321,7 +321,7 @@ export class PortalController {
   }
 
   @Get("knowledge/:id/chunks")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   async listChunks(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: any,
@@ -343,7 +343,7 @@ export class PortalController {
   }
 
   @Delete("knowledge/:id/chunks/:chunkId")
-  @UseGuards(PortalGuard)
+  @Access({ auth: ["portal"] })
   @HttpCode(204)
   async deleteChunk(
     @Param("id", ParseUUIDPipe) id: string,

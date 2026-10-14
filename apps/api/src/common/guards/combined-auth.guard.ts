@@ -24,9 +24,17 @@ export class CombinedAuthGuard implements CanActivate {
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    // 1. Try JWT first, 2. then the Better Auth session (cookie-based)
+    if (this.tryJwt(context) || (await this.trySession(context))) {
+      return true;
+    }
 
-    // 1. Try JWT first
+    throw new UnauthorizedException("Authentication required");
+  }
+
+  /** Accepts a valid JWT Bearer token and attaches request.user; false otherwise. */
+  tryJwt(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
@@ -35,11 +43,15 @@ export class CombinedAuthGuard implements CanActivate {
         request.user = { userId: payload.userId, email: payload.email };
         return true;
       } catch {
-        // JWT invalid — fall through to session check
+        // JWT invalid
       }
     }
+    return false;
+  }
 
-    // 2. Try Better Auth session (cookie-based)
+  /** Accepts a valid Better Auth cookie session and attaches request.user; false otherwise. */
+  async trySession(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
     if (request.headers.cookie) {
       try {
         const headers = new Headers();
@@ -61,10 +73,9 @@ export class CombinedAuthGuard implements CanActivate {
           return true;
         }
       } catch {
-        // Session invalid — fall through
+        // Session invalid
       }
     }
-
-    throw new UnauthorizedException("Authentication required");
+    return false;
   }
 }

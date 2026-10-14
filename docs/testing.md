@@ -59,11 +59,11 @@ beforeEach(() => resetDatabase(prisma));
 afterAll(() => moduleRef?.close());
 ```
 
-- `createTestModule(metadata, override?)` builds a Nest testing module with the real `PrismaService` (on the test database), every repository (the list `REPOSITORIES` in `apps/api/test/test-module.ts`; add a new repository there) plus your `metadata`. `override` receives the builder for `overrideProvider` / `overrideGuard`.
+- `createTestModule(metadata, override?)` builds a Nest testing module with the real `PrismaService` (on the test database), every repository (the list `REPOSITORIES` in `apps/api/test/test-module.ts`; add a new repository there), the global `AccessGuard` registered as in `AppModule` (RX-114: a route without `@Access` answers 403) plus your `metadata`. `override` receives the builder for `overrideProvider` / `overrideGuard`.
 - `createFastifyApp(moduleRef)` starts it as a Fastify app for `app.inject(...)`; close it with `app.close()`.
 - `resetDatabase(prisma)` truncates every table except `_prisma_migrations`. This also removes the three plans the migrations seed; create the plans a test needs with `createPlan`.
 - Files run one at a time (`maxWorkers: 1`) because they share one database.
-- Modules that import `CombinedAuthGuard` or `SessionGuard` load better-auth, which is ESM-only; mock it in the spec: `jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }))` (the path is relative to the spec's folder; this one is for a spec in a module's layer folder). JWTs signed with `process.env.JWT_SECRET` still go through the real guard.
+- The guards load better-auth, which is ESM-only; `apps/api/test/setup-env.ts` mocks it for every spec (no session) and sets `JWT_SECRET`. A spec that needs a session mocks it itself: `jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: (...args) => mockGetSession(...args) } } }))` (the path is relative to the spec's folder; this one is for a spec in a module's layer folder). JWTs signed with `process.env.JWT_SECRET` still go through the real guard.
 
 Examples: `codes/service/codes.service.db.spec.ts` (service), `guards/api-key.guard.spec.ts` (guard), `codes/controller/codes.controller.spec.ts` (controller via Fastify `inject`).
 
@@ -97,14 +97,13 @@ const { moduleRef } = await createTestModule({ imports: [ProvidersModule] }, (b)
 
 ## Auth and ownership map
 
-Current behaviour, characterized in RX-15 (paths under `apps/api/src/app/`). A `test.failing` marked `HOLE (RX-15)` asserts the secure behaviour: it passes while the hole exists and fails once it is fixed; then turn it into a normal test.
+Current behaviour, characterized in RX-15 (paths under `apps/api/src/app/`). Since RX-114 a route declares `@Access` and the one global `AccessGuard` (`apps/api/src/common/guards/access.guard.ts`) runs these guards as the checks behind its methods: `jwt` and `session` (`CombinedAuthGuard`), `apiKey` (`ApiKeyGuard`), `portal` (`PortalGuard`); a valid credential of a method the route does not list is 403 (`common/guards/access.guard.spec.ts`). A `test.failing` marked `HOLE (RX-15)` asserts the secure behaviour: it passes while the hole exists and fails once it is fixed; then turn it into a normal test.
 
 | Guard | Accepts | Rejects | Spec |
 |---|---|---|---|
 | `CombinedAuthGuard` (guards/combined-auth.guard.ts:26) | `Bearer` JWT signed with `JWT_SECRET` (`exp` checked, no DB lookup, payload shape not checked); else a Better Auth session from the cookie (expiry is `getSession`'s job) | 401: no credential, expired, other secret, `alg: none`, API key, `bearer`/`Basic`, no session | guards/combined-auth.guard.spec.ts |
-| `SessionGuard` (guards/session.guard.ts:16) | Better Auth session only. Not used by any route | 401 otherwise | guards/session.guard.spec.ts |
 | `ApiKeyGuard` (guards/api-key.guard.ts:18) | `Bearer sk_live_…` matching `users.apiKey` (no expiry; `user.status` not checked) | 401: no header, JWT, wrong prefix/scheme, unknown or replaced key | guards/api-key.guard.spec.ts |
-| `PortalGuard` (portal/guard/portal.guard.ts:31) | Always allows when `X-Portal-Session` is set; user from a valid JWT, else the cookie session; anything else is anonymous (free tier) | 400 without `X-Portal-Session`. Routes needing a user answer 400 "Authentication required", not 401 | portal/guard/portal.guard.spec.ts |
+| `PortalGuard` (portal/guard/portal.guard.ts:31) | Always allows when `X-Portal-Session` is set; user from a valid JWT, else the cookie session; anything else is anonymous (free tier) | 401 without `X-Portal-Session` (RX-114; was 400). Routes needing a user answer 400 "Authentication required", not 401 | portal/guard/portal.guard.spec.ts |
 
 | Resource | Routes | Guard | Ownership / role check | Spec |
 |---|---|---|---|---|

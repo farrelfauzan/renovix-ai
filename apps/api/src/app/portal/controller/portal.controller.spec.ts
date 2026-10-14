@@ -1,5 +1,4 @@
 import { ConfigModule } from "@nestjs/config";
-import { JwtModule } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import {
   FastifyAdapter,
@@ -7,7 +6,6 @@ import {
 } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
 import { PortalTierService } from "../service/portal-tier.service";
-import { PortalGuard } from "../guard/portal.guard";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProvidersModule } from "../../providers/providers.module";
@@ -67,13 +65,11 @@ describe("RX-10: POST /chat/portal/completions free tier (Fastify, test database
       {
         imports: [
           ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
-          JwtModule.register({ secret: "rx10-test-jwt" }),
           ProvidersModule,
         ],
         controllers: [PortalController],
         providers: [
           PortalTierService,
-          PortalGuard,
           ModelRegistryService,
           {
             provide: PromptTuningService,
