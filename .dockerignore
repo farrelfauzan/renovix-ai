@@ -4,18 +4,6 @@ dist
 .next
 .git
 .gitignore
-**/.env
-**/.env.*
-**/.envrc*
-!**/.env.example
-**/*.pem
-**/*.key
-**/*.p12
-**/*service-account*.json
-**/*credentials*.json
-**/.npmrc
-**/.yarnrc*
-**/id_rsa*
 *.md
 !prisma/**
 LICENSE
@@ -29,3 +17,17 @@ apps/dashboard/.next
 apps/landing/.next
 apps/api-e2e
 apps/dashboard-e2e
+
+# Secrets last: a later !pattern (such as !prisma/**) must not bring them back.
+**/.env
+**/.env.*
+**/.envrc*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*service-account*.json
+**/*credentials*.json
+**/.npmrc
+**/.yarnrc*
+**/id_rsa*
