@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
+import { AdminSessionModule } from "../app/admin-auth/admin-session.module";
 import { PortalGuard } from "../app/portal/guard/portal.guard";
 import { AccessGuard } from "./guards/access.guard";
 import { ApiKeyGuard } from "./guards/api-key.guard";
@@ -20,6 +21,7 @@ import { CombinedAuthGuard } from "./guards/combined-auth.guard";
         signOptions: { expiresIn: "7d" },
       }),
     }),
+    AdminSessionModule,
   ],
   providers: [AccessGuard, CombinedAuthGuard, ApiKeyGuard, PortalGuard],
   exports: [AccessGuard],

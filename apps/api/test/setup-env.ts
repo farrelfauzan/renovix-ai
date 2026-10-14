@@ -12,4 +12,8 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL
 // session check loads better-auth, which is ESM-only: no session, unless the
 // spec mocks lib/auth itself.
 process.env.JWT_SECRET = "test-jwt-secret";
+// AccessGuard's staff method and the back-office sign-in (RX-94) need their own keys, with no
+// fallback: obviously fake test values (a spec may set its own before it builds its module).
+process.env.ADMIN_JWT_SECRET = "test-admin-jwt-secret-not-a-real-secret";
+process.env.ADMIN_TOTP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 jest.mock("../src/lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));

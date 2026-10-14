@@ -1,0 +1,25 @@
+import { Module } from "@nestjs/common";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { ADMIN_AUTH_CONFIG } from "./config/admin-auth-config.token";
+import { AdminSessionRepository } from "./repository/admin-session.repository";
+import { AdminSessionService } from "./service/admin-session.service";
+import { parseAdminAuthConfig } from "./utils/parse-admin-auth-config";
+
+/**
+ * Back-office sessions and the security values (RX-94), without routes: AccessModule imports it for the
+ * `staff` method of AccessGuard, AdminAuthModule for sign-in. Needs ADMIN_JWT_SECRET (no fallback).
+ */
+@Module({
+  imports: [ConfigModule],
+  providers: [
+    {
+      provide: ADMIN_AUTH_CONFIG,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => parseAdminAuthConfig((name) => config.get<string>(name)),
+    },
+    AdminSessionRepository,
+    AdminSessionService,
+  ],
+  exports: [ADMIN_AUTH_CONFIG, AdminSessionService],
+})
+export class AdminSessionModule {}

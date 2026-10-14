@@ -97,7 +97,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     expect(labels(routes.filter((route) => route.usesGuards))).toEqual([]);
   });
 
-  // The decided declaration of every route (RX-114 inventory; 12 public routes per D112).
+  // The decided declaration of every route (RX-114 inventory; 12 public routes per D112, plus the
+  // back-office sign-in and refresh of RX-94).
   // A route that changes kind, or a new route that is not jwt/session, must be added here on purpose.
   const PUBLIC_ROUTES = [
     "ALL /auth/better/* (BetterAuthController.handleAuth)",
@@ -107,6 +108,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /models (ModelsController.listModels)",
     "GET /webhooks/stripe (WebhookController.healthCheck)",
     "GET /workspace-invites/accept (WorkspaceInviteController.resolveInvite)",
+    "POST /admin/auth/refresh (AdminAuthController.refresh)",
+    "POST /admin/auth/sign-in (AdminAuthController.signIn)",
     "POST /auth/login (AuthController.login)",
     "POST /auth/logout (AuthController.logout)",
     "POST /auth/register (AuthController.register)",
@@ -145,14 +148,41 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /chat/portal/knowledge/:id/upload (PortalController.uploadToKnowledgeBase)",
     "POST /chat/portal/link-session (PortalController.linkSession)",
   ];
+  // Back-office routes (RX-94): `staff` only, full sessions unless a scope is declared.
+  const STAFF_ROUTES = [
+    "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
+    "GET /admin/auth/sessions (AdminAuthController.listSessions)",
+    "POST /admin/auth/reauth (AdminAuthController.reauth)",
+  ];
+  const STAFF_ENROLMENT_ROUTES = [
+    "POST /admin/auth/totp/confirm (AdminAuthController.confirm)",
+    "POST /admin/auth/totp/enrol (AdminAuthController.enrol)",
+  ];
+  const STAFF_ANY_SCOPE_ROUTES = ["POST /admin/auth/sign-out (AdminAuthController.signOut)"];
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
+  const declaresStaff = (route: Route, staffScope: string | undefined) =>
+    declares(route, ["staff"]) && !route.access?.public && route.access?.staffScope === staffScope;
 
   it("each route declares the methods decided for it; every other route is jwt/session", () => {
     expect(labels(routes.filter((route) => route.access?.public))).toEqual(PUBLIC_ROUTES);
     expect(labels(routes.filter((route) => declares(route, ["apiKey"])))).toEqual(API_KEY_ROUTES);
     expect(labels(routes.filter((route) => declares(route, ["portal"])))).toEqual(PORTAL_ROUTES);
-    const known = [...PUBLIC_ROUTES, ...API_KEY_ROUTES, ...PORTAL_ROUTES];
+    expect(labels(routes.filter((route) => declaresStaff(route, undefined)))).toEqual(STAFF_ROUTES);
+    expect(labels(routes.filter((route) => declaresStaff(route, "enrolment")))).toEqual(STAFF_ENROLMENT_ROUTES);
+    expect(labels(routes.filter((route) => declaresStaff(route, "any")))).toEqual(STAFF_ANY_SCOPE_ROUTES);
+    // No route lists staff next to another method, and none outside the three lists above.
+    expect(labels(routes.filter((route) => !route.access?.public && route.access?.auth?.includes("staff")))).toEqual(
+      [...STAFF_ROUTES, ...STAFF_ENROLMENT_ROUTES, ...STAFF_ANY_SCOPE_ROUTES].sort(),
+    );
+    const known = [
+      ...PUBLIC_ROUTES,
+      ...API_KEY_ROUTES,
+      ...PORTAL_ROUTES,
+      ...STAFF_ROUTES,
+      ...STAFF_ENROLMENT_ROUTES,
+      ...STAFF_ANY_SCOPE_ROUTES,
+    ];
     const others = routes.filter((route) => !known.includes(route.label));
     expect(labels(others.filter((route) => !declares(route, ["jwt", "session"])))).toEqual([]);
   });

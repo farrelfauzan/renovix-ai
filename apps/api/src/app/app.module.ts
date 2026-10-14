@@ -25,6 +25,7 @@ import { McpModule } from "./mcp/mcp.module";
 import { GuardrailModule } from "./guardrail/guardrail.module";
 import { ReminderModule } from "./reminder/reminder.module";
 import { CodesModule } from "./codes/codes.module";
+import { AdminAuthModule } from "./admin-auth/admin-auth.module";
 import { AccessModule } from "../common/access.module";
 import { AccessGuard } from "../common/guards/access.guard";
 
@@ -58,6 +59,7 @@ import { AccessGuard } from "../common/guards/access.guard";
     GuardrailModule,
     ReminderModule,
     CodesModule,
+    AdminAuthModule,
     AccessModule,
   ],
   controllers: [AppController],

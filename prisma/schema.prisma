@@ -841,3 +841,76 @@ model Reminder {
   @@index([userId])
   @@map("reminders")
 }
+
+// ─── Back-office staff identity (RX-94) ─────────────────────────────────────────
+// Separate from User: staff never sign in with a product account (D60). No route creates an
+// AdminUser; the first one comes from scripts/create-admin.ts, the next ones from invitations (RX-95).
+
+/// A back-office staff account. email is stored lowercased. role: "owner" | "admin".
+model AdminUser {
+  id                   String    @id @default(uuid())
+  email                String    @unique
+  passwordHash         String    @map("password_hash") // Argon2id, PHC string
+  role                 String
+  totpSecretEncrypted  String?   @map("totp_secret_encrypted") // AES-256-GCM; set at enrolment, active once totpEnrolledAt is set
+  totpEnrolledAt       DateTime? @map("totp_enrolled_at") @db.Timestamptz()
+  lastAcceptedTimeStep Int?      @map("last_accepted_time_step") // TOTP step last accepted: a code of this step or earlier is refused
+  failedAttempts       Int       @default(0) @map("failed_attempts")
+  lockedUntil          DateTime? @map("locked_until") @db.Timestamptz()
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  recoveryCodes      AdminRecoveryCode[]
+  sessions           AdminSession[]
+  notificationsAbout AdminNotification[]
+
+  @@map("admin_users")
+}
+
+/// One recovery code of an admin, stored as its SHA-256 hash; shown once at enrolment, usable once.
+model AdminRecoveryCode {
+  id        String    @id @default(uuid())
+  adminId   String    @map("admin_id")
+  admin     AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([adminId, codeHash])
+  @@map("admin_recovery_codes")
+}
+
+/// One sign-in of an admin (D54). scope: "enrolment" (TOTP not enrolled yet) | "full". The refresh token
+/// is "<id>.<random>"; only its SHA-256 hash is stored. Every rotation moves the old hash to
+/// usedRefreshTokenHashes, so a rotated token presented again is recognised and ends the session.
+model AdminSession {
+  id                     String    @id @default(uuid())
+  adminId                String    @map("admin_id")
+  admin                  AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  scope                  String
+  refreshTokenHash       String    @map("refresh_token_hash")
+  usedRefreshTokenHashes String[]  @default([]) @map("used_refresh_token_hashes")
+  userAgent              String?   @map("user_agent")
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  lastSeenAt             DateTime  @map("last_seen_at") @db.Timestamptz()
+  absoluteExpiresAt      DateTime  @map("absolute_expires_at") @db.Timestamptz()
+  lastReauthAt           DateTime? @map("last_reauth_at") @db.Timestamptz()
+  revokedAt              DateTime? @map("revoked_at") @db.Timestamptz()
+
+  @@index([adminId])
+  @@map("admin_sessions")
+}
+
+/// An in-app notification for the back office. recipientRole: "owner"; kind: "lockout".
+model AdminNotification {
+  id             String     @id @default(uuid())
+  recipientRole  String     @map("recipient_role")
+  kind           String
+  subjectAdminId String?    @map("subject_admin_id")
+  subjectAdmin   AdminUser? @relation(fields: [subjectAdminId], references: [id], onDelete: SetNull)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  readAt         DateTime?  @map("read_at") @db.Timestamptz()
+
+  @@index([subjectAdminId])
+  @@map("admin_notifications")
+}
