@@ -41,20 +41,20 @@ export class GowaWebhookController {
     const payload = body as GowaInboundMessage;
 
     // Verify the webhook signature before anything else (RX-115): "sha256=" + HMAC-SHA256 of the
-    // raw body with the webhookSecret of the channel for payload.to. Every refusal is the same 401.
-    const resolved = await this.gowaService.resolveAgent(payload?.to);
+    // raw body with the webhookSecret of a channel for payload.to. Several tenants can save the same
+    // number, so the call belongs to the channel whose secret verifies it. Every refusal is the same 401.
     const signature = req.headers["x-hub-signature-256"];
-    if (
-      !resolved ||
-      !req.rawBody ||
-      typeof signature !== "string" ||
-      !signature.startsWith(SIGNATURE_PREFIX) ||
-      !verifySignature(
-        req.rawBody,
-        signature.slice(SIGNATURE_PREFIX.length),
-        (resolved.channel.config as any)?.webhookSecret,
-      )
-    ) {
+    const hex =
+      typeof signature === "string" && signature.startsWith(SIGNATURE_PREFIX)
+        ? signature.slice(SIGNATURE_PREFIX.length)
+        : undefined;
+    const rawBody = req.rawBody;
+    const candidates =
+      hex && rawBody ? await this.gowaService.findWhatsappChannels(payload?.to) : [];
+    const resolved = candidates.find(({ channel }) =>
+      verifySignature(rawBody!, hex!, (channel.config as any)?.webhookSecret),
+    );
+    if (!resolved) {
       throw new UnauthorizedException("Invalid webhook signature");
     }
 

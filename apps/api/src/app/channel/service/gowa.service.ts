@@ -52,14 +52,16 @@ export class GowaService {
   }
 
   /**
-   * Resolve agent by phone number (to number → agent channel)
+   * Every active whatsapp channel whose phoneNumber is `toNumber`, in one query filtered in SQL.
+   * More than one tenant can save the same number, so the webhook picks among these by signature (RX-115).
    */
-  async resolveAgent(toNumber: string) {
-    const channel = await this.prisma.agentChannel.findFirst({
+  async findWhatsappChannels(toNumber: unknown) {
+    if (typeof toNumber !== "string" || !toNumber) return [];
+    const channels = await this.prisma.agentChannel.findMany({
       where: {
         channelType: "whatsapp",
         status: "active",
-        // Config contains the linked phone number
+        config: { path: ["phoneNumber"], equals: toNumber },
       },
       include: {
         agent: {
@@ -71,37 +73,7 @@ export class GowaService {
         },
       },
     });
-
-    if (!channel) return null;
-
-    // Check if the config matches the to number
-    const config = channel.config as any;
-    if (config?.phoneNumber === toNumber) {
-      return { agent: channel.agent, channel };
-    }
-
-    // Fallback: search all whatsapp channels
-    const channels = await this.prisma.agentChannel.findMany({
-      where: { channelType: "whatsapp", status: "active" },
-      include: {
-        agent: {
-          include: {
-            tools: { where: { enabled: true } },
-            knowledgeBases: true,
-            integrations: { where: { status: "connected" } },
-          },
-        },
-      },
-    });
-
-    for (const ch of channels) {
-      const cfg = ch.config as any;
-      if (cfg?.phoneNumber === toNumber) {
-        return { agent: ch.agent, channel: ch };
-      }
-    }
-
-    return null;
+    return channels.map((channel) => ({ agent: channel.agent, channel }));
   }
 
   private splitMessage(text: string, maxLength: number): string[] {

@@ -187,6 +187,27 @@ describe("RX-115: GOWA webhook refuses unsigned calls (Fastify, test database)",
     expect(sendMessage).toHaveBeenCalledWith(FROM, "Agent reply", expect.objectContaining({ phoneNumber: TO }));
   });
 
+  it.each([
+    ["the victim's channel was saved first", true],
+    ["another tenant saved the same number first", false],
+  ])("(h) two tenants with the same number (%s): each call runs the agent of the channel whose secret signed it", async (_name, victimFirst) => {
+    const saveVictim = () =>
+      createWhatsappChannel({ phoneNumber: TO, webhookSecret: SECRET, gowaUrl: "http://gowa.invalid", apiToken: "made-up" });
+    const saveOther = () =>
+      createWhatsappChannel({ phoneNumber: TO, webhookSecret: OTHER_SECRET, gowaUrl: "http://gowa.invalid", apiToken: "made-up" });
+    const victim = victimFirst ? await saveVictim() : (await saveOther(), await saveVictim());
+    const other = victimFirst ? await saveOther() : (await prisma.agent.findFirstOrThrow({ where: { NOT: { id: victim.id } } }));
+    const raw = inbound("Halo");
+
+    const victimCall = await post(raw, signed(SECRET, raw));
+    const otherCall = await post(raw, signed(OTHER_SECRET, raw));
+
+    expect(victimCall.statusCode).toBe(200);
+    expect(otherCall.statusCode).toBe(200);
+    expect(runService.chat).toHaveBeenNthCalledWith(1, victim.userId, victim.id, "Halo", `wa:${FROM}:${TO}`);
+    expect(runService.chat).toHaveBeenNthCalledWith(2, other.userId, other.id, "Halo", `wa:${FROM}:${TO}`);
+  });
+
   it("(g) no channel resolves for payload.to: 401, nothing processed", async () => {
     await withSecret();
     const raw = inbound("Halo", { to: "628999000999" });
