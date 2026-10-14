@@ -21,6 +21,11 @@ variable "domain" {
   default     = "renovix.id"
 }
 
+variable "admin_origin" {
+  description = "Origin of the back-office app, e.g. https://admin.renovix.id (RX-156): the only Origin /admin routes accept; no default, the API does not start without it"
+  type        = string
+}
+
 variable "db_tier" {
   description = "Cloud SQL instance tier"
   type        = string

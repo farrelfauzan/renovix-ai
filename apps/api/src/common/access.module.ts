@@ -4,12 +4,13 @@ import { JwtModule } from "@nestjs/jwt";
 import { AdminSessionModule } from "../app/admin-auth/admin-session.module";
 import { PortalGuard } from "../app/portal/guard/portal.guard";
 import { AccessGuard } from "./guards/access.guard";
+import { AdminOriginGuard } from "./guards/admin-origin.guard";
 import { ApiKeyGuard } from "./guards/api-key.guard";
 import { CombinedAuthGuard } from "./guards/combined-auth.guard";
 
 /**
- * `AccessGuard` and the checks behind its methods. The app and the test
- * module both import it and register `AccessGuard` as an APP_GUARD.
+ * `AccessGuard` and the checks behind its methods, and `AdminOriginGuard` (RX-156). The app and the test
+ * module both import it and register `AdminOriginGuard`, then `AccessGuard`, as APP_GUARDs.
  */
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { CombinedAuthGuard } from "./guards/combined-auth.guard";
     }),
     AdminSessionModule,
   ],
-  providers: [AccessGuard, CombinedAuthGuard, ApiKeyGuard, PortalGuard],
-  exports: [AccessGuard],
+  providers: [AccessGuard, AdminOriginGuard, CombinedAuthGuard, ApiKeyGuard, PortalGuard],
+  exports: [AccessGuard, AdminOriginGuard],
 })
 export class AccessModule {}

@@ -28,6 +28,7 @@ import { CodesModule } from "./codes/codes.module";
 import { AdminAuthModule } from "./admin-auth/admin-auth.module";
 import { AccessModule } from "../common/access.module";
 import { AccessGuard } from "../common/guards/access.guard";
+import { AdminOriginGuard } from "../common/guards/admin-origin.guard";
 
 @Module({
   imports: [
@@ -65,6 +66,8 @@ import { AccessGuard } from "../common/guards/access.guard";
   controllers: [AppController],
   providers: [
     AppService,
+    // RX-156: first, so a refused /admin request reaches neither the throttler's count nor a session check.
+    { provide: APP_GUARD, useExisting: AdminOriginGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useExisting: AccessGuard },
   ],

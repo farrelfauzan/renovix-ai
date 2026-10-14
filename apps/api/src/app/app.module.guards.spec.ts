@@ -82,6 +82,17 @@ describe("RX-114: the global guards of the real AppModule (Fastify, test databas
     expect(portal.statusCode).toBe(401);
   });
 
+  it("RX-156: an /admin route refuses a foreign Origin and a POST without Origin (403), and takes the back-office Origin", async () => {
+    const signIn = (headers: Record<string, string>) =>
+      app.inject({ method: "POST", url: "/admin/auth/sign-in", headers, payload: { email: "not-an-email" } });
+
+    const product = await signIn({ origin: "https://chat.renovix.id" });
+    const none = await signIn({});
+    const backOffice = await signIn({ origin: process.env.ADMIN_ORIGIN! });
+
+    expect([product.statusCode, none.statusCode, backOffice.statusCode]).toEqual([403, 403, 400]);
+  });
+
   it("the throttler runs before the AccessGuard: call 61 without a credential is 429, not 401", async () => {
     const statuses: number[] = [];
     for (let i = 0; i <= THROTTLE_LIMIT; i++) {

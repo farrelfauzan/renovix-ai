@@ -16,6 +16,7 @@ import { PrismaModule } from "../src/app/prisma/prisma.module";
 import { PrismaService } from "../src/app/prisma/prisma.service";
 import { AccessModule } from "../src/common/access.module";
 import { AccessGuard } from "../src/common/guards/access.guard";
+import { AdminOriginGuard } from "../src/common/guards/admin-origin.guard";
 import { testDatabaseUrl } from "./test-database";
 
 /** Every repository of the API: a new repository is added here, so a test lists only the service it tests. */
@@ -31,8 +32,8 @@ const REPOSITORIES = [
 
 /**
  * Builds a Nest testing module with the real PrismaService on the test
- * database, every repository and the global AccessGuard, registered the way
- * AppModule does it (a route without `@Access` answers 403). `override` gets the builder for
+ * database, every repository and the global AdminOriginGuard and AccessGuard, registered the way
+ * AppModule does it (a route without `@Access` answers 403; an /admin route only the back-office Origin). `override` gets the builder for
  * overrideProvider/overrideGuard (e.g. `withFakeProvider`). Close it with
  * `moduleRef.close()` in afterAll.
  */
@@ -47,6 +48,7 @@ export async function createTestModule(
       imports: [PrismaModule, AccessModule, ...(metadata.imports ?? [])],
       providers: [
         ...REPOSITORIES,
+        { provide: APP_GUARD, useExisting: AdminOriginGuard },
         { provide: APP_GUARD, useExisting: AccessGuard },
         ...(metadata.providers ?? []),
       ],
