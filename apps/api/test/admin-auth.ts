@@ -2,6 +2,8 @@ import { Controller, Get, Req } from "@nestjs/common";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { TestingModule } from "@nestjs/testing";
 import type { LightMyRequestResponse } from "fastify";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { generateSync } from "otplib";
 import { PasswordService } from "../src/app/admin-auth/service/password.service";
 import { TotpService } from "../src/app/admin-auth/service/totp.service";
@@ -48,12 +50,26 @@ export class BackOfficeProbeController {
   }
 }
 
-/** Creates an admin with ADMIN_PASSWORD; `enrolled` gives them an active TOTP secret (returned). */
+/** The migration that seeds the built-in roles (RX-96); its INSERT is the only copy of PRD 09 F5's role table. */
+const ROLES_MIGRATION = resolve(__dirname, "../../../prisma/migrations/20261014120000_admin_roles/migration.sql");
+
+/**
+ * Inserts the built-in roles again, with the migration's own INSERT statement (resetDatabase empties
+ * `admin_roles` like every other table). Roles that exist are left as they are.
+ */
+export async function seedAdminRoles(prisma: PrismaService): Promise<void> {
+  const insert = /INSERT INTO "admin_roles"[\s\S]*?ON CONFLICT \("name"\) DO NOTHING;/.exec(readFileSync(ROLES_MIGRATION, "utf8"));
+  if (!insert) throw new Error(`no INSERT INTO "admin_roles" ... ON CONFLICT in ${ROLES_MIGRATION}`);
+  await prisma.$executeRawUnsafe(insert[0]);
+}
+
+/** Creates an admin with ADMIN_PASSWORD (built-in roles seeded first); `enrolled` gives them an active TOTP secret (returned). */
 export async function createAdmin(
   prisma: PrismaService,
   moduleRef: TestingModule,
-  { email, enrolled = false, role = "admin" }: { email: string; enrolled?: boolean; role?: string },
+  { email, enrolled = false, role = "operations" }: { email: string; enrolled?: boolean; role?: string },
 ): Promise<{ id: string; email: string; secret: string }> {
+  await seedAdminRoles(prisma);
   const passwordHash = await moduleRef.get(PasswordService).hash(ADMIN_PASSWORD);
   const row = await prisma.adminUser.create({ data: { email, passwordHash, role } });
   if (!enrolled) return { id: row.id, email, secret: "" };

@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import type { StaffSessionRecord } from "../types/staff-session-record";
 
 /** Used refresh token hashes kept per session (reuse detection for the latest 100 rotations). */
 const MAX_USED_REFRESH_HASHES = 100;
@@ -22,6 +23,22 @@ export class AdminSessionRepository {
       where: { id: sessionId },
       include: { admin: { select: { role: true } } },
     });
+  }
+
+  /**
+   * The session with this id, its admin's role and the role's current permissions, in one query (RX-96,
+   * D60 A4: read on every request, never cached).
+   */
+  async findForAccessCheck(sessionId: string, tx?: DbTransaction): Promise<StaffSessionRecord | null> {
+    const rows = await (tx ?? this.prisma).$queryRaw<StaffSessionRecord[]>`
+      SELECT s."id", s."admin_id" AS "adminId", s."scope", s."revoked_at" AS "revokedAt",
+             s."absolute_expires_at" AS "absoluteExpiresAt", s."last_seen_at" AS "lastSeenAt",
+             s."last_reauth_at" AS "lastReauthAt", a."role", COALESCE(r."permissions", '{}'::text[]) AS "permissions"
+      FROM "admin_sessions" s
+      JOIN "admin_users" a ON a."id" = s."admin_id"
+      JOIN "admin_roles" r ON r."name" = a."role"
+      WHERE s."id" = ${sessionId}::text`;
+    return rows[0] ?? null;
   }
 
   /**

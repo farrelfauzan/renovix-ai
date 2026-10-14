@@ -11,6 +11,7 @@ import type { AdminAuthConfig } from "../types/admin-auth-config";
 import type { AdminIdentity } from "../types/admin-identity";
 import type { IssuedAdminSession } from "../types/issued-admin-session";
 import type { StaffRequirement } from "../types/staff-requirement";
+import { hasAllPermissions } from "../utils/has-all-permissions";
 import { hashToken } from "../utils/hash-token";
 
 /** Audience of the back-office access token: a token for anything else is refused even with the right key. */
@@ -98,18 +99,20 @@ export class AdminSessionService {
 
   /**
    * The `staff` check of AccessGuard: 401 without a valid access token of a live session; 403 when the
-   * session's scope or its last re-authentication does not meet the route's requirement.
+   * session's scope or its last re-authentication does not meet the route's requirement, or the admin's
+   * role lacks one of the route's permissions (read from the database on every request, D60 A4).
    */
   async authenticate(accessToken: string | undefined, requirement: StaffRequirement): Promise<AdminIdentity> {
     const claims = this.readAccessToken(accessToken);
-    const session = claims ? await this.sessions.findWithAdminRole(claims.sid) : null;
+    const session = claims ? await this.sessions.findForAccessCheck(claims.sid) : null;
     const now = new Date();
     if (!claims || !session || session.adminId !== claims.sub || !this.isLive(session, now)) {
       throw new UnauthorizedException(UNAUTHENTICATED);
     }
     this.assertRequirement(session, requirement, now);
+    if (!hasAllPermissions(session.permissions, requirement.permissions)) throw new ForbiddenException();
     await this.sessions.touch(session.id, now);
-    return { adminId: session.adminId, sessionId: session.id, scope: session.scope, role: session.admin.role };
+    return { adminId: session.adminId, sessionId: session.id, scope: session.scope, role: session.role };
   }
 
   /** The admin's live sessions, without token hashes; `current` marks the one making the request. */

@@ -6,7 +6,9 @@ import {
   NestFastifyApplication,
 } from "@nestjs/platform-fastify";
 import { AdminNotificationRepository } from "../src/app/admin-auth/repository/admin-notification.repository";
+import { AdminPiiGrantRepository } from "../src/app/admin-auth/repository/admin-pii-grant.repository";
 import { AdminRecoveryCodeRepository } from "../src/app/admin-auth/repository/admin-recovery-code.repository";
+import { AdminRoleRepository } from "../src/app/admin-auth/repository/admin-role.repository";
 import { AdminSessionRepository } from "../src/app/admin-auth/repository/admin-session.repository";
 import { AdminUserRepository } from "../src/app/admin-auth/repository/admin-user.repository";
 import { CodesRepository } from "../src/app/codes/repository/codes.repository";
@@ -23,6 +25,8 @@ const REPOSITORIES = [
   AdminSessionRepository,
   AdminRecoveryCodeRepository,
   AdminNotificationRepository,
+  AdminRoleRepository,
+  AdminPiiGrantRepository,
 ];
 
 /**

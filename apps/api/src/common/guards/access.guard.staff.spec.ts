@@ -8,6 +8,7 @@ import { PrismaService } from "../../app/prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import { createUser } from "../../../test/factories";
+import { seedAdminRoles } from "../../../test/admin-auth";
 
 // RX-94: the `staff` method of the global AccessGuard, its scope option and `reauth`, through real HTTP
 // (Fastify `inject`) with the real session check on the test database. Sessions are started with
@@ -115,7 +116,8 @@ describe("AccessGuard staff method (RX-94, Fastify, test database)", () => {
     jest.useFakeTimers({ doNotFake: [...NOT_DATE], now: new Date("2026-10-14T08:00:00Z") });
     await resetDatabase(prisma);
     user = await createUser(prisma, { apiKey: API_KEY });
-    admin = await prisma.adminUser.create({ data: { email: "ops@example.com", passwordHash: "not-used", role: "admin" } });
+    await seedAdminRoles(prisma);
+    admin = await prisma.adminUser.create({ data: { email: "ops@example.com", passwordHash: "not-used", role: "operations" } });
     mockGetSession.mockReset();
     mockGetSession.mockResolvedValue(null);
   });
@@ -141,7 +143,7 @@ describe("AccessGuard staff method (RX-94, Fastify, test database)", () => {
       const res = await get("/staff-probe/full", { cookie });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ admin: { adminId: admin.id, sessionId, scope: "full", role: "admin" }, user: null });
+      expect(res.json()).toEqual({ admin: { adminId: admin.id, sessionId, scope: "full", role: "operations" }, user: null });
       const row = await prisma.adminSession.findUniqueOrThrow({ where: { id: sessionId } });
       expect(row.lastSeenAt.getTime()).toBe(Date.now());
     });

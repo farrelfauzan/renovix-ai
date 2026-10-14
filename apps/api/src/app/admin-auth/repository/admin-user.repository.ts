@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
+import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -69,6 +70,29 @@ export class AdminUserRepository {
       data: { totpSecretEncrypted: encrypted },
     });
     return count;
+  }
+
+  /**
+   * The ids of the admins holding `role`, locking their rows until the transaction ends (RX-96: a parallel
+   * role change waits, then sees the committed roles). Raw SQL: Prisma has no SELECT ... FOR UPDATE.
+   */
+  async lockIdsWithRole(role: string, tx: DbTransaction): Promise<string[]> {
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "admin_users" WHERE "role" = ${role}::text ORDER BY "id" FOR UPDATE`;
+    return rows.map((row) => row.id);
+  }
+
+  /** Gives the admin the role with this name. Returns 0 (no such admin) or 1; 400 when no role has that name. */
+  async updateRole(adminId: string, role: string, tx: DbTransaction): Promise<number> {
+    try {
+      const { count } = await tx.adminUser.updateMany({ where: { id: adminId }, data: { role } });
+      return count;
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+        throw new BadRequestException("Unknown role");
+      }
+      throw err;
+    }
   }
 
   /** Activates the stored TOTP secret, if the admin has not enrolled yet. Returns 0 or 1. */
