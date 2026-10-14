@@ -38,7 +38,7 @@ One command for the local check set (`scripts/check.ts`). It runs every step, pr
 
 `docker build` is not part of it; run it separately when a Dockerfile or its inputs change.
 
-**In CI** (RX-149): `.github/workflows/check.yml` runs `bun run check` on every pull request to main and every push to main, with Bun 1.3.11 and Node 22, after `bun install --frozen-lockfile` and a fetch of `origin/main`. The check starts its own test database on the runner; no secret is used. The Docker image builds are not part of it (`ci.yml`, which builds them, stays switched off). Every push to main gets its own run. On a push to main the comparison base is the tip of `origin/main` when the check runs: the pushed commit itself, or a later one if main moved while the run waited. So the typecheck baseline and the "added to the list" rule of the Prisma import check only guard pull requests.
+**In CI** (RX-149): `.github/workflows/check.yml` runs `bun run check` on every pull request to main and every push to main, with Bun 1.3.11 and Node 22, after `bun install --frozen-lockfile`. On a pull request `origin/main` is fetched first. The check starts its own test database on the runner; no secret is used. The Docker image builds are not part of it (`ci.yml`, which builds them, stays switched off). Every push to main gets its own run. On a push to main the comparison base is the pushed commit itself (the workflow pins `origin/main` to it), so the typecheck baseline and the "added to the list" rule of the Prisma import check only guard pull requests; they cannot fail on a push.
 
 ## Safety rule
 
