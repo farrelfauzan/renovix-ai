@@ -1,5 +1,7 @@
 import { NotFoundException } from "@nestjs/common";
 import { CodesService } from "./codes.service";
+import { CodesRepository } from "../repository/codes.repository";
+import { TransactionService } from "../../prisma/transaction.service";
 
 // PrismaService loads the generated client; a plain mock object is passed in instead.
 jest.mock("../../prisma/prisma.service", () => ({ PrismaService: class {} }));
@@ -17,7 +19,11 @@ function setup(code: unknown) {
     codeRedemption: { findUnique: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
-  return { service: new CodesService(prisma as any), tx };
+  const service = new CodesService(
+    new CodesRepository(prisma as never),
+    new TransactionService(prisma as never),
+  );
+  return { service, tx };
 }
 
 describe("RX-2: code redemption still grants a plan", () => {
