@@ -11,8 +11,10 @@ on:
 permissions:
   contents: read
 
+# A pull request has one group (a newer push cancels the older run); every push to main has its own
+# group, so GitHub never replaces a waiting run on main with a newer one and each commit is checked.
 concurrency:
-  group: check-${{ github.ref }}
+  group: check-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -22,10 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The typecheck step compares with origin/main and the "prisma imports" step reads the
-      # exception list of origin/main; the checkout above fetches only the commit under test.
-      - name: Fetch origin/main
-        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+      # The typecheck and the import check compare with origin/main. On a pull request that is main.
+      # On a push it must be the pushed commit itself: a run that starts after main moved would otherwise
+      # compare an older commit with a newer main and could fail. Without a fetch refspec, the check's own
+      # `git fetch origin main` updates only FETCH_HEAD and leaves origin/main where this step puts it.
+      - name: Base for the comparisons
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            git config --unset-all remote.origin.fetch || true
+            git update-ref refs/remotes/origin/main "$GITHUB_SHA"
+          else
+            git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+          fi
 
       - uses: oven-sh/setup-bun@v2
         with:
