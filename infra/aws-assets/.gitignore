@@ -1,0 +1,7 @@
+node_modules
+cdk.out
+*.js
+!scripts/scan.js
+!jest.config.js
+*.d.ts
+cdk.context.json
