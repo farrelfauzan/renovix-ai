@@ -6,14 +6,25 @@ import {
   ChatResponse,
   ProviderAdapter,
 } from "./provider.interface";
+import { LlmEndpoint } from "./types/llm-endpoint";
+import { isOpenRouterUrl } from "./utils/is-open-router-url";
+import { parseModelIdMap } from "./utils/parse-model-id-map";
+import { readPositiveInteger } from "../../common/utils/read-positive-integer";
+
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const DEFAULT_MAX_TOKENS = 4096;
+/** Statuses after which a request goes once to LLM_FALLBACK_BASE_URL (RX-160). */
+const FALLBACK_STATUSES = [502, 503];
 
 @Injectable()
 export class OpenRouterAdapter implements ProviderAdapter {
   private readonly logger = new Logger(OpenRouterAdapter.name);
-  private readonly apiKey: string;
   private readonly appTitle: string;
   private readonly appUrl: string;
-  private readonly baseUrl = "https://openrouter.ai/api/v1";
+  private readonly primary: LlmEndpoint;
+  private readonly fallback?: LlmEndpoint;
+  private readonly defaultMaxTokens: number;
+  private readonly modelIdMap: ReadonlyMap<string, string>;
 
   // Models that support reasoning_effort parameter
   private readonly modelsWithReasoningSupport = [
@@ -28,7 +39,28 @@ export class OpenRouterAdapter implements ProviderAdapter {
   ];
 
   constructor(private readonly configService: ConfigService) {
-    this.apiKey = this.configService.getOrThrow<string>("OPENROUTER_API_KEY");
+    // RX-160: LLM_API_KEY falls back to OPENROUTER_API_KEY; with neither, getOrThrow fails as before.
+    this.primary = {
+      label: "primary",
+      baseUrl: this.configService.get<string>("LLM_BASE_URL") || OPENROUTER_BASE_URL,
+      apiKey:
+        this.configService.get<string>("LLM_API_KEY") ||
+        this.configService.getOrThrow<string>("OPENROUTER_API_KEY"),
+    };
+    const fallbackBaseUrl = this.configService.get<string>("LLM_FALLBACK_BASE_URL");
+    this.fallback = fallbackBaseUrl
+      ? {
+          label: "fallback",
+          baseUrl: fallbackBaseUrl,
+          apiKey: this.configService.getOrThrow<string>("LLM_FALLBACK_API_KEY"),
+        }
+      : undefined;
+    this.defaultMaxTokens = readPositiveInteger({
+      name: "LLM_DEFAULT_MAX_TOKENS",
+      value: this.configService.get<string>("LLM_DEFAULT_MAX_TOKENS"),
+      fallback: DEFAULT_MAX_TOKENS,
+    });
+    this.modelIdMap = parseModelIdMap(this.configService.get<string>("LLM_MODEL_ID_MAP"));
     this.appTitle =
       this.configService.get<string>("OPENROUTER_APP_TITLE") || "Renovix AI";
     this.appUrl =
@@ -42,12 +74,51 @@ export class OpenRouterAdapter implements ProviderAdapter {
     );
   }
 
+  /** The id the provider expects (LLM_MODEL_ID_MAP); only the outgoing body uses it. */
+  private toProviderModelId(providerId: string): string {
+    return this.modelIdMap.get(providerId) ?? providerId;
+  }
+
+  /** OpenRouter's attribution headers go only to OpenRouter's base URL. */
+  private buildHeaders(endpoint: LlmEndpoint): Record<string, string> {
+    const headers = {
+      Authorization: `Bearer ${endpoint.apiKey}`,
+      "Content-Type": "application/json",
+    };
+    if (!isOpenRouterUrl(endpoint.baseUrl)) return headers;
+    return { ...headers, "HTTP-Referer": this.appUrl, "X-Title": this.appTitle };
+  }
+
+  /**
+   * After the primary answered 502 or 503 (chat: once its retries are used up), the request
+   * goes once to the fallback, if one is configured. Any other error is rethrown as is.
+   */
+  private sendToFallback<T>(
+    err: unknown,
+    send: (endpoint: LlmEndpoint) => Promise<T>,
+  ): Promise<T> {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    if (!this.fallback || !status || !FALLBACK_STATUSES.includes(status)) throw err;
+    this.logger.warn(
+      `[LLM] primary (${new URL(this.primary.baseUrl).host}) answered ${status}; sending the request once to the fallback (${new URL(this.fallback.baseUrl).host})`,
+    );
+    return send(this.fallback);
+  }
+
+  private async postChat(endpoint: LlmEndpoint, body: Record<string, unknown>): Promise<any> {
+    const response = await axios.post(`${endpoint.baseUrl}/chat/completions`, body, {
+      headers: this.buildHeaders(endpoint),
+      timeout: 300000,
+    });
+    return response.data;
+  }
+
   async chat(params: ChatRequest): Promise<ChatResponse> {
     const body: Record<string, unknown> = {
-      model: params.providerId,
+      model: this.toProviderModelId(params.providerId),
       messages: params.messages,
       temperature: params.temperature ?? 0.7,
-      max_tokens: params.max_tokens ?? 4096,
+      max_tokens: params.max_tokens ?? this.defaultMaxTokens,
     };
 
     if (this.supportsReasoning(params.providerId) && params.reasoning_effort) {
@@ -63,51 +134,44 @@ export class OpenRouterAdapter implements ProviderAdapter {
       body.tool_choice = params.tool_choice ?? "auto";
     }
 
+    const data = await this.postChatWithRetries(body).catch((err) =>
+      this.sendToFallback(err, (endpoint) => this.postChat(endpoint, body)),
+    );
+
+    if (params.max_tokens && params.max_tokens <= 50) {
+      this.logger.log(
+        `[debug] raw choice: ${JSON.stringify(data.choices?.[0]?.message)}`,
+      );
+    }
+
+    return {
+      id: data.id,
+      model: params.model,
+      choices: data.choices.map((c: any, i: number) => ({
+        index: i,
+        message: {
+          role: c.message.role,
+          content: c.message.content,
+          ...(c.message.tool_calls && { tool_calls: c.message.tool_calls }),
+        },
+        finish_reason: c.finish_reason,
+      })),
+      usage: {
+        prompt_tokens: data.usage.prompt_tokens,
+        completion_tokens: data.usage.completion_tokens,
+        total_tokens: data.usage.total_tokens,
+      },
+    };
+  }
+
+  /** Today's retries (6 attempts on timeout, 500, 502, 503, 429), against the primary. */
+  private async postChatWithRetries(body: Record<string, unknown>): Promise<any> {
     const maxRetries = 6;
     let lastError: any;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const response = await axios.post(
-          `${this.baseUrl}/chat/completions`,
-          body,
-          {
-            headers: {
-              Authorization: `Bearer ${this.apiKey}`,
-              "Content-Type": "application/json",
-              "HTTP-Referer": this.appUrl,
-              "X-Title": this.appTitle,
-            },
-            timeout: 300000,
-          },
-        );
-
-        const data = response.data;
-
-        if (params.max_tokens && params.max_tokens <= 50) {
-          this.logger.log(
-            `[debug] raw choice: ${JSON.stringify(data.choices?.[0]?.message)}`,
-          );
-        }
-
-        return {
-          id: data.id,
-          model: params.model,
-          choices: data.choices.map((c: any, i: number) => ({
-            index: i,
-            message: {
-              role: c.message.role,
-              content: c.message.content,
-              ...(c.message.tool_calls && { tool_calls: c.message.tool_calls }),
-            },
-            finish_reason: c.finish_reason,
-          })),
-          usage: {
-            prompt_tokens: data.usage.prompt_tokens,
-            completion_tokens: data.usage.completion_tokens,
-            total_tokens: data.usage.total_tokens,
-          },
-        };
+        return await this.postChat(this.primary, body);
       } catch (err: any) {
         lastError = err;
         const status = err.response?.status;
@@ -137,10 +201,10 @@ export class OpenRouterAdapter implements ProviderAdapter {
     params: ChatRequest,
   ): AsyncGenerator<string, void, unknown> {
     const body: Record<string, unknown> = {
-      model: params.providerId,
+      model: this.toProviderModelId(params.providerId),
       messages: params.messages,
       temperature: params.temperature ?? 0.7,
-      max_tokens: params.max_tokens ?? 4096,
+      max_tokens: params.max_tokens ?? this.defaultMaxTokens,
       stream: true,
     };
 
@@ -161,27 +225,10 @@ export class OpenRouterAdapter implements ProviderAdapter {
       `[OpenRouter chatStream] model=${params.providerId} tool_choice=${JSON.stringify(body.tool_choice)} tools=${(params.tools || []).length}`,
     );
 
-    let response;
-    try {
-      response = await axios.post(`${this.baseUrl}/chat/completions`, body, {
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": this.appUrl,
-          "X-Title": this.appTitle,
-        },
-        timeout: 120000,
-        responseType: "stream",
-      });
-    } catch (err: any) {
-      const errBody = err.response?.data
-        ? await this.drainStream(err.response.data)
-        : err.message;
-      this.logger.error(
-        `OpenRouter stream error (${err.response?.status}): ${errBody}`,
-      );
-      throw err;
-    }
+    // No retries on a stream (today's behaviour); a 502/503 goes once to the fallback.
+    const response = await this.openStream(this.primary, body).catch((err) =>
+      this.sendToFallback(err, (endpoint) => this.openStream(endpoint, body)),
+    );
 
     const stream = response.data as NodeJS.ReadableStream;
     let buffer = "";
@@ -239,6 +286,24 @@ export class OpenRouterAdapter implements ProviderAdapter {
     this.logger.log(
       `[OpenRouter chatStream] Stream ended without [DONE] (${chunkCount} chunks)`,
     );
+  }
+
+  private async openStream(endpoint: LlmEndpoint, body: Record<string, unknown>) {
+    try {
+      return await axios.post(`${endpoint.baseUrl}/chat/completions`, body, {
+        headers: this.buildHeaders(endpoint),
+        timeout: 120000,
+        responseType: "stream",
+      });
+    } catch (err: any) {
+      const errBody = err.response?.data
+        ? await this.drainStream(err.response.data)
+        : err.message;
+      this.logger.error(
+        `OpenRouter stream error (${endpoint.label}, ${err.response?.status}): ${errBody}`,
+      );
+      throw err;
+    }
   }
 
   private async drainStream(stream: NodeJS.ReadableStream): Promise<string> {

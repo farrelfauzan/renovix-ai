@@ -49,7 +49,7 @@ jest.mock("../knowledge/service/s3.service", () => ({ S3Service: class {} }));
 const http: typeof import("http") = require("http");
 const https: typeof import("https") = require("https");
 
-const ENV_KEYS = ["LLM_PROVIDER", "OPENROUTER_API_KEY", "IP_HASH_SECRET"] as const;
+const ENV_KEYS = ["LLM_PROVIDER", "OPENROUTER_API_KEY", "LLM_API_KEY", "EMBEDDING_API_KEY", "IP_HASH_SECRET"] as const;
 const savedEnv = ENV_KEYS.map((k) => process.env[k]);
 const savedAdapter = axios.defaults.adapter;
 const outbound: string[] = [];
@@ -61,6 +61,8 @@ const block = (name: string) => (..._args: unknown[]): never => {
 beforeAll(() => {
   process.env.LLM_PROVIDER = "fake";
   delete process.env.OPENROUTER_API_KEY;
+  delete process.env.LLM_API_KEY; // RX-160: fake mode refuses these keys too
+  delete process.env.EMBEDDING_API_KEY;
   process.env.IP_HASH_SECRET = "rx88-test-secret";
   jest.spyOn(globalThis, "fetch").mockImplementation(block("fetch"));
   jest.spyOn(http, "request").mockImplementation(block("http.request"));
