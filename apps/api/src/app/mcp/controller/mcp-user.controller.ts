@@ -12,8 +12,12 @@ import {
 } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { ConfigService } from "@nestjs/config";
-import type { FastifyReply } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { McpUserService } from "../service/mcp-user.service";
+import { mcpOAuthCookieName } from "../utils/mcp-oauth-cookie-name";
+import { mcpOAuthSetCookie } from "../utils/mcp-oauth-set-cookie";
+import { parseCookieHeader } from "../utils/parse-cookie-header";
+import { readStateProvider } from "../utils/read-state-provider";
 
 /**
  * Per-user MCP OAuth and credential management.
@@ -29,7 +33,8 @@ export class McpUserController {
 
   /**
    * Start OAuth flow for the authenticated user.
-   * Returns an auth URL to redirect the user to.
+   * Returns an auth URL to redirect the user to, and sets the flow's one-time value as a cookie
+   * for the provider (RX-152), so only this browser can complete the flow.
    */
   @Get("oauth/start")
   @Access({ auth: ["jwt", "session"] })
@@ -37,7 +42,9 @@ export class McpUserController {
     @Req() req: any,
     @Query("provider") provider: string,
     @Query("workspaceId") workspaceId: string,
+    @Res({ passthrough: true }) res: FastifyReply,
   ) {
+    res.header("cache-control", "no-store");
     if (!provider) {
       throw new BadRequestException("provider query param is required");
     }
@@ -45,27 +52,42 @@ export class McpUserController {
       throw new BadRequestException("workspaceId query param is required");
     }
 
-    const authUrl = await this.mcpUserService.getOAuthUrl(
+    const isProduction = process.env.NODE_ENV === "production";
+    const cookieName = mcpOAuthCookieName(provider, isProduction);
+    if (!cookieName) {
+      throw new BadRequestException("Unsupported OAuth provider");
+    }
+    const { authUrl, oneTimeValue, maxAgeSeconds } = await this.mcpUserService.startOAuthFlow(
       req.user.userId,
       workspaceId,
       provider,
     );
+    res.header("set-cookie", mcpOAuthSetCookie({ name: cookieName, value: oneTimeValue, maxAgeSeconds, isProduction }));
     return { authUrl };
   }
 
   /**
    * OAuth callback handler. Exchanges code for tokens, stores in UserMcpCredential,
-   * then redirects to frontend.
+   * then redirects to frontend. RX-152: only for the browser holding the flow's one-time value in
+   * its cookie for the state's provider; every reply clears that cookie, success or failure.
    */
   @Get("oauth/callback")
   @Access({ public: true, reason: "the OAuth provider redirects the browser here; the state parameter names the user" })
   async oauthCallback(
     @Query("code") code: string,
     @Query("state") state: string,
+    @Req() req: FastifyRequest,
     @Res() res: FastifyReply,
   ) {
     const frontendUrl =
       this.configService.get<string>("CHAT_APP_URL") || "http://localhost:4201";
+    const isProduction = process.env.NODE_ENV === "production";
+    // The provider is read from the state unverified, only to name the cookie; the service verifies the state.
+    const provider = readStateProvider(state);
+    const cookieName = provider ? mcpOAuthCookieName(provider, isProduction) : null;
+    if (cookieName) {
+      res.header("set-cookie", mcpOAuthSetCookie({ name: cookieName, value: "", maxAgeSeconds: 0, isProduction }));
+    }
 
     if (!code || !state) {
       return res
@@ -76,7 +98,8 @@ export class McpUserController {
     }
 
     try {
-      await this.mcpUserService.handleOAuthCallback(code, state);
+      const browserValue = cookieName ? parseCookieHeader(req.headers.cookie).get(cookieName) : undefined;
+      await this.mcpUserService.handleOAuthCallback(code, state, browserValue);
       return res
         .code(302)
         .redirect(`${frontendUrl}/agents?view=settings&oauth=success`);
