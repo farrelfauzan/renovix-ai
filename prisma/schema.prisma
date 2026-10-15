@@ -62,6 +62,7 @@ model User {
   mcpOAuthStates McpOAuthState[]
   guardrailViolations GuardrailViolation[]
   reminders       Reminder[]
+  purchaseSnapshots PurchaseSnapshot[]
 
   @@map("users")
 }
@@ -968,6 +969,208 @@ model AdminNotification {
 
   @@index([subjectAdminId])
   @@map("admin_notifications")
+}
+
+// ─── Offer catalog and platform settings (RX-86, docs/credits.md section 9) ─────
+// Offers are rows managed in the back office, never code (D46); values come from prisma/offers.seed.json
+// (`bun run seed:offers`) until the catalog screens exist (RX-98). SubscriptionPlan, UserSubscription and
+// InvitationCode stay as they are: live code (agent.service.ts, codes.repository.ts) still reads them;
+// retiring them is later work. Version rows, purchase snapshots and change records are append-only: a
+// trigger refuses every UPDATE and DELETE (migration 20261015150000_offer_catalog).
+
+/// How a package version is paid: once (Starter, Pro: limits unlocked for good, D37) or every month.
+enum PackageBilling {
+  one_time
+  monthly
+}
+
+/// The kind of catalog row or setting a CatalogChange is about.
+enum CatalogEntity {
+  package
+  package_version
+  top_up_pack
+  top_up_pack_version
+  enterprise_bundle
+  enterprise_bundle_version
+  company_contract
+  platform_setting
+}
+
+/// A package (Starter, Pro, Enterprise). Price, credits and limits live on its versions.
+model Package {
+  id           String           @id @default(uuid())
+  name         String           @unique
+  displayOrder Int              @map("display_order")
+  active       Boolean
+  visible      Boolean
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+  versions     PackageVersion[]
+
+  @@map("packages")
+}
+
+/// One version of a package's terms. Append-only: a change creates the next version. The current version
+/// is the highest versionNumber whose effectiveFrom has passed.
+model PackageVersion {
+  id                String             @id @default(uuid())
+  packageId         String             @map("package_id")
+  package           Package            @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  versionNumber     Int                @map("version_number")
+  priceRupiah       Int                @map("price_rupiah")
+  creditsGranted    Decimal            @map("credits_granted") @db.Decimal(18, 6)
+  billing           PackageBilling
+  maxAgents         Int                @map("max_agents")
+  maxConnectedTools Int                @map("max_connected_tools")
+  apiAccess         Boolean            @map("api_access")
+  allowedChannels   String[]           @map("allowed_channels")
+  allowedTiers      String[]           @map("allowed_tiers")
+  effectiveFrom     DateTime           @default(now()) @map("effective_from") @db.Timestamptz()
+  createdBy         String             @map("created_by")
+  reason            String
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  purchases         PurchaseSnapshot[]
+
+  @@unique([packageId, versionNumber])
+  @@map("package_versions")
+}
+
+/// A top-up pack, sold only to accounts with a package (D36). Its terms live on its versions.
+model TopUpPack {
+  id        String             @id @default(uuid())
+  name      String             @unique
+  active    Boolean
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+  versions  TopUpPackVersion[]
+
+  @@map("top_up_packs")
+}
+
+/// One version of a top-up pack's terms. Append-only.
+model TopUpPackVersion {
+  id             String             @id @default(uuid())
+  packId         String             @map("pack_id")
+  pack           TopUpPack          @relation(fields: [packId], references: [id], onDelete: Restrict)
+  versionNumber  Int                @map("version_number")
+  creditsGranted Decimal            @map("credits_granted") @db.Decimal(18, 6)
+  priceRupiah    Int                @map("price_rupiah")
+  effectiveFrom  DateTime           @default(now()) @map("effective_from") @db.Timestamptz()
+  createdBy      String             @map("created_by")
+  reason         String
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  purchases      PurchaseSnapshot[]
+
+  @@unique([packId, versionNumber])
+  @@map("top_up_pack_versions")
+}
+
+/// An Enterprise bundle. Its amounts live on its versions.
+model EnterpriseBundle {
+  id        String                    @id @default(uuid())
+  name      String                    @unique
+  active    Boolean
+  createdAt DateTime                  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime                  @updatedAt @map("updated_at") @db.Timestamptz()
+  versions  EnterpriseBundleVersion[]
+
+  @@map("enterprise_bundles")
+}
+
+/// One version of an Enterprise bundle. Append-only. The amounts are D1 (open): nullable, no defaults.
+model EnterpriseBundleVersion {
+  id                   String            @id @default(uuid())
+  bundleId             String            @map("bundle_id")
+  bundle               EnterpriseBundle  @relation(fields: [bundleId], references: [id], onDelete: Restrict)
+  versionNumber        Int               @map("version_number")
+  poolCreditsPerPeriod Decimal?          @map("pool_credits_per_period") @db.Decimal(18, 6)
+  monthlyPriceRupiah   Int?              @map("monthly_price_rupiah")
+  effectiveFrom        DateTime          @default(now()) @map("effective_from") @db.Timestamptz()
+  createdBy            String            @map("created_by")
+  reason               String
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  contracts            CompanyContract[]
+
+  @@unique([bundleId, versionNumber])
+  @@map("enterprise_bundle_versions")
+}
+
+/// An Enterprise company's contract, filled when a proposal is accepted (RX-32, RX-101). companyId has no
+/// foreign key until the company account exists. graceDays (D27), capPolicy (D2) and topUpRoles (D18) are
+/// open decisions: nullable, no defaults. defaultMemberShareCredits null means the fair share (grant ÷ seats).
+model CompanyContract {
+  id                        String                  @id @default(uuid())
+  companyId                 String                  @map("company_id")
+  bundleVersionId           String                  @map("bundle_version_id")
+  bundleVersion             EnterpriseBundleVersion @relation(fields: [bundleVersionId], references: [id], onDelete: Restrict)
+  seatLimit                 Int                     @map("seat_limit")
+  defaultMemberShareCredits Decimal?                @map("default_member_share_credits") @db.Decimal(18, 6)
+  allowedTiers              String[]                @map("allowed_tiers")
+  graceDays                 Int?                    @map("grace_days")
+  whatsappEnabled           Boolean                 @map("whatsapp_enabled")
+  capPolicy                 String?                 @map("cap_policy")
+  topUpRoles                Json?                   @map("top_up_roles")
+  createdAt                 DateTime                @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                 DateTime                @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@index([companyId])
+  @@index([bundleVersionId])
+  @@map("company_contracts")
+}
+
+/// What a buyer bought, copied from the version at the time of purchase (D37: permanent). Exactly one of
+/// packageVersionId and topUpPackVersionId is set (CHECK). Append-only. For a top-up pack the limits
+/// are null and the lists empty.
+model PurchaseSnapshot {
+  id                 String            @id @default(uuid())
+  buyerUserId        String            @map("buyer_user_id")
+  buyer              User              @relation(fields: [buyerUserId], references: [id], onDelete: Restrict)
+  packageVersionId   String?           @map("package_version_id")
+  packageVersion     PackageVersion?   @relation(fields: [packageVersionId], references: [id], onDelete: Restrict)
+  topUpPackVersionId String?           @map("top_up_pack_version_id")
+  topUpPackVersion   TopUpPackVersion? @relation(fields: [topUpPackVersionId], references: [id], onDelete: Restrict)
+  priceRupiah        Int               @map("price_rupiah")
+  creditsGranted     Decimal           @map("credits_granted") @db.Decimal(18, 6)
+  billing            PackageBilling?
+  maxAgents          Int?              @map("max_agents")
+  maxConnectedTools  Int?              @map("max_connected_tools")
+  apiAccess          Boolean?          @map("api_access")
+  allowedChannels    String[]          @map("allowed_channels")
+  allowedTiers       String[]          @map("allowed_tiers")
+  paymentId          String?           @map("payment_id")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([buyerUserId, createdAt])
+  @@index([packageVersionId])
+  @@index([topUpPackVersionId])
+  @@map("purchase_snapshots")
+}
+
+/// One platform setting. name is a key of the registry in apps/api/src/app/offers/config/platform-settings.ts,
+/// whose Zod schema validates value on every write. A setting without a row is not set.
+model PlatformSetting {
+  name      String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("platform_settings")
+}
+
+/// One change to a catalog row or a platform setting: who (an admin id or an operator label such as
+/// "seed:<name>"), why, when it takes effect, and the values before (null on create) and after. Append-only.
+model CatalogChange {
+  id            String        @id @default(uuid())
+  entity        CatalogEntity
+  entityId      String        @map("entity_id")
+  changedBy     String        @map("changed_by")
+  reason        String
+  before        Json?
+  after         Json
+  effectiveFrom DateTime      @default(now()) @map("effective_from") @db.Timestamptz()
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([entity, entityId, createdAt])
+  @@map("catalog_changes")
 }
 
 /// One back-office write or personal-data reveal (RX-97, D57, D61): who (adminId), what (resource,

@@ -1,0 +1,37 @@
+{
+  "notes": [
+    "Offer catalog and platform settings (RX-86, docs/credits.md section 9). Edit this file, then run `bun run seed:offers` (SEED_OPERATOR=<your name>).",
+    "Only decided values are filled in. null or a missing entry means not decided yet: the seed writes nothing for it.",
+    "Not decided (RX-53, D1): every package version (price, credits, billing, limits), every top-up pack and every Enterprise bundle.",
+    "Not decided: demoRunsPerAccountPerWeek, demoRunsPerIpPerDay, demoOverageCapCredits (D43), projectionMinSpendCredits, projectionMaxDays (RX-30).",
+    "Packages stay inactive and hidden until they have a version. A changed version creates a new version; versions are never edited."
+  ],
+  "reason": "Initial catalog and platform settings from the decided values (D5, D7, D47, D77 Q5, docs/credits.md section 13.2)",
+  "defaultAllowedTiers": ["standard", "advanced", "premium", "frontier"],
+  "settings": {
+    "weeklyFreeAllowanceCredits": 2,
+    "demoRunsPerAccountPerWeek": null,
+    "demoRunsPerIpPerDay": null,
+    "demoOverageCapCredits": null,
+    "runOutAmberDays": 7,
+    "runOutRedDays": 2,
+    "runOutFloorCredits": 1,
+    "peerRunMaxDepth": 2,
+    "peerRunMaxAgentCalls": 5,
+    "peerRunMaxModelCalls": 30,
+    "peerRunCallTimeoutSeconds": 60,
+    "peerRunMaxMinutes": 5,
+    "perRunCreditCap": 10,
+    "perRunCreditCapFloor": 1,
+    "seatCeiling": 100,
+    "projectionMinSpendCredits": null,
+    "projectionMaxDays": null
+  },
+  "packages": [
+    { "name": "Starter", "displayOrder": 1, "active": false, "visible": false, "version": null },
+    { "name": "Pro", "displayOrder": 2, "active": false, "visible": false, "version": null },
+    { "name": "Enterprise", "displayOrder": 3, "active": false, "visible": false, "version": null }
+  ],
+  "topUpPacks": [],
+  "enterpriseBundles": []
+}

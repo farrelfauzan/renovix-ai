@@ -27,6 +27,7 @@ import { GuardrailModule } from "./guardrail/guardrail.module";
 import { ReminderModule } from "./reminder/reminder.module";
 import { CodesModule } from "./codes/codes.module";
 import { AdminAuthModule } from "./admin-auth/admin-auth.module";
+import { OffersModule } from "./offers/offers.module";
 import { AdminAuditModule } from "./admin-auth/admin-audit.module";
 import { AdminAuditInterceptor } from "./admin-auth/interceptor/admin-audit.interceptor";
 import { AccessModule } from "../common/access.module";
@@ -69,6 +70,7 @@ import { clientIp } from "../common/utils/client-ip";
     ReminderModule,
     CodesModule,
     AdminAuthModule,
+    OffersModule,
     AdminAuditModule,
     AccessModule,
   ],
