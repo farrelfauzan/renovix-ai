@@ -14,6 +14,7 @@ const KNOWN_PLACEHOLDERS: ReadonlySet<string> = new Set([
   "dev-only-jwt-secret-never-use-in-production",
   "dev-only-better-auth-secret-never-use-in-production",
   "dev-only-ip-hash-secret-never-use-in-production",
+  "dev-only-mcp-oauth-state-secret-never-use-in-production",
   "0000000000000000000000000000000000000000000000000000000000000001",
 ]);
 
