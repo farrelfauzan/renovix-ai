@@ -38,11 +38,10 @@ const REPOSITORIES = [
 
 /**
  * Builds a Nest testing module with the real PrismaService on the test
- * database, every repository and the global AdminOriginGuard and AccessGuard, registered the way
- * AppModule does it (a route without `@Access` answers 403; an /admin route only the back-office Origin). `override` gets the builder for
- * database, every repository, the global AccessGuard and the global back-office
- * audit hook (RX-97), registered the way AppModule does it (a route without
- * `@Access` answers 403). `override` gets the builder for
+ * database, every repository, the global AdminOriginGuard (RX-156: an /admin
+ * route answers only the back-office Origin), the global AccessGuard (a route
+ * without `@Access` answers 403) and the global back-office audit hook
+ * (RX-97), registered the way AppModule does it. `override` gets the builder for
  * overrideProvider/overrideGuard (e.g. `withFakeProvider`). Close it with
  * `moduleRef.close()` in afterAll.
  */
