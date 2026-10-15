@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import type { Prisma } from "@generated/prisma/client.js";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ViolationRecord } from "../dto/guardrail-result.dto";
 
@@ -23,7 +24,7 @@ export class ViolationTrackerService {
           input: record.input?.slice(0, 1000),
           output: record.output?.slice(0, 1000),
           action: "logged",
-          metadata: record.metadata || undefined,
+          metadata: (record.metadata as Prisma.InputJsonObject | undefined) || undefined,
         },
       });
     } catch (err) {

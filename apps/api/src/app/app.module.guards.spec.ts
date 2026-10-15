@@ -47,6 +47,8 @@ describe("RX-114: the global guards of the real AppModule (Fastify, test databas
       S3_CDN_DOMAIN: "cdn.test.local",
     });
     delete process.env.OPENROUTER_API_KEY;
+    delete process.env.LLM_API_KEY; // RX-160: fake mode refuses these keys too
+    delete process.env.EMBEDDING_API_KEY;
     moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     prisma = moduleRef.get(PrismaService);
     await resetDatabase(prisma);
