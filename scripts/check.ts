@@ -12,6 +12,7 @@ const PROGRAMS = [
   "apps/api/tsconfig.spec.json",
   "apps/chat/tsconfig.json",
   "apps/back-office/tsconfig.json",
+  "apps/back-office/tsconfig.spec.json",
   "apps/landing/tsconfig.json",
   // apps/landing/tsconfig.spec.json is left out: it fails with TS6310 on its own (no specs, broken reference).
 ];

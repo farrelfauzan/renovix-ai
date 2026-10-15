@@ -24,7 +24,6 @@ Since this is an Nx monorepo, we use **path-based filtering** to determine which
 |---|---|
 | `apps/api/**`, `prisma/**`, `libs/**` | `api` |
 | `apps/chat/**`, `libs/**` | `chat` |
-| `apps/dashboard/**`, `libs/**` | `dashboard` |
 | `apps/landing/**`, `libs/**` | `landing` |
 | `package.json`, `tsconfig.base.json` | all |
 
@@ -40,15 +39,13 @@ Release tags MUST follow this format:
 v<version>                    → deploys ALL apps
 v<version>-api                → deploys only API
 v<version>-chat               → deploys only Chat
-v<version>-dashboard          → deploys only Dashboard
 v<version>-landing            → deploys only Landing
 ```
 
 Examples:
-- `v1.2.0` → builds & deploys all 4 services
+- `v1.2.0` → builds & deploys all 3 services
 - `v1.2.1-api` → builds & deploys only the API
 - `v1.2.1-chat` → builds & deploys only the Chat app
-- `v1.2.1-dashboard` → builds & deploys only Dashboard
 - `v1.2.1-landing` → builds & deploys only Landing
 
 ---
@@ -69,9 +66,9 @@ Examples:
 │          │                                              │
 │  ┌───────▼───────────────────────────────────┐         │
 │  │ Matrix Build (only affected apps)         │         │
-│  │  ┌─────┐  ┌──────┐  ┌─────────┐  ┌─────┐│         │
-│  │  │ API │  │ Chat │  │Dashboard│  │Land.││         │
-│  │  └─────┘  └──────┘  └─────────┘  └─────┘│         │
+│  │  ┌─────┐  ┌──────┐  ┌─────┐            │         │
+│  │  │ API │  │ Chat │  │Land.│            │         │
+│  │  └─────┘  └──────┘  └─────┘            │         │
 │  │  docker build (no push) — validates build │         │
 │  └───────────────────────────────────────────┘         │
 │                                                         │
@@ -107,7 +104,6 @@ Examples:
 │  │ Deploy to Cloud Run (gcloud run deploy) │           │
 │  │  • renovix-api                          │           │
 │  │  • renovix-chat                         │           │
-│  │  • renovix-dashboard                    │           │
 │  │  • renovix-landing                      │           │
 │  └─────────────────────────────────────────┘           │
 └─────────────────────────────────────────────────────────┘
@@ -121,7 +117,6 @@ Examples:
 |-----|-------------------|------|-----------|
 | API | `renovix-api` | 3000 | `renovix/api:<tag>` |
 | Chat | `renovix-chat` | 3000 | `renovix/chat:<tag>` |
-| Dashboard | `renovix-dashboard` | 4200 | `renovix/dashboard:<tag>` |
 | Landing | `renovix-landing` | 3001 | `renovix/landing:<tag>` |
 
 ---
@@ -133,7 +128,6 @@ Next.js apps bake env vars at build time. These MUST be passed as `--build-arg`:
 | App | Build Arg | Value |
 |-----|-----------|-------|
 | Chat | `NEXT_PUBLIC_API_URL` | `https://api.renovix.id/api/v1` |
-| Dashboard | `NEXT_PUBLIC_API_URL` | `https://api.renovix.id/api/v1` |
 | Landing | _(none)_ | — |
 
 > **Critical:** The URL must include `/api/v1` suffix. The API sets `app.setGlobalPrefix("api")` and routes are versioned under `/v1`. Without this, the frontend calls `https://api.renovix.id/chat/portal/usage` which 404s.
@@ -210,8 +204,7 @@ Next.js apps bake env vars at build time. These MUST be passed as `--build-arg`:
 2. **lint-test** — Run `nx affected --target=lint` and `nx affected --target=test`
 3. **build-api** — Docker build (no push) for API (if affected)
 4. **build-chat** — Docker build (no push) for Chat (if affected)
-5. **build-dashboard** — Docker build (no push) for Dashboard (if affected)
-6. **build-landing** — Docker build (no push) for Landing (if affected)
+5. **build-landing** — Docker build (no push) for Landing (if affected)
 
 > Docker builds run in parallel. Only affected apps are built to save CI minutes.
 

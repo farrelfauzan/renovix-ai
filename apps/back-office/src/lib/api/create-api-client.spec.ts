@@ -8,11 +8,16 @@ type Call = { path: string; credentials: RequestCredentials | undefined };
 function createFakeApi(options: { refreshStatus?: number; refreshThrows?: boolean; alwaysUnauthorized?: boolean } = {}) {
   const calls: Call[] = [];
   let accessValid = false;
+  let refreshesInFlight = 0;
+  let mostRefreshesInFlight = 0;
   const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const path = String(input).replace("http://api.test", "");
     calls.push({ path, credentials: init?.credentials });
+    const isRefresh = path === "/api/v1/admin/auth/refresh";
+    if (isRefresh) mostRefreshesInFlight = Math.max(mostRefreshesInFlight, ++refreshesInFlight);
     await new Promise((resolve) => setTimeout(resolve, 5)); // both callers are in flight before any answer
-    if (path === "/api/v1/admin/auth/refresh") {
+    if (isRefresh) {
+      refreshesInFlight -= 1;
       if (options.refreshThrows) throw new TypeError("network down");
       const status = options.refreshStatus ?? 200;
       if (status === 200) accessValid = true;
@@ -27,6 +32,7 @@ function createFakeApi(options: { refreshStatus?: number; refreshThrows?: boolea
     expire: () => {
       accessValid = false;
     },
+    mostRefreshesInFlight: () => mostRefreshesInFlight,
     refreshCount: () => calls.filter((c) => c.path === "/api/v1/admin/auth/refresh").length,
   };
 }
@@ -89,5 +95,29 @@ describe("createApiClient", () => {
     await expect(client.request("/api/v1/admin/a")).rejects.toBeInstanceOf(SignedOutError);
     await expect(client.request("/api/v1/admin/a")).rejects.toBeInstanceOf(SignedOutError);
     expect(api.refreshCount()).toBe(2);
+  });
+
+  it("keeps two tabs from refreshing at the same time (browser-wide lock), and both end up signed in", async () => {
+    const api = createFakeApi();
+    let queue: Promise<unknown> = Promise.resolve();
+    const sharedLock = <T,>(task: () => Promise<T>): Promise<T> => {
+      const turn = queue.then(task, task);
+      queue = turn.catch(() => undefined);
+      return turn;
+    };
+    const tabOne = createApiClient({ baseUrl: "http://api.test", fetch: api.fakeFetch, runExclusive: sharedLock });
+    const tabTwo = createApiClient({ baseUrl: "http://api.test", fetch: api.fakeFetch, runExclusive: sharedLock });
+    const [first, second] = await Promise.all([tabOne.request("/api/v1/admin/a"), tabTwo.request("/api/v1/admin/b")]);
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(api.mostRefreshesInFlight()).toBe(1);
+  });
+
+  it("without the lock two tabs do have two refreshes in flight (what the lock prevents)", async () => {
+    const api = createFakeApi();
+    const unlocked = <T,>(task: () => Promise<T>): Promise<T> => task();
+    const tabOne = createApiClient({ baseUrl: "http://api.test", fetch: api.fakeFetch, runExclusive: unlocked });
+    const tabTwo = createApiClient({ baseUrl: "http://api.test", fetch: api.fakeFetch, runExclusive: unlocked });
+    await Promise.all([tabOne.request("/api/v1/admin/a"), tabTwo.request("/api/v1/admin/b")]);
+    expect(api.mostRefreshesInFlight()).toBe(2);
   });
 });

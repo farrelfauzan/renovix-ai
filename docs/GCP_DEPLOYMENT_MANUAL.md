@@ -291,17 +291,12 @@ docker build -f apps/chat/Dockerfile \
   --build-arg NEXT_PUBLIC_API_URL=https://api.renovix.id \
   -t asia-southeast2-docker.pkg.dev/renovix-ai-prod/renovix/chat:latest .
 
-docker build -f apps/dashboard/Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL=https://api.renovix.id \
-  -t asia-southeast2-docker.pkg.dev/renovix-ai-prod/renovix/dashboard:latest .
-
 docker build -f apps/landing/Dockerfile \
   -t asia-southeast2-docker.pkg.dev/renovix-ai-prod/renovix/landing:latest .
 
 # Push all images
 docker push asia-southeast2-docker.pkg.dev/renovix-ai-prod/renovix/api:latest
 docker push asia-southeast2-docker.pkg.dev/renovix-ai-prod/renovix/chat:latest
-docker push asia-southeast2-docker.pkg.dev/renovix-ai-prod/renovix/dashboard:latest
 docker push asia-southeast2-docker.pkg.dev/renovix-ai-prod/renovix/landing:latest
 ```
 
@@ -482,7 +477,6 @@ infra/
 cloudbuild.yaml             # CI/CD: parallel builds → push → migrate → deploy
 apps/api/Dockerfile         # Hardened: non-root, dumb-init, healthcheck
 apps/chat/Dockerfile        # NEW: production Next.js container
-apps/dashboard/Dockerfile   # Hardened: non-root, dumb-init, healthcheck
 apps/landing/Dockerfile     # Hardened: non-root, dumb-init, healthcheck
 apps/*/next.config.js       # Security headers, CSP, standalone output
 ```

@@ -1,4 +1,5 @@
 import type { ApiClient } from "./api-client";
+import { runWithRefreshLock } from "./run-with-refresh-lock";
 import { SignedOutError } from "./signed-out-error";
 
 /** Global prefix `/api` + version `v1` + `admin/auth/refresh` (apps/api admin-auth controller). */
@@ -10,6 +11,8 @@ export type ApiClientOptions = {
   readonly fetch?: typeof fetch;
   /** Called every time a request ends as signed out; keep it idempotent. */
   readonly onSignedOut?: () => void;
+  /** Runs a refresh while no other tab refreshes; defaults to the browser-wide Web Lock. */
+  readonly runExclusive?: <T>(task: () => Promise<T>) => Promise<T>;
 };
 
 /**
@@ -19,16 +22,17 @@ export type ApiClientOptions = {
  *
  * The API answers 401 for an expired access token and rotates the refresh token with reuse detection: a
  * second refresh with the already-used token ENDS THE SESSION. So all requests that get a 401 at the same
- * time join ONE shared refresh, then each retries once. Sign-in is not sent through this client (a 401
+ * time join ONE shared refresh, then each retries once. Other tabs are kept out by a browser-wide Web
+ * Lock around the refresh (`runExclusive`), so two tabs never have a refresh in flight together. Sign-in is not sent through this client (a 401
  * there means wrong credentials, not an expired session).
  * The retry is safe because the 401 comes from the access check, before the route does any work. A request
  * body must be re-sendable (string, not a stream).
  */
-export function createApiClient({ baseUrl, fetch: fetchImpl = (input, init) => fetch(input, init), onSignedOut }: ApiClientOptions): ApiClient {
+export function createApiClient({ baseUrl, fetch: fetchImpl = (input, init) => fetch(input, init), onSignedOut, runExclusive = runWithRefreshLock }: ApiClientOptions): ApiClient {
   let refreshing: Promise<void> | undefined;
   const send = (path: string, init?: RequestInit): Promise<Response> => fetchImpl(`${baseUrl}${path}`, { ...init, credentials: "include" });
   const refresh = (): Promise<void> => {
-    refreshing ??= send(REFRESH_PATH, { method: "POST" })
+    refreshing ??= runExclusive(() => send(REFRESH_PATH, { method: "POST" }))
       .then((res) => {
         if (!res.ok) throw new SignedOutError();
       })
