@@ -427,9 +427,6 @@ export class McpUserService {
     const nowMs = Date.now();
     const payload = verifyOAuthState(state, secret, Math.floor(nowMs / MS_PER_SECOND));
     if (!payload) throw new BadRequestException(INVALID_STATE_MESSAGE);
-    // RX-152: compared before the value is used, so a link opened in another browser cannot use up
-    // the starter's value; a replay still fails at the single-use consume below.
-    if (!isSameOneTimeValue(browserValue, payload.n)) throw new BadRequestException(INVALID_STATE_MESSAGE);
     const isFirstUse = await this.oauthStates.consume({
       nonce: payload.n,
       userId: payload.u,
@@ -438,6 +435,9 @@ export class McpUserService {
       now: new Date(nowMs),
     });
     if (!isFirstUse) throw new BadRequestException(INVALID_STATE_MESSAGE);
+    // RX-152: compared AFTER the value is used up, so a link presented without the starter's cookie
+    // burns the flow: the starter (who may be the attacker) cannot replay a code that leaked from it.
+    if (!isSameOneTimeValue(browserValue, payload.n)) throw new BadRequestException(INVALID_STATE_MESSAGE);
     await this.verifyWorkspaceMembership(payload.u, payload.w);
     return payload;
   }

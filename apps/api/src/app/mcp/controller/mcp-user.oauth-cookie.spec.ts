@@ -192,13 +192,14 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it("decision: a refused cookie does not use up the starter's one-time value; the starter's browser still completes", async () => {
+  it("decision: a refused cookie uses up the state's one-time value; the starter's own browser cannot replay it", async () => {
     const flowA = await startFlow(userA);
     const flowB = await startFlow(userB);
     expect(oauthResult(await callback(flowB.state, flowA.cookie))).toBe("error");
-    expect(await stateRowCount()).toBe(2);
-    expect(oauthResult(await callback(flowB.state, flowB.cookie))).toBe("success");
-    expect((await credentials()).map((c) => c.userId)).toEqual([userB.id]);
+    expect(await stateRowCount()).toBe(1);
+    expect(oauthResult(await callback(flowB.state, flowB.cookie))).toBe("error");
+    expect(await credentials()).toEqual([]);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("AC 4: a valid state and matching cookie used once already are refused, the credential unchanged", async () => {
