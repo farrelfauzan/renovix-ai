@@ -22,7 +22,7 @@ Renovix AI solves the complexity of working with multiple AI providers by offeri
 | **Database** | PostgreSQL + pgvector |
 | **ORM** | Prisma |
 | **Chat Frontend** | Next.js 14 + React + Tailwind CSS + shadcn/ui |
-| **Dashboard** | Next.js |
+| **Back-office** | Next.js + Tailwind CSS |
 | **Landing Page** | Next.js + Tailwind CSS |
 | **State Management** | Zustand + TanStack React Query |
 | **AI Provider** | OpenRouter (chat + embeddings) |
@@ -37,10 +37,9 @@ Renovix AI solves the complexity of working with multiple AI providers by offeri
 apps/
   api/          # NestJS backend API
   chat/         # Next.js chat portal
-  dashboard/    # Next.js admin dashboard
+  back-office/  # Next.js staff back-office
   landing/      # Next.js landing page
   api-e2e/      # API end-to-end tests
-  dashboard-e2e/# Dashboard e2e tests
 prisma/         # Schema, migrations, seed
 docs/           # Documentation
 ```
@@ -102,7 +101,7 @@ bun run dev:all
 # Or run individually
 bun run dev:api        # API on http://localhost:3000
 bun run dev:chat       # Chat portal on http://localhost:4201
-bun run dev:dashboard  # Dashboard on http://localhost:4200
+bun run dev:back-office # Back-office on http://localhost:4400
 bun run dev:landing    # Landing page on http://localhost:4202
 ```
 
@@ -115,7 +114,7 @@ bun run build:all
 # Or individually
 bun run build:api
 bun run build:chat
-bun run build:dashboard
+bun run build:back-office
 bun run build:landing
 ```
 

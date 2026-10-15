@@ -10,7 +10,7 @@
       "path": "./apps/api"
     },
     {
-      "path": "./apps/dashboard"
+      "path": "./apps/back-office"
     },
     {
       "path": "./apps/landing"

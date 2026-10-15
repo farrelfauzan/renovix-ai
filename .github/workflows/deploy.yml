@@ -19,7 +19,6 @@ jobs:
       app: ${{ steps.parse.outputs.app }}
       deploy-api: ${{ steps.parse.outputs.deploy-api }}
       deploy-chat: ${{ steps.parse.outputs.deploy-chat }}
-      deploy-dashboard: ${{ steps.parse.outputs.deploy-dashboard }}
       deploy-landing: ${{ steps.parse.outputs.deploy-landing }}
     steps:
       - name: Parse tag
@@ -44,12 +43,10 @@ jobs:
           if [ -z "$APP" ]; then
             echo "deploy-api=true" >> $GITHUB_OUTPUT
             echo "deploy-chat=true" >> $GITHUB_OUTPUT
-            echo "deploy-dashboard=true" >> $GITHUB_OUTPUT
             echo "deploy-landing=true" >> $GITHUB_OUTPUT
           else
             echo "deploy-api=$( [ "$APP" = "api" ] && echo true || echo false )" >> $GITHUB_OUTPUT
             echo "deploy-chat=$( [ "$APP" = "chat" ] && echo true || echo false )" >> $GITHUB_OUTPUT
-            echo "deploy-dashboard=$( [ "$APP" = "dashboard" ] && echo true || echo false )" >> $GITHUB_OUTPUT
             echo "deploy-landing=$( [ "$APP" = "landing" ] && echo true || echo false )" >> $GITHUB_OUTPUT
           fi
 
@@ -107,34 +104,6 @@ jobs:
             .
           docker push ${{ env.REGISTRY }}/chat:$TAG
           docker push ${{ env.REGISTRY }}/chat:latest
-
-  build-push-dashboard:
-    needs: parse-tag
-    if: needs.parse-tag.outputs.deploy-dashboard == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
-
-      - name: Build and push Dashboard image
-        run: |
-          TAG="${{ needs.parse-tag.outputs.version }}"
-          docker build \
-            -f apps/dashboard/Dockerfile \
-            --build-arg NEXT_PUBLIC_API_URL=${{ env.API_URL }} \
-            -t ${{ env.REGISTRY }}/dashboard:$TAG \
-            -t ${{ env.REGISTRY }}/dashboard:latest \
-            .
-          docker push ${{ env.REGISTRY }}/dashboard:$TAG
-          docker push ${{ env.REGISTRY }}/dashboard:latest
 
   build-push-landing:
     needs: parse-tag
@@ -196,24 +165,6 @@ jobs:
         run: |
           gcloud run services update renovix-chat \
             --image=${{ env.REGISTRY }}/chat:${{ needs.parse-tag.outputs.version }} \
-            --region=${{ env.GCP_REGION }} \
-            --project=${{ env.GCP_PROJECT }}
-
-  deploy-dashboard:
-    needs: [parse-tag, build-push-dashboard]
-    if: needs.parse-tag.outputs.deploy-dashboard == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy Dashboard to Cloud Run
-        run: |
-          gcloud run services update renovix-dashboard \
-            --image=${{ env.REGISTRY }}/dashboard:${{ needs.parse-tag.outputs.version }} \
             --region=${{ env.GCP_REGION }} \
             --project=${{ env.GCP_PROJECT }}
 

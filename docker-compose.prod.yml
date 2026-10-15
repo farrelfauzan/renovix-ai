@@ -70,23 +70,6 @@ services:
       - internal
       - web
 
-  # ─── Dashboard ───
-  # dashboard:
-  #   build:
-  #     context: .
-  #     dockerfile: apps/dashboard/Dockerfile
-  #   restart: always
-  #   depends_on:
-  #     - api
-  #   environment:
-  #     NODE_ENV: production
-  #     NEXT_PUBLIC_API_URL: ${API_URL:-http://api:3000}
-  #   ports:
-  #     - "4200:4200"
-  #   networks:
-  #     - internal
-  #     - web
-
   # ─── Landing ───
   # landing:
   #   build:

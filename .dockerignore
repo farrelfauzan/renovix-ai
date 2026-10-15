@@ -13,10 +13,8 @@ coverage
 tmp
 *.log
 apps/api/dist
-apps/dashboard/.next
 apps/landing/.next
 apps/api-e2e
-apps/dashboard-e2e
 
 # Secrets last: a later !pattern (such as !prisma/**) must not bring them back.
 **/.env
