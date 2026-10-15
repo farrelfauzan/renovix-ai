@@ -6,7 +6,8 @@ import { seedAdminRoles } from "../../../../test/admin-auth";
 import { BUILT_IN_ROLES } from "./built-in-roles";
 import { STAFF_PERMISSIONS } from "./staff-permissions";
 
-// RX-96: the built-in roles the migration seeds (its INSERT, run by seedAdminRoles) are PRD 09 F5's table.
+// RX-96: the built-in roles the migrations seed (the baseline INSERT and RX-164's `audit:read` grant, both run
+// by seedAdminRoles) are PRD 09 F5's table, plus `audit:read` for every role but Support (D138).
 const READS = [
   "users:read",
   "companies:read",
@@ -27,16 +28,16 @@ const EXPECTED: Record<string, string[]> = {
   // "Users, companies, Enterprise requests, guardrails, models; no credit adjustments, no provider keys." + D56 reveal.
   operations: [
     "users:read", "users:read_pii", "users:write", "companies:read", "companies:write", "enterprise_requests:read",
-    "enterprise_requests:write", "guardrails:read", "guardrails:write", "models:read", "models:write",
+    "enterprise_requests:write", "guardrails:read", "guardrails:write", "models:read", "models:write", "audit:read",
   ],
   // "Packages, credits, adjustments, usage and cost, exports; read-only elsewhere."
   finance: [
-    ...READS, "packages:write", "credits:adjust", "exports:create",
+    ...READS, "packages:write", "credits:adjust", "exports:create", "audit:read",
   ],
   // "Users and companies with personal data masked, read-only; can open a support note."
   support: ["users:read", "companies:read", "support_notes:write"],
   // "Read-only everywhere, personal data masked."
-  viewer: READS,
+  viewer: [...READS, "audit:read"],
 };
 
 describe("built-in roles (RX-96, PRD 09 F5, test database)", () => {
@@ -72,6 +73,23 @@ describe("built-in roles (RX-96, PRD 09 F5, test database)", () => {
     const rows = await prisma.adminRole.findMany({ where: { permissions: { has: "users:read_pii" } } });
 
     expect(rows.map((row) => row.name).sort()).toEqual(["operations", "owner"]);
+  });
+
+  it("RX-164 (D138): owner, operations, finance and viewer hold audit:read; support does not", async () => {
+    const rows = await prisma.adminRole.findMany({ where: { permissions: { has: "audit:read" } } });
+
+    expect(rows.map((row) => row.name).sort()).toEqual(["finance", "operations", "owner", "viewer"]);
+  });
+
+  it("RX-164: the audit log screen's indexes exist (keyset newest first, action filter)", async () => {
+    const rows = await prisma.$queryRaw<{ indexdef: string }[]>`
+      SELECT indexdef FROM pg_indexes WHERE tablename = 'admin_audit_log' ORDER BY indexname`;
+
+    const definitions = rows.map((row) => row.indexdef.replace(/^.* USING btree /, ""));
+    expect(definitions).toEqual(expect.arrayContaining([
+      "(action, created_at)",
+      "(created_at DESC, id DESC)",
+    ]));
   });
 
   it("every staff permission is a resource:action pair, listed once", () => {
