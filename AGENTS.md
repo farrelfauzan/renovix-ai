@@ -47,6 +47,7 @@ bun run prisma:generate  # Outputs to apps/api/src/generated/prisma (gitignored)
 bun run prisma:migrate   # Dev migrations
 bun run prisma:reset     # Reset + re-seed
 bun run prisma:seed      # Seed models, configs, prompts, plans, codes
+SEED_OPERATOR=<name> bun run seed:offers  # Offer catalog + platform settings from prisma/offers.seed.json (RX-86)
 # RX-90: prisma/migrations is one baseline (20261014200000_baseline); migrations insert no plans,
 # prices or limits (those come from the catalog seed, RX-86). A local database created before
 # RX-90 must be recreated: `bun run prisma:reset` (drops all its data, then migrates and seeds).
@@ -117,6 +118,15 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - Model naming: PascalCase in schema, snake_case tables via `@@map`
 - MCP credentials encrypted with AES-256-GCM (`MCP_ENCRYPTION_KEY` env var)
 - Dev DB: `postgres://performa:performa_dev@localhost:5432/performa_ai` (from docker-compose)
+
+## Offer catalog and platform settings (RX-86)
+
+- Design: `docs/credits.md` section 9. Code: `apps/api/src/app/offers/` (services, no route yet: screens RX-98, checkout RX-35, enforcement RX-76). Migration `20261015150000_offer_catalog`.
+- Packages, top-up packs and Enterprise bundles are rows; their price, credits and limits live on **versions**. A change creates the next version, never an edit: the database refuses UPDATE and DELETE on version rows, on `purchase_snapshots` (what a buyer bought, copied from the version, D37) and on `catalog_changes` (append-only triggers; TRUNCATE stays allowed for the tests).
+- Platform settings (`platform_settings`) are typed: each name has a Zod schema in `offers/config/platform-settings.ts`, checked on every write; an unknown name or an invalid value is refused and nothing is written. A setting without a row is not set.
+- Every write to a catalog row, a contract or a setting writes a `catalog_changes` row in the same transaction: who (admin id, or `seed:<operator>`), why, when it takes effect, values before and after.
+- Values come only from `prisma/offers.seed.json`, which the Tech Lead edits; no price, credit amount or limit is written in code. `SEED_OPERATOR=<name> bun run seed:offers [file]` validates the file and applies it in one transaction to the database `DATABASE_URL` names; running it again with the same file writes nothing, changed terms create a new version. null or a missing entry means not decided yet and writes nothing.
+- `SubscriptionPlan`, `UserSubscription` and `InvitationCode` are unchanged and still read by the live code (`agent.service.ts`, `codes.repository.ts`); `prisma/seed.ts` still seeds the old plans. Retiring them is later work.
 
 ## Frontend Patterns
 

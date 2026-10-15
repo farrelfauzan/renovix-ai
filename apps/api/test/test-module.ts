@@ -12,6 +12,13 @@ import { AdminRoleRepository } from "../src/app/admin-auth/repository/admin-role
 import { AdminSessionRepository } from "../src/app/admin-auth/repository/admin-session.repository";
 import { AdminUserRepository } from "../src/app/admin-auth/repository/admin-user.repository";
 import { CodesRepository } from "../src/app/codes/repository/codes.repository";
+import { CatalogChangeRepository } from "../src/app/offers/repository/catalog-change.repository";
+import { CompanyContractRepository } from "../src/app/offers/repository/company-contract.repository";
+import { EnterpriseBundleRepository } from "../src/app/offers/repository/enterprise-bundle.repository";
+import { PackageRepository } from "../src/app/offers/repository/package.repository";
+import { PlatformSettingRepository } from "../src/app/offers/repository/platform-setting.repository";
+import { PurchaseSnapshotRepository } from "../src/app/offers/repository/purchase-snapshot.repository";
+import { TopUpPackRepository } from "../src/app/offers/repository/top-up-pack.repository";
 import { PrismaModule } from "../src/app/prisma/prisma.module";
 import { PrismaService } from "../src/app/prisma/prisma.service";
 import { AccessModule } from "../src/common/access.module";
@@ -27,6 +34,13 @@ const REPOSITORIES = [
   AdminNotificationRepository,
   AdminRoleRepository,
   AdminPiiGrantRepository,
+  PackageRepository,
+  TopUpPackRepository,
+  EnterpriseBundleRepository,
+  CompanyContractRepository,
+  PurchaseSnapshotRepository,
+  PlatformSettingRepository,
+  CatalogChangeRepository,
 ];
 
 /**

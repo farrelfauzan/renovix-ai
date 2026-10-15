@@ -27,6 +27,7 @@ import { GuardrailModule } from "./guardrail/guardrail.module";
 import { ReminderModule } from "./reminder/reminder.module";
 import { CodesModule } from "./codes/codes.module";
 import { AdminAuthModule } from "./admin-auth/admin-auth.module";
+import { OffersModule } from "./offers/offers.module";
 import { AccessModule } from "../common/access.module";
 import { AccessGuard } from "../common/guards/access.guard";
 import { clientIp } from "../common/utils/client-ip";
@@ -66,6 +67,7 @@ import { clientIp } from "../common/utils/client-ip";
     ReminderModule,
     CodesModule,
     AdminAuthModule,
+    OffersModule,
     AccessModule,
   ],
   controllers: [AppController],
