@@ -124,8 +124,8 @@ export class AdminSessionService {
   }
 
   /** Revokes one of the admin's own sessions; 404 for another admin's session or one already ended. */
-  async revokeOwn(identity: AdminIdentity, sessionId: string): Promise<void> {
-    if ((await this.sessions.revokeForAdmin(sessionId, identity.adminId, new Date())) === 0) throw new NotFoundException();
+  async revokeOwn(identity: AdminIdentity, sessionId: string, tx?: DbTransaction): Promise<void> {
+    if ((await this.sessions.revokeForAdmin(sessionId, identity.adminId, new Date(), tx)) === 0) throw new NotFoundException();
   }
 
   /** Ends a session (sign-out, enrolment upgrade). */
@@ -134,8 +134,8 @@ export class AdminSessionService {
   }
 
   /** Records a successful re-authentication on the session. */
-  async markReauth(sessionId: string): Promise<void> {
-    await this.sessions.markReauth(sessionId, new Date());
+  async markReauth(sessionId: string, tx?: DbTransaction): Promise<void> {
+    await this.sessions.markReauth(sessionId, new Date(), tx);
   }
 
   private async endOnReuse(sessionId: string, now: Date): Promise<never> {

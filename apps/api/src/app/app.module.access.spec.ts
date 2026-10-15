@@ -1,4 +1,4 @@
-import { RequestMethod, Type } from "@nestjs/common";
+import { Controller, Delete, Get, Module, Patch, Post, Put, RequestMethod, Type } from "@nestjs/common";
 import {
   GUARDS_METADATA,
   METHOD_METADATA,
@@ -13,6 +13,8 @@ import {
 import { Access } from "../common/decorators/access.decorator";
 import { AccessOptions } from "../common/types/access-options";
 import { STAFF_PERMISSIONS } from "./admin-auth/config/staff-permissions";
+import { AdminAudit } from "./admin-auth/decorator/admin-audit.decorator";
+import type { AdminAuditOptions } from "./admin-auth/types/admin-audit-options";
 
 // RX-114 coverage: the route table of the real AppModule, as Nest's own
 // scanner sees it (preview mode: every module reachable from AppModule is
@@ -30,7 +32,10 @@ type Route = {
   readonly label: string;
   /** The route's path without the global prefix, e.g. "/admin/auth/sessions/:id". */
   readonly path: string;
+  readonly method: string;
   readonly access: AccessOptions | undefined;
+  /** The RX-97 audit declaration (`@AdminAudit`), on the handler or its controller. */
+  readonly audit: AdminAuditOptions | undefined;
   readonly usesGuards: boolean;
 };
 
@@ -55,7 +60,9 @@ function listRoutes(modules: ModulesContainer): Route[] {
         routes.push({
           label: `${RequestMethod[method]} /${path} (${controller.name}.${name})`,
           path: `/${path}`.replace(/\/{2,}/g, "/"),
+          method: RequestMethod[method],
           access: reflector.getAllAndOverride(Access, [handler, controller]),
+          audit: reflector.getAllAndOverride(AdminAudit, [handler, controller]),
           usesGuards: hasGuards(controller) || hasGuards(handler),
         });
       }
@@ -63,6 +70,24 @@ function listRoutes(modules: ModulesContainer): Route[] {
   }
   return routes;
 }
+
+/** The routes of a module, as the preview scanner sees them (nothing is instantiated). */
+async function scanRoutes(module: Type<unknown>): Promise<Route[]> {
+  const context = await NestFactory.createApplicationContext(module, { preview: true, logger: false });
+  const found = listRoutes(context.get(ModulesContainer));
+  await context.close();
+  return found;
+}
+
+// RX-97 (D57): a back-office route that changes state either writes the audit row (`@AdminAudit` with a
+// resource and an action) or is exempt with a reason. GET (and HEAD, OPTIONS) routes only read.
+const STATE_CHANGING = ["POST", "PUT", "PATCH", "DELETE", "ALL"];
+const isAdminRoute = (route: Route) => /^\/admin(\/|$)/.test(route.path);
+const changesState = (route: Route) => isAdminRoute(route) && STATE_CHANGING.includes(route.method);
+const isHooked = (route: Route) => route.audit !== undefined && !route.audit.exempt && Boolean(route.audit.resource.trim() && route.audit.action.trim());
+const isExempt = (route: Route) => route.audit?.exempt === true && Boolean(route.audit.reason.trim());
+/** The state-changing /admin routes that neither write the audit row nor are exempt with a reason. */
+const unaudited = (found: Route[]) => found.filter((route) => changesState(route) && !isHooked(route) && !isExempt(route));
 
 describe("RX-114: every route of AppModule declares its access", () => {
   let routes: Route[];
@@ -214,5 +239,82 @@ describe("RX-114: every route of AppModule declares its access", () => {
     expect(labels(staffRoutes.filter((route) => !route.access?.public && route.access?.permissions?.length))).toEqual(
       STAFF_PERMISSION_ROUTES,
     );
+  });
+
+  // RX-97 criterion 3: every state-changing /admin route is hooked or exempt; the lists below are the PR's.
+  const AUDITED_ROUTES = [
+    "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
+    "POST /admin/auth/reauth (AdminAuthController.reauth)",
+    "POST /admin/auth/sign-out (AdminAuthController.signOut)",
+    "POST /admin/auth/totp/confirm (AdminAuthController.confirm)",
+    "POST /admin/auth/totp/enrol (AdminAuthController.enrol)",
+  ];
+  const AUDIT_EXEMPT_ROUTES = [
+    "POST /admin/auth/refresh (AdminAuthController.refresh)",
+    "POST /admin/auth/sign-in (AdminAuthController.signIn)",
+  ];
+
+  it("RX-97: every state-changing /admin route writes the audit row or is exempt with a reason", () => {
+    expect(routes.filter(changesState).length).toBeGreaterThan(0);
+    expect(labels(unaudited(routes))).toEqual([]);
+  });
+
+  it("RX-97: the audited and the exempt /admin routes are pinned", () => {
+    expect(labels(routes.filter((route) => changesState(route) && isHooked(route)))).toEqual(AUDITED_ROUTES);
+    expect(labels(routes.filter((route) => changesState(route) && isExempt(route)))).toEqual(AUDIT_EXEMPT_ROUTES);
+  });
+});
+
+describe("RX-97: the audit coverage check catches a new /admin write without the hook (probe)", () => {
+  @Controller("admin/audit-probe")
+  class AuditProbeController {
+    @Post("unaudited")
+    unaudited() {
+      return null;
+    }
+
+    @Put("hooked")
+    @AdminAudit({ resource: "probe", action: "put" })
+    hooked() {
+      return null;
+    }
+
+    @Patch("exempt")
+    @AdminAudit({ exempt: true, reason: "probe: no signed-in admin" })
+    exempt() {
+      return null;
+    }
+
+    @Delete("blank-reason")
+    @AdminAudit({ exempt: true, reason: " " })
+    blankReason() {
+      return null;
+    }
+
+    @Get("read")
+    read() {
+      return null;
+    }
+  }
+
+  @Controller("not-admin")
+  class ProductProbeController {
+    @Post("write")
+    write() {
+      return null;
+    }
+  }
+
+  @Module({ controllers: [AuditProbeController, ProductProbeController] })
+  class AuditProbeModule {}
+
+  it("reports the probe write with neither the hook nor an exemption (and one exempt without a reason), nothing else", async () => {
+    const probeRoutes = await scanRoutes(AuditProbeModule);
+
+    expect(probeRoutes).toHaveLength(6);
+    expect(unaudited(probeRoutes).map((route) => route.label).sort()).toEqual([
+      "DELETE /admin/audit-probe/blank-reason (AuditProbeController.blankReason)",
+      "POST /admin/audit-probe/unaudited (AuditProbeController.unaudited)",
+    ]);
   });
 });

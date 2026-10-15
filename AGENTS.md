@@ -160,7 +160,7 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 Copy `.env.example` to `.env`. Key variables:
 
-`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET` and `MCP_ENCRYPTION_KEY` are required in every mode (RX-110, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` that is not 32 bytes.
+`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY` and `MCP_OAUTH_STATE_SECRET` are required in every mode (RX-110, RX-151, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` that is not 32 bytes.
 
 | Variable | Required | Notes |
 |----------|----------|-------|
@@ -172,9 +172,16 @@ Copy `.env.example` to `.env`. Key variables:
 | `IP_HASH_SECRET` | Yes | HMAC key for client IPs (free-tier caps); raw IPs are never stored |
 | `CLIENT_IP_HEADER` | Prod | Header carrying the client IP (e.g. `x-client-ip`); a trusted proxy in front of the API must set it and overwrite client copies. Unset locally (socket address) |
 | `ANON_DAILY_IP_CAP` / `ANON_DAILY_GLOBAL_CAP` | -- | Free-tier daily caps per IP / in total (defaults 60 / 2000, day in Asia/Jakarta) |
-| `OPENROUTER_API_KEY` | Yes | AI provider (chat models and embeddings); `OPENROUTER_APP_TITLE` / `OPENROUTER_APP_URL` are optional |
+| `OPENROUTER_API_KEY` | Yes* | AI provider (chat models and embeddings); `OPENROUTER_APP_TITLE` / `OPENROUTER_APP_URL` are optional. *Not needed when `LLM_API_KEY` and `EMBEDDING_API_KEY` are both set |
+| `LLM_BASE_URL` / `LLM_API_KEY` | -- | Chat provider (RX-160), any OpenAI-compatible API; defaults `https://openrouter.ai/api/v1` / `OPENROUTER_API_KEY`. `HTTP-Referer` and `X-Title` are sent only to OpenRouter's base URL. Griphub charges at least 0.01 credit (Rp3) per call |
+| `LLM_DEFAULT_MAX_TOKENS` | -- | `max_tokens` when a caller sets none (default 4096) |
+| `LLM_FALLBACK_BASE_URL` / `LLM_FALLBACK_API_KEY` | -- | Optional fallback: after the primary answers 502 or 503 (chat: once its retries are used up; stream: at once, it has no retries) the request goes once to the fallback. Not on 400/401/403/429 or timeouts. The key is required when the URL is set |
+| `LLM_MODEL_ID_MAP` | -- | JSON object, our model id → the provider's id (e.g. `{"anthropic/claude-opus-5.5":"claude-opus-5.5"}`); changes only the `model` sent to the provider. Unmapped ids go out unchanged; invalid JSON stops the API at start |
+| `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | -- | Embedding provider (RX-160); defaults OpenRouter's URL, `OPENROUTER_API_KEY`, `intfloat/multilingual-e5-large-instruct`, 1024 (sent as `dimensions`). A vector that is not 1024 long (`knowledge_chunks.embedding vector(1024)`) is refused before anything is written. After changing `EMBEDDING_MODEL` in a local database, clear `knowledge_chunks`; the re-embed job is RX-27 |
 | `S3_*` | Yes | S3/MinIO config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_CDN_DOMAIN` required; `S3_ENDPOINT` optional (MinIO) |
 | `MCP_ENCRYPTION_KEY` | Yes | AES-256-GCM key for stored MCP credentials: exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback, no padding (RX-110) |
+| `MCP_OAUTH_STATE_SECRET` | Yes | HMAC key that signs the state of the MCP OAuth flows (RX-151); no fallback, no flow starts without it. At least 32 characters; generate with `openssl rand -base64 48` |
+| `MCP_OAUTH_STATE_TTL_SECONDS` | -- | How long a started MCP OAuth flow stays valid (default 600); its one-time value is in `mcp_oauth_states` |
 | `CORS_ORIGIN` | Prod | Comma-separated allowed origins (not in `.env.example`) |
 | `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |

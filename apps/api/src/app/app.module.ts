@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import type { FastifyRequest } from "fastify";
 import { ScheduleModule } from "@nestjs/schedule";
@@ -28,6 +28,8 @@ import { ReminderModule } from "./reminder/reminder.module";
 import { CodesModule } from "./codes/codes.module";
 import { AdminAuthModule } from "./admin-auth/admin-auth.module";
 import { OffersModule } from "./offers/offers.module";
+import { AdminAuditModule } from "./admin-auth/admin-audit.module";
+import { AdminAuditInterceptor } from "./admin-auth/interceptor/admin-audit.interceptor";
 import { AccessModule } from "../common/access.module";
 import { AccessGuard } from "../common/guards/access.guard";
 import { clientIp } from "../common/utils/client-ip";
@@ -68,6 +70,7 @@ import { clientIp } from "../common/utils/client-ip";
     CodesModule,
     AdminAuthModule,
     OffersModule,
+    AdminAuditModule,
     AccessModule,
   ],
   controllers: [AppController],
@@ -75,6 +78,8 @@ import { clientIp } from "../common/utils/client-ip";
     AppService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useExisting: AccessGuard },
+    // RX-97: the back-office audit hook, on every route that declares @AdminAudit.
+    { provide: APP_INTERCEPTOR, useExisting: AdminAuditInterceptor },
   ],
 })
 export class AppModule {}

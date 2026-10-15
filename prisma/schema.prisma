@@ -59,6 +59,7 @@ model User {
   workspaceMemberships WorkspaceMember[]
   workspaceInvitesSent WorkspaceInvite[] @relation("InviteSender")
   mcpCredentials UserMcpCredential[]
+  mcpOAuthStates McpOAuthState[]
   guardrailViolations GuardrailViolation[]
   reminders       Reminder[]
   purchaseSnapshots PurchaseSnapshot[]
@@ -648,6 +649,7 @@ model Workspace {
   knowledgeBases KnowledgeBase[]
   agents      Agent[]
   userMcpCredentials UserMcpCredential[]
+  mcpOAuthStates McpOAuthState[]
   createdAt   DateTime          @default(now()) @db.Timestamptz()
   updatedAt   DateTime          @updatedAt @db.Timestamptz()
 
@@ -760,6 +762,22 @@ model UserMcpCredential {
   @@map("user_mcp_credentials")
 }
 
+// One-time values of the MCP OAuth flows that were started and not yet finished (RX-151).
+// The callback deletes the row that matches its signed state; a second use finds none.
+model McpOAuthState {
+  nonce       String    @id
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String    @map("workspace_id")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider    String
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([expiresAt])
+  @@map("mcp_oauth_states")
+}
+
 // ─── Guardrail Models ───────────────────────────────────────────────────────────
 
 model GuardrailViolation {
@@ -867,6 +885,7 @@ model AdminUser {
   notificationsAbout AdminNotification[]
   piiGrants          AdminPiiGrant[]     @relation("PiiGrantHolder")
   piiGrantsGiven     AdminPiiGrant[]     @relation("PiiGrantGranter")
+  auditLog           AdminAuditLog[]
 
   @@index([role])
   @@map("admin_users")
@@ -1152,4 +1171,29 @@ model CatalogChange {
 
   @@index([entity, entityId, createdAt])
   @@map("catalog_changes")
+}
+
+/// One back-office write or personal-data reveal (RX-97, D57, D61): who (adminId), what (resource,
+/// action), the values before and after (non-secret state only: never tokens, TOTP secrets, recovery
+/// codes, password hashes or personal data), the reason the admin typed ("" when the route asks for
+/// none), the request id, and when the change takes effect. Append-only, enforced in the database: the
+/// trigger "admin_audit_log_append_only" (migration 20261015120000_admin_audit_log) refuses every UPDATE
+/// and DELETE. Kept at least two years; nothing deletes rows. onDelete Restrict: an admin who has audit
+/// rows cannot be deleted, so deleting an admin can never rewrite or orphan them.
+model AdminAuditLog {
+  id          String    @id @default(uuid())
+  adminId     String    @map("admin_id")
+  admin       AdminUser @relation(fields: [adminId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  resource    String
+  action      String
+  before      Json
+  after       Json
+  reason      String
+  requestId   String    @map("request_id")
+  effectiveAt DateTime  @map("effective_at") @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([adminId, createdAt])
+  @@index([resource, createdAt])
+  @@map("admin_audit_log")
 }
