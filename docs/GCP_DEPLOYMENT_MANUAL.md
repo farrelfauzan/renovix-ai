@@ -163,7 +163,7 @@ terraform apply
 
 After `terraform apply`, some secrets are **auto-populated** and some need **manual setup**.
 
-**Required before the first deploy (RX-110).** Outside `NODE_ENV` development/test the API refuses to start when `JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET` or `MCP_ENCRYPTION_KEY` is missing, empty, a dev-only or placeholder value from `.env.example`, or shorter than 32 characters; `MCP_ENCRYPTION_KEY` must be exactly 32 bytes (`openssl rand -hex 32`). The error names the variable, never its value. Put each in Secret Manager once, before the first deploy: changing `MCP_ENCRYPTION_KEY` later makes every user reconnect their MCP tools (key rotation is a later feature).
+**Required before the first deploy (RX-110).** Outside `NODE_ENV` development/test the API refuses to start when `JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_OAUTH_STATE_SECRET` (RX-151, signs the MCP OAuth state) or `MCP_ENCRYPTION_KEY` is missing, empty, a dev-only or placeholder value from `.env.example`, or shorter than 32 characters; `MCP_ENCRYPTION_KEY` must be exactly 32 bytes (`openssl rand -hex 32`). The error names the variable, never its value. Put each in Secret Manager once, before the first deploy: changing `MCP_ENCRYPTION_KEY` later makes every user reconnect their MCP tools (key rotation is a later feature).
 
 ### Auto-Populated by Terraform (no action needed)
 

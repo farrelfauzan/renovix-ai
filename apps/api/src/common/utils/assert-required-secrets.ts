@@ -11,4 +11,5 @@ export function assertRequiredSecrets(env: NodeJS.ProcessEnv): void {
   readRequiredSecret(env, "BETTER_AUTH_SECRET");
   readRequiredSecret(env, "IP_HASH_SECRET");
   readEncryptionKey(env, "MCP_ENCRYPTION_KEY");
+  readRequiredSecret(env, "MCP_OAUTH_STATE_SECRET");
 }

@@ -18,6 +18,7 @@ locals {
     "S3_SECRET_ACCESS_KEY",
     "GOOGLE_CLOUD_PROJECT_ID",
     "GOOGLE_CLOUD_BUCKET_NAME",
+    "MCP_OAUTH_STATE_SECRET",
   ]
 
   all_secret_keys = concat(keys(local.auto_secrets), local.manual_secrets)
@@ -68,6 +69,9 @@ resource "google_secret_manager_secret_version" "auto" {
 # │                                                                 │
 # │  gcloud secrets versions add s3-secret-access-key \             │
 # │    --data-file=- <<< "abc123..."                                │
+# │                                                                 │
+# │  gcloud secrets versions add mcp-oauth-state-secret \           │
+# │    --data-file=- <<< "$(openssl rand -base64 48)"               │
 # │                                                                 │
 # │  (OAuth secrets are managed by modules/oauth — see there)       │
 # └─────────────────────────────────────────────────────────────────┘
