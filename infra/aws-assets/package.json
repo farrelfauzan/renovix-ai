@@ -1,0 +1,24 @@
+{
+  "name": "renovix-aws-assets",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CDK stack for the Renovix AI assets S3 bucket",
+  "scripts": {
+    "test": "jest",
+    "synth": "cdk synth",
+    "scan": "node scripts/scan.js"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.273.0",
+    "constructs": "10.8.1"
+  },
+  "devDependencies": {
+    "@types/jest": "30.0.0",
+    "@types/node": "22.20.5",
+    "aws-cdk": "2.1145.0",
+    "jest": "30.5.2",
+    "ts-jest": "29.4.15",
+    "ts-node": "10.9.2",
+    "typescript": "5.9.3"
+  }
+}
