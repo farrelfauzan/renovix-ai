@@ -8,6 +8,7 @@ import helmet from "@fastify/helmet";
 import { AppModule } from "./app/app.module";
 import { resolveLlmProvider } from "./app/providers/llm-provider";
 import { assertRequiredSecrets } from "./common/utils/assert-required-secrets";
+import { resolveCorsOrigins } from "./common/utils/resolve-cors-origins";
 import { ConfigService } from "@nestjs/config";
 import * as yaml from "js-yaml";
 import { readFileSync } from "fs";
@@ -20,11 +21,7 @@ async function bootstrap(): Promise<NestFastifyApplication> {
   assertRequiredSecrets(process.env);
 
   const isDev = process.env.NODE_ENV === "development";
-  const corsOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(",")
-        .map((origin) => origin.trim())
-        .filter(Boolean)
-    : true;
+  const corsOrigins = resolveCorsOrigins(process.env);
 
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,

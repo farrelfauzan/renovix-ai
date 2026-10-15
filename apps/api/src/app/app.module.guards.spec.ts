@@ -6,6 +6,7 @@ import { PrismaService } from "./prisma/prisma.service";
 import { createFastifyApp } from "../../test/test-module";
 import { resetDatabase, testDatabaseUrl } from "../../test/test-database";
 import { createUser } from "../../test/factories";
+import { accessCookie, ADMIN_PASSWORD, adminHttp, BACK_OFFICE_ORIGIN, createAdmin, totpCode } from "../../test/admin-auth";
 
 // RX-114: the real AppModule, started as it is (not through createTestModule,
 // which registers the AccessGuard itself), on the test database. It shows that
@@ -82,6 +83,36 @@ describe("RX-114: the global guards of the real AppModule (Fastify, test databas
 
     expect(conversations.statusCode).toBe(401);
     expect(portal.statusCode).toBe(401);
+  });
+
+  it("RX-156: an /admin route refuses a foreign Origin and a POST without Origin (403), and takes the back-office Origin", async () => {
+    const signIn = (headers: Record<string, string>) =>
+      app.inject({ method: "POST", url: "/admin/auth/sign-in", headers, payload: { email: "not-an-email" } });
+
+    const product = await signIn({ origin: "https://chat.renovix.id" });
+    const none = await signIn({});
+    const backOffice = await signIn({ origin: process.env.ADMIN_ORIGIN! });
+
+    expect([product.statusCode, none.statusCode, backOffice.statusCode]).toEqual([403, 403, 400]);
+  });
+
+  it("RX-156: the origin guard runs before the AccessGuard: a foreign Origin with a live session is 403 and the session is not touched", async () => {
+    const admin = await createAdmin(prisma, moduleRef, { email: "ops@example.com", enrolled: true });
+    const signedIn = await adminHttp(app).signIn({ email: admin.email, password: ADMIN_PASSWORD, totp: totpCode(admin.secret) });
+    const cookie = accessCookie(signedIn);
+    const lastSeenAt = async () => (await prisma.adminSession.findFirstOrThrow()).lastSeenAt.getTime();
+    const listSessions = (origin: string) =>
+      app.inject({ method: "GET", url: "/admin/auth/sessions", headers: { cookie, origin } });
+    const beforeControl = await lastSeenAt();
+
+    const control = await listSessions(BACK_OFFICE_ORIGIN.origin);
+    const afterControl = await lastSeenAt();
+    const foreign = await listSessions("https://chat.renovix.id");
+    const afterForeign = await lastSeenAt();
+
+    expect(signedIn.statusCode).toBe(200);
+    expect([control.statusCode, afterControl > beforeControl]).toEqual([200, true]);
+    expect([foreign.statusCode, afterForeign]).toEqual([403, afterControl]);
   });
 
   it("the throttler runs before the AccessGuard: call 61 without a credential is 429, not 401", async () => {

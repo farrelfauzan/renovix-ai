@@ -140,6 +140,11 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       env {
+        name  = "ADMIN_ORIGIN"
+        value = var.admin_origin
+      }
+
+      env {
         name  = "GOOGLE_OAUTH_REDIRECT_URI"
         value = "https://api.${var.domain}/api/v1/mcp/user/oauth/callback"
       }

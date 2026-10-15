@@ -31,6 +31,7 @@ import { AdminAuditModule } from "./admin-auth/admin-audit.module";
 import { AdminAuditInterceptor } from "./admin-auth/interceptor/admin-audit.interceptor";
 import { AccessModule } from "../common/access.module";
 import { AccessGuard } from "../common/guards/access.guard";
+import { AdminOriginGuard } from "../common/guards/admin-origin.guard";
 import { clientIp } from "../common/utils/client-ip";
 
 @Module({
@@ -74,6 +75,8 @@ import { clientIp } from "../common/utils/client-ip";
   controllers: [AppController],
   providers: [
     AppService,
+    // RX-156: first, so a refused /admin request reaches neither the throttler's count nor a session check.
+    { provide: APP_GUARD, useExisting: AdminOriginGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useExisting: AccessGuard },
     // RX-97: the back-office audit hook, on every route that declares @AdminAudit.
