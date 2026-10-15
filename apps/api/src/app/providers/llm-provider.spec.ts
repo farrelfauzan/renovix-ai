@@ -38,6 +38,21 @@ describe("RX-88: resolveLlmProvider (boot guard)", () => {
     expect(message).not.toContain(key);
   });
 
+  it.each(["LLM_API_KEY", "EMBEDDING_API_KEY"])(
+    "RX-160 AC7: fake next to %s is refused without printing the key",
+    (name) => {
+      const key = "rx160-marker-key-not-real";
+      let message = "";
+      try {
+        resolveLlmProvider({ LLM_PROVIDER: "fake", [name]: key });
+      } catch (err) {
+        message = (err as Error).message;
+      }
+      expect(message).toContain(`${name} is set`);
+      expect(message).not.toContain(key);
+    },
+  );
+
   it("AC3: an unknown value is refused", () => {
     expect(() => resolveLlmProvider({ LLM_PROVIDER: "openai" })).toThrow(
       'LLM_PROVIDER must be "openrouter" or "fake" (got "openai")',

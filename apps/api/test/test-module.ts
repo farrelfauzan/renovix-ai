@@ -15,6 +15,7 @@ import { AdminRoleRepository } from "../src/app/admin-auth/repository/admin-role
 import { AdminSessionRepository } from "../src/app/admin-auth/repository/admin-session.repository";
 import { AdminUserRepository } from "../src/app/admin-auth/repository/admin-user.repository";
 import { CodesRepository } from "../src/app/codes/repository/codes.repository";
+import { McpOAuthStateRepository } from "../src/app/mcp/repository/mcp-oauth-state.repository";
 import { PrismaModule } from "../src/app/prisma/prisma.module";
 import { PrismaService } from "../src/app/prisma/prisma.service";
 import { AccessModule } from "../src/common/access.module";
@@ -31,6 +32,7 @@ const REPOSITORIES = [
   AdminRoleRepository,
   AdminPiiGrantRepository,
   AdminAuditLogRepository,
+  McpOAuthStateRepository,
 ];
 
 /**

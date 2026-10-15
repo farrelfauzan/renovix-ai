@@ -8,6 +8,20 @@ import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
 import * as crypto from "crypto";
 import { readEncryptionKey } from "../../../common/utils/read-encryption-key";
+import { readRequiredSecret } from "../../../common/utils/read-required-secret";
+import type { OAuthStatePayload } from "../dto/oauth-state-payload.dto";
+import { McpOAuthStateRepository } from "../repository/mcp-oauth-state.repository";
+import { signOAuthState } from "../utils/sign-oauth-state";
+import { verifyOAuthState } from "../utils/verify-oauth-state";
+
+/** Signs the OAuth `state` (RX-151); required, read when a flow starts and at its callback. */
+const STATE_SECRET_NAME = "MCP_OAUTH_STATE_SECRET";
+/** How long a started OAuth flow may take, unless MCP_OAUTH_STATE_TTL_SECONDS says otherwise. */
+const DEFAULT_STATE_TTL_SECONDS = 600;
+const STATE_NONCE_BYTES = 32;
+const MS_PER_SECOND = 1000;
+/** One message for every refused state, so the redirect does not tell which check failed. */
+const INVALID_STATE_MESSAGE = "Invalid or expired OAuth state";
 
 interface OAuthApp {
   clientId: string;
@@ -28,6 +42,7 @@ export class McpUserService {
   private readonly logger = new Logger(McpUserService.name);
   private readonly encryptionKey: Buffer;
   private readonly oauthApps: Record<string, OAuthApp>;
+  private readonly stateTtlSeconds: number;
 
   private readonly providerScopes: Record<string, string[]> = {
     "google-gmail": [
@@ -45,8 +60,11 @@ export class McpUserService {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly oauthStates: McpOAuthStateRepository,
   ) {
     this.encryptionKey = readEncryptionKey(process.env, "MCP_ENCRYPTION_KEY");
+    this.stateTtlSeconds =
+      Number(this.configService.get<string>("MCP_OAUTH_STATE_TTL_SECONDS")) || DEFAULT_STATE_TTL_SECONDS;
 
     this.oauthApps = {
       google: {
@@ -83,6 +101,8 @@ export class McpUserService {
     workspaceId: string,
     provider: string,
   ): Promise<string> {
+    // RX-151: no signing secret, no flow (nothing is stored or issued).
+    const stateSecret = readRequiredSecret(process.env, STATE_SECRET_NAME);
     const oauthProvider = this.getOAuthProvider(provider);
     const app = this.oauthApps[oauthProvider];
 
@@ -92,19 +112,17 @@ export class McpUserService {
       );
     }
 
+    const scopes = this.providerScopes[provider];
+    if (oauthProvider === "google" && !scopes) {
+      throw new BadRequestException(`Unknown Google provider: ${provider}`);
+    }
+
     // Verify user is a member of the workspace
     await this.verifyWorkspaceMembership(userId, workspaceId);
 
-    const state = Buffer.from(
-      JSON.stringify({ userId, workspaceId, provider }),
-    ).toString("base64url");
+    const state = await this.issueOAuthState(userId, workspaceId, provider, stateSecret);
 
     if (oauthProvider === "google") {
-      const scopes = this.providerScopes[provider];
-      if (!scopes) {
-        throw new BadRequestException(`Unknown Google provider: ${provider}`);
-      }
-
       const params = new URLSearchParams({
         client_id: app.clientId,
         redirect_uri: app.redirectUri,
@@ -148,21 +166,10 @@ export class McpUserService {
    */
   async handleOAuthCallback(
     code: string,
-    stateB64: string,
+    state: string,
   ): Promise<{ userId: string; workspaceId: string; provider: string }> {
-    let state: { userId: string; workspaceId: string; provider: string };
-    try {
-      state = JSON.parse(Buffer.from(stateB64, "base64url").toString("utf8"));
-    } catch {
-      throw new BadRequestException("Invalid OAuth state parameter");
-    }
-
-    const { userId, workspaceId, provider } = state;
-    if (!userId || !workspaceId || !provider) {
-      throw new BadRequestException(
-        "Missing userId, workspaceId, or provider in OAuth state",
-      );
-    }
+    // RX-151: only the user, workspace and provider of a verified, unused state; before any code exchange.
+    const { u: userId, w: workspaceId, p: provider } = await this.acceptOAuthState(state);
 
     const oauthProvider = this.getOAuthProvider(provider);
     const app = this.oauthApps[oauthProvider];
@@ -250,7 +257,7 @@ export class McpUserService {
       `User ${userId} connected ${provider} in workspace ${workspaceId}`,
     );
 
-    return state;
+    return { userId, workspaceId, provider };
   }
 
   /**
@@ -369,6 +376,49 @@ export class McpUserService {
   }
 
   // ─── Private helpers ───
+
+  /** Stores a new one-time value (after clearing expired ones) and returns the signed state for it (RX-151). */
+  private async issueOAuthState(
+    userId: string,
+    workspaceId: string,
+    provider: string,
+    secret: string,
+  ): Promise<string> {
+    const nowMs = Date.now();
+    const nonce = crypto.randomBytes(STATE_NONCE_BYTES).toString("base64url");
+    const exp = Math.floor(nowMs / MS_PER_SECOND) + this.stateTtlSeconds;
+    await this.oauthStates.deleteExpired(new Date(nowMs));
+    await this.oauthStates.create({
+      nonce,
+      userId,
+      workspaceId,
+      provider,
+      expiresAt: new Date(exp * MS_PER_SECOND),
+    });
+    return signOAuthState({ n: nonce, u: userId, w: workspaceId, p: provider, exp }, secret);
+  }
+
+  /**
+   * RX-151: the payload of a state this server signed, not expired, used now for the first and
+   * only time, whose user is still a member of its workspace. Otherwise throws without naming
+   * which check failed (and never with the state in the message).
+   */
+  private async acceptOAuthState(state: string): Promise<OAuthStatePayload> {
+    const secret = readRequiredSecret(process.env, STATE_SECRET_NAME);
+    const nowMs = Date.now();
+    const payload = verifyOAuthState(state, secret, Math.floor(nowMs / MS_PER_SECOND));
+    if (!payload) throw new BadRequestException(INVALID_STATE_MESSAGE);
+    const isFirstUse = await this.oauthStates.consume({
+      nonce: payload.n,
+      userId: payload.u,
+      workspaceId: payload.w,
+      provider: payload.p,
+      now: new Date(nowMs),
+    });
+    if (!isFirstUse) throw new BadRequestException(INVALID_STATE_MESSAGE);
+    await this.verifyWorkspaceMembership(payload.u, payload.w);
+    return payload;
+  }
 
   private getOAuthProvider(provider: string): string {
     if (provider.startsWith("google-")) return "google";
