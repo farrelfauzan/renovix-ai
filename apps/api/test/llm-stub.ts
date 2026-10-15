@@ -64,6 +64,39 @@ export async function startStubHttpServer(): Promise<StubHttpServer> {
   };
 }
 
+const LLM_ENV_KEYS = [
+  "LLM_PROVIDER",
+  "LLM_BASE_URL",
+  "LLM_API_KEY",
+  "LLM_FALLBACK_BASE_URL",
+  "LLM_FALLBACK_API_KEY",
+] as const;
+
+/**
+ * RX-169: points the real chat adapter at the stubs (an adapter built after this call,
+ * e.g. by ProvidersModule, reads these variables). Returns a function that restores them.
+ */
+export function pointLlmAtStubs(params: {
+  primary: StubHttpServer;
+  apiKey: string;
+  fallback?: StubHttpServer;
+  fallbackApiKey?: string;
+}): () => void {
+  const saved = LLM_ENV_KEYS.map((k) => process.env[k]);
+  LLM_ENV_KEYS.forEach((k) => delete process.env[k]);
+  process.env.LLM_BASE_URL = params.primary.baseUrl;
+  process.env.LLM_API_KEY = params.apiKey;
+  if (params.fallback && params.fallbackApiKey) {
+    process.env.LLM_FALLBACK_BASE_URL = params.fallback.baseUrl;
+    process.env.LLM_FALLBACK_API_KEY = params.fallbackApiKey;
+  }
+  return () =>
+    LLM_ENV_KEYS.forEach((k, i) => {
+      if (saved[i] === undefined) delete process.env[k];
+      else process.env[k] = saved[i];
+    });
+}
+
 export interface OutboundBlocker {
   /** Every axios request to a host other than 127.0.0.1: its config, never sent. */
   blocked: InternalAxiosRequestConfig[];

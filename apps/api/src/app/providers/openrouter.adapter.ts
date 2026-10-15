@@ -7,6 +7,7 @@ import {
   ProviderAdapter,
 } from "./provider.interface";
 import { LlmEndpoint } from "./types/llm-endpoint";
+import { ProviderHttpError } from "./errors/provider-http-error";
 import { isOpenRouterUrl } from "./utils/is-open-router-url";
 import { parseModelIdMap } from "./utils/parse-model-id-map";
 import { readPositiveInteger } from "../../common/utils/read-positive-integer";
@@ -97,7 +98,12 @@ export class OpenRouterAdapter implements ProviderAdapter {
     err: unknown,
     send: (endpoint: LlmEndpoint) => Promise<T>,
   ): Promise<T> {
-    const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+    const status =
+      err instanceof ProviderHttpError
+        ? err.status
+        : axios.isAxiosError(err)
+          ? err.response?.status
+          : undefined;
     if (!this.fallback || !status || !FALLBACK_STATUSES.includes(status)) throw err;
     this.logger.warn(
       `[LLM] primary (${new URL(this.primary.baseUrl).host}) answered ${status}; sending the request once to the fallback (${new URL(this.fallback.baseUrl).host})`,
@@ -302,7 +308,9 @@ export class OpenRouterAdapter implements ProviderAdapter {
       this.logger.error(
         `OpenRouter stream error (${endpoint.label}, ${err.response?.status}): ${errBody}`,
       );
-      throw err;
+      if (!err.response) throw err;
+      // RX-169: the body stream is consumed now; callers get its text and the status instead.
+      throw new ProviderHttpError({ message: err.message, status: err.response.status, bodyText: errBody });
     }
   }
 

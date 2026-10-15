@@ -18,6 +18,7 @@ import {
   ParseUUIDPipe,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
+import { Readable } from "node:stream";
 import type { FastifyReply } from "fastify";
 import { PortalIdentity } from "../guard/portal.guard";
 import {
@@ -31,6 +32,7 @@ import { estimateTokens } from "../../billing/utils/estimate-tokens";
 import { estimateCost } from "../../billing/utils/estimate-cost";
 import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { ProviderRouter } from "../../providers/provider-router";
+import { ProviderHttpError } from "../../providers/errors/provider-http-error";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { ConversationService } from "../../chat/service/conversation.service";
@@ -873,13 +875,18 @@ export class PortalController {
     message: string;
     clientMessage: string;
   } {
-    const status = error?.response?.status;
-    const responseData = error?.response?.data;
+    const isProviderHttpError = error instanceof ProviderHttpError;
+    const status = isProviderHttpError ? error.status : error?.response?.status;
+    const responseData = isProviderHttpError ? error.bodyText : error?.response?.data;
 
     let details: string | undefined;
     if (typeof responseData === "string") {
       details = responseData;
-    } else if (responseData && typeof responseData === "object") {
+    } else if (
+      responseData &&
+      typeof responseData === "object" &&
+      !(responseData instanceof Readable) // RX-169: a response stream is circular; never stringify it
+    ) {
       details =
         responseData?.error?.message ||
         responseData?.message ||
@@ -896,7 +903,7 @@ export class PortalController {
     let clientMessage = "Stream error";
     if (status === 400) {
       clientMessage = normalizedDetails
-        ? `Provider rejected request: ${normalizedDetails}`
+        ? `Provider rejected request (HTTP 400): ${normalizedDetails}`
         : "Provider rejected request (HTTP 400)";
     } else if (status) {
       clientMessage = normalizedDetails
