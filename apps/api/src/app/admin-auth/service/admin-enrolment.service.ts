@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
+import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
 import { ADMIN_AUTH_CONFIG } from "../config/admin-auth-config.token";
 import { AdminRecoveryCodeRepository } from "../repository/admin-recovery-code.repository";
@@ -33,16 +34,19 @@ export class AdminEnrolmentService {
   ) {}
 
   /** Makes and stores (encrypted, not active yet) a new secret; returns the otpauth URI and the base32 secret. */
-  async enrol(identity: AdminIdentity): Promise<Omit<NewTotpSecret, "encrypted">> {
-    const admin = await this.admins.findById(identity.adminId);
+  async enrol(identity: AdminIdentity, tx?: DbTransaction): Promise<Omit<NewTotpSecret, "encrypted">> {
+    const admin = await this.admins.findById(identity.adminId, tx);
     if (!admin || admin.totpEnrolledAt) throw new ForbiddenException();
     const { secret, otpauthUri, encrypted } = this.totp.createSecret(admin.id, admin.email);
-    if ((await this.admins.setPendingTotpSecret(admin.id, encrypted)) === 0) throw new ForbiddenException();
+    if ((await this.admins.setPendingTotpSecret(admin.id, encrypted, tx)) === 0) throw new ForbiddenException();
     return { otpauthUri, secret };
   }
 
-  /** Confirms the secret with its first code: activates TOTP, issues the recovery codes, swaps the session. */
-  async confirm(identity: AdminIdentity, code: string, userAgent: string | undefined): Promise<EnrolmentResult> {
+  /**
+   * Confirms the secret with its first code: activates TOTP, issues the recovery codes, swaps the session.
+   * With `tx` (the audit transaction, RX-97) the writes join it instead of opening their own.
+   */
+  async confirm(identity: AdminIdentity, code: string, userAgent: string | undefined, tx?: DbTransaction): Promise<EnrolmentResult> {
     const admin = await this.admins.findById(identity.adminId);
     if (!admin || admin.totpEnrolledAt || !admin.totpSecretEncrypted) throw new BadRequestException("Start the enrolment first");
     if (!(await this.totp.accept(admin, code))) throw new BadRequestException("Invalid code");
@@ -52,7 +56,7 @@ export class AdminEnrolmentService {
       await this.recoveryCodes.replaceAll(admin.id, codes.map((c) => hashToken(normalizeRecoveryCode(c))), tx);
       await this.sessions.end(identity.sessionId, tx);
       return { recoveryCodes: codes, session: await this.sessions.start(admin.id, "full", userAgent, tx) };
-    });
+    }, undefined, tx);
   }
 
   private newRecoveryCodes(): string[] {

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
 import type { AdminUser } from "@generated/prisma/client.js";
+import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
 import { ADMIN_AUTH_CONFIG } from "../config/admin-auth-config.token";
 import type { ReauthDto } from "../dto/reauth.dto";
@@ -52,14 +53,18 @@ export class AdminSignInService {
     return this.succeed(admin.id, "full", userAgent);
   }
 
-  /** Re-authentication on a full session: password and a fresh TOTP code; failures count like sign-in failures. */
-  async reauth(identity: AdminIdentity, input: ReauthDto): Promise<void> {
+  /**
+   * Re-authentication on a full session: password and a fresh TOTP code; failures count like sign-in failures
+   * (in their own transaction, so a failure is counted even though the request fails). `tx`: the audit
+   * transaction the success is recorded in (RX-97).
+   */
+  async reauth(identity: AdminIdentity, input: ReauthDto, tx?: DbTransaction): Promise<void> {
     const admin = await this.admins.findById(identity.adminId);
     const passwordOk = await this.passwords.verify(admin?.passwordHash, input.password);
     if (!admin || isLocked(admin.lockedUntil, new Date())) throw new UnauthorizedException(INVALID_CREDENTIALS);
     if (!passwordOk || !(await this.totp.accept(admin, input.totp))) return this.fail(admin.id);
     await this.assertStillUnlocked(admin.id);
-    await this.sessions.markReauth(identity.sessionId);
+    await this.sessions.markReauth(identity.sessionId, tx);
   }
 
   private async checkSecondFactor(admin: AdminUser, input: SignInDto): Promise<boolean> {
