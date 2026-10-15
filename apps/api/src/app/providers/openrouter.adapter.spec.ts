@@ -227,7 +227,7 @@ describe("RX-160 AC3: fallback after 502/503", () => {
   it("chatStream negative: primary answers 400 → fallback not tried", async () => {
     primary.respond((_r, res) => sendJson(res, 400, {}));
 
-    await expect(drain(withFallback().chatStream(request()))).rejects.toMatchObject({ response: { status: 400 } });
+    await expect(drain(withFallback().chatStream(request()))).rejects.toMatchObject({ status: 400 });
 
     expect(fallback.requests).toHaveLength(0);
   });
