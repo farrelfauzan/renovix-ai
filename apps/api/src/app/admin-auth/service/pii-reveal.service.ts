@@ -23,10 +23,18 @@ export class PiiRevealService {
    * Support and holds an unexpired grant for this user; false otherwise.
    */
   async canRevealPii(admin: AdminIdentity, subjectUserId: string): Promise<boolean> {
-    const role = await this.roles.findByName(admin.role);
-    if (role?.permissions.includes(READ_PII)) return true;
+    if (await this.holdsReadPii(admin)) return true;
     if (admin.role !== BUILT_IN_ROLES.support) return false;
     return (await this.grants.countActive(admin.adminId, subjectUserId, new Date())) > 0;
+  }
+
+  /**
+   * True when the admin's role holds `users:read_pii` (owner and operations by default), read on this
+   * request. Not per user: Support's per-user grants are left out (RX-164 uses it for the audit log).
+   */
+  async holdsReadPii(admin: AdminIdentity): Promise<boolean> {
+    const role = await this.roles.findByName(admin.role);
+    return role?.permissions.includes(READ_PII) === true;
   }
 
   /**

@@ -180,6 +180,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
   // Back-office routes (RX-94): `staff` only, full sessions unless a scope is declared.
   const STAFF_ROUTES = [
     "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
+    "GET /admin/audit-log (AdminAuditLogController.list)",
+    "GET /admin/audit-log/export (AdminAuditLogController.export)",
     "GET /admin/auth/sessions (AdminAuthController.listSessions)",
     "POST /admin/auth/reauth (AdminAuthController.reauth)",
   ];
@@ -188,9 +190,13 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/auth/totp/enrol (AdminAuthController.enrol)",
   ];
   const STAFF_ANY_SCOPE_ROUTES = ["POST /admin/auth/sign-out (AdminAuthController.signOut)"];
-  // Back-office routes that declare staff permissions (RX-96). RX-94's routes are self-service (an admin
-  // manages their own session) and need none.
-  const STAFF_PERMISSION_ROUTES: string[] = [];
+  // Back-office routes that declare staff permissions (RX-96), with the permissions each declares. RX-94's
+  // routes are self-service (an admin manages their own session) and need none. RX-164 (D113 item 53,
+  // D138): the audit log and its CSV export need `audit:read` only (not `exports:create`).
+  const STAFF_PERMISSION_ROUTES: Record<string, string[]> = {
+    "GET /admin/audit-log (AdminAuditLogController.list)": ["audit:read"],
+    "GET /admin/audit-log/export (AdminAuditLogController.export)": ["audit:read"],
+  };
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
   const declaresStaff = (route: Route, staffScope: string | undefined) =>
@@ -236,7 +242,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     const declared = staffRoutes.flatMap((route) => (route.access?.public ? [] : route.access?.permissions ?? []));
 
     expect(declared.filter((permission) => !(STAFF_PERMISSIONS as readonly string[]).includes(permission))).toEqual([]);
-    expect(labels(staffRoutes.filter((route) => !route.access?.public && route.access?.permissions?.length))).toEqual(
+    const declaring = staffRoutes.filter((route) => !route.access?.public && route.access?.permissions?.length);
+    expect(Object.fromEntries(declaring.map((route) => [route.label, route.access?.public ? [] : route.access?.permissions]))).toEqual(
       STAFF_PERMISSION_ROUTES,
     );
   });
@@ -262,6 +269,17 @@ describe("RX-114: every route of AppModule declares its access", () => {
   it("RX-97: the audited and the exempt /admin routes are pinned", () => {
     expect(labels(routes.filter((route) => changesState(route) && isHooked(route)))).toEqual(AUDITED_ROUTES);
     expect(labels(routes.filter((route) => changesState(route) && isExempt(route)))).toEqual(AUDIT_EXEMPT_ROUTES);
+  });
+
+  // RX-164 (PRD 09 F16): a read is not audited by default, but an export is. The CSV export is a GET that
+  // writes its own audit row through the same hook, so it is pinned here: dropping its `@AdminAudit` fails.
+  const AUDITED_READ_ROUTES = ["GET /admin/audit-log/export (AdminAuditLogController.export)"];
+
+  it("RX-164: the /admin reads that write an audit row (exports) are pinned", () => {
+    expect(labels(routes.filter((route) => isAdminRoute(route) && !changesState(route) && route.audit !== undefined))).toEqual(
+      AUDITED_READ_ROUTES,
+    );
+    expect(labels(routes.filter((route) => AUDITED_READ_ROUTES.includes(route.label) && isHooked(route)))).toEqual(AUDITED_READ_ROUTES);
   });
 });
 

@@ -1195,5 +1195,8 @@ model AdminAuditLog {
 
   @@index([adminId, createdAt])
   @@index([resource, createdAt])
+  /// RX-164: the audit log screen reads newest first by (created_at, id); filtered by action too.
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([action, createdAt])
   @@map("admin_audit_log")
 }

@@ -31,4 +31,6 @@ export const STAFF_PERMISSIONS = [
   "roles:write",
   "settings:read",
   "settings:write",
+  // RX-164 (D138): read the audit log and export it as CSV; granted by migration 20261015200000_audit_read_permission.
+  "audit:read",
 ] as const;

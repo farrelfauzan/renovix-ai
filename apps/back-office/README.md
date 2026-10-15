@@ -15,6 +15,11 @@ Both are httpOnly, so no script here reads a token. Calls to the API use `creden
 `src/lib/api/create-api-client.ts`). The API checks the back-office `Origin` on `/admin` routes (RX-156); the browser
 sends it by itself.
 
+## API address
+
+The screens call the API at `NEXT_PUBLIC_API_URL` (default `http://localhost:3000`, see
+`src/lib/audit-log/default-audit-log-api.ts`).
+
 ## Token refresh
 
 The refresh token is rotated with reuse detection, so two refreshes at once end the session. The API client
