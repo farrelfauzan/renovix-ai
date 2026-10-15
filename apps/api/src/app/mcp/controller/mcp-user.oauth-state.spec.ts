@@ -12,7 +12,9 @@ import { createUser, createWorkspace } from "../../../../test/factories";
 
 // RX-151: the public OAuth callback stores a provider credential only for a state the server signed,
 // that has not expired, is used once, and whose user is still a member of its workspace. The provider
-// token exchange (global fetch) is mocked: no provider is called.
+// token exchange (global fetch) is mocked: no provider is called. RX-152: each callback here is sent with
+// the cookie the start response set for the one-time value its state carries (the starting browser), so
+// these tests still exercise the state checks and not the cookie check (that is mcp-user.oauth-cookie.spec.ts).
 const STATE_SECRET = "rx151-marker-state-secret-not-a-real-secret";
 const PROVIDER = "google-gmail";
 const CHAT_APP_URL = "http://chat.test.local";
@@ -49,6 +51,8 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
   let tokenCount = 0;
   let markers: string[] = [];
   let logLines: string[] = [];
+  /** RX-152: the `name=value` cookie each start response set, by its one-time value. */
+  let issuedCookies = new Map<string, string>();
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
@@ -71,6 +75,7 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     });
     markers = [STATE_SECRET, CONFIG.GOOGLE_OAUTH_CLIENT_SECRET];
     logLines = [];
+    issuedCookies = new Map();
     const record = (...args: unknown[]): void => {
       logLines.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a) ?? String(a))).join(" "));
     };
@@ -125,7 +130,21 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     const state = new URL(res.json().authUrl).searchParams.get("state");
     expect(state).toBeTruthy();
     markers.push(state!);
+    const [cookie] = String(res.headers["set-cookie"]).split(";");
+    const value = cookie.slice(cookie.indexOf("=") + 1);
+    markers.push(value);
+    issuedCookies.set(value, cookie);
     return state!;
+  };
+
+  /** The cookie set for the one-time value the state carries, if any (read without verifying the state). */
+  const cookieFor = (state: string): Record<string, string> => {
+    try {
+      const cookie = issuedCookies.get(String(decodePart(state.split(".")[0]).n));
+      return cookie ? { cookie } : {};
+    } catch {
+      return {};
+    }
   };
 
   const callback = (state: string) => {
@@ -135,6 +154,7 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     return app.inject({
       method: "GET",
       url: `/mcp/user/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+      headers: cookieFor(state),
     });
   };
 

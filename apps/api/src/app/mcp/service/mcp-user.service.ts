@@ -11,6 +11,8 @@ import { readEncryptionKey } from "../../../common/utils/read-encryption-key";
 import { readRequiredSecret } from "../../../common/utils/read-required-secret";
 import type { OAuthStatePayload } from "../dto/oauth-state-payload.dto";
 import { McpOAuthStateRepository } from "../repository/mcp-oauth-state.repository";
+import type { McpOAuthStart } from "../types/mcp-oauth-start";
+import { isSameOneTimeValue } from "../utils/is-same-one-time-value";
 import { signOAuthState } from "../utils/sign-oauth-state";
 import { verifyOAuthState } from "../utils/verify-oauth-state";
 
@@ -63,8 +65,10 @@ export class McpUserService {
     private readonly oauthStates: McpOAuthStateRepository,
   ) {
     this.encryptionKey = readEncryptionKey(process.env, "MCP_ENCRYPTION_KEY");
+    const stateTtlSeconds = Number(this.configService.get<string>("MCP_OAUTH_STATE_TTL_SECONDS"));
+    // RX-152: not a whole number of seconds above 0 (unset included) falls back to the default.
     this.stateTtlSeconds =
-      Number(this.configService.get<string>("MCP_OAUTH_STATE_TTL_SECONDS")) || DEFAULT_STATE_TTL_SECONDS;
+      Number.isInteger(stateTtlSeconds) && stateTtlSeconds > 0 ? stateTtlSeconds : DEFAULT_STATE_TTL_SECONDS;
 
     this.oauthApps = {
       google: {
@@ -94,12 +98,23 @@ export class McpUserService {
   }
 
   /**
-   * Generate OAuth consent URL for a user.
+   * Starts an OAuth flow for a user (RX-152): the consent URL, plus the flow's one-time value and
+   * lifetime, which the controller sets as the cookie that ties the callback to this browser.
    */
-  async getOAuthUrl(
+  async startOAuthFlow(userId: string, workspaceId: string, provider: string): Promise<McpOAuthStart> {
+    const oneTimeValue = crypto.randomBytes(STATE_NONCE_BYTES).toString("base64url");
+    const authUrl = await this.getOAuthUrl(userId, workspaceId, provider, oneTimeValue);
+    return { authUrl, oneTimeValue, maxAgeSeconds: this.stateTtlSeconds };
+  }
+
+  /**
+   * Generate OAuth consent URL for a user, whose state carries the one-time value `nonce`.
+   */
+  private async getOAuthUrl(
     userId: string,
     workspaceId: string,
     provider: string,
+    nonce: string,
   ): Promise<string> {
     // RX-151: no signing secret, no flow (nothing is stored or issued).
     const stateSecret = readRequiredSecret(process.env, STATE_SECRET_NAME);
@@ -120,7 +135,7 @@ export class McpUserService {
     // Verify user is a member of the workspace
     await this.verifyWorkspaceMembership(userId, workspaceId);
 
-    const state = await this.issueOAuthState(userId, workspaceId, provider, stateSecret);
+    const state = await this.issueOAuthState(userId, workspaceId, provider, nonce, stateSecret);
 
     if (oauthProvider === "google") {
       const params = new URLSearchParams({
@@ -162,14 +177,17 @@ export class McpUserService {
   }
 
   /**
-   * Handle OAuth callback: exchange code for tokens and store credentials.
+   * Handle OAuth callback: exchange code for tokens and store credentials. `browserValue` is the
+   * one-time value the calling browser holds in its cookie for the state's provider (RX-152).
    */
   async handleOAuthCallback(
     code: string,
     state: string,
+    browserValue: string | undefined,
   ): Promise<{ userId: string; workspaceId: string; provider: string }> {
-    // RX-151: only the user, workspace and provider of a verified, unused state; before any code exchange.
-    const { u: userId, w: workspaceId, p: provider } = await this.acceptOAuthState(state);
+    // RX-151/RX-152: only the user, workspace and provider of a verified, unused state, presented by
+    // the browser that started the flow; before any code exchange.
+    const { u: userId, w: workspaceId, p: provider } = await this.acceptOAuthState(state, browserValue);
 
     const oauthProvider = this.getOAuthProvider(provider);
     const app = this.oauthApps[oauthProvider];
@@ -377,15 +395,15 @@ export class McpUserService {
 
   // ─── Private helpers ───
 
-  /** Stores a new one-time value (after clearing expired ones) and returns the signed state for it (RX-151). */
+  /** Stores the one-time value `nonce` (after clearing expired ones) and returns the signed state for it (RX-151). */
   private async issueOAuthState(
     userId: string,
     workspaceId: string,
     provider: string,
+    nonce: string,
     secret: string,
   ): Promise<string> {
     const nowMs = Date.now();
-    const nonce = crypto.randomBytes(STATE_NONCE_BYTES).toString("base64url");
     const exp = Math.floor(nowMs / MS_PER_SECOND) + this.stateTtlSeconds;
     await this.oauthStates.deleteExpired(new Date(nowMs));
     await this.oauthStates.create({
@@ -400,14 +418,18 @@ export class McpUserService {
 
   /**
    * RX-151: the payload of a state this server signed, not expired, used now for the first and
-   * only time, whose user is still a member of its workspace. Otherwise throws without naming
-   * which check failed (and never with the state in the message).
+   * only time, whose user is still a member of its workspace. RX-152: and whose one-time value the
+   * calling browser holds (`browserValue`, its cookie). Otherwise throws without naming which check
+   * failed (and never with the state or cookie in the message).
    */
-  private async acceptOAuthState(state: string): Promise<OAuthStatePayload> {
+  private async acceptOAuthState(state: string, browserValue: string | undefined): Promise<OAuthStatePayload> {
     const secret = readRequiredSecret(process.env, STATE_SECRET_NAME);
     const nowMs = Date.now();
     const payload = verifyOAuthState(state, secret, Math.floor(nowMs / MS_PER_SECOND));
     if (!payload) throw new BadRequestException(INVALID_STATE_MESSAGE);
+    // RX-152: compared before the value is used, so a link opened in another browser cannot use up
+    // the starter's value; a replay still fails at the single-use consume below.
+    if (!isSameOneTimeValue(browserValue, payload.n)) throw new BadRequestException(INVALID_STATE_MESSAGE);
     const isFirstUse = await this.oauthStates.consume({
       nonce: payload.n,
       userId: payload.u,
