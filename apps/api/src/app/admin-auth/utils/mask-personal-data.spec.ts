@@ -9,6 +9,9 @@ describe("maskPersonalData", () => {
     ["a local phone", "081234567890"],
     ["a phone without +", "6281234567890"],
     ["a phone inside a text", "call (0812) 3456 7890 today"],
+    ["a phone with a separator after 62", "62-812-3456-789"],
+    ["a bare mobile number without a prefix", "812345678901"],
+    ["a text too long to scan", `${"x".repeat(2001)}`],
   ])("masks %s as a whole", (_case, value) => {
     expect(maskPersonalData(value)).toBe("***");
   });
@@ -22,6 +25,20 @@ describe("maskPersonalData", () => {
     ["a plain text", "package price changed"],
   ])("keeps %s", (_case, value) => {
     expect(maskPersonalData(value)).toBe(value);
+  });
+
+  it("masks a JSON number that looks like a phone number, and keeps other numbers", () => {
+    expect(maskPersonalData({ contact: 6281234567890, other: 812345678901, price: 150000000, count: 7 })).toEqual({
+      contact: "***",
+      other: "***",
+      price: 150000000,
+      count: 7,
+    });
+  });
+
+  it("keeps a text of the longest length it scans, and masks one character more", () => {
+    expect(maskPersonalData("x".repeat(2000))).toBe("x".repeat(2000));
+    expect(maskPersonalData("x".repeat(2001))).toBe("***");
   });
 
   it("masks inside nested objects and arrays, and every value of a personal key whatever it looks like", () => {
