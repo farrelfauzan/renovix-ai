@@ -11,7 +11,7 @@ import { PrismaService } from "../../app/prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import { createUser } from "../../../test/factories";
-import { seedAdminRoles } from "../../../test/admin-auth";
+import { BACK_OFFICE_ORIGIN, seedAdminRoles } from "../../../test/admin-auth";
 
 // RX-96: the staff permissions of the global AccessGuard, through real HTTP (Fastify `inject`) with the
 // real session and role check on the test database. The routes below exist only in this spec: main has no
@@ -103,7 +103,8 @@ describe("AccessGuard staff permissions (RX-96, Fastify, test database)", () => 
     const session = await sessions.start(admin.id, scope, "jest");
     return { adminId: admin.id, cookie: `${ACCESS}=${session.accessToken}` };
   };
-  const adjust = (headers: Record<string, string>) => app.inject({ method: "POST", url: ADJUST, headers });
+  const adjust = (headers: Record<string, string>) =>
+    app.inject({ method: "POST", url: ADJUST, headers: { ...BACK_OFFICE_ORIGIN, ...headers } });
   const get = (url: string, headers: Record<string, string> = {}) => app.inject({ method: "GET", url, headers });
   const setPermissions = (name: string, permissions: string[]) =>
     prisma.adminRole.update({ where: { name }, data: { permissions } });

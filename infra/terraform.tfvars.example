@@ -7,6 +7,9 @@ environment = "production"
 domain      = "renovix.id"
 db_tier     = "db-f1-micro"
 
+# The back-office app's own origin (RX-156): /admin routes refuse every other Origin
+admin_origin = "https://admin.renovix.id"
+
 # These are sensitive — set via environment or prompt
 # db_password        = "generate-a-strong-password"
 # jwt_secret         = "generate-a-strong-secret"

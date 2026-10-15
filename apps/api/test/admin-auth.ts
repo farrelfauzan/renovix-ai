@@ -93,11 +93,15 @@ export const cookieOf = (res: LightMyRequestResponse, name: string): string => {
 export const accessCookie = (res: LightMyRequestResponse) => cookieOf(res, "rx_admin_access");
 export const refreshCookie = (res: LightMyRequestResponse) => cookieOf(res, "rx_admin_refresh");
 
-/** HTTP helpers on the app (routes have no /api/v1 prefix in tests). */
+/** The Origin header of the back-office (RX-156: /admin routes refuse any other; ADMIN_ORIGIN in setup-env.ts). */
+export const BACK_OFFICE_ORIGIN = { origin: process.env.ADMIN_ORIGIN as string };
+
+/** HTTP helpers on the app (routes have no /api/v1 prefix in tests); every call carries the back-office Origin. */
 export const adminHttp = (app: NestFastifyApplication) => ({
-  signIn: (body: Record<string, unknown>) => app.inject({ method: "POST", url: "/admin/auth/sign-in", payload: body }),
+  signIn: (body: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/admin/auth/sign-in", headers: BACK_OFFICE_ORIGIN, payload: body }),
   refresh: (cookie?: string) =>
-    app.inject({ method: "POST", url: "/admin/auth/refresh", headers: cookie ? { cookie } : {} }),
+    app.inject({ method: "POST", url: "/admin/auth/refresh", headers: cookie ? { ...BACK_OFFICE_ORIGIN, cookie } : BACK_OFFICE_ORIGIN }),
   call: (method: "GET" | "POST" | "DELETE", url: string, headers: Record<string, string> = {}, payload?: object) =>
-    app.inject({ method, url, headers, payload }),
+    app.inject({ method, url, headers: { ...BACK_OFFICE_ORIGIN, ...headers }, payload }),
 });

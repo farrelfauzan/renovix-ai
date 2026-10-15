@@ -19,6 +19,7 @@ import {
   accessCookie,
   ADMIN_PASSWORD,
   adminHttp,
+  BACK_OFFICE_ORIGIN,
   createAdmin,
   nextStep,
   refreshCookie,
@@ -135,7 +136,7 @@ describe("Back-office audit log (RX-97, Fastify, test database)", () => {
   };
   const revoke = (cookie: string, sessionId: string) => http.call("DELETE", `/admin/auth/sessions/${sessionId}`, { cookie });
   const revealPii = (cookie: string, userId: string, payload: object) =>
-    app.inject({ method: "POST", url: `/admin/audit-probe/pii/${userId}`, headers: { cookie }, payload });
+    app.inject({ method: "POST", url: `/admin/audit-probe/pii/${userId}`, headers: { ...BACK_OFFICE_ORIGIN, cookie }, payload });
   const auditRows = () => prisma.adminAuditLog.findMany({ orderBy: { createdAt: "asc" } });
   const revokedAt = async (sessionId: string) => (await prisma.adminSession.findUniqueOrThrow({ where: { id: sessionId } })).revokedAt;
 

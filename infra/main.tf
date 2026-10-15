@@ -54,6 +54,7 @@ module "cloud_run" {
   secrets            = merge(module.security.secret_ids, module.oauth.secret_ids)
   bucket_name        = module.storage.bucket_name
   domain             = var.domain
+  admin_origin       = var.admin_origin
 }
 
 # ─── CDN + Load Balancer ───

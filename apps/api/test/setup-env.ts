@@ -18,6 +18,8 @@ process.env.ADMIN_JWT_SECRET = "test-admin-jwt-secret-not-a-real-secret";
 process.env.ADMIN_TOTP_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 // MCP credential encryption (RX-110): required, no fallback; an obviously fake 32-byte test key.
 process.env.MCP_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("hex");
+// The back-office origin (RX-156): /admin routes refuse any other Origin; obviously fake.
+process.env.ADMIN_ORIGIN = "http://admin.renovix.test";
 // MCP OAuth state signing (RX-151): required, no fallback; an obviously fake test value.
 process.env.MCP_OAUTH_STATE_SECRET = "test-mcp-oauth-state-secret-not-a-real-secret";
 jest.mock("../src/lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
