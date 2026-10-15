@@ -28,22 +28,6 @@ steps:
       - '.'
     waitFor: ['-']
 
-  # ─── Build Dashboard ───
-  - id: 'build-dashboard'
-    name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-f'
-      - 'apps/dashboard/Dockerfile'
-      - '--build-arg'
-      - 'NEXT_PUBLIC_API_URL=https://api.${_DOMAIN}/api/v1'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/dashboard:${_TAG}'
-      - '-t'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/dashboard:latest'
-      - '.'
-    waitFor: ['-']
-
   # ─── Build Landing ───
   - id: 'build-landing'
     name: 'gcr.io/cloud-builders/docker'
@@ -69,12 +53,10 @@ steps:
         docker push ${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/api:latest &
         docker push ${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/chat:${_TAG} &
         docker push ${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/chat:latest &
-        docker push ${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/dashboard:${_TAG} &
-        docker push ${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/dashboard:latest &
         docker push ${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/landing:${_TAG} &
         docker push ${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/landing:latest &
         wait
-    waitFor: ['build-api', 'build-chat', 'build-dashboard', 'build-landing']
+    waitFor: ['build-api', 'build-chat', 'build-landing']
 
   # ─── Deploy API to Cloud Run ───
   - id: 'deploy-api'
@@ -102,21 +84,6 @@ steps:
       - 'renovix-chat'
       - '--image'
       - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/chat:${_TAG}'
-      - '--region'
-      - '${_REGION}'
-    waitFor: ['push-images']
-
-  # ─── Deploy Dashboard to Cloud Run ───
-  - id: 'deploy-dashboard'
-    name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'gcloud'
-    args:
-      - 'run'
-      - 'services'
-      - 'update'
-      - 'renovix-dashboard'
-      - '--image'
-      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/renovix/dashboard:${_TAG}'
       - '--region'
       - '${_REGION}'
     waitFor: ['push-images']

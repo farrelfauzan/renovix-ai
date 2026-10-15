@@ -1,0 +1,11 @@
+{
+  "name": "@performa-ai/back-office",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "lucide-react": "^1.14.0",
+    "next": "~16.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

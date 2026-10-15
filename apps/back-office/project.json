@@ -1,0 +1,13 @@
+{
+  "name": "@performa-ai/back-office",
+  "targets": {
+    "dev": {
+      "continuous": true,
+      "options": {
+        "cwd": "apps/back-office",
+        "command": "next dev --port 4400"
+      },
+      "executor": "nx:run-commands"
+    }
+  }
+}

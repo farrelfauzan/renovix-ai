@@ -2,7 +2,7 @@
 
 ## Project
 
-Renovix AI -- unified AI platform (multi-LLM API + chat portal + admin dashboard + landing page). Credit-based billing, RAG knowledge base, AI agents, MCP integrations. Production domain: `renovix.id`.
+Renovix AI -- unified AI platform (multi-LLM API + chat portal + back-office + landing page). Credit-based billing, RAG knowledge base, AI agents, MCP integrations. Production domain: `renovix.id`.
 
 > The npm scope is `@performa-ai` but the product brand is **Renovix AI**. Repo: GitHub `farrelfauzan/renovix-ai`. Plan, tickets and decisions: [Renovix AI project in Notion](https://app.notion.com/p/3f352ed08ee2811daafefab59f5512bb). Product direction for billing: `docs/billing-direction.md`.
 
@@ -14,7 +14,7 @@ Nx 22 monorepo. Package manager: **Bun** (Docker builds fall back to npm with `-
 |------|------|-----------|----------|
 | `apps/api` | Backend API | NestJS 11 + **Fastify 5** (not Express) | 3000 |
 | `apps/chat` | Chat portal | Next.js 16 (App Router) | 4300 |
-| `apps/dashboard` | Admin dashboard (a stub so far: placeholder page + auth client) | Next.js 16 (App Router) | 4200 (Docker, `DASHBOARD_URL`); `nx dev` does not pin a port |
+| `apps/back-office` | Staff back-office (shell: navigation + placeholder pages; no Dockerfile yet); shares no code with chat/landing | Next.js 16 (App Router) | 4400 (`ADMIN_ORIGIN`) |
 | `apps/landing` | Landing page | Next.js 16 (App Router) | 3001 (Docker); `nx dev` does not pin a port |
 | `apps/api-e2e` | API E2E tests | Jest + SWC | -- |
 | `prisma/` | Schema + 39 migrations + seed | Prisma 7 + pgvector | -- |
@@ -32,14 +32,14 @@ docker compose up -d
 # Development
 bun run dev:api          # API on localhost:3000
 bun run dev:chat         # Chat on localhost:4300
-bun run dev:dashboard    # Dashboard on localhost:4200
+bun run dev:back-office  # Back-office on localhost:4400
 bun run dev:landing      # Landing page
 bun run dev:all          # All apps in parallel
 
 # Build
 bun run build:api
 bun run build:chat
-bun run build:dashboard
+bun run build:back-office
 bun run build:landing
 
 # Prisma (MUST run generate before building API)
@@ -69,7 +69,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - **TypeScript build errors are ignored** in all Next.js apps (`ignoreBuildErrors: true` in next.config). The build will succeed even with TS errors.
 - **No ESLint or Prettier** is configured. No lint step exists.
 - **Two webpack configs for API** -- `webpack.config.js` (Nx dev serve) and `webpack.docker.config.js` (Docker production build with ts-loader).
-- **`NEXT_PUBLIC_API_URL`** is a build-time arg baked into the chat and dashboard Docker images (default `https://api.renovix.id`). Without it the chat app falls back to `http://localhost:3000/api/v1`.
+- **`NEXT_PUBLIC_API_URL`** is a build-time arg baked into the chat Docker image (default `https://api.renovix.id`). Without it the chat app falls back to `http://localhost:3000/api/v1`.
 
 ## API Architecture
 
@@ -187,4 +187,4 @@ Copy `.env.example` to `.env`. Key variables:
 | `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |
 
-Frontend apps need `NEXT_PUBLIC_API_URL` (build-time Docker ARG for chat/dashboard).
+Frontend apps need `NEXT_PUBLIC_API_URL` (build-time Docker ARG for chat).

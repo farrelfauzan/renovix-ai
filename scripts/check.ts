@@ -3,7 +3,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const DUMMY_DB = "postgresql://x:x@localhost:5/x";
@@ -11,7 +11,8 @@ const PROGRAMS = [
   "apps/api/tsconfig.app.json",
   "apps/api/tsconfig.spec.json",
   "apps/chat/tsconfig.json",
-  "apps/dashboard/tsconfig.json",
+  "apps/back-office/tsconfig.json",
+  "apps/back-office/tsconfig.spec.json",
   "apps/landing/tsconfig.json",
   // apps/landing/tsconfig.spec.json is left out: it fails with TS6310 on its own (no specs, broken reference).
 ];
@@ -127,6 +128,10 @@ async function testStep(): Promise<boolean> {
   return code === 0;
 }
 
+async function backOfficeTestStep(): Promise<boolean> {
+  return (await run(["npx", "nx", "run", "back-office:test", "--skip-nx-cache"])) === 0;
+}
+
 type Err = { key: string; line: string };
 
 /** One tsc program -> errors. Key = file, TS code, first message line (no line:column). */
@@ -161,7 +166,8 @@ async function withBaseline<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const add = await capture(["git", "worktree", "add", "--detach", dir, "origin/main"], ROOT);
   if (add.code !== 0) throw new Error(`git worktree add failed: ${add.out}`);
   for (const nm of ["node_modules", ...readdirSync(join(ROOT, "apps")).map((a) => `apps/${a}/node_modules`)]) {
-    if (existsSync(join(ROOT, nm))) symlinkSync(join(ROOT, nm), join(dir, nm));
+    // an app that exists only on this branch has no folder in the baseline
+    if (existsSync(join(ROOT, nm)) && existsSync(dirname(join(dir, nm)))) symlinkSync(join(ROOT, nm), join(dir, nm));
   }
   const gen = await capture(["npx", "prisma", "generate"], dir);
   if (gen.code !== 0) throw new Error(`prisma generate failed in the baseline worktree:\n${gen.out}`);
@@ -226,6 +232,7 @@ const steps: Array<[string, () => Promise<boolean>]> = [
   ["prisma generate", async () => (await run(["bun", "run", "prisma:generate"])) === 0],
   ["prisma validate", async () => (await run(["bunx", "prisma", "validate"])) === 0],
   ["api tests", testStep],
+  ["back-office tests", backOfficeTestStep],
   ["typecheck (vs origin/main baseline)", typecheckStep],
 ];
 

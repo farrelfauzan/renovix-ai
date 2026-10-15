@@ -131,6 +131,16 @@
       "name": "@performa-ai/api-e2e",
       "version": "0.0.1",
     },
+    "apps/back-office": {
+      "name": "@performa-ai/back-office",
+      "version": "0.0.1",
+      "dependencies": {
+        "lucide-react": "^1.14.0",
+        "next": "~16.1.6",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+    },
     "apps/chat": {
       "name": "@performa-ai/chat",
       "version": "0.0.1",
@@ -143,10 +153,6 @@
         "react-dom": "^19.0.0",
         "sonner": "^2.0.7",
       },
-    },
-    "apps/dashboard": {
-      "name": "@performa-ai/dashboard",
-      "version": "0.0.1",
     },
     "apps/landing": {
       "name": "@performa-ai/landing",
@@ -1082,9 +1088,9 @@
 
     "@performa-ai/api-e2e": ["@performa-ai/api-e2e@workspace:apps/api-e2e"],
 
-    "@performa-ai/chat": ["@performa-ai/chat@workspace:apps/chat"],
+    "@performa-ai/back-office": ["@performa-ai/back-office@workspace:apps/back-office"],
 
-    "@performa-ai/dashboard": ["@performa-ai/dashboard@workspace:apps/dashboard"],
+    "@performa-ai/chat": ["@performa-ai/chat@workspace:apps/chat"],
 
     "@performa-ai/landing": ["@performa-ai/landing@workspace:apps/landing"],
 
