@@ -5,8 +5,11 @@
 // outside). A file that has such an import fails the check, named, unless scripts/prisma-import-exceptions.ts
 // lists it. `import type` is allowed everywhere: a service has to name the row types a repository returns.
 // The list may only shrink: an entry that no longer has such an import fails, and so does an entry that the
-// list on the base branch (default origin/main, or the ref given as the first argument) does not have, unless
-// git sees the file as renamed from a listed one. While the base branch has no list, that last rule is skipped.
+// list on the base branch does not have, unless git sees the file as renamed from a listed one. The base branch
+// is the ref given as the first argument, else the env PRISMA_IMPORTS_BASE (RX-133: lets `bun run check`, which
+// passes no argument, be run against another base), else origin/main. When the list of the base branch cannot
+// be read (the ref does not exist in this checkout, or it has no scripts/prisma-import-exceptions.ts), the check
+// fails and says which (RX-133); it no longer skips the rule.
 // Not looked at: `require()`, `import x = require()` and dynamic `import()` (none exist in apps/api/src), and
 // `@prisma/client` itself (the client is generated into apps/api/src/generated). Not seen at all: a service that
 // runs a query on the transaction it gets from TransactionService.run; that needs no import, so review holds it.
@@ -18,7 +21,7 @@ import { PRISMA_IMPORT_EXCEPTIONS } from "./prisma-import-exceptions";
 const ROOT = resolve(import.meta.dir, "..");
 const SRC = "apps/api/src";
 const LIST = "scripts/prisma-import-exceptions.ts";
-const BASE = process.argv[2] ?? "origin/main";
+const BASE = process.argv[2] ?? process.env.PRISMA_IMPORTS_BASE ?? "origin/main";
 const ALLOWED = /^apps\/api\/src\/app\/(prisma\/|[^/]+\/repository\/[^/]+\.repository\.ts$)/;
 const FORBIDDEN = /(^|\/)prisma\/prisma\.service(\.[cm]?[jt]s)?$|^\.\/prisma\.service(\.[cm]?[jt]s)?$|(^@|\/)generated\/prisma(\/|$)/;
 
@@ -76,6 +79,11 @@ if (added.length) {
   console.error(`Prisma imports: ${added.length} file(s) were added to the list (not on the list of ${BASE}); the list may only shrink:`);
   for (const f of added) console.error(`  ${f}`);
 }
-if (unlisted.length || stale.length || added.length) process.exit(1);
-const baseNote = baseList.ok ? `compared with the list of ${BASE}` : `${BASE} has no list yet, additions not checked`;
-console.log(`Prisma imports: no new import outside a repository in ${files.length} files (${found.length} on the exception list; ${baseNote}).`);
+if (!baseList.ok) {
+  const why = git(["rev-parse", "--verify", "--quiet", `${BASE}^{commit}`]).ok
+    ? `${BASE} has no ${LIST}`
+    : `${BASE} is not a commit in this checkout (fetch it, or name another base)`;
+  console.error(`Prisma imports: cannot read the exception list of the base branch, so additions to the list cannot be checked: ${why}.`);
+}
+if (unlisted.length || stale.length || added.length || !baseList.ok) process.exit(1);
+console.log(`Prisma imports: no new import outside a repository in ${files.length} files (${found.length} on the exception list; compared with the list of ${BASE}).`);

@@ -5,7 +5,9 @@ import {
   ForbiddenException,
   BadRequestException,
 } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
+import { SubscriptionPlanRepository } from "../../billing/repository/subscription-plan.repository";
+import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
+import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
 import { ProviderRouter } from "../../providers/provider-router";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import type { CreateAgentDto } from "../dto/create-agent.dto";
@@ -16,13 +18,25 @@ import {
 } from "../dto/agent-chat.dto";
 import { ownSubAgents } from "../utils/own-sub-agents";
 import { slugify } from "../../../common/utils/slugify";
+import { AgentRepository } from "../repository/agent.repository";
+import { AgentToolRepository } from "../repository/agent-tool.repository";
+import { AgentIntegrationRepository } from "../repository/agent-integration.repository";
+import { AgentKnowledgeBaseRepository } from "../repository/agent-knowledge-base.repository";
+import { AgentChannelRepository } from "../repository/agent-channel.repository";
 
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly agents: AgentRepository,
+    private readonly agentTools: AgentToolRepository,
+    private readonly agentIntegrations: AgentIntegrationRepository,
+    private readonly agentKnowledgeBases: AgentKnowledgeBaseRepository,
+    private readonly agentChannels: AgentChannelRepository,
+    private readonly subscriptions: UserSubscriptionRepository,
+    private readonly plans: SubscriptionPlanRepository,
+    private readonly knowledgeBases: KnowledgeBaseRepository,
     private readonly providerRouter: ProviderRouter,
     private readonly workspaceService: WorkspaceService,
   ) {}
@@ -36,9 +50,7 @@ export class AgentService {
     let counter = 1;
 
     while (true) {
-      const existing = await this.prisma.agent.findUnique({
-        where: { userId_slug: { userId, slug } },
-      });
+      const existing = await this.agents.findAgentBySlug(userId, slug);
       if (!existing) return slug;
       slug = `${baseSlug}-${counter}`;
       counter++;
@@ -60,9 +72,7 @@ export class AgentService {
           "Only a sub-agent can have a parentAgentId",
         );
       }
-      const parent = await this.prisma.agent.findFirst({
-        where: { id: dto.parentAgentId, userId },
-      });
+      const parent = await this.agents.findUserAgent(dto.parentAgentId, userId);
       if (!parent) {
         throw new BadRequestException("Parent agent not found");
       }
@@ -75,46 +85,23 @@ export class AgentService {
 
     const slug = await this.generateUniqueSlug(userId, dto.name);
 
-    return this.prisma.agent.create({
-      data: {
-        userId,
-        name: dto.name,
-        slug,
-        description: dto.description,
-        avatar: dto.avatar,
-        systemPrompt: dto.systemPrompt,
-        model: dto.model,
-        temperature: dto.temperature ?? 0.7,
-        maxTokens: dto.maxTokens,
-        isPublic: dto.isPublic ?? false,
-        agentType: dto.agentType ?? "standalone",
-        parentAgentId: dto.parentAgentId,
-      },
-      include: {
-        tools: true,
-        integrations: true,
-        knowledgeBases: true,
-        channels: true,
-        _count: { select: { runs: true } },
-      },
+    return this.agents.createAgent(userId, {
+      name: dto.name,
+      slug,
+      description: dto.description,
+      avatar: dto.avatar,
+      systemPrompt: dto.systemPrompt,
+      model: dto.model,
+      temperature: dto.temperature ?? 0.7,
+      maxTokens: dto.maxTokens,
+      isPublic: dto.isPublic ?? false,
+      agentType: dto.agentType ?? "standalone",
+      parentAgentId: dto.parentAgentId,
     });
   }
 
   async list(userId: string) {
-    const agents = await this.prisma.agent.findMany({
-      where: { userId, parentAgentId: null },
-      include: {
-        tools: true,
-        integrations: true,
-        knowledgeBases: true,
-        channels: true,
-        subAgents: {
-          select: { id: true, name: true, status: true, userId: true },
-        },
-        _count: { select: { runs: true } },
-      },
-      orderBy: { updatedAt: "desc" },
-    });
+    const agents = await this.agents.listTopLevelAgents(userId);
     return agents.map((agent) => ({
       ...agent,
       subAgents: ownSubAgents(agent, agent.subAgents, this.logger),
@@ -122,22 +109,7 @@ export class AgentService {
   }
 
   async findById(userId: string, agentId: string) {
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-      include: {
-        tools: true,
-        integrations: true,
-        knowledgeBases: { include: { knowledgeBase: true } },
-        channels: true,
-        subAgents: {
-          include: {
-            tools: true,
-            _count: { select: { runs: true } },
-          },
-        },
-        _count: { select: { runs: true } },
-      },
-    });
+    const agent = await this.agents.findAgentDetail(agentId, userId);
 
     if (!agent) {
       throw new NotFoundException("Agent not found");
@@ -148,9 +120,7 @@ export class AgentService {
   }
 
   async update(userId: string, agentId: string, dto: UpdateAgentDto) {
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-    });
+    const agent = await this.agents.findUserAgent(agentId, userId);
 
     if (!agent) {
       throw new NotFoundException("Agent not found");
@@ -175,10 +145,10 @@ export class AgentService {
         throw new BadRequestException("Agent cannot be its own parent");
       }
 
-      const parent = await this.prisma.agent.findFirst({
-        where: { id: nextParentAgentId, userId },
-        select: { id: true, agentType: true },
-      });
+      const parent = await this.agents.findUserAgentType(
+        nextParentAgentId,
+        userId,
+      );
 
       if (!parent) {
         throw new BadRequestException("Parent agent not found");
@@ -207,86 +177,46 @@ export class AgentService {
       data.parentAgentId = null;
     }
 
-    return this.prisma.agent.update({
-      where: { id: agentId },
-      data,
-      include: {
-        tools: true,
-        integrations: true,
-        knowledgeBases: true,
-        channels: true,
-        _count: { select: { runs: true } },
-      },
-    });
+    return this.agents.updateAgent(agentId, data);
   }
 
   async delete(userId: string, agentId: string) {
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-    });
+    const agent = await this.agents.findUserAgent(agentId, userId);
 
     if (!agent) {
       throw new NotFoundException("Agent not found");
     }
 
-    await this.prisma.agent.delete({ where: { id: agentId } });
+    await this.agents.deleteAgent(agentId);
     return { deleted: true };
   }
 
   async publish(userId: string, agentId: string) {
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-    });
+    const agent = await this.agents.findUserAgent(agentId, userId);
 
     if (!agent) {
       throw new NotFoundException("Agent not found");
     }
 
-    return this.prisma.agent.update({
-      where: { id: agentId },
-      data: { status: "active" },
-    });
+    return this.agents.updateAgentStatus(agentId, "active");
   }
 
   async updateStatus(userId: string, agentId: string, status: string) {
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-    });
+    const agent = await this.agents.findUserAgent(agentId, userId);
 
     if (!agent) {
       throw new NotFoundException("Agent not found");
     }
 
-    return this.prisma.agent.update({
-      where: { id: agentId },
-      data: { status },
-    });
+    return this.agents.updateAgentStatus(agentId, status);
   }
 
   async listPublic() {
-    return this.prisma.agent.findMany({
-      where: { isPublic: true, status: "active" },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        description: true,
-        avatar: true,
-        agentType: true,
-        model: true,
-        _count: { select: { runs: true } },
-        user: { select: { email: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
+    return this.agents.listPublicAgents();
   }
 
   async cloneFromTemplate(userId: string, templateId: string) {
-    const template = await this.prisma.agent.findFirst({
-      where: { id: templateId, isPublic: true, status: "active" },
-      include: { tools: true },
-    });
+    const template = await this.agents.findPublicTemplate(templateId);
 
     if (!template) {
       throw new NotFoundException("Template not found");
@@ -297,52 +227,33 @@ export class AgentService {
 
     const slug = await this.generateUniqueSlug(userId, template.name);
 
-    const agent = await this.prisma.agent.create({
-      data: {
-        userId,
-        name: template.name,
-        slug,
-        description: template.description,
-        avatar: template.avatar,
-        systemPrompt: template.systemPrompt,
-        model: template.model,
-        temperature: template.temperature,
-        maxTokens: template.maxTokens,
-        isPublic: false,
-        agentType:
-          template.agentType === "parent" ? "standalone" : template.agentType,
-      },
-      include: {
-        tools: true,
-        integrations: true,
-        knowledgeBases: true,
-        channels: true,
-        _count: { select: { runs: true } },
-      },
+    const agent = await this.agents.createAgent(userId, {
+      name: template.name,
+      slug,
+      description: template.description,
+      avatar: template.avatar,
+      systemPrompt: template.systemPrompt,
+      model: template.model,
+      temperature: template.temperature,
+      maxTokens: template.maxTokens,
+      isPublic: false,
+      agentType:
+        template.agentType === "parent" ? "standalone" : template.agentType,
     });
 
     // Clone tools
     if (template.tools.length > 0) {
-      await this.prisma.agentTool.createMany({
-        data: template.tools.map((t) => ({
-          agentId: agent.id,
+      await this.agentTools.createAgentTools(
+        agent.id,
+        template.tools.map((t) => ({
           toolType: t.toolType,
           config: t.config ?? undefined,
           enabled: t.enabled,
         })),
-      });
+      );
     }
 
-    return this.prisma.agent.findUnique({
-      where: { id: agent.id },
-      include: {
-        tools: true,
-        integrations: true,
-        knowledgeBases: true,
-        channels: true,
-        _count: { select: { runs: true } },
-      },
-    });
+    return this.agents.findAgentWithRelations(agent.id);
   }
 
   // ─── Tools ───
@@ -356,20 +267,20 @@ export class AgentService {
   ) {
     await this.verifyOwnership(userId, agentId);
 
-    return this.prisma.agentTool.create({
-      data: { agentId, toolType, config, enabled },
+    return this.agentTools.createAgentTool(agentId, {
+      toolType,
+      config,
+      enabled,
     });
   }
 
   async removeTool(userId: string, agentId: string, toolId: string) {
     await this.verifyOwnership(userId, agentId);
 
-    const tool = await this.prisma.agentTool.findFirst({
-      where: { id: toolId, agentId },
-    });
+    const tool = await this.agentTools.findAgentTool(toolId, agentId);
     if (!tool) throw new NotFoundException("Tool not found");
 
-    await this.prisma.agentTool.delete({ where: { id: toolId } });
+    await this.agentTools.deleteAgentTool(toolId);
     return { deleted: true };
   }
 
@@ -385,8 +296,11 @@ export class AgentService {
     await this.verifyOwnership(userId, agentId);
     await this.checkIntegrationLimit(userId, agentId);
 
-    return this.prisma.agentIntegration.create({
-      data: { agentId, provider, config, scopes, status: "connected" },
+    return this.agentIntegrations.createAgentIntegration(agentId, {
+      provider,
+      config,
+      scopes,
+      status: "connected",
     });
   }
 
@@ -397,12 +311,13 @@ export class AgentService {
   ) {
     await this.verifyOwnership(userId, agentId);
 
-    const integration = await this.prisma.agentIntegration.findFirst({
-      where: { id: integrationId, agentId },
-    });
+    const integration = await this.agentIntegrations.findAgentIntegration(
+      integrationId,
+      agentId,
+    );
     if (!integration) throw new NotFoundException("Integration not found");
 
-    await this.prisma.agentIntegration.delete({ where: { id: integrationId } });
+    await this.agentIntegrations.deleteAgentIntegration(integrationId);
     return { deleted: true };
   }
 
@@ -415,9 +330,7 @@ export class AgentService {
   ) {
     const agent = await this.verifyOwnership(userId, agentId);
 
-    const kb = await this.prisma.knowledgeBase.findUnique({
-      where: { id: knowledgeBaseId },
-    });
+    const kb = await this.knowledgeBases.findKnowledgeBaseById(knowledgeBaseId);
     if (!kb) throw new NotFoundException("Knowledge base not found");
 
     if (kb.workspaceId) {
@@ -435,9 +348,10 @@ export class AgentService {
       throw new NotFoundException("Knowledge base not found");
     }
 
-    return this.prisma.agentKnowledgeBase.create({
-      data: { agentId, knowledgeBaseId },
-    });
+    return this.agentKnowledgeBases.createAgentKnowledgeBase(
+      agentId,
+      knowledgeBaseId,
+    );
   }
 
   async removeKnowledgeBase(
@@ -447,13 +361,14 @@ export class AgentService {
   ) {
     await this.verifyOwnership(userId, agentId);
 
-    const akb = await this.prisma.agentKnowledgeBase.findFirst({
-      where: { agentId, knowledgeBaseId },
-    });
+    const akb = await this.agentKnowledgeBases.findAgentKnowledgeBase(
+      agentId,
+      knowledgeBaseId,
+    );
     if (!akb)
       throw new NotFoundException("Knowledge base attachment not found");
 
-    await this.prisma.agentKnowledgeBase.delete({ where: { id: akb.id } });
+    await this.agentKnowledgeBases.deleteAgentKnowledgeBase(akb.id);
     return { deleted: true };
   }
 
@@ -468,8 +383,10 @@ export class AgentService {
     await this.verifyOwnership(userId, agentId);
     await this.checkChannelAccess(userId, channelType);
 
-    return this.prisma.agentChannel.create({
-      data: { agentId, channelType, config, status: "active" },
+    return this.agentChannels.createAgentChannel(agentId, {
+      channelType,
+      config,
+      status: "active",
     });
   }
 
@@ -481,9 +398,10 @@ export class AgentService {
   ) {
     await this.verifyOwnership(userId, agentId);
 
-    const channel = await this.prisma.agentChannel.findFirst({
-      where: { id: channelId, agentId },
-    });
+    const channel = await this.agentChannels.findAgentChannel(
+      channelId,
+      agentId,
+    );
     if (!channel) throw new NotFoundException("Channel not found");
     if (
       channel.channelType === "whatsapp" &&
@@ -498,31 +416,27 @@ export class AgentService {
       });
     }
 
-    return this.prisma.agentChannel.update({
-      where: { id: channelId },
-      data: { config },
-    });
+    return this.agentChannels.updateAgentChannelConfig(channelId, config);
   }
 
   async removeChannel(userId: string, agentId: string, channelId: string) {
     await this.verifyOwnership(userId, agentId);
 
-    const channel = await this.prisma.agentChannel.findFirst({
-      where: { id: channelId, agentId },
-    });
+    const channel = await this.agentChannels.findAgentChannel(
+      channelId,
+      agentId,
+    );
     if (!channel) throw new NotFoundException("Channel not found");
 
-    await this.prisma.agentChannel.delete({ where: { id: channelId } });
+    await this.agentChannels.deleteAgentChannel(channelId);
     return { deleted: true };
   }
 
   // ─── Subscription ───
 
   async getSubscription(userId: string) {
-    const subscription = await this.prisma.userSubscription.findUnique({
-      where: { userId },
-      include: { plan: true },
-    });
+    const subscription =
+      await this.subscriptions.findSubscriptionWithPlan(userId);
     if (!subscription) {
       return { subscription: null };
     }
@@ -543,29 +457,24 @@ export class AgentService {
   }
 
   async subscribe(userId: string, tier: string) {
-    const plan = await this.prisma.subscriptionPlan.findUnique({
-      where: { slug: tier },
-    });
+    const plan = await this.plans.findPlanBySlug(tier);
     if (!plan) throw new BadRequestException("Invalid plan tier");
 
     // Check if user already has active subscription
-    const existing = await this.prisma.userSubscription.findUnique({
-      where: { userId },
-    });
+    const existing = await this.subscriptions.findSubscriptionByUserId(userId);
 
     if (existing && existing.status === "active") {
       // Upgrade/downgrade
-      const updated = await this.prisma.userSubscription.update({
-        where: { userId },
-        data: {
+      const updated = await this.subscriptions.updateSubscriptionWithPlan(
+        userId,
+        {
           planId: plan.id,
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           messagesUsed: 0,
           tokensUsed: 0,
         },
-        include: { plan: true },
-      });
+      );
       return {
         subscription: {
           ...updated,
@@ -582,16 +491,15 @@ export class AgentService {
     }
 
     // Create new subscription
-    const subscription = await this.prisma.userSubscription.create({
-      data: {
-        userId,
+    const subscription = await this.subscriptions.createSubscriptionWithPlan(
+      userId,
+      {
         planId: plan.id,
         status: "active",
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       },
-      include: { plan: true },
-    });
+    );
 
     return {
       subscription: {
@@ -638,18 +546,14 @@ export class AgentService {
   // ─── Helpers ───
 
   private async verifyOwnership(userId: string, agentId: string) {
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-    });
+    const agent = await this.agents.findUserAgent(agentId, userId);
     if (!agent) throw new NotFoundException("Agent not found");
     return agent;
   }
 
   private async checkSubscription(userId: string) {
-    const subscription = await this.prisma.userSubscription.findUnique({
-      where: { userId },
-      include: { plan: true },
-    });
+    const subscription =
+      await this.subscriptions.findSubscriptionWithPlan(userId);
 
     if (!subscription || subscription.status !== "active") {
       throw new ForbiddenException(
@@ -661,14 +565,12 @@ export class AgentService {
   }
 
   private async checkAgentLimit(userId: string) {
-    const subscription = await this.prisma.userSubscription.findUnique({
-      where: { userId },
-      include: { plan: true },
-    });
+    const subscription =
+      await this.subscriptions.findSubscriptionWithPlan(userId);
     if (!subscription) return;
 
     const maxAgents = subscription.plan.maxAgents;
-    const count = await this.prisma.agent.count({ where: { userId } });
+    const count = await this.agents.countAgentsByUser(userId);
 
     if (count >= maxAgents) {
       throw new BadRequestException(
@@ -678,16 +580,12 @@ export class AgentService {
   }
 
   private async checkIntegrationLimit(userId: string, agentId: string) {
-    const subscription = await this.prisma.userSubscription.findUnique({
-      where: { userId },
-      include: { plan: true },
-    });
+    const subscription =
+      await this.subscriptions.findSubscriptionWithPlan(userId);
     if (!subscription) return;
 
     const max = subscription.plan.maxIntegrations;
-    const count = await this.prisma.agentIntegration.count({
-      where: { agentId },
-    });
+    const count = await this.agentIntegrations.countAgentIntegrations(agentId);
 
     if (count >= max) {
       throw new BadRequestException(
@@ -697,10 +595,8 @@ export class AgentService {
   }
 
   private async checkChannelAccess(userId: string, channelType: string) {
-    const subscription = await this.prisma.userSubscription.findUnique({
-      where: { userId },
-      include: { plan: true },
-    });
+    const subscription =
+      await this.subscriptions.findSubscriptionWithPlan(userId);
     if (!subscription) return;
 
     const allowed = subscription.plan.allowedChannels;

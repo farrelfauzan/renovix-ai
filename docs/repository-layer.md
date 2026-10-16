@@ -32,12 +32,29 @@ A method that also reads a second table (an `include`) belongs to the table it i
 No value import of the generated Prisma client outside the repositories and the Prisma module (`import type` is allowed, rule (a) and the import check below). Services write enum values as strings: `CodesService` checks `code.type === "topup"` and passes `status: "active"`, and `TransactionRepository.createTopupTransaction` writes `type: "topup", status: "success"`. A repository turns a Prisma error into one of the app's error classes, which are Nest's HTTP exceptions (D103). The six repositories above map no Prisma error, so the example is `AdminUserRepository.updateRole` (`admin-auth/repository/admin-user.repository.ts`): a `PrismaClientKnownRequestError` with code `P2003` (no role with that name) becomes `BadRequestException("Unknown role")`.
 
 **(3) A table used by several modules: its repository sits in the module that owns the table; one global module provides them all (D103).**
-Owners: `invitation_codes` and `code_redemptions` belong to codes; `user_subscriptions`, `subscription_plans` and `transactions` to billing; `users` to auth; `portal_sessions` (`PortalSessionRepository`, 8 methods) and `anonymous_usage_counters` (`AnonymousUsageCounterRepository`, 2) to portal (RX-138). `RepositoriesModule` (`apps/api/src/app/prisma/repositories.module.ts`) is `@Global()` and lists every repository of the API in its `providers` and `exports`; `AppModule` imports it once. No feature module lists a repository in its `providers`, and a feature module never imports another module to get a repository: `CodesModule` imports nothing to use the billing and auth repositories, and `AdminAuthModule` no longer imports `AdminAuditModule`, which it did only for `AdminAuditLogRepository`. A new repository is added to the list in `repositories.module.ts`.
+Owners: `invitation_codes` and `code_redemptions` belong to codes; `user_subscriptions`, `subscription_plans` and `transactions` to billing; `users` to auth; `portal_sessions` (`PortalSessionRepository`, 8 methods) and `anonymous_usage_counters` (`AnonymousUsageCounterRepository`, 2) to portal (RX-138); `agents`, `agent_tools`, `agent_integrations`, `agent_knowledge_bases` and `agent_channels` to agent; `channel_chat_rooms` to channel; `reminders` to reminder; `knowledge_bases` to knowledge (RX-133). `RepositoriesModule` (`apps/api/src/app/prisma/repositories.module.ts`) is `@Global()` and lists every repository of the API in its `providers` and `exports`; `AppModule` imports it once. No feature module lists a repository in its `providers`, and a feature module never imports another module to get a repository: `CodesModule` imports nothing to use the billing and auth repositories, and `AdminAuthModule` no longer imports `AdminAuditModule`, which it did only for `AdminAuditLogRepository`. A new repository is added to the list in `repositories.module.ts`.
 
 In tests, `createTestModule` (`apps/api/test/test-module.ts`) imports `RepositoriesModule` as `AppModule` does, so a test lists the service it tests and nothing else.
 
 **(4) "Fewer than 10 public methods" is a number the pull request reports, not a hard limit (D103).**
 The pull request that adds or grows a repository gives each one's count, and a reason for any count above 10. RX-148: the largest, `InvitationCodeRepository`, has 7 (table above).
+
+RX-133 moved `agent/service/agent.service.ts` and `agent/service/agent-tool.service.ts` the same way:
+
+| Table | Repository | File | Owner module | Public methods |
+|---|---|---|---|---|
+| `agents` | `AgentRepository` | `agent/repository/agent.repository.ts` | agent | 13: `findAgentBySlug`, `findUserAgent`, `findUserAgentType`, `findAgentDetail`, `findAgentWithRelations`, `listTopLevelAgents`, `listPublicAgents`, `findPublicTemplate`, `countAgentsByUser`, `createAgent`, `updateAgent`, `updateAgentStatus`, `deleteAgent` (above 10: one method per distinct query of the service, so each stayed exactly as it was) |
+| `agent_tools` | `AgentToolRepository` | `agent/repository/agent-tool.repository.ts` | agent | 4: `findAgentTool`, `createAgentTool`, `createAgentTools`, `deleteAgentTool` |
+| `agent_integrations` | `AgentIntegrationRepository` | `agent/repository/agent-integration.repository.ts` | agent | 4: `findAgentIntegration`, `countAgentIntegrations`, `createAgentIntegration`, `deleteAgentIntegration` |
+| `agent_knowledge_bases` | `AgentKnowledgeBaseRepository` | `agent/repository/agent-knowledge-base.repository.ts` | agent | 3: `findAgentKnowledgeBase`, `createAgentKnowledgeBase`, `deleteAgentKnowledgeBase` |
+| `agent_channels` | `AgentChannelRepository` | `agent/repository/agent-channel.repository.ts` | agent | 4: `findAgentChannel`, `createAgentChannel`, `updateAgentChannelConfig`, `deleteAgentChannel` |
+| `user_subscriptions` | `UserSubscriptionRepository` | `billing/repository/user-subscription.repository.ts` | billing | 6: adds `findSubscriptionWithPlan`, `createSubscriptionWithPlan`, `updateSubscriptionWithPlan`; reuses `findSubscriptionByUserId` |
+| `subscription_plans` | `SubscriptionPlanRepository` | `billing/repository/subscription-plan.repository.ts` | billing | 2: adds `findPlanBySlug` |
+| `channel_chat_rooms` | `ChannelChatRoomRepository` | `channel/repository/channel-chat-room.repository.ts` | channel | 2: `findChatRoomByName`, `createChatRoom` |
+| `reminders` | `ReminderRepository` | `reminder/repository/reminder.repository.ts` | reminder | 1: `createReminder` |
+| `knowledge_bases` | `KnowledgeBaseRepository` | `knowledge/repository/knowledge-base.repository.ts` | knowledge | 9: adds `findKnowledgeBaseById` to RX-137's 8 |
+
+The writes by id of the agent tables (`updateAgent`, `deleteAgent`, `deleteAgentTool`, ...) take no user: the service checks the owner first (`findUserAgent`), as before; changing that is RX-117. Neither service used a transaction, and none of these repositories maps a Prisma error.
 
 When the credit service (RX-22) owns the balance, the balance write of a redemption moves to it and the redemption passes its transaction on.
 
@@ -104,7 +121,7 @@ The seven points as decided:
 3. No transaction across a model call or a stream. The helper has no begin and commit handle, so it cannot be kept open that way. For the credit service (RX-22) this means reserve, each ledger line and settle are separate short transactions, and a killed request is undone by a `release` call, not by a rollback.
 4. `options` may hold `isolationLevel`, `timeout` and `maxWait`. They are passed to Prisma only when `run` opens the transaction. Given together with `tx` they cannot be honoured, so `run` throws.
 5. No retry. A ticket that chooses a stricter isolation level adds it, in the helper.
-6. Callback form only. The array-form uses stay as they are until their slice: `workspace/service/workspace-invite.service.ts` and the chunk inserts of `workspace/service/workspace-knowledge.service.ts` (RX-135), and `KnowledgeChunkRepository.insertChunks` (moved unchanged by RX-137, rule (e)). Prisma 8 removes the array form, so the helper is the one place to adapt.
+6. Callback form only. The array-form uses stay as they are until their slice: `workspace/service/workspace-invite.service.ts` and the chunk inserts of `workspace/service/workspace-knowledge.service.ts` (RX-135). `KnowledgeChunkRepository.insertChunks` (moved unchanged by RX-137, rule (e)) keeps the array form until Prisma 8 removes it, a recorded exception (D159). Prisma 8 removes the array form, so the helper is the one place to adapt.
 7. Services import `TransactionService` and `DbTransaction` from the Prisma module and nothing else from it.
 
 ## The import check (D94)
@@ -113,7 +130,7 @@ Step "prisma imports" of `bun run check` (`scripts/check-prisma-imports.ts`).
 
 - Forbidden outside `apps/api/src/app/prisma/` and `<module>/repository/*.repository.ts`: a value import of `PrismaService` or of the generated Prisma client.
 - Allowed everywhere: `import type` from the generated client, because a service has to name the row types a repository returns (rule c) and a type cannot reach the database. `Decimal` from `@prisma/client/runtime/client` is not the generated client and stays allowed.
-- The list `scripts/prisma-import-exceptions.ts` may only shrink. The check fails on a file that has such an import and is not listed, on a listed file that no longer has one, and on a list entry that the list on `origin/main` does not have (a renamed file keeps its entry).
+- The list `scripts/prisma-import-exceptions.ts` may only shrink. The check fails on a file that has such an import and is not listed, on a listed file that no longer has one, and on a list entry that the list on `origin/main` does not have (a renamed file keeps its entry). It also fails, and says which, when it cannot read that list: the base ref is not in the checkout, or it has no list (RX-133; before, it passed with "additions not checked"). The base is the first argument, else `PRISMA_IMPORTS_BASE`, else `origin/main`.
 - Not read: spec files, `apps/api/test/`, the seed, `require()`, `import x = require()` and dynamic `import()` (none exist in `apps/api/src`), and `@prisma/client` itself. Not seen at all: a service that runs a query on the `tx` it gets from `run`; it needs no import, so only review catches it.
 - A path with a file suffix (`prisma.service.js`, `.ts`) counts like the bare path.
 

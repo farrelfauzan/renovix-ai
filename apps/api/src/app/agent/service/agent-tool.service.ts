@@ -5,7 +5,8 @@ import { McpUserService } from "../../mcp/service/mcp-user.service";
 import { WebSearchService } from "../../mcp/service/web-search.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { DocumentService } from "../../document/service/document.service";
-import { PrismaService } from "../../prisma/prisma.service";
+import { ChannelChatRoomRepository } from "../../channel/repository/channel-chat-room.repository";
+import { ReminderRepository } from "../../reminder/repository/reminder.repository";
 import { CronExpressionParser } from "cron-parser";
 import { executeKnowledgeRetrieval } from "../utils/execute-knowledge-retrieval";
 import { mcpToolToOpenAI } from "../../mcp/utils/mcp-tool-to-openai";
@@ -57,7 +58,8 @@ export class AgentToolService {
     private readonly webSearchService: WebSearchService,
     private readonly memoryService: AgentMemoryService,
     private readonly documentService: DocumentService,
-    private readonly prisma: PrismaService,
+    private readonly chatRooms: ChannelChatRoomRepository,
+    private readonly reminders: ReminderRepository,
   ) {}
 
   // ─── Built-in tool definitions (internal tools that need direct DB/process access) ───
@@ -593,27 +595,23 @@ export class AgentToolService {
 
     try {
       // Find or create chat room for this channel
-      let chatRoom = await this.prisma.channelChatRoom.findFirst({
-        where: { channelId, name: "general" },
-      });
+      let chatRoom = await this.chatRooms.findChatRoomByName(
+        channelId,
+        "general",
+      );
       if (!chatRoom) {
-        chatRoom = await this.prisma.channelChatRoom.create({
-          data: { channelId, name: "general" },
-        });
+        chatRoom = await this.chatRooms.createChatRoom(channelId, "general");
       }
 
-      const reminder = await this.prisma.reminder.create({
-        data: {
-          userId,
-          agentId: agent.id,
-          channelId,
-          chatRoomId: chatRoom.id,
-          prompt: args.prompt,
-          description: args.description || null,
-          cronExpression: args.cronExpression,
-          timezone,
-          nextRunAt,
-        },
+      const reminder = await this.reminders.createReminder(userId, {
+        agentId: agent.id,
+        channelId,
+        chatRoomId: chatRoom.id,
+        prompt: args.prompt,
+        description: args.description || null,
+        cronExpression: args.cronExpression,
+        timezone,
+        nextRunAt,
       });
 
       this.logger.log(

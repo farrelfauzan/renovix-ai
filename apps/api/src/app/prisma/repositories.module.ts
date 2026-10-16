@@ -6,10 +6,16 @@ import { AdminRecoveryCodeRepository } from "../admin-auth/repository/admin-reco
 import { AdminRoleRepository } from "../admin-auth/repository/admin-role.repository";
 import { AdminSessionRepository } from "../admin-auth/repository/admin-session.repository";
 import { AdminUserRepository } from "../admin-auth/repository/admin-user.repository";
+import { AgentChannelRepository } from "../agent/repository/agent-channel.repository";
+import { AgentIntegrationRepository } from "../agent/repository/agent-integration.repository";
+import { AgentKnowledgeBaseRepository } from "../agent/repository/agent-knowledge-base.repository";
+import { AgentToolRepository } from "../agent/repository/agent-tool.repository";
+import { AgentRepository } from "../agent/repository/agent.repository";
 import { UserRepository } from "../auth/repository/user.repository";
 import { SubscriptionPlanRepository } from "../billing/repository/subscription-plan.repository";
 import { TransactionRepository } from "../billing/repository/transaction.repository";
 import { UserSubscriptionRepository } from "../billing/repository/user-subscription.repository";
+import { ChannelChatRoomRepository } from "../channel/repository/channel-chat-room.repository";
 import { CodeRedemptionRepository } from "../codes/repository/code-redemption.repository";
 import { InvitationCodeRepository } from "../codes/repository/invitation-code.repository";
 import { KnowledgeBaseRepository } from "../knowledge/repository/knowledge-base.repository";
@@ -24,6 +30,7 @@ import { PurchaseSnapshotRepository } from "../offers/repository/purchase-snapsh
 import { TopUpPackRepository } from "../offers/repository/top-up-pack.repository";
 import { AnonymousUsageCounterRepository } from "../portal/repository/anonymous-usage-counter.repository";
 import { PortalSessionRepository } from "../portal/repository/portal-session.repository";
+import { ReminderRepository } from "../reminder/repository/reminder.repository";
 
 const REPOSITORIES = [
   AdminAuditLogRepository,
@@ -33,10 +40,16 @@ const REPOSITORIES = [
   AdminRoleRepository,
   AdminSessionRepository,
   AdminUserRepository,
+  AgentChannelRepository,
+  AgentIntegrationRepository,
+  AgentKnowledgeBaseRepository,
+  AgentToolRepository,
+  AgentRepository,
   UserRepository,
   SubscriptionPlanRepository,
   TransactionRepository,
   UserSubscriptionRepository,
+  ChannelChatRoomRepository,
   CodeRedemptionRepository,
   InvitationCodeRepository,
   KnowledgeBaseRepository,
@@ -51,6 +64,7 @@ const REPOSITORIES = [
   TopUpPackRepository,
   AnonymousUsageCounterRepository,
   PortalSessionRepository,
+  ReminderRepository,
 ];
 
 /**

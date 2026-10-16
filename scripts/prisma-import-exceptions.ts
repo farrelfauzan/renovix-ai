@@ -6,8 +6,6 @@
 export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   "apps/api/src/app/agent/service/agent-memory.service.ts",
   "apps/api/src/app/agent/service/agent-run.service.ts",
-  "apps/api/src/app/agent/service/agent-tool.service.ts",
-  "apps/api/src/app/agent/service/agent.service.ts",
   "apps/api/src/app/billing/controller/billing.controller.ts",
   "apps/api/src/app/billing/service/billing.service.ts",
   "apps/api/src/app/channel/service/channel-chat.service.ts",

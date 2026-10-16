@@ -23,7 +23,8 @@ function buildService() {
     unused, // webSearchService
     unused, // memoryService
     unused, // documentService
-    unused, // prisma
+    unused, // chatRooms
+    unused, // reminders
   );
 }
 

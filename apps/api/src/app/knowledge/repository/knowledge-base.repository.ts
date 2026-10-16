@@ -3,7 +3,7 @@ import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 
-/** The queries on `knowledge_bases` (RX-137). Every method takes the transaction as its optional last argument. */
+/** The queries on `knowledge_bases` (RX-137, RX-133). Every method takes the transaction as its optional last argument. */
 @Injectable()
 export class KnowledgeBaseRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -41,6 +41,13 @@ export class KnowledgeBaseRepository {
     return (tx ?? this.prisma).knowledgeBase.findUnique({
       where: { id },
       include: { _count: { select: { chunks: true } } },
+    });
+  }
+
+  /** The knowledge base with this id, whoever owns it; the caller checks the owner (RX-133). */
+  findKnowledgeBaseById(id: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).knowledgeBase.findUnique({
+      where: { id },
     });
   }
 
