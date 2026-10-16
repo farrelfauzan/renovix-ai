@@ -39,6 +39,7 @@ let blocker: OutboundBlocker;
 let primary: StubHttpServer;
 let fallback: StubHttpServer;
 let retryDelays: number[];
+let setTimeoutSpy: jest.SpyInstance;
 
 /** A fresh adapter that sees exactly `env` (the shell's values are cleared). */
 const makeAdapter = (env: Env): OpenRouterAdapter => {
@@ -74,7 +75,7 @@ beforeEach(() => {
   fallback.respond((_r, res) => sendJson(res, 200, chatCompletion("from fallback")));
   // The retry back-off (2 s .. 60 s) runs at once; every other timer is untouched.
   retryDelays = [];
-  jest.spyOn(global, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+  setTimeoutSpy = jest.spyOn(global, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
     if (ms && ms >= 2000 && ms <= 60000) {
       retryDelays.push(ms);
       return realSetTimeout(fn, 0);
@@ -152,14 +153,26 @@ describe("RX-160 AC3: fallback after 502/503", () => {
       LLM_FALLBACK_API_KEY: FALLBACK_KEY,
     });
 
-  it.each([503, 502])("chat: primary answers %i until the retries run out → the fallback serves it, once", async (status) => {
-    primary.respond((_r, res) => sendJson(res, status, { error: "down" }));
+  it("chat: primary answers 503 until the retries run out → the fallback serves it, once", async () => {
+    primary.respond((_r, res) => sendJson(res, 503, { error: "down" }));
 
     const res = await withFallback().chat(request());
 
     expect(res.choices[0].message.content).toBe("from fallback");
     expect(primary.requests).toHaveLength(6);
     expect(retryDelays).toHaveLength(6);
+    expect(fallback.requests).toHaveLength(1);
+    expect(fallback.requests[0].headers.authorization).toBe(`Bearer ${FALLBACK_KEY}`);
+  });
+
+  it("chat: primary answers 502 → the fallback serves it at once, once (D156: no back-off on a 502)", async () => {
+    primary.respond((_r, res) => sendJson(res, 502, { error: "down" }));
+
+    const res = await withFallback().chat(request());
+
+    expect(res.choices[0].message.content).toBe("from fallback");
+    expect(primary.requests).toHaveLength(1);
+    expect(retryDelays).toHaveLength(0);
     expect(fallback.requests).toHaveLength(1);
     expect(fallback.requests[0].headers.authorization).toBe(`Bearer ${FALLBACK_KEY}`);
   });
@@ -179,7 +192,7 @@ describe("RX-160 AC3: fallback after 502/503", () => {
   it.each([400, 401, 403])("negative: primary answers %i → fallback not tried", async (status) => {
     primary.respond((_r, res) => sendJson(res, status, { error: "no" }));
 
-    await expect(withFallback().chat(request())).rejects.toMatchObject({ response: { status } });
+    await expect(withFallback().chat(request())).rejects.toMatchObject({ status });
 
     expect(primary.requests).toHaveLength(1);
     expect(fallback.requests).toHaveLength(0);
@@ -188,7 +201,7 @@ describe("RX-160 AC3: fallback after 502/503", () => {
   it("negative: 429 until the retries run out → fallback not tried", async () => {
     primary.respond((_r, res) => sendJson(res, 429, {}));
 
-    await expect(withFallback().chat(request())).rejects.toMatchObject({ response: { status: 429 } });
+    await expect(withFallback().chat(request())).rejects.toMatchObject({ status: 429 });
 
     expect(primary.requests).toHaveLength(6);
     expect(fallback.requests).toHaveLength(0);
@@ -198,7 +211,7 @@ describe("RX-160 AC3: fallback after 502/503", () => {
     answer503();
     const adapter = makeAdapter({ LLM_BASE_URL: primary.baseUrl, LLM_API_KEY: PRIMARY_KEY });
 
-    await expect(adapter.chat(request())).rejects.toMatchObject({ response: { status: 503 } });
+    await expect(adapter.chat(request())).rejects.toMatchObject({ status: 503 });
 
     expect(primary.requests).toHaveLength(6);
   });
@@ -207,7 +220,7 @@ describe("RX-160 AC3: fallback after 502/503", () => {
     answer503();
     fallback.respond((_r, res) => sendJson(res, 503, {}));
 
-    await expect(withFallback().chat(request())).rejects.toMatchObject({ response: { status: 503 } });
+    await expect(withFallback().chat(request())).rejects.toMatchObject({ status: 503 });
 
     expect(fallback.requests).toHaveLength(1);
   });
@@ -344,5 +357,255 @@ describe("RX-160 AC9: OpenRouter headers only for OpenRouter's base URL", () => 
     expect(blocker.blocked[0].url).toBe(`${OPENROUTER_URL}/chat/completions`);
     expect(blocker.blocked[0].headers["X-Title"]).toBe("Renovix AI");
     expect(blocker.blocked[0].headers["HTTP-Referer"]).toBe("https://chat.renovix.id");
+  });
+});
+
+// RX-161: transport per R-12 (fetch, Retry-After, plain-text 502, reasoning floor,
+// empty answers, client disconnect). Only the local stubs are called.
+describe("RX-161: provider transport", () => {
+  const stubOnly = (): Env => ({ LLM_BASE_URL: primary.baseUrl, LLM_API_KEY: PRIMARY_KEY });
+  const withFallback = (): Env => ({
+    ...stubOnly(),
+    LLM_FALLBACK_BASE_URL: fallback.baseUrl,
+    LLM_FALLBACK_API_KEY: FALLBACK_KEY,
+  });
+  const answer = (status: number, headers: Record<string, string>, text: string) =>
+    primary.respond((_r, res) => {
+      res.writeHead(status, headers);
+      res.end(text);
+    });
+  const unavailable = (retryAfter: string) =>
+    answer(503, { "Content-Type": "application/json", "Retry-After": retryAfter }, '{"error":"busy"}');
+  const plain502 = (headers: Record<string, string> = {}) =>
+    answer(502, { "Content-Type": "text/plain", ...headers }, "Bad gateway");
+  /** Collects into `out` so a test can check what was yielded before a rejection. */
+  const collect = async (gen: AsyncGenerator<string>, out: string[]): Promise<void> => {
+    for await (const p of gen) out.push(p);
+  };
+
+  describe("AC-a: 503 with Retry-After: 30 and a fallback", () => {
+    it("chat: the fallback serves it at once, no same-provider retry, well under 30 s (real timers)", async () => {
+      setTimeoutSpy.mockRestore();
+      unavailable("30");
+      const startedAt = Date.now();
+
+      const res = await makeAdapter(withFallback()).chat(request());
+
+      expect(res.choices[0].message.content).toBe("from fallback");
+      expect(primary.requests).toHaveLength(1);
+      expect(fallback.requests).toHaveLength(1);
+      expect(Date.now() - startedAt).toBeLessThan(3000);
+    }, 10000);
+  });
+
+  describe("AC-b: 503 with Retry-After and no fallback", () => {
+    it("chat: exactly one retry, after the stated wait", async () => {
+      let calls = 0;
+      primary.respond((_r, res) => {
+        if (++calls > 1) return sendJson(res, 200, chatCompletion("from primary"));
+        res.writeHead(503, { "Retry-After": "7" });
+        res.end();
+      });
+
+      const res = await makeAdapter(stubOnly()).chat(request());
+
+      expect(res.choices[0].message.content).toBe("from primary");
+      expect(primary.requests).toHaveLength(2);
+      expect(retryDelays).toEqual([7000]);
+    });
+
+    it("chat: the retry answers 503 again → it surfaces, no back-off loop", async () => {
+      unavailable("7");
+
+      await expect(makeAdapter(stubOnly()).chat(request())).rejects.toMatchObject({ status: 503 });
+
+      expect(primary.requests).toHaveLength(2);
+      expect(retryDelays).toEqual([7000]);
+    });
+
+    it("chatStream: exactly one retry, after the stated wait", async () => {
+      let calls = 0;
+      primary.respond((_r, res) => {
+        if (++calls > 1) return sendSse(res, ['{"retried":true}']);
+        res.writeHead(503, { "Retry-After": "7" });
+        res.end();
+      });
+
+      expect(await drain(makeAdapter(stubOnly()).chatStream(request()))).toEqual(['{"retried":true}']);
+      expect(primary.requests).toHaveLength(2);
+      expect(retryDelays).toEqual([7000]);
+    });
+
+    it("control: a 503 without Retry-After keeps today's 6-attempt back-off", async () => {
+      answer503();
+
+      await expect(makeAdapter(stubOnly()).chat(request())).rejects.toMatchObject({ status: 503 });
+
+      expect(primary.requests).toHaveLength(6);
+    });
+  });
+
+  describe("AC-c: 502 with a plain-text body", () => {
+    it("chat with Retry-After and a fallback: no parse error, the 503 rule (straight to the fallback)", async () => {
+      plain502({ "Retry-After": "30" });
+
+      const res = await makeAdapter(withFallback()).chat(request());
+
+      expect(res.choices[0].message.content).toBe("from fallback");
+      expect(primary.requests).toHaveLength(1);
+      expect(retryDelays).toEqual([]);
+    });
+
+    it("chat with Retry-After, no fallback: one retry, then the 502 surfaces with its text, not a JSON error", async () => {
+      plain502({ "Retry-After": "7" });
+
+      const thrown = await makeAdapter(stubOnly()).chat(request()).catch((err) => err);
+
+      expect(thrown).toMatchObject({ name: "ProviderHttpError", status: 502, bodyText: "Bad gateway" });
+      expect(thrown).not.toBeInstanceOf(SyntaxError);
+      expect(primary.requests).toHaveLength(2);
+      expect(retryDelays).toEqual([7000]);
+    });
+
+    it("chat without Retry-After and a fallback (D156, B'): straight to the fallback, no back-off", async () => {
+      plain502();
+
+      const res = await makeAdapter(withFallback()).chat(request());
+
+      expect(res.choices[0].message.content).toBe("from fallback");
+      expect(primary.requests).toHaveLength(1);
+      expect(fallback.requests).toHaveLength(1);
+      expect(retryDelays).toEqual([]);
+    });
+
+    it("control: chat without Retry-After and no fallback keeps today's 6-attempt back-off", async () => {
+      plain502();
+
+      await expect(makeAdapter(stubOnly()).chat(request())).rejects.toMatchObject({ status: 502 });
+
+      expect(primary.requests).toHaveLength(6);
+    });
+
+    it("chatStream without Retry-After: the fallback serves it, as for a 503", async () => {
+      plain502();
+      fallback.respond((_r, res) => sendSse(res, ['{"from":"fallback"}']));
+
+      expect(await drain(makeAdapter(withFallback()).chatStream(request()))).toEqual(['{"from":"fallback"}']);
+      expect(primary.requests).toHaveLength(1);
+    });
+  });
+
+  describe("AC-d: max_tokens floor for reasoning models", () => {
+    it("a reasoning model with max_tokens 100 → the body carries 2000 (chat and chatStream)", async () => {
+      const adapter = makeAdapter(stubOnly());
+      const reasoning = request({ providerId: "deepseek/deepseek-v4-pro", max_tokens: 100 });
+
+      await adapter.chat(reasoning);
+      primary.respond((_r, res) => sendSse(res, ['{"choices":[{"delta":{"content":"x"}}]}']));
+      await drain(adapter.chatStream(reasoning));
+
+      expect(primary.requests.map((r) => r.body.max_tokens)).toEqual([2000, 2000]);
+    });
+
+    it("control: a non-reasoning model keeps 100; a reasoning model above the floor keeps its value", async () => {
+      const adapter = makeAdapter(stubOnly());
+
+      await adapter.chat(request({ max_tokens: 100 }));
+      await adapter.chat(request({ providerId: "deepseek/deepseek-v4-pro", max_tokens: 3000 }));
+
+      expect(primary.requests.map((r) => r.body.max_tokens)).toEqual([100, 3000]);
+    });
+  });
+
+  describe("AC-e: empty content with finish_reason length", () => {
+    const EMPTY_ANSWER = /Model deepseek\/deepseek-v4-flash returned an empty answer: max_tokens \(100\)/;
+
+    it("negative, chat: the caller gets a clear error naming the model and max_tokens", async () => {
+      primary.respond((_r, res) =>
+        sendJson(res, 200, {
+          ...chatCompletion(""),
+          choices: [{ message: { role: "assistant", content: "" }, finish_reason: "length" }],
+        }),
+      );
+
+      await expect(makeAdapter(stubOnly()).chat(request({ max_tokens: 100 }))).rejects.toThrow(EMPTY_ANSWER);
+    });
+
+    it("negative, chatStream: the error, and nothing is yielded", async () => {
+      primary.respond((_r, res) =>
+        sendSse(res, [
+          '{"choices":[{"delta":{"role":"assistant","content":""}}]}',
+          '{"choices":[{"delta":{},"finish_reason":"length"}]}',
+          '{"usage":{"prompt_tokens":3,"completion_tokens":100,"total_tokens":103}}',
+        ]),
+      );
+      const yielded: string[] = [];
+
+      await expect(collect(makeAdapter(stubOnly()).chatStream(request({ max_tokens: 100 })), yielded)).rejects.toThrow(
+        EMPTY_ANSWER,
+      );
+
+      expect(yielded).toEqual([]);
+    });
+
+    it("control: content cut off by length, and an empty answer that stopped normally, pass through as today", async () => {
+      const adapter = makeAdapter(stubOnly());
+      const cutOff = ['{"choices":[{"delta":{"content":"Hel"}}]}', '{"choices":[{"delta":{},"finish_reason":"length"}]}'];
+      primary.respond((_r, res) => sendSse(res, cutOff));
+      expect(await drain(adapter.chatStream(request()))).toEqual(cutOff);
+      primary.respond((_r, res) => sendJson(res, 200, chatCompletion("")));
+
+      const res = await adapter.chat(request());
+
+      expect(res.choices[0]).toMatchObject({ message: { content: "" }, finish_reason: "stop" });
+    });
+  });
+
+  describe("AC-f: the caller's signal aborts the upstream stream", () => {
+    /** The stub sends one chunk and never ends; `closed` resolves when the connection to it closes. */
+    const hangAfterFirstChunk = (): Promise<void> =>
+      new Promise((closed) =>
+        primary.respond((_r, res) => {
+          res.writeHead(200, { "Content-Type": "text/event-stream" });
+          res.write('data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n');
+          res.on("close", () => closed());
+        }),
+      );
+
+    it("abort after the first payload → the stub sees the request closed and the stream ends quietly", async () => {
+      const closed = hangAfterFirstChunk();
+      const disconnected = new AbortController();
+      const yielded: string[] = [];
+      const stream = makeAdapter(stubOnly()).chatStream(request({ signal: disconnected.signal }));
+
+      const reading = collect(stream, yielded);
+      while (yielded.length === 0) await new Promise((r) => realSetTimeout(r, 5));
+      disconnected.abort();
+
+      await closed;
+      await expect(reading).resolves.toBeUndefined();
+      expect(yielded).toEqual(['{"choices":[{"delta":{"content":"Hel"}}]}']);
+      expect(primary.requests[0].body.signal).toBeUndefined();
+    });
+
+    it("the consumer stops early (break) → the stub sees the request closed", async () => {
+      const closed = hangAfterFirstChunk();
+
+      for await (const _payload of makeAdapter(stubOnly()).chatStream(request())) break;
+
+      await closed;
+    });
+  });
+
+  it("the plain and the streaming request both carry Accept and Content-Type JSON", async () => {
+    const adapter = makeAdapter(stubOnly());
+    await adapter.chat(request());
+    primary.respond((_r, res) => sendSse(res, []));
+    await drain(adapter.chatStream(request()));
+
+    expect(primary.requests.map((r) => [r.headers.accept, r.headers["content-type"]])).toEqual([
+      ["application/json", "application/json"],
+      ["application/json", "application/json"],
+    ]);
   });
 });

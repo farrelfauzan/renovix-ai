@@ -1,8 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import axios from "axios";
 import { createHash } from "crypto";
 import { resolveLlmProvider } from "../../providers/llm-provider";
+import { ProviderHttpError } from "../../providers/errors/provider-http-error";
 import { readPositiveInteger } from "../../../common/utils/read-positive-integer";
 import { assertEmbeddingLength } from "../utils/assert-embedding-length";
 
@@ -10,6 +10,7 @@ import { assertEmbeddingLength } from "../utils/assert-embedding-length";
 const EMBEDDING_COLUMN_DIMENSIONS = 1024;
 const DEFAULT_EMBEDDING_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-large-instruct";
+const EMBEDDING_TIMEOUT_MS = 60000;
 
 export interface EmbeddingResult {
   embedding: number[];
@@ -45,23 +46,30 @@ export class EmbeddingService {
   async embed(texts: string[]): Promise<EmbeddingResult[]> {
     if (this.fake) return texts.map(fakeEmbedding);
 
-    const response = await axios.post(
-      `${this.baseUrl}/embeddings`,
-      {
+    // RX-161: Node's fetch, the same shape as the chat adapter.
+    const response = await fetch(`${this.baseUrl}/embeddings`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
         model: this.model,
         input: texts,
         dimensions: this.dimensions,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        timeout: 30000,
-      },
-    );
+      }),
+      signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new ProviderHttpError({
+        message: `Embedding request failed with status code ${response.status}`,
+        status: response.status,
+        bodyText: await response.text(),
+      });
+    }
 
-    const data = response.data;
+    const data: any = await response.json();
     for (const item of data.data) {
       assertEmbeddingLength(item.embedding, EMBEDDING_COLUMN_DIMENSIONS);
     }

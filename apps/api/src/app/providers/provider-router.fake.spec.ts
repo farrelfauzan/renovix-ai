@@ -1,6 +1,9 @@
+import { ConfigModule } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
 import { ProvidersModule } from "./providers.module";
 import { ProviderRouter } from "./provider-router";
+import { FAKE_REPLY } from "./fake.adapter";
+import { EmbeddingService } from "../knowledge/service/embedding.service";
 import { FakeProviderAdapter, withFakeProvider } from "../../../test/fake-provider";
 
 describe("RX-8: fake provider through ProviderRouter", () => {
@@ -72,5 +75,42 @@ describe("RX-8: fake provider through ProviderRouter", () => {
 
   it("fails loudly when the script runs out", async () => {
     await expect(fake.chat(request)).rejects.toThrow(/no scripted turn/);
+  });
+});
+
+describe("RX-161 AC-g: LLM_PROVIDER=fake makes no outbound fetch", () => {
+  const ENV_KEYS = ["LLM_PROVIDER", "OPENROUTER_API_KEY", "LLM_API_KEY", "EMBEDDING_API_KEY"] as const;
+  const savedEnv = ENV_KEYS.map((k) => process.env[k]);
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    ENV_KEYS.forEach((k, i) => {
+      if (savedEnv[i] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[i];
+    });
+  });
+
+  it("chat, chatStream and embed answer locally; any fetch fails the test", async () => {
+    ENV_KEYS.forEach((k) => delete process.env[k]);
+    process.env.LLM_PROVIDER = "fake";
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(() => {
+      throw new Error("RX-161 test: outbound fetch in fake mode");
+    });
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
+      providers: [EmbeddingService],
+    }).compile();
+    const router = moduleRef.get(ProviderRouter);
+    const request = { model: "test-model", providerId: "vendor/test-model", messages: [] };
+
+    const chat = await router.chat("openrouter", request);
+    const payloads: string[] = [];
+    for await (const p of router.chatStream("openrouter", request)) payloads.push(p);
+    const [embedding] = await moduleRef.get(EmbeddingService).embed(["a"]);
+
+    expect(chat.choices[0].message.content).toBe(FAKE_REPLY);
+    expect(payloads.length).toBeGreaterThan(0);
+    expect(embedding.embedding).toHaveLength(1024);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

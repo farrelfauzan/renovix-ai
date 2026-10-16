@@ -460,7 +460,11 @@ export class PortalController {
         res.raw.write(`data: ${JSON.stringify({ status: "generating" })}\n\n`);
       }
 
+      // RX-161: a client that disconnects aborts the upstream request.
+      const disconnected = new AbortController();
+      res.raw.on("close", () => disconnected.abort());
       const stream = this.providerRouter.chatStream(cheapest.provider, {
+        signal: disconnected.signal,
         model: cheapest.slug,
         providerId: cheapest.providerId,
         messages: tunedMessages,
@@ -683,7 +687,11 @@ export class PortalController {
         res.raw.write(`data: ${JSON.stringify({ status: "generating" })}\n\n`);
       }
 
+      // RX-161: a client that disconnects aborts the upstream request.
+      const disconnected = new AbortController();
+      res.raw.on("close", () => disconnected.abort());
       const stream = this.providerRouter.chatStream(modelConfig.provider, {
+        signal: disconnected.signal,
         model: body.model,
         providerId: modelConfig.providerId,
         messages: tunedMessages,

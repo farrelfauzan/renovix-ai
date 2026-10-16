@@ -1,4 +1,4 @@
-import axios, { AxiosAdapter, InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosAdapter } from "axios";
 import { createServer, IncomingHttpHeaders, ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
 
@@ -97,33 +97,46 @@ export function pointLlmAtStubs(params: {
     });
 }
 
+/** An outbound request the blocker kept off the network (RX-161: fetch or axios). */
+export interface BlockedRequest {
+  url: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
 export interface OutboundBlocker {
-  /** Every axios request to a host other than 127.0.0.1: its config, never sent. */
-  blocked: InternalAxiosRequestConfig[];
+  /** Every fetch or axios request to a host other than 127.0.0.1, never sent. */
+  blocked: BlockedRequest[];
   restore(): void;
 }
 
 /**
- * Lets axios reach 127.0.0.1 only. Any other axios request is recorded and
- * rejected without touching the network; https.request and fetch throw.
+ * Lets fetch and axios reach 127.0.0.1 only. Any other request is recorded and
+ * rejected without touching the network; https.request throws.
  */
 export function blockOutbound(): OutboundBlocker {
-  const blocked: InternalAxiosRequestConfig[] = [];
+  const blocked: BlockedRequest[] = [];
+  const refuse = (request: BlockedRequest) => {
+    blocked.push(request);
+    return Promise.reject(new Error(`RX-160 test: outbound call to ${new URL(request.url).hostname} blocked`));
+  };
   const savedAdapter = axios.defaults.adapter;
   const httpAdapter = axios.getAdapter("http");
   const guard: AxiosAdapter = (config) => {
-    const host = new URL(config.url ?? "", config.baseURL).hostname;
-    if (host === "127.0.0.1") return httpAdapter(config);
-    blocked.push(config);
-    return Promise.reject(new Error(`RX-160 test: outbound call to ${host} blocked`));
+    const url = new URL(config.url ?? "", config.baseURL);
+    if (url.hostname === "127.0.0.1") return httpAdapter(config);
+    return refuse({ url: url.href, headers: { ...config.headers } as Record<string, string>, body: config.data });
   };
   axios.defaults.adapter = guard;
   const https: typeof import("node:https") = require("node:https");
   const httpsSpy = jest.spyOn(https, "request").mockImplementation(() => {
     throw new Error("RX-160 test: outbound https.request blocked");
   });
-  const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(() => {
-    throw new Error("RX-160 test: outbound fetch blocked");
+  const realFetch = globalThis.fetch;
+  const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+    const url = String(input);
+    if (new URL(url).hostname === "127.0.0.1") return realFetch(input, init);
+    return refuse({ url, headers: init?.headers as Record<string, string>, body: init?.body as string });
   });
   return {
     blocked,
