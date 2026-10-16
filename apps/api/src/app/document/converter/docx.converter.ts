@@ -17,6 +17,7 @@ import {
 } from "docx";
 import { Lexer, type Token, type Tokens } from "marked";
 import { DocumentConverter } from "./converter.interface";
+import { stripInline } from "../utils/strip-inline";
 
 const HEADING_MAP: Record<
   number,
@@ -152,7 +153,7 @@ export class DocxConverter implements DocumentConverter {
         tableHeader: true,
         children: Array.from({ length: columnCount }, (_, colIndex) =>
           this.buildTableCell({
-            text: this.stripInline(token.header[colIndex]?.text ?? ""),
+            text: stripInline(token.header[colIndex]?.text ?? ""),
             widthPercent: columnWidths[colIndex],
             alignment: token.align?.[colIndex],
             isHeader: true,
@@ -308,16 +309,5 @@ export class DocxConverter implements DocumentConverter {
     }
 
     return runs;
-  }
-
-  private stripInline(text: string): string {
-    return text
-      .replace(/\*\*(.+?)\*\*/g, "$1")
-      .replace(/\*(.+?)\*/g, "$1")
-      .replace(/__(.+?)__/g, "$1")
-      .replace(/_(.+?)_/g, "$1")
-      .replace(/`(.+?)`/g, "$1")
-      .replace(/\[(.+?)\]\(.+?\)/g, "$1")
-      .replace(/~~(.+?)~~/g, "$1");
   }
 }

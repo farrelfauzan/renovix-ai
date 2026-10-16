@@ -1,7 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { extractRecentUserMessages } from "../utils/extract-recent-user-messages";
+import { scoreTemplateForText } from "../utils/score-template-for-text";
 
-interface PromptTemplate {
+export interface PromptTemplate {
   slug: string;
   name: string;
   content: string;
@@ -10,7 +12,7 @@ interface PromptTemplate {
   outputFormat: string | null;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
@@ -55,28 +57,6 @@ export class PromptTemplateService {
   }
 
   /**
-   * Returns last few user messages (oldest -> newest) for intent classification.
-   */
-  private extractRecentUserMessages(messages: ChatMessage[]): string[] {
-    return messages
-      .filter((m) => m.role === "user")
-      .slice(-3)
-      .map((m) => m.content.toLowerCase());
-  }
-
-  private scoreTemplateForText(template: PromptTemplate, text: string): number {
-    let score = 0;
-
-    for (const keyword of template.keywords) {
-      if (text.includes(keyword.toLowerCase())) {
-        score += keyword.includes(" ") ? 3 : 1;
-      }
-    }
-
-    return score;
-  }
-
-  /**
    * Scores each template against the user's text using keyword matching.
    * Returns the best matching template, or null if no template has any match.
    */
@@ -87,7 +67,7 @@ export class PromptTemplateService {
       return null;
     }
 
-    const recentUserMessages = this.extractRecentUserMessages(messages);
+    const recentUserMessages = extractRecentUserMessages(messages);
     if (recentUserMessages.length === 0) {
       return null;
     }
@@ -102,7 +82,7 @@ export class PromptTemplateService {
         continue;
       }
 
-      const score = this.scoreTemplateForText(template, latestUserText);
+      const score = scoreTemplateForText(template, latestUserText);
       const finalScore = score * 100 + template.priority;
 
       if (score > 0 && finalScore > latestBestDocumentScore) {
@@ -123,7 +103,7 @@ export class PromptTemplateService {
     let latestBestScore = 0;
 
     for (const template of templates) {
-      const score = this.scoreTemplateForText(template, latestUserText);
+      const score = scoreTemplateForText(template, latestUserText);
       const finalScore = score * 100 + template.priority;
 
       if (score > 0 && finalScore > latestBestScore) {
@@ -156,7 +136,7 @@ export class PromptTemplateService {
         const text = recentUserMessages[i];
         const recencyWeight = i + 1; // oldest=1 ... newest=3
 
-        score += this.scoreTemplateForText(template, text) * recencyWeight;
+        score += scoreTemplateForText(template, text) * recencyWeight;
       }
 
       // Use priority as tiebreaker

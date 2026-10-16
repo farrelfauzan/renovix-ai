@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { extractDocumentFromMetadata } from "../utils/extract-document-from-metadata";
 
 @Injectable()
 export class ChannelService {
@@ -220,7 +221,7 @@ export class ChannelService {
     });
 
     return rows.map((row) => {
-      const document = this.extractDocumentFromMetadata(row.metadata);
+      const document = extractDocumentFromMetadata(row.metadata);
       return document ? { ...row, document } : row;
     });
   }
@@ -361,30 +362,5 @@ export class ChannelService {
     if (!channelAgent) throw new NotFoundException("Agent not in this channel");
 
     return channelAgent;
-  }
-
-  private extractDocumentFromMetadata(metadata: unknown) {
-    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-      return null;
-    }
-
-    const doc = (metadata as Record<string, unknown>).document;
-    if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
-      return null;
-    }
-
-    const document = doc as Record<string, unknown>;
-    const format = typeof document.format === "string" ? document.format : null;
-    const url = typeof document.url === "string" ? document.url : null;
-    const filename =
-      typeof document.filename === "string" ? document.filename : null;
-    const expiresAt =
-      typeof document.expiresAt === "string" ? document.expiresAt : null;
-
-    if (!format || !url || !filename || !expiresAt) {
-      return null;
-    }
-
-    return { format, url, filename, expiresAt };
   }
 }

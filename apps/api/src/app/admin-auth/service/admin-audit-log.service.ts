@@ -5,20 +5,18 @@ import type { AuditLogCursor } from "../types/audit-log-cursor";
 import type { AuditLogExport } from "../types/audit-log-export";
 import type { AuditLogFilters } from "../types/audit-log-filters";
 import type { AuditLogPage } from "../types/audit-log-page";
-import type { AuditLogRecord } from "../types/audit-log-record";
 import { encodeAuditLogCursor } from "../utils/encode-audit-log-cursor";
 import { toAuditLogCsvCells } from "../utils/to-audit-log-csv-cells";
 import { toAuditLogRow } from "../utils/to-audit-log-row";
 import { toCsvLine } from "../utils/to-csv-line";
 import { PiiRevealService } from "./pii-reveal.service";
+import { cursorOf } from "../utils/cursor-of";
 
 /** Rows per page of the audit log screen (PRD 09 §5). */
 const PAGE_SIZE = 50;
 /** Rows the CSV export reads per query: never the whole log at once. */
 const EXPORT_BATCH_SIZE = 500;
 const CSV_HEADER = ["id", "created_at", "admin_id", "admin_email", "resource", "action", "before", "after", "reason", "effective_at"];
-
-const cursorOf = (record: AuditLogRecord): AuditLogCursor => ({ createdAt: record.cursorAt, id: record.id });
 
 /**
  * The audit log screen and its CSV export (RX-164, PRD 09 F11 and F16). Personal data in before, after

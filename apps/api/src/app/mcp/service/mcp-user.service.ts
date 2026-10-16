@@ -15,6 +15,7 @@ import type { McpOAuthStart } from "../types/mcp-oauth-start";
 import { isSameOneTimeValue } from "../utils/is-same-one-time-value";
 import { signOAuthState } from "../utils/sign-oauth-state";
 import { verifyOAuthState } from "../utils/verify-oauth-state";
+import { getOAuthProvider } from "../utils/get-oauth-provider";
 
 /** Signs the OAuth `state` (RX-151); required, read when a flow starts and at its callback. */
 const STATE_SECRET_NAME = "MCP_OAUTH_STATE_SECRET";
@@ -118,7 +119,7 @@ export class McpUserService {
   ): Promise<string> {
     // RX-151: no signing secret, no flow (nothing is stored or issued).
     const stateSecret = readRequiredSecret(process.env, STATE_SECRET_NAME);
-    const oauthProvider = this.getOAuthProvider(provider);
+    const oauthProvider = getOAuthProvider(provider);
     const app = this.oauthApps[oauthProvider];
 
     if (!app?.clientId || !app?.clientSecret) {
@@ -189,7 +190,7 @@ export class McpUserService {
     // the browser that started the flow; before any code exchange.
     const { u: userId, w: workspaceId, p: provider } = await this.acceptOAuthState(state, browserValue);
 
-    const oauthProvider = this.getOAuthProvider(provider);
+    const oauthProvider = getOAuthProvider(provider);
     const app = this.oauthApps[oauthProvider];
 
     if (oauthProvider === "google") {
@@ -440,13 +441,6 @@ export class McpUserService {
     if (!isSameOneTimeValue(browserValue, payload.n)) throw new BadRequestException(INVALID_STATE_MESSAGE);
     await this.verifyWorkspaceMembership(payload.u, payload.w);
     return payload;
-  }
-
-  private getOAuthProvider(provider: string): string {
-    if (provider.startsWith("google-")) return "google";
-    if (provider.startsWith("github")) return "github";
-    if (provider.startsWith("slack")) return "slack";
-    return provider;
   }
 
   private async verifyWorkspaceMembership(

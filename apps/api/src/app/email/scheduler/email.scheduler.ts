@@ -3,6 +3,7 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { EmailJobService } from "../service/email-job.service";
 import { EmailService } from "../service/email.service";
 import { EmailTemplateService } from "../service/email-template.service";
+import { isRetryableError } from "../utils/is-retryable-error";
 
 @Injectable()
 export class EmailScheduler {
@@ -39,7 +40,7 @@ export class EmailScheduler {
 
           await this.emailJobService.markSent(job.id, result.messageId);
         } catch (error: any) {
-          const isRetryable = this.isRetryableError(error);
+          const isRetryable = isRetryableError(error);
           const errorMsg = error?.message || "Unknown error";
           this.logger.error(`Email job ${job.id} failed: ${errorMsg}`);
           await this.emailJobService.markFailed(job.id, errorMsg, isRetryable);
@@ -68,21 +69,5 @@ export class EmailScheduler {
       default:
         throw new Error(`Unknown email type: ${type}`);
     }
-  }
-
-  private isRetryableError(error: any): boolean {
-    // Connection/timeout errors are retryable
-    if (error?.code === "ECONNREFUSED" || error?.code === "ETIMEDOUT") {
-      return true;
-    }
-    // 5xx from SMTP are retryable
-    if (error?.responseCode && error.responseCode >= 500) {
-      return true;
-    }
-    // 4xx from SMTP are generally not retryable (except 421)
-    if (error?.responseCode === 421) {
-      return true;
-    }
-    return false;
   }
 }
