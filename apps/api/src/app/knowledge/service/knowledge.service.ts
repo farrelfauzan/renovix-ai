@@ -5,20 +5,21 @@ import {
   ForbiddenException,
   BadRequestException,
 } from "@nestjs/common";
-import { Prisma } from "@generated/prisma/client.js";
-import { PrismaService } from "../../prisma/prisma.service";
 import { EmbeddingService } from "./embedding.service";
 import { S3Service } from "./s3.service";
 import { chunkMarkdown } from "../utils/markdown-chunker";
+import { KnowledgeBaseRepository } from "../repository/knowledge-base.repository";
+import { KnowledgeChunkRepository } from "../repository/knowledge-chunk.repository";
 
 @Injectable()
 export class KnowledgeService {
   private readonly logger = new Logger(KnowledgeService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
     private readonly s3Service: S3Service,
+    private readonly knowledgeBases: KnowledgeBaseRepository,
+    private readonly knowledgeChunks: KnowledgeChunkRepository,
   ) {}
 
   // ─── Knowledge Bases ───
@@ -27,28 +28,19 @@ export class KnowledgeService {
     userId: string,
     data: { name: string; description?: string },
   ) {
-    return this.prisma.knowledgeBase.create({
-      data: {
-        userId,
-        name: data.name,
-        description: data.description ?? null,
-      },
-    });
+    return this.knowledgeBases.createPersonalKnowledgeBase(
+      userId,
+      data.name,
+      data.description ?? null,
+    );
   }
 
   async listKnowledgeBases(userId: string) {
-    return this.prisma.knowledgeBase.findMany({
-      where: { userId, workspaceId: null },
-      orderBy: { createdAt: "desc" },
-      include: { _count: { select: { chunks: true } } },
-    });
+    return this.knowledgeBases.listPersonalKnowledgeBases(userId);
   }
 
   async getKnowledgeBase(userId: string, id: string) {
-    const kb = await this.prisma.knowledgeBase.findUnique({
-      where: { id },
-      include: { _count: { select: { chunks: true } } },
-    });
+    const kb = await this.knowledgeBases.findKnowledgeBaseWithChunkCount(id);
 
     // Personal bases only: a workspace base is reached through the workspace
     // routes, which check current membership (RX-113)
@@ -67,16 +59,13 @@ export class KnowledgeService {
   ) {
     const kb = await this.getKnowledgeBase(userId, id);
 
-    return this.prisma.knowledgeBase.update({
-      where: { id: kb.id },
-      data,
-    });
+    return this.knowledgeBases.updateKnowledgeBase(kb.id, data);
   }
 
   async deleteKnowledgeBase(userId: string, id: string) {
     const kb = await this.getKnowledgeBase(userId, id);
 
-    await this.prisma.knowledgeBase.delete({ where: { id: kb.id } });
+    await this.knowledgeBases.deleteKnowledgeBase(kb.id);
   }
 
   // ─── Chunks ───
@@ -109,26 +98,14 @@ export class KnowledgeService {
     const embeddings = await this.embeddingService.embed(texts);
 
     // Insert chunks with embeddings
-    const created = await this.prisma.$transaction(
-      chunks.map((chunk, i) => {
-        const vector = `[${embeddings[i].embedding.join(",")}]`;
-        const metadata = { ...chunk.metadata, s3Key };
-
-        return this.prisma.$executeRaw(
-          Prisma.sql`
-            INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
-            VALUES (
-              gen_random_uuid(),
-              ${kb.id},
-              ${chunk.content},
-              ${JSON.stringify(metadata)}::jsonb,
-              ${vector}::vector,
-              ${embeddings[i].tokenCount},
-              now()
-            )
-          `,
-        );
-      }),
+    const created = await this.knowledgeChunks.insertChunks(
+      kb.id,
+      chunks.map((chunk, i) => ({
+        content: chunk.content,
+        metadata: { ...chunk.metadata, s3Key },
+        embedding: embeddings[i].embedding,
+        tokenCount: embeddings[i].tokenCount,
+      })),
     );
 
     this.logger.log(
@@ -154,25 +131,14 @@ export class KnowledgeService {
     const embeddings = await this.embeddingService.embed(texts);
 
     // Insert chunks with embeddings using a transaction
-    const created = await this.prisma.$transaction(
-      chunks.map((chunk, i) => {
-        const vector = `[${embeddings[i].embedding.join(",")}]`;
-
-        return this.prisma.$executeRaw(
-          Prisma.sql`
-            INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
-            VALUES (
-              gen_random_uuid(),
-              ${kb.id},
-              ${chunk.content},
-              ${JSON.stringify(chunk.metadata ?? {})}::jsonb,
-              ${vector}::vector,
-              ${embeddings[i].tokenCount},
-              now()
-            )
-          `,
-        );
-      }),
+    const created = await this.knowledgeChunks.insertChunks(
+      kb.id,
+      chunks.map((chunk, i) => ({
+        content: chunk.content,
+        metadata: chunk.metadata ?? {},
+        embedding: embeddings[i].embedding,
+        tokenCount: embeddings[i].tokenCount,
+      })),
     );
 
     return { inserted: created.length };
@@ -189,20 +155,8 @@ export class KnowledgeService {
     const offset = options?.offset ?? 0;
 
     const [chunks, total] = await Promise.all([
-      this.prisma.knowledgeChunk.findMany({
-        where: { knowledgeBaseId },
-        select: {
-          id: true,
-          content: true,
-          metadata: true,
-          tokenCount: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        skip: offset,
-      }),
-      this.prisma.knowledgeChunk.count({ where: { knowledgeBaseId } }),
+      this.knowledgeChunks.listChunks(knowledgeBaseId, limit, offset),
+      this.knowledgeChunks.countChunks(knowledgeBaseId),
     ]);
 
     return { chunks, total };
@@ -211,15 +165,13 @@ export class KnowledgeService {
   async deleteChunk(userId: string, knowledgeBaseId: string, chunkId: string) {
     await this.getKnowledgeBase(userId, knowledgeBaseId);
 
-    const chunk = await this.prisma.knowledgeChunk.findUnique({
-      where: { id: chunkId },
-    });
+    const chunk = await this.knowledgeChunks.findChunkById(chunkId);
 
     if (!chunk || chunk.knowledgeBaseId !== knowledgeBaseId) {
       throw new NotFoundException("Chunk not found");
     }
 
-    await this.prisma.knowledgeChunk.delete({ where: { id: chunkId } });
+    await this.knowledgeChunks.deleteChunk(chunkId);
   }
 
   // ─── Search (Vector Similarity) ───
@@ -238,35 +190,13 @@ export class KnowledgeService {
 
     // Generate embedding for the query
     const { embedding } = await this.embeddingService.embedSingle(query);
-    const vector = `[${embedding.join(",")}]`;
 
-    // Build the similarity search query using safe Prisma.sql tagged template
     // Filter by user's knowledge bases and optionally by specific knowledge base
     if (options?.knowledgeBaseId) {
-      const results = await this.prisma.$queryRaw<
-        {
-          id: string;
-          content: string;
-          metadata: unknown;
-          token_count: number;
-          knowledge_base_id: string;
-          similarity: number;
-        }[]
-      >(
-        Prisma.sql`
-          SELECT
-            kc.id,
-            kc.content,
-            kc.metadata,
-            kc."tokenCount" AS token_count,
-            kc."knowledgeBaseId" AS knowledge_base_id,
-            1 - (kc.embedding <=> ${vector}::vector) AS similarity
-          FROM "knowledge_chunks" kc
-          WHERE kc."knowledgeBaseId" = ${options.knowledgeBaseId}
-            AND kc.embedding IS NOT NULL
-          ORDER BY kc.embedding <=> ${vector}::vector
-          LIMIT ${topK}
-        `,
+      const results = await this.knowledgeChunks.searchChunksInKnowledgeBase(
+        options.knowledgeBaseId,
+        embedding,
+        topK,
       );
 
       return results.map((r) => ({
@@ -280,33 +210,10 @@ export class KnowledgeService {
     }
 
     // Search across all user's active knowledge bases
-    const results = await this.prisma.$queryRaw<
-      {
-        id: string;
-        content: string;
-        metadata: unknown;
-        token_count: number;
-        knowledge_base_id: string;
-        similarity: number;
-      }[]
-    >(
-      Prisma.sql`
-        SELECT
-          kc.id,
-          kc.content,
-          kc.metadata,
-          kc."tokenCount" AS token_count,
-          kc."knowledgeBaseId" AS knowledge_base_id,
-          1 - (kc.embedding <=> ${vector}::vector) AS similarity
-        FROM "knowledge_chunks" kc
-        INNER JOIN "knowledge_bases" kb ON kb.id = kc."knowledgeBaseId"
-        WHERE kb."userId" = ${userId}
-          AND kb.workspace_id IS NULL
-          AND kb.active = true
-          AND kc.embedding IS NOT NULL
-        ORDER BY kc.embedding <=> ${vector}::vector
-        LIMIT ${topK}
-      `,
+    const results = await this.knowledgeChunks.searchPersonalChunks(
+      userId,
+      embedding,
+      topK,
     );
 
     return results.map((r) => ({

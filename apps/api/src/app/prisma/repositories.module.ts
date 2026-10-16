@@ -12,6 +12,8 @@ import { TransactionRepository } from "../billing/repository/transaction.reposit
 import { UserSubscriptionRepository } from "../billing/repository/user-subscription.repository";
 import { CodeRedemptionRepository } from "../codes/repository/code-redemption.repository";
 import { InvitationCodeRepository } from "../codes/repository/invitation-code.repository";
+import { KnowledgeBaseRepository } from "../knowledge/repository/knowledge-base.repository";
+import { KnowledgeChunkRepository } from "../knowledge/repository/knowledge-chunk.repository";
 import { McpOAuthStateRepository } from "../mcp/repository/mcp-oauth-state.repository";
 import { CatalogChangeRepository } from "../offers/repository/catalog-change.repository";
 import { CompanyContractRepository } from "../offers/repository/company-contract.repository";
@@ -35,6 +37,8 @@ const REPOSITORIES = [
   UserSubscriptionRepository,
   CodeRedemptionRepository,
   InvitationCodeRepository,
+  KnowledgeBaseRepository,
+  KnowledgeChunkRepository,
   McpOAuthStateRepository,
   CatalogChangeRepository,
   CompanyContractRepository,

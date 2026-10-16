@@ -88,7 +88,7 @@ const result = await this.transactions.run(async (tx) => {
 The six writes of a redemption (`claimRedemption`, `incrementUserBalance`, `createTopupTransaction`, `createSubscription`, `updateSubscription`, `createRedemption`) take `tx` as a required argument and have no fallback to the normal client. The two reads before the transaction (`findCodeWithPlan`, `findRedemption`) run without one.
 
 **(e) Raw SQL lives only in repositories.**
-Pilot: the codes module has no raw SQL, so the pilot has no example. The first one comes with the knowledge slice (RX-137); a repository method that runs raw SQL takes the transaction the same way (`(tx ?? this.prisma).$queryRaw`).
+Pilot: the codes module has no raw SQL, so the pilot has no example. A repository method that runs raw SQL takes the transaction the same way (`(tx ?? this.prisma).$queryRaw`). Example (RX-137): `KnowledgeChunkRepository` (`knowledge/repository/knowledge-chunk.repository.ts`) holds the vector search and chunk storage SQL of `knowledge_chunks`, as tagged templates, every value a query parameter; `searchPersonalChunks(userId, embedding, topK, tx?)` runs `(tx ?? this.prisma).$queryRaw`. One exception: `insertChunks(knowledgeBaseId, chunks)` keeps the array form of `$transaction` it had in the service (all rows or none), so it opens its own transaction and takes no `tx`.
 
 ## Transactions (D92)
 
@@ -104,7 +104,7 @@ The seven points as decided:
 3. No transaction across a model call or a stream. The helper has no begin and commit handle, so it cannot be kept open that way. For the credit service (RX-22) this means reserve, each ledger line and settle are separate short transactions, and a killed request is undone by a `release` call, not by a rollback.
 4. `options` may hold `isolationLevel`, `timeout` and `maxWait`. They are passed to Prisma only when `run` opens the transaction. Given together with `tx` they cannot be honoured, so `run` throws.
 5. No retry. A ticket that chooses a stricter isolation level adds it, in the helper.
-6. Callback form only. The one array-form use (`workspace/service/workspace-invite.service.ts`) stays until its slice (RX-135). Prisma 8 removes the array form, so the helper is the one place to adapt.
+6. Callback form only. The array-form uses stay as they are until their slice: `workspace/service/workspace-invite.service.ts` and the chunk inserts of `workspace/service/workspace-knowledge.service.ts` (RX-135), and `KnowledgeChunkRepository.insertChunks` (moved unchanged by RX-137, rule (e)). Prisma 8 removes the array form, so the helper is the one place to adapt.
 7. Services import `TransactionService` and `DbTransaction` from the Prisma module and nothing else from it.
 
 ## The import check (D94)

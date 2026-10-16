@@ -21,8 +21,6 @@ export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   "apps/api/src/app/email/service/email-job.service.ts",
   "apps/api/src/app/guardrail/service/violation-tracker.service.ts",
   "apps/api/src/app/health/controller/health.controller.ts",
-  "apps/api/src/app/knowledge/service/knowledge.service.ts",
-  "apps/api/src/app/knowledge/service/system-knowledge.service.ts",
   "apps/api/src/app/mcp/service/mcp-user.service.ts",
   "apps/api/src/app/mcp/service/mcp.service.ts",
   "apps/api/src/app/mcp/service/web-search.service.ts",
