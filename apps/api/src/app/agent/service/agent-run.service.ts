@@ -1026,10 +1026,10 @@ export class AgentRunService {
       } as any);
     } catch (err: any) {
       this.logger.error(
-        `[executeSubAgent] LLM call FAILED in ${Date.now() - subStartTime}ms: ${err.message} | status=${err.response?.status}`,
+        `[executeSubAgent] LLM call FAILED in ${Date.now() - subStartTime}ms: ${err.message} | status=${err.status}`,
         err.stack,
       );
-      return `Error: Sub-agent LLM call failed (${err.response?.status || "unknown"}): ${err.message}`;
+      return `Error: Sub-agent LLM call failed (${err.status || "unknown"}): ${err.message}`;
     }
 
     const choice = response.choices?.[0];

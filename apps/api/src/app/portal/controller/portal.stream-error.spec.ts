@@ -5,6 +5,8 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Decimal } from "@prisma/client/runtime/client";
 import axios from "axios";
+import { request as httpRequest } from "node:http";
+import { AddressInfo } from "node:net";
 import { PortalController } from "./portal.controller";
 import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -211,6 +213,68 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
     expect(sseErrorMessage(res.body)).toMatch(/400.*Balance refunded\.$/);
     expect(billing.refundReservation).toHaveBeenCalledTimes(1);
     await expectHealthy();
+  });
+
+  describe("RX-161 AC-e: an empty answer cut off by max_tokens (paid tier)", () => {
+    it("negative: an SSE error event instead of a reply; nothing empty streamed or stored; balance refunded", async () => {
+      const lines: string[] = [];
+      jest.spyOn(Logger.prototype, "error").mockImplementation((...args: unknown[]) => void lines.push(String(args[0])));
+      const conversation = Object.assign(moduleRef.get(ConversationService), {
+        getOrCreateConversation: jest.fn(async () => "conversation-id"),
+        saveMessages: jest.fn(async () => undefined),
+      });
+      Object.assign(billing, { adjustBalance: jest.fn(async () => undefined) });
+      Object.assign(moduleRef.get(UsageService), { logUsage: jest.fn(async () => undefined) });
+      primary.respond((_r, res) => {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write('data: {"choices":[{"delta":{"role":"assistant","content":""}}]}\n\n');
+        res.write('data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n');
+        res.end("data: [DONE]\n\n");
+      });
+
+      const res = await paidChat();
+
+      expect(sseErrorMessage(res.body)).toMatch(/Balance refunded\.$/);
+      expect(res.body).not.toContain('"choices"');
+      expect(res.body).not.toContain("data: [DONE]");
+      expect(conversation.saveMessages).not.toHaveBeenCalled();
+      expect(billing.refundReservation).toHaveBeenCalledTimes(1);
+      expect(lines.some((l) => /vendor\/standard-cheap returned an empty answer: max_tokens \(\d+\)/.test(l))).toBe(true);
+      await expectHealthy();
+    });
+  });
+
+  describe("RX-161 AC-f: the client disconnects mid-stream (free tier, real socket)", () => {
+    it("the upstream request to the provider is aborted; the API keeps answering", async () => {
+      const upstreamClosed = new Promise<void>((closed) =>
+        primary.respond((_r, res) => {
+          res.writeHead(200, { "Content-Type": "text/event-stream" });
+          res.write('data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n');
+          res.on("close", () => closed());
+        }),
+      );
+      await app.listen(0, "127.0.0.1");
+      const { port } = app.getHttpServer().address() as AddressInfo;
+      const client = httpRequest({
+        host: "127.0.0.1",
+        port,
+        method: "POST",
+        path: "/chat/portal/completions",
+        headers: { "content-type": "application/json", "x-portal-session": "33333333-3333-4333-8333-333333333333" },
+      });
+      client.on("error", () => undefined); // destroyed below on purpose
+      client.end(JSON.stringify({ messages: [{ role: "user", content: "Hi" }] }));
+      const response = await new Promise<import("node:http").IncomingMessage>((r) => client.on("response", r));
+      await new Promise<void>((received) =>
+        response.on("data", (chunk: Buffer) => chunk.toString().includes("Hel") && received()),
+      );
+
+      client.destroy();
+
+      await upstreamClosed;
+      expect(primary.requests).toHaveLength(1);
+      await expectHealthy();
+    }, 10000);
   });
 
   describe("AC4: the error the adapter rethrows can be read by extractProviderError", () => {

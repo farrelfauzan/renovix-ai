@@ -35,6 +35,8 @@ export interface ChatRequest {
   reasoning_effort?: "low" | "medium" | "high";
   tools?: any[];
   tool_choice?: string;
+  /** chatStream only (RX-161): aborts the upstream request, e.g. when the client disconnects. Never sent. */
+  signal?: AbortSignal;
 }
 
 export interface ChatUsage {

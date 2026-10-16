@@ -39,7 +39,7 @@ export class ProviderRouter {
       return await adapter.chat(params);
     } catch (error: any) {
       this.logger.error(
-        `Provider ${provider} failed: ${error.message} status=${error.response?.status}`,
+        `Provider ${provider} failed: ${error.message} status=${error.status}`,
         error.stack,
       );
 

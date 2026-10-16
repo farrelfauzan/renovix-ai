@@ -84,7 +84,7 @@ describe("RX-160 AC5: EMBEDDING_* configuration", () => {
     const sent = blocker.blocked[0];
     expect(sent.url).toBe("https://openrouter.ai/api/v1/embeddings");
     expect(sent.headers.Authorization).toBe(`Bearer ${OPENROUTER_KEY}`);
-    expect(JSON.parse(sent.data as string).model).toBe("intfloat/multilingual-e5-large-instruct");
+    expect(JSON.parse(sent.body as string).model).toBe("intfloat/multilingual-e5-large-instruct");
   });
 
   it("no key at all → construction fails as today", () => {
