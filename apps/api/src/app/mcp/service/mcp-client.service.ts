@@ -112,23 +112,6 @@ export class McpClientService {
   }
 
   /**
-   * Convert MCP tool schema to OpenAI function-calling format
-   */
-  mcpToolToOpenAI(mcpTool: McpToolSchema): {
-    type: "function";
-    function: { name: string; description: string; parameters: any };
-  } {
-    return {
-      type: "function",
-      function: {
-        name: mcpTool.name,
-        description: mcpTool.description || "",
-        parameters: mcpTool.inputSchema || { type: "object", properties: {} },
-      },
-    };
-  }
-
-  /**
    * For Google MCP packages, prepare credentials based on what each package expects.
    * - google-sheets (domdomegg): just needs GOOGLE_ACCESS_TOKEN env var (stdio mode)
    * - google-gmail: needs credential files (web format)

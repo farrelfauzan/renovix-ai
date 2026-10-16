@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { GowaOutboundMessage } from "../types/gowa.types";
+import { splitMessage } from "../utils/split-message";
 
 @Injectable()
 export class GowaService {
@@ -19,7 +20,7 @@ export class GowaService {
     const { gowaUrl, apiToken } = channelConfig;
 
     // Split long messages (WhatsApp limit: 4096 chars)
-    const chunks = this.splitMessage(text, 4000);
+    const chunks = splitMessage(text, 4000);
 
     for (const chunk of chunks) {
       const payload: GowaOutboundMessage = {
@@ -74,36 +75,5 @@ export class GowaService {
       },
     });
     return channels.map((channel) => ({ agent: channel.agent, channel }));
-  }
-
-  private splitMessage(text: string, maxLength: number): string[] {
-    if (text.length <= maxLength) return [text];
-
-    const chunks: string[] = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-      if (remaining.length <= maxLength) {
-        chunks.push(remaining);
-        break;
-      }
-
-      // Try to split at paragraph, then sentence, then word boundary
-      let splitIdx = remaining.lastIndexOf("\n\n", maxLength);
-      if (splitIdx < maxLength * 0.5) {
-        splitIdx = remaining.lastIndexOf(". ", maxLength);
-      }
-      if (splitIdx < maxLength * 0.5) {
-        splitIdx = remaining.lastIndexOf(" ", maxLength);
-      }
-      if (splitIdx < maxLength * 0.3) {
-        splitIdx = maxLength;
-      }
-
-      chunks.push(remaining.substring(0, splitIdx));
-      remaining = remaining.substring(splitIdx).trimStart();
-    }
-
-    return chunks;
   }
 }

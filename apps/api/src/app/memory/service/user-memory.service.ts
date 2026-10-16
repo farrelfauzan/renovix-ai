@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { hasConflict } from "../utils/has-conflict";
 
 export interface MemoryItem {
   id: string;
@@ -149,7 +150,7 @@ export class UserMemoryService {
 
     for (const mem of existing) {
       // Simple overlap check - if the new content seems to override this
-      const overlap = this.hasConflict(mem.content, newContent);
+      const overlap = hasConflict(mem.content, newContent);
       if (overlap) {
         await this.prisma.userMemory.update({
           where: { id: mem.id },
@@ -158,18 +159,6 @@ export class UserMemoryService {
         this.logger.debug(`Archived conflicting memory: ${mem.id}`);
       }
     }
-  }
-
-  private hasConflict(existing: string, incoming: string): boolean {
-    const existingWords = new Set(existing.toLowerCase().split(/\s+/));
-    const incomingWords = new Set(incoming.toLowerCase().split(/\s+/));
-
-    // If they share significant keyword overlap and are about same topic
-    const intersection = [...existingWords].filter((w) => incomingWords.has(w));
-    const overlapRatio =
-      intersection.length / Math.min(existingWords.size, incomingWords.size);
-
-    return overlapRatio > 0.5;
   }
 
   async findDuplicate(

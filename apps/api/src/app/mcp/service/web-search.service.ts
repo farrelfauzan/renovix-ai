@@ -7,17 +7,26 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { McpUserService } from "./mcp-user.service";
 import { maskKey } from "../utils/mask-key";
+import { getSupportedProviders } from "../utils/get-supported-providers";
+import { getDefaultPolicy } from "../utils/get-default-policy";
+import { buildProviderRoute } from "../utils/build-provider-route";
+import { isProvider } from "../utils/is-provider";
+import { clampNumber } from "../utils/clamp-number";
+import { cleanUrl } from "../utils/clean-url";
+import { truncate } from "../utils/truncate";
+import { formatForTool } from "../utils/format-for-tool";
+import { extractTitleFromTopic } from "../utils/extract-title-from-topic";
 
-type WebSearchProvider = "brave-search" | "duckduckgo";
+export type WebSearchProvider = "brave-search" | "duckduckgo";
 
-type WebSearchPolicy = {
+export type WebSearchPolicy = {
   allowedProviders: WebSearchProvider[];
   preferredProvider: WebSearchProvider;
   maxResults: number;
   dailyLimitPerUser: number;
 };
 
-type SearchResult = {
+export type SearchResult = {
   title: string;
   url: string;
   snippet: string;
@@ -41,21 +50,8 @@ export class WebSearchService {
     private readonly mcpUserService: McpUserService,
   ) {}
 
-  getSupportedProviders() {
-    return ["brave-search", "duckduckgo"] as const;
-  }
-
-  getDefaultPolicy(): WebSearchPolicy {
-    return {
-      allowedProviders: ["brave-search"],
-      preferredProvider: "brave-search",
-      maxResults: 5,
-      dailyLimitPerUser: 100,
-    };
-  }
-
   async getPolicy(workspaceId: string): Promise<WebSearchPolicy> {
-    const defaults = this.getDefaultPolicy();
+    const defaults = getDefaultPolicy();
     const row = await this.prisma.appConfig.findUnique({
       where: { key: `${WebSearchService.POLICY_KEY_PREFIX}${workspaceId}` },
     });
@@ -65,13 +61,13 @@ export class WebSearchService {
     try {
       const parsed = JSON.parse(row.value) as Partial<WebSearchPolicy>;
       const allowedProviders = (parsed.allowedProviders || []).filter((p) =>
-        this.isProvider(p),
+        isProvider(p),
       ) as WebSearchProvider[];
-      const preferredProvider = this.isProvider(parsed.preferredProvider)
+      const preferredProvider = isProvider(parsed.preferredProvider)
         ? parsed.preferredProvider
         : defaults.preferredProvider;
-      const maxResults = this.clampNumber(parsed.maxResults, 1, 10, 5);
-      const dailyLimitPerUser = this.clampNumber(
+      const maxResults = clampNumber(parsed.maxResults, 1, 10, 5);
+      const dailyLimitPerUser = clampNumber(
         parsed.dailyLimitPerUser,
         1,
         1000,
@@ -101,7 +97,7 @@ export class WebSearchService {
     const current = await this.getPolicy(workspaceId);
 
     const allowedProviders = (patch.allowedProviders || current.allowedProviders).filter(
-      (p) => this.isProvider(p),
+      (p) => isProvider(p),
     ) as WebSearchProvider[];
 
     if (allowedProviders.length === 0) {
@@ -118,13 +114,13 @@ export class WebSearchService {
     const merged: WebSearchPolicy = {
       allowedProviders,
       preferredProvider,
-      maxResults: this.clampNumber(
+      maxResults: clampNumber(
         patch.maxResults,
         1,
         10,
         current.maxResults,
       ),
-      dailyLimitPerUser: this.clampNumber(
+      dailyLimitPerUser: clampNumber(
         patch.dailyLimitPerUser,
         1,
         1000,
@@ -204,7 +200,7 @@ export class WebSearchService {
         ? maskKey(creds.BRAVE_API_KEY)
         : null,
       policy,
-      supportedProviders: this.getSupportedProviders(),
+      supportedProviders: getSupportedProviders(),
     };
   }
 
@@ -220,7 +216,7 @@ export class WebSearchService {
     }
 
     const policy = await this.getPolicy(workspaceId);
-    const effectiveMaxResults = this.clampNumber(
+    const effectiveMaxResults = clampNumber(
       requestedMaxResults,
       1,
       10,
@@ -229,7 +225,7 @@ export class WebSearchService {
 
     await this.enforceDailyQuota(userId, workspaceId, policy.dailyLimitPerUser);
 
-    const route = this.buildProviderRoute(policy);
+    const route = buildProviderRoute(policy);
     const errors: string[] = [];
 
     for (const provider of route) {
@@ -244,7 +240,7 @@ export class WebSearchService {
 
         if (results.length > 0) {
           await this.incrementUsage(userId, workspaceId);
-          return this.formatForTool(normalizedQuery, provider, results);
+          return formatForTool(normalizedQuery, provider, results);
         }
       } catch (err: any) {
         const message = err?.message || `Provider ${provider} failed`;
@@ -361,8 +357,8 @@ export class WebSearchService {
 
     return items.slice(0, maxResults).map((item: any) => ({
       title: (item?.title || "Untitled").toString(),
-      url: this.cleanUrl((item?.url || item?.link || "").toString()),
-      snippet: this.truncate(
+      url: cleanUrl((item?.url || item?.link || "").toString()),
+      snippet: truncate(
         (item?.description || item?.snippet || "").toString(),
         240,
       ),
@@ -397,8 +393,8 @@ export class WebSearchService {
     if (data?.AbstractURL || data?.AbstractText) {
       results.push({
         title: data?.Heading || "DuckDuckGo Instant Answer",
-        url: this.cleanUrl((data?.AbstractURL || "").toString()),
-        snippet: this.truncate((data?.AbstractText || "").toString(), 240),
+        url: cleanUrl((data?.AbstractURL || "").toString()),
+        snippet: truncate((data?.AbstractText || "").toString(), 240),
         provider: "duckduckgo",
       });
     }
@@ -409,9 +405,9 @@ export class WebSearchService {
 
       if (topic?.FirstURL || topic?.Text) {
         results.push({
-          title: this.extractTitleFromTopic((topic?.Text || "").toString()),
-          url: this.cleanUrl((topic?.FirstURL || "").toString()),
-          snippet: this.truncate((topic?.Text || "").toString(), 240),
+          title: extractTitleFromTopic((topic?.Text || "").toString()),
+          url: cleanUrl((topic?.FirstURL || "").toString()),
+          snippet: truncate((topic?.Text || "").toString(), 240),
           provider: "duckduckgo",
         });
         continue;
@@ -422,9 +418,9 @@ export class WebSearchService {
           if (results.length >= maxResults) break;
           if (!nested?.FirstURL && !nested?.Text) continue;
           results.push({
-            title: this.extractTitleFromTopic((nested?.Text || "").toString()),
-            url: this.cleanUrl((nested?.FirstURL || "").toString()),
-            snippet: this.truncate((nested?.Text || "").toString(), 240),
+            title: extractTitleFromTopic((nested?.Text || "").toString()),
+            url: cleanUrl((nested?.FirstURL || "").toString()),
+            snippet: truncate((nested?.Text || "").toString(), 240),
             provider: "duckduckgo",
           });
         }
@@ -432,33 +428,6 @@ export class WebSearchService {
     }
 
     return results.slice(0, maxResults);
-  }
-
-  private formatForTool(
-    query: string,
-    provider: WebSearchProvider,
-    results: SearchResult[],
-  ): string {
-    if (results.length === 0) {
-      return `No relevant web results found for "${query}".`;
-    }
-
-    const lines: string[] = [];
-    lines.push(`Top web results for "${query}" via ${provider}:`);
-    results.forEach((result, idx) => {
-      const hostname = this.extractHostname(result.url);
-      lines.push(`${idx + 1}. ${result.title}`);
-      lines.push(`   URL: ${result.url}`);
-      if (hostname) lines.push(`   Source: ${hostname}`);
-      lines.push(`   Snippet: ${result.snippet || "No snippet available."}`);
-    });
-    return lines.join("\n");
-  }
-
-  private buildProviderRoute(policy: WebSearchPolicy): WebSearchProvider[] {
-    const unique = Array.from(new Set(policy.allowedProviders));
-    const preferred = policy.preferredProvider;
-    return [preferred, ...unique.filter((p) => p !== preferred)];
   }
 
   private usageKey(userId: string, workspaceId: string): string {
@@ -493,61 +462,5 @@ export class WebSearchService {
       create: { key, value: String(next) },
       update: { value: String(next) },
     });
-  }
-
-  private isProvider(value: unknown): value is WebSearchProvider {
-    return value === "brave-search" || value === "duckduckgo";
-  }
-
-  private clampNumber(
-    value: unknown,
-    min: number,
-    max: number,
-    fallback: number,
-  ): number {
-    const num = Number(value);
-    if (!Number.isFinite(num)) return fallback;
-    return Math.min(max, Math.max(min, Math.floor(num)));
-  }
-
-  private cleanUrl(url: string): string {
-    if (!url) return "";
-    try {
-      const parsed = new URL(url);
-      [
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_term",
-        "utm_content",
-        "gclid",
-        "fbclid",
-      ].forEach((param) => parsed.searchParams.delete(param));
-      return parsed.toString();
-    } catch {
-      return url;
-    }
-  }
-
-  private extractHostname(url: string): string {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return "";
-    }
-  }
-
-  private truncate(value: string, max: number): string {
-    if (!value) return "";
-    return value.length <= max ? value : `${value.slice(0, max - 1)}...`;
-  }
-
-  private extractTitleFromTopic(text: string): string {
-    if (!text) return "Untitled";
-    const idx = text.indexOf(" - ");
-    if (idx > 0) {
-      return text.slice(0, idx).trim();
-    }
-    return this.truncate(text, 80);
   }
 }

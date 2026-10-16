@@ -7,6 +7,7 @@ import {
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { normalizeDomain } from "../utils/normalize-domain";
 
 @Injectable()
 export class S3Service {
@@ -17,7 +18,7 @@ export class S3Service {
 
   constructor(private readonly configService: ConfigService) {
     this.bucket = this.configService.getOrThrow<string>("S3_BUCKET");
-    this.cdnDomain = this.normalizeDomain(
+    this.cdnDomain = normalizeDomain(
       this.configService.getOrThrow<string>("S3_CDN_DOMAIN"),
     );
 
@@ -139,19 +140,6 @@ export class S3Service {
     } catch {
       this.logger.warn("Failed to rewrite signed URL to CDN domain");
       return url;
-    }
-  }
-
-  private normalizeDomain(value: string): string {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return "";
-    }
-
-    try {
-      return new URL(trimmed).host;
-    } catch {
-      return trimmed.replace(/^https?:\/\//, "").replace(/\/$/, "");
     }
   }
 }

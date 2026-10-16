@@ -8,6 +8,7 @@ import axios from "axios";
 import { request as httpRequest } from "node:http";
 import { AddressInfo } from "node:net";
 import { PortalController } from "./portal.controller";
+import { extractProviderError } from "../utils/extract-provider-error";
 import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -278,8 +279,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
   });
 
   describe("AC4: the error the adapter rethrows can be read by extractProviderError", () => {
-    const extract = (error: unknown) =>
-      moduleRef.get(PortalController)["extractProviderError"](error);
+    const extract = (error: unknown) => extractProviderError(error);
 
     it("the error exactly as the adapter rethrew it before RX-169 (AxiosError, response.data a drained stream) does not throw", async () => {
       primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));
