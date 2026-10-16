@@ -1,6 +1,6 @@
 import { AgentToolService } from "./agent-tool.service";
 import { AttachToolSchema } from "../dto/agent-chat.dto";
-import { AgentService } from "./agent.service";
+import { getAvailableTools } from "../utils/get-available-tools";
 
 // With emitDecoratorMetadata (main's tsconfig.spec.json) constructor types are
 // really imported, and those modules load the generated Prisma client and ESM
@@ -60,8 +60,7 @@ describe("RX-1: code_exec tool is removed", () => {
   });
 
   it("is not offered in the tool catalog", async () => {
-    const service = new AgentService({} as any, {} as any, {} as any);
-    const types = (await service.getAvailableTools()).map((t: any) => t.type);
+    const types = (await getAvailableTools()).map((t: any) => t.type);
     expect(types).not.toContain("code_exec");
   });
 });

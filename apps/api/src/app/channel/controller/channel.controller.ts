@@ -24,6 +24,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { z } from "zod";
+import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 
 const CreateChannelSchema = z.object({
   name: z.string().min(1).max(100),
@@ -336,7 +337,7 @@ export class ChannelController {
 
       if (toolDocumentResult) {
         // Document generated via tool call
-        const summary = this.buildDocumentSummary(
+        const summary = buildDocumentSummary(
           parsed.data.message,
           toolDocumentResult.format,
         );
@@ -368,7 +369,7 @@ export class ChannelController {
             detectedFormat,
           );
           // Send a short summary message instead of full content
-          const summary = this.buildDocumentSummary(
+          const summary = buildDocumentSummary(
             parsed.data.message,
             detectedFormat,
           );
@@ -458,15 +459,5 @@ export class ChannelController {
       this.logger.warn(`Document intent classification failed: ${err.message}`);
       return null;
     }
-  }
-
-  private buildDocumentSummary(message: string, format: string): string {
-    const formatLabels: Record<string, string> = {
-      pdf: "PDF",
-      docx: "Word document",
-      xlsx: "Excel spreadsheet",
-    };
-    const label = formatLabels[format] || format.toUpperCase();
-    return `Here's the ${label} you requested:`;
   }
 }

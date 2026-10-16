@@ -7,6 +7,8 @@ import { AgentMemoryService } from "./agent-memory.service";
 import { DocumentService } from "../../document/service/document.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CronExpressionParser } from "cron-parser";
+import { executeKnowledgeRetrieval } from "../utils/execute-knowledge-retrieval";
+import { mcpToolToOpenAI } from "../../mcp/utils/mcp-tool-to-openai";
 
 interface ToolSchema {
   type: "function";
@@ -324,7 +326,7 @@ export class AgentToolService {
           );
 
           for (const tool of mcpTools) {
-            const schema = this.mcpClient.mcpToolToOpenAI(tool);
+            const schema = mcpToolToOpenAI(tool);
             if (
               schema.function.description &&
               schema.function.description.length > 120
@@ -376,7 +378,7 @@ export class AgentToolService {
         case "web_search":
           return this.executeWebSearch(args, userId, agent?.workspaceId);
         case "knowledge_retrieval":
-          return this.executeKnowledgeRetrieval(args, agent);
+          return executeKnowledgeRetrieval(args, agent);
         case "memory_store":
           return this.executeMemoryStore(args, agent, userId, channelId);
         case "create_reminder":
@@ -485,14 +487,6 @@ export class AgentToolService {
     } catch (err: any) {
       return `Web search failed: ${err.message}`;
     }
-  }
-
-  private async executeKnowledgeRetrieval(
-    args: { query: string },
-    agent: any,
-  ): Promise<string> {
-    // This is handled at a higher level in the run service through RAG
-    return `Knowledge retrieval for "${args.query}" completed. Results injected into context.`;
   }
 
   private async executeMemoryStore(

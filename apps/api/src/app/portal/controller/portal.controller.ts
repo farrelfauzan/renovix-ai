@@ -18,7 +18,6 @@ import {
   ParseUUIDPipe,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { Readable } from "node:stream";
 import type { FastifyReply } from "fastify";
 import { PortalIdentity } from "../guard/portal.guard";
 import {
@@ -32,7 +31,6 @@ import { estimateTokens } from "../../billing/utils/estimate-tokens";
 import { estimateCost } from "../../billing/utils/estimate-cost";
 import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { ProviderRouter } from "../../providers/provider-router";
-import { ProviderHttpError } from "../../providers/errors/provider-http-error";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { ConversationService } from "../../chat/service/conversation.service";
@@ -45,6 +43,8 @@ import {
 } from "../../chat/dto/chat-completion.dto";
 import type { Decimal } from "@prisma/client/runtime/client";
 import { Access } from "../../../common/decorators/access.decorator";
+import { resolveMaxTokens } from "../utils/resolve-max-tokens";
+import { extractProviderError } from "../utils/extract-provider-error";
 
 const PortalCompletionSchema = ChatCompletionRequestSchema.extend({
   model: ChatCompletionRequestSchema.shape.model.optional(),
@@ -469,7 +469,7 @@ export class PortalController {
         providerId: cheapest.providerId,
         messages: tunedMessages,
         temperature: body.temperature,
-        max_tokens: this.resolveMaxTokens(
+        max_tokens: resolveMaxTokens(
           body.max_tokens,
           cheapest.maxOutputTokens,
           outputFormat,
@@ -560,7 +560,7 @@ export class PortalController {
       res.raw.write("data: [DONE]\n\n");
       res.raw.end();
     } catch (error: any) {
-      const providerError = this.extractProviderError(error);
+      const providerError = extractProviderError(error);
       this.logger.error(
         `Stream error${providerError.status ? ` (status ${providerError.status})` : ""}: ${providerError.message}`,
         error.stack,
@@ -696,7 +696,7 @@ export class PortalController {
         providerId: modelConfig.providerId,
         messages: tunedMessages,
         temperature: body.temperature,
-        max_tokens: this.resolveMaxTokens(
+        max_tokens: resolveMaxTokens(
           body.max_tokens,
           modelConfig.maxOutputTokens,
           outputFormat,
@@ -834,7 +834,7 @@ export class PortalController {
     } catch (error: any) {
       // Refund on failure
       await this.billing.refundReservation(user.id, reservedAmount);
-      const providerError = this.extractProviderError(error);
+      const providerError = extractProviderError(error);
       this.logger.error(
         `Stream error${providerError.status ? ` (status ${providerError.status})` : ""}: ${providerError.message}`,
         error.stack,
@@ -860,65 +860,5 @@ export class PortalController {
       );
       res.raw.end();
     }
-  }
-
-  private resolveMaxTokens(
-    requestedMaxTokens: number | undefined,
-    modelMaxOutputTokens: number | null | undefined,
-    outputFormat: string | null,
-  ): number {
-    const desired = outputFormat
-      ? Math.max(requestedMaxTokens ?? 4096, 8192)
-      : (requestedMaxTokens ?? 4096);
-
-    if (!modelMaxOutputTokens || modelMaxOutputTokens <= 0) {
-      return desired;
-    }
-
-    return Math.min(desired, modelMaxOutputTokens);
-  }
-
-  private extractProviderError(error: any): {
-    status?: number;
-    message: string;
-    clientMessage: string;
-  } {
-    const isProviderHttpError = error instanceof ProviderHttpError;
-    const status = isProviderHttpError ? error.status : error?.response?.status;
-    const responseData = isProviderHttpError ? error.bodyText : error?.response?.data;
-
-    let details: string | undefined;
-    if (typeof responseData === "string") {
-      details = responseData;
-    } else if (
-      responseData &&
-      typeof responseData === "object" &&
-      !(responseData instanceof Readable) // RX-169: a response stream is circular; never stringify it
-    ) {
-      details =
-        responseData?.error?.message ||
-        responseData?.message ||
-        JSON.stringify(responseData);
-    }
-
-    const normalizedDetails = details
-      ?.replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 300);
-    const message =
-      normalizedDetails || error?.message || "Unknown stream error";
-
-    let clientMessage = "Stream error";
-    if (status === 400) {
-      clientMessage = normalizedDetails
-        ? `Provider rejected request (HTTP 400): ${normalizedDetails}`
-        : "Provider rejected request (HTTP 400)";
-    } else if (status) {
-      clientMessage = normalizedDetails
-        ? `Provider request failed (${status}): ${normalizedDetails}`
-        : `Provider request failed (${status})`;
-    }
-
-    return { status, message, clientMessage };
   }
 }

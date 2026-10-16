@@ -14,6 +14,7 @@ import {
 import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AgentService } from "../service/agent.service";
+import { getAvailableTools } from "../utils/get-available-tools";
 import { CreateAgentSchema } from "../dto/create-agent.dto";
 import { UpdateAgentSchema } from "../dto/update-agent.dto";
 import {
@@ -52,7 +53,7 @@ export class AgentController {
 
   @Get("tools/available")
   async getAvailableTools() {
-    return this.agentService.getAvailableTools();
+    return getAvailableTools();
   }
 
   @Get("public")

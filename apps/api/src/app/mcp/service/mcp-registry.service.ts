@@ -142,11 +142,4 @@ export class McpRegistryService {
       args: ["-y", info.package],
     };
   }
-
-  /**
-   * Check if a provider name uses Google OAuth (shared credentials flow)
-   */
-  isGoogleProvider(name: string): boolean {
-    return name.startsWith("google-");
-  }
 }

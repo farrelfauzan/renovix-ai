@@ -9,6 +9,7 @@ import { EmailJobService } from "../../email/service/email-job.service";
 import { randomBytes } from "crypto";
 import type { InviteMemberDto } from "../dto/invite-member.dto";
 import { hashToken } from "../utils/hash-token";
+import { normalizeEmail } from "../utils/normalize-email";
 
 @Injectable()
 export class WorkspaceInviteService {
@@ -18,16 +19,12 @@ export class WorkspaceInviteService {
     private readonly emailJobService: EmailJobService,
   ) {}
 
-  private normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
-  }
-
   async createInvite(
     workspaceId: string,
     invitedById: string,
     dto: InviteMemberDto,
   ) {
-    const emailNormalized = this.normalizeEmail(dto.email);
+    const emailNormalized = normalizeEmail(dto.email);
 
     await this.quotaService.enforceCollaboration(workspaceId);
 
@@ -142,7 +139,7 @@ export class WorkspaceInviteService {
       where: { id: userId },
     });
 
-    if (this.normalizeEmail(user.email) !== invite.emailNormalized) {
+    if (normalizeEmail(user.email) !== invite.emailNormalized) {
       throw new BadRequestException(
         "This invite was sent to a different email address. Please sign in with the correct account.",
       );

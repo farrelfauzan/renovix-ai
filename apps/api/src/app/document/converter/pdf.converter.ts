@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import PDFDocumentLib from "pdfkit";
 import { Lexer, type Token, type Tokens } from "marked";
 import { DocumentConverter } from "./converter.interface";
+import { stripInline } from "../utils/strip-inline";
 
 // Handle CJS/ESM interop
 const PDFDocument = (PDFDocumentLib as any).default ?? PDFDocumentLib;
@@ -88,7 +89,7 @@ export class PdfConverter implements DocumentConverter {
       6: 11,
     };
     const size = sizes[token.depth] ?? 12;
-    const text = this.stripInline(token.text);
+    const text = stripInline(token.text);
 
     this.ensureSpace(doc, size + 20);
     doc.x = doc.page.margins.left; // reset x after tables
@@ -125,7 +126,7 @@ export class PdfConverter implements DocumentConverter {
       .font("Helvetica")
       .fontSize(10)
       .fillColor("#000000")
-      .text(this.stripInline(token.text), doc.page.margins.left, doc.y, {
+      .text(stripInline(token.text), doc.page.margins.left, doc.y, {
         width: this.pageWidth,
         lineGap: 3,
         align: "left",
@@ -136,7 +137,7 @@ export class PdfConverter implements DocumentConverter {
   private renderList(doc: any, token: Tokens.List) {
     token.items.forEach((item, i) => {
       const bullet = token.ordered ? `${i + 1}. ` : "•  ";
-      const text = this.stripInline(item.text);
+      const text = stripInline(item.text);
       this.ensureSpace(doc, 16);
       doc
         .font("Helvetica")
@@ -189,7 +190,7 @@ export class PdfConverter implements DocumentConverter {
       doc.font(font).fontSize(fontSize);
       let maxH = 0;
       for (const cell of cells) {
-        const h = doc.heightOfString(this.stripInline(cell.text), {
+        const h = doc.heightOfString(stripInline(cell.text), {
           width: colWidth - cellPad * 2,
         });
         maxH = Math.max(maxH, h);
@@ -221,7 +222,7 @@ export class PdfConverter implements DocumentConverter {
       doc.font("Helvetica-Bold").fontSize(fontSize).fillColor("#111827");
       for (let i = 0; i < colCount; i++) {
         doc.text(
-          this.stripInline(token.header[i].text),
+          stripInline(token.header[i].text),
           x + i * colWidth + cellPad,
           hy + cellPad,
           {
@@ -264,7 +265,7 @@ export class PdfConverter implements DocumentConverter {
       doc.font("Helvetica").fontSize(fontSize).fillColor("#374151");
       for (let i = 0; i < row.length; i++) {
         doc.text(
-          this.stripInline(row[i].text),
+          stripInline(row[i].text),
           x + i * colWidth + cellPad,
           ry + cellPad,
           {
@@ -314,7 +315,7 @@ export class PdfConverter implements DocumentConverter {
   }
 
   private renderBlockquote(doc: any, token: Tokens.Blockquote) {
-    const text = this.stripInline(token.text);
+    const text = stripInline(token.text);
     const x = doc.page.margins.left;
 
     const textH = doc
@@ -346,16 +347,5 @@ export class PdfConverter implements DocumentConverter {
     doc.fillColor("#000000");
     doc.y = y + textH + 8;
     doc.moveDown(0.4);
-  }
-
-  private stripInline(text: string): string {
-    return text
-      .replace(/\*\*(.+?)\*\*/g, "$1")
-      .replace(/\*(.+?)\*/g, "$1")
-      .replace(/__(.+?)__/g, "$1")
-      .replace(/_(.+?)_/g, "$1")
-      .replace(/`(.+?)`/g, "$1")
-      .replace(/\[(.+?)\]\(.+?\)/g, "$1")
-      .replace(/~~(.+?)~~/g, "$1");
   }
 }

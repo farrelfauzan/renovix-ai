@@ -20,6 +20,7 @@ import { AgentToolService } from "../service/agent-tool.service";
 import { AgentChatSchema } from "../dto/agent-chat.dto";
 import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
+import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 
 @Controller("agents")
 @Access({ auth: ["jwt", "session"] })
@@ -105,7 +106,7 @@ export class AgentRunController {
 
       if (toolDocumentResult) {
         // Document was generated via tool call — send it
-        const summary = this.buildDocumentSummary(
+        const summary = buildDocumentSummary(
           message,
           toolDocumentResult.format,
         );
@@ -123,7 +124,7 @@ export class AgentRunController {
             detectedFormat,
           );
           // Send short summary instead of full content
-          const summary = this.buildDocumentSummary(message, detectedFormat);
+          const summary = buildDocumentSummary(message, detectedFormat);
           const chunk = JSON.stringify({
             choices: [{ delta: { content: summary } }],
           });
@@ -223,15 +224,5 @@ export class AgentRunController {
       this.logger.warn(`Document intent classification failed: ${err.message}`);
       return null;
     }
-  }
-
-  private buildDocumentSummary(message: string, format: string): string {
-    const formatLabels: Record<string, string> = {
-      pdf: "PDF",
-      docx: "Word document",
-      xlsx: "Excel spreadsheet",
-    };
-    const label = formatLabels[format] || format.toUpperCase();
-    return `Here's the ${label} you requested:`;
   }
 }

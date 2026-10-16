@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import * as ExcelJS from "exceljs";
 import { Lexer, type Token, type Tokens } from "marked";
 import { DocumentConverter } from "./converter.interface";
+import { stripInline } from "../utils/strip-inline";
 
 @Injectable()
 export class XlsxConverter implements DocumentConverter {
@@ -34,7 +35,7 @@ export class XlsxConverter implements DocumentConverter {
 
         // Header row
         const headerRow = sheet.addRow(
-          table.headers.map((h) => this.stripInline(h)),
+          table.headers.map((h) => stripInline(h)),
         );
         headerRow.font = { bold: true };
         headerRow.fill = {
@@ -63,7 +64,7 @@ export class XlsxConverter implements DocumentConverter {
       const sheet = workbook.addWorksheet("Content");
       const lines = markdown.split("\n");
       for (const line of lines) {
-        const cleaned = this.stripInline(line);
+        const cleaned = stripInline(line);
         if (cleaned.trim()) {
           sheet.addRow([cleaned]);
         }
@@ -83,16 +84,16 @@ export class XlsxConverter implements DocumentConverter {
 
     for (const token of tokens) {
       if (token.type === "heading") {
-        lastHeading = this.stripInline((token as Tokens.Heading).text);
+        lastHeading = stripInline((token as Tokens.Heading).text);
       }
 
       if (token.type === "table") {
         const t = token as Tokens.Table;
         tables.push({
           title: lastHeading,
-          headers: t.header.map((h) => this.stripInline(h.text)),
+          headers: t.header.map((h) => stripInline(h.text)),
           rows: t.rows.map((row) =>
-            row.map((cell) => this.stripInline(cell.text)),
+            row.map((cell) => stripInline(cell.text)),
           ),
         });
       }
@@ -114,17 +115,6 @@ export class XlsxConverter implements DocumentConverter {
     }
 
     return cleaned;
-  }
-
-  private stripInline(text: string): string {
-    return text
-      .replace(/\*\*(.+?)\*\*/g, "$1")
-      .replace(/\*(.+?)\*/g, "$1")
-      .replace(/__(.+?)__/g, "$1")
-      .replace(/_(.+?)_/g, "$1")
-      .replace(/`(.+?)`/g, "$1")
-      .replace(/\[(.+?)\]\(.+?\)/g, "$1")
-      .replace(/~~(.+?)~~/g, "$1");
   }
 
   /**
