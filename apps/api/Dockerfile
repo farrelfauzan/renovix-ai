@@ -2,7 +2,7 @@
 # Usage: docker build -f apps/api/Dockerfile .
 
 # ─── Stage 1: Install dependencies ───
-FROM mirror.gcr.io/library/node:22-alpine AS deps
+FROM mirror.gcr.io/library/node:22.23.3-alpine AS deps
 WORKDIR /app
 
 RUN apk add --no-cache dumb-init
@@ -31,7 +31,7 @@ COPY . .
 RUN cd apps/api && npx webpack-cli build --config webpack.docker.config.js
 
 # ─── Stage 4: Production (Hardened) ───
-FROM mirror.gcr.io/library/node:22-alpine
+FROM mirror.gcr.io/library/node:22.23.3-alpine
 
 RUN apk add --no-cache dumb-init
 
