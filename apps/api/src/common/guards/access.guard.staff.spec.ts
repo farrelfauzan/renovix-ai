@@ -164,14 +164,40 @@ describe("AccessGuard staff method (RX-94, Fastify, test database)", () => {
         "an admin token signed with JWT_SECRET",
         () => ({ cookie: `${ACCESS}=${jwt.sign({ sid: "x" }, process.env.JWT_SECRET!, { audience: "renovix-admin", subject: admin.id })}` }),
       ],
-      [
-        "an admin token without the admin audience",
-        () => ({ cookie: `${ACCESS}=${jwt.sign({ sid: "x" }, process.env.ADMIN_JWT_SECRET!, { subject: admin.id })}` }),
-      ],
     ])("%s: 401", async (_case, headers) => {
       const res = await get("/staff-probe/full", headers());
 
       expect(res.statusCode).toBe(401);
+    });
+
+    // The next three share one live session and the admin secret, so the audience is the only difference.
+    const signForLiveSession = async (options: jwt.SignOptions) => {
+      const { sessionId } = await adminCookie("full");
+      return `${ACCESS}=${jwt.sign({ sid: sessionId, scope: "full" }, process.env.ADMIN_JWT_SECRET!, { subject: admin.id, ...options })}`;
+    };
+
+    it("an admin token for a live session without the admin audience: 401", async () => {
+      const cookie = await signForLiveSession({});
+
+      const res = await get("/staff-probe/full", { cookie });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("an admin token for a live session with another audience: 401", async () => {
+      const cookie = await signForLiveSession({ audience: "renovix-product" });
+
+      const res = await get("/staff-probe/full", { cookie });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it("an admin token for a live session with the admin audience: 200 (control)", async () => {
+      const cookie = await signForLiveSession({ audience: "renovix-admin" });
+
+      const res = await get("/staff-probe/full", { cookie });
+
+      expect(res.statusCode).toBe(200);
     });
 
     it("a revoked session: 401", async () => {
