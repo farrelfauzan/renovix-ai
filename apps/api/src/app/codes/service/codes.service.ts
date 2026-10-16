@@ -8,7 +8,12 @@ import * as crypto from "crypto";
 import { Decimal } from "@prisma/client/runtime/client";
 import { TransactionService } from "../../prisma/transaction.service";
 import { CreateCodeDto } from "../dto/redeem-code.dto";
-import { CodesRepository } from "../repository/codes.repository";
+import { InvitationCodeRepository } from "../repository/invitation-code.repository";
+import { CodeRedemptionRepository } from "../repository/code-redemption.repository";
+import { SubscriptionPlanRepository } from "../../billing/repository/subscription-plan.repository";
+import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
+import { TransactionRepository } from "../../billing/repository/transaction.repository";
+import { UserRepository } from "../../auth/repository/user.repository";
 
 const NO_REDEMPTIONS_LEFT =
   "This code has reached its maximum number of redemptions";
@@ -17,7 +22,12 @@ const ALREADY_REDEEMED = "You have already redeemed this code";
 @Injectable()
 export class CodesService {
   constructor(
-    private readonly codes: CodesRepository,
+    private readonly codes: InvitationCodeRepository,
+    private readonly redemptions: CodeRedemptionRepository,
+    private readonly plans: SubscriptionPlanRepository,
+    private readonly subscriptions: UserSubscriptionRepository,
+    private readonly ledger: TransactionRepository,
+    private readonly users: UserRepository,
     private readonly transactions: TransactionService,
   ) {}
 
@@ -53,7 +63,7 @@ export class CodesService {
     }
 
     // Check if user already redeemed this code
-    const existingRedemption = await this.codes.findRedemption(code.id, userId);
+    const existingRedemption = await this.redemptions.findRedemption(code.id, userId);
 
     if (existingRedemption) {
       throw new ConflictException(ALREADY_REDEEMED);
@@ -66,7 +76,7 @@ export class CodesService {
       if (!(await this.codes.claimRedemption(code.id, tx))) {
         throw new BadRequestException(NO_REDEMPTIONS_LEFT);
       }
-      if (await this.codes.findRedemption(code.id, userId, tx)) {
+      if (await this.redemptions.findRedemption(code.id, userId, tx)) {
         throw new ConflictException(ALREADY_REDEEMED);
       }
 
@@ -80,10 +90,10 @@ export class CodesService {
         code.creditAmount
       ) {
         creditsGranted = code.creditAmount;
-        await this.codes.incrementUserBalance(userId, code.creditAmount, tx);
+        await this.users.incrementUserBalance(userId, code.creditAmount, tx);
 
         // Create transaction record
-        await this.codes.createTopupTransaction(
+        await this.ledger.createTopupTransaction(
           userId,
           code.creditAmount,
           `code:${code.code}:${userId}`,
@@ -106,7 +116,7 @@ export class CodesService {
         );
 
         // Upsert user subscription
-        const existing = await this.codes.findSubscriptionByUserId(userId, tx);
+        const existing = await this.subscriptions.findSubscriptionByUserId(userId, tx);
 
         if (existing) {
           // Extend or upgrade the existing subscription
@@ -119,7 +129,7 @@ export class CodesService {
                 )
               : periodEnd;
 
-          await this.codes.updateSubscription(
+          await this.subscriptions.updateSubscription(
             userId,
             {
               planId: code.planId,
@@ -132,7 +142,7 @@ export class CodesService {
             tx,
           );
         } else {
-          await this.codes.createSubscription(
+          await this.subscriptions.createSubscription(
             userId,
             {
               planId: code.planId,
@@ -146,7 +156,7 @@ export class CodesService {
       }
 
       // Create redemption record
-      await this.codes.createRedemption(
+      await this.redemptions.createRedemption(
         code.id,
         userId,
         { creditsGranted, planGranted, daysGranted },
@@ -170,7 +180,7 @@ export class CodesService {
    * Get redemption history for a user
    */
   async getHistory(userId: string) {
-    const redemptions = await this.codes.findRedemptionsByUser(userId);
+    const redemptions = await this.redemptions.findRedemptionsByUser(userId);
 
     return { redemptions };
   }
@@ -199,7 +209,7 @@ export class CodesService {
 
     // Verify plan exists if specified
     if (dto.planId) {
-      const plan = await this.codes.findPlanById(dto.planId);
+      const plan = await this.plans.findPlanById(dto.planId);
       if (!plan) {
         throw new NotFoundException("Subscription plan not found");
       }

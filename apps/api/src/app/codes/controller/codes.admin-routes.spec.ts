@@ -8,6 +8,7 @@ import {
 import { CodesModule } from "../codes.module";
 import { CodesService } from "../service/codes.service";
 import { PrismaModule } from "../../prisma/prisma.module";
+import { RepositoriesModule } from "../../prisma/repositories.module";
 import { PrismaService } from "../../prisma/prisma.service";
 
 // The real PrismaService imports the generated Prisma client at load time; it
@@ -85,7 +86,7 @@ describe("RX-66: /admin/codes routes are removed", () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [PrismaModule, CodesModule],
+      imports: [PrismaModule, RepositoriesModule, CodesModule],
       providers: [
         {
           provide: APP_GUARD,

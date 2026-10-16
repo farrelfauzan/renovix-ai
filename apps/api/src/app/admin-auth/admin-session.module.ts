@@ -2,7 +2,6 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { ADMIN_AUTH_CONFIG } from "./config/admin-auth-config.token";
 import { ADMIN_ORIGIN } from "./config/admin-origin.token";
-import { AdminSessionRepository } from "./repository/admin-session.repository";
 import { AdminSessionService } from "./service/admin-session.service";
 import { parseAdminAuthConfig } from "./utils/parse-admin-auth-config";
 import { parseAdminOrigin } from "./utils/parse-admin-origin";
@@ -25,7 +24,6 @@ import { parseAdminOrigin } from "./utils/parse-admin-origin";
       inject: [ConfigService],
       useFactory: (config: ConfigService) => parseAdminOrigin(config.get<string>("ADMIN_ORIGIN")),
     },
-    AdminSessionRepository,
     AdminSessionService,
   ],
   exports: [ADMIN_AUTH_CONFIG, ADMIN_ORIGIN, AdminSessionService],

@@ -7,53 +7,19 @@ import {
 } from "@nestjs/platform-fastify";
 import { AdminAuditModule } from "../src/app/admin-auth/admin-audit.module";
 import { AdminAuditInterceptor } from "../src/app/admin-auth/interceptor/admin-audit.interceptor";
-import { AdminAuditLogRepository } from "../src/app/admin-auth/repository/admin-audit-log.repository";
-import { AdminNotificationRepository } from "../src/app/admin-auth/repository/admin-notification.repository";
-import { AdminPiiGrantRepository } from "../src/app/admin-auth/repository/admin-pii-grant.repository";
-import { AdminRecoveryCodeRepository } from "../src/app/admin-auth/repository/admin-recovery-code.repository";
-import { AdminRoleRepository } from "../src/app/admin-auth/repository/admin-role.repository";
-import { AdminSessionRepository } from "../src/app/admin-auth/repository/admin-session.repository";
-import { AdminUserRepository } from "../src/app/admin-auth/repository/admin-user.repository";
-import { CodesRepository } from "../src/app/codes/repository/codes.repository";
-import { CatalogChangeRepository } from "../src/app/offers/repository/catalog-change.repository";
-import { CompanyContractRepository } from "../src/app/offers/repository/company-contract.repository";
-import { EnterpriseBundleRepository } from "../src/app/offers/repository/enterprise-bundle.repository";
-import { PackageRepository } from "../src/app/offers/repository/package.repository";
-import { PlatformSettingRepository } from "../src/app/offers/repository/platform-setting.repository";
-import { PurchaseSnapshotRepository } from "../src/app/offers/repository/purchase-snapshot.repository";
-import { TopUpPackRepository } from "../src/app/offers/repository/top-up-pack.repository";
-import { McpOAuthStateRepository } from "../src/app/mcp/repository/mcp-oauth-state.repository";
 import { PrismaModule } from "../src/app/prisma/prisma.module";
 import { PrismaService } from "../src/app/prisma/prisma.service";
+import { RepositoriesModule } from "../src/app/prisma/repositories.module";
 import { AccessModule } from "../src/common/access.module";
 import { AccessGuard } from "../src/common/guards/access.guard";
 import { AdminOriginGuard } from "../src/common/guards/admin-origin.guard";
 import { testDatabaseUrl } from "./test-database";
 
-/** Every repository of the API: a new repository is added here, so a test lists only the service it tests. */
-const REPOSITORIES = [
-  CodesRepository,
-  AdminUserRepository,
-  AdminSessionRepository,
-  AdminRecoveryCodeRepository,
-  AdminNotificationRepository,
-  AdminRoleRepository,
-  AdminPiiGrantRepository,
-  PackageRepository,
-  TopUpPackRepository,
-  EnterpriseBundleRepository,
-  CompanyContractRepository,
-  PurchaseSnapshotRepository,
-  PlatformSettingRepository,
-  CatalogChangeRepository,
-  AdminAuditLogRepository,
-  McpOAuthStateRepository,
-];
-
 /**
  * Builds a Nest testing module with the real PrismaService on the test
- * database, every repository, the global AdminOriginGuard (RX-156: an /admin
- * route answers only the back-office Origin), the global AccessGuard (a route
+ * database, every repository (RepositoriesModule, as in AppModule), the global
+ * AdminOriginGuard (RX-156: an /admin route answers only the back-office
+ * Origin), the global AccessGuard (a route
  * without `@Access` answers 403) and the global back-office audit hook
  * (RX-97), registered the way AppModule does it. `override` gets the builder for
  * overrideProvider/overrideGuard (e.g. `withFakeProvider`). Close it with
@@ -67,9 +33,8 @@ export async function createTestModule(
   const moduleRef = await override(
     Test.createTestingModule({
       ...metadata,
-      imports: [PrismaModule, AccessModule, AdminAuditModule, ...(metadata.imports ?? [])],
+      imports: [PrismaModule, RepositoriesModule, AccessModule, AdminAuditModule, ...(metadata.imports ?? [])],
       providers: [
-        ...REPOSITORIES,
         { provide: APP_GUARD, useExisting: AdminOriginGuard },
         { provide: APP_GUARD, useExisting: AccessGuard },
         { provide: APP_INTERCEPTOR, useExisting: AdminAuditInterceptor },

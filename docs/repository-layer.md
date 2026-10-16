@@ -2,7 +2,7 @@
 
 Decision record of RX-132 (2026-10-14). It states what the Tech Lead decided, shows each rule on the pilot module (`apps/api/src/app/codes/`), and records what was measured about the soft delete filter. The short rule for new code is in `AGENTS.md`, section "Repositories".
 
-Decided by the Tech Lead: the rules on 2026-10-10 (plan decisions 16, 17, 18 and 26), the transaction helper and the import rule on 2026-10-14 (Decision log D92, D93, D94).
+Decided by the Tech Lead: the rules on 2026-10-10 (plan decisions 16, 17, 18 and 26), the transaction helper and the import rule on 2026-10-14 (Decision log D92, D93, D94). RX-148 (2026-10-16) split the pilot's one repository into one per table and states four rules on top (Decision log D100, D101, D103).
 
 ## State after RX-132
 
@@ -10,43 +10,82 @@ Decided by the Tech Lead: the rules on 2026-10-10 (plan decisions 16, 17, 18 and
 - 40 other files still import `PrismaService` or the generated client. They are listed in `scripts/prisma-import-exceptions.ts`; the list may only shrink. Each is moved by its module's ticket (RX-133 to RX-141, and the tickets that rewrite a module: RX-18, RX-22, RX-23 to RX-26); RX-142 deletes the list.
 - The dynamic query builder comes last, inside the repositories (RX-143). Until then a repository calls `PrismaService` directly.
 
-## Where repositories live
+## Where repositories live (RX-148: D100, D101, D103)
 
-`apps/api/src/app/<module>/repository/<name>.repository.ts`: an injectable class that takes `PrismaService` in its constructor, listed in its module's `providers`. Pilot: `codes/repository/codes.repository.ts`, class `CodesRepository`, provided by `CodesModule`.
+Four rules, each with its example in the code.
 
-A repository belongs to the module whose service calls it. The pilot keeps every query of the codes module in one repository, including the balance and subscription writes of a redemption; when the credit service (RX-22) owns the balance, those two writes move to its repository and the redemption passes its transaction on.
+**(1) One repository per table, not per module (D100).**
+`apps/api/src/app/<module>/repository/<table>.repository.ts`: an injectable class named for its table. It takes `PrismaService` in its constructor for the methods that run without a transaction; `UserRepository` and `TransactionRepository` have only methods that need `tx`, so their constructor takes nothing. The codes module reaches six tables through six repositories:
 
-In tests, `createTestModule` (`apps/api/test/test-module.ts`) provides every repository, so a test lists the service it tests and nothing else. A new repository is added to the list in that file.
+| Table | Repository | File | Owner module | Public methods |
+|---|---|---|---|---|
+| `invitation_codes` | `InvitationCodeRepository` | `codes/repository/invitation-code.repository.ts` | codes | 7: `findCodeWithPlan`, `findCodeById`, `listCodes`, `countCodes`, `createCode`, `updateCode`, `claimRedemption` |
+| `code_redemptions` | `CodeRedemptionRepository` | `codes/repository/code-redemption.repository.ts` | codes | 3: `findRedemption`, `findRedemptionsByUser`, `createRedemption` |
+| `user_subscriptions` | `UserSubscriptionRepository` | `billing/repository/user-subscription.repository.ts` | billing | 3: `findSubscriptionByUserId`, `createSubscription`, `updateSubscription` |
+| `subscription_plans` | `SubscriptionPlanRepository` | `billing/repository/subscription-plan.repository.ts` | billing | 1: `findPlanById` |
+| `transactions` | `TransactionRepository` | `billing/repository/transaction.repository.ts` | billing | 1: `createTopupTransaction` |
+| `users` | `UserRepository` | `auth/repository/user.repository.ts` | auth | 1: `incrementUserBalance` |
+
+A method that also reads a second table (an `include`) belongs to the table it is called on: `findCodeWithPlan`, `listCodes` and `createCode` (with the plan) are in `InvitationCodeRepository`, `findRedemptionsByUser` (with the code text and type) is in `CodeRedemptionRepository`. A service injects every repository it uses: `CodesService` takes the six above and `TransactionService`.
+
+**(2) Prisma stays inside the repositories (D101, D103).**
+No value import of the generated Prisma client outside the repositories and the Prisma module (`import type` is allowed, rule (a) and the import check below). Services write enum values as strings: `CodesService` checks `code.type === "topup"` and passes `status: "active"`, and `TransactionRepository.createTopupTransaction` writes `type: "topup", status: "success"`. A repository turns a Prisma error into one of the app's error classes, which are Nest's HTTP exceptions (D103). The six repositories above map no Prisma error, so the example is `AdminUserRepository.updateRole` (`admin-auth/repository/admin-user.repository.ts`): a `PrismaClientKnownRequestError` with code `P2003` (no role with that name) becomes `BadRequestException("Unknown role")`.
+
+**(3) A table used by several modules: its repository sits in the module that owns the table; one global module provides them all (D103).**
+Owners: `invitation_codes` and `code_redemptions` belong to codes; `user_subscriptions`, `subscription_plans` and `transactions` to billing; `users` to auth. `RepositoriesModule` (`apps/api/src/app/prisma/repositories.module.ts`) is `@Global()` and lists every repository of the API in its `providers` and `exports`; `AppModule` imports it once. No feature module lists a repository in its `providers`, and a feature module never imports another module to get a repository: `CodesModule` imports nothing to use the billing and auth repositories, and `AdminAuthModule` no longer imports `AdminAuditModule`, which it did only for `AdminAuditLogRepository`. A new repository is added to the list in `repositories.module.ts`.
+
+In tests, `createTestModule` (`apps/api/test/test-module.ts`) imports `RepositoriesModule` as `AppModule` does, so a test lists the service it tests and nothing else.
+
+**(4) "Fewer than 10 public methods" is a number the pull request reports, not a hard limit (D103).**
+The pull request that adds or grows a repository gives each one's count, and a reason for any count above 10. RX-148: the largest, `InvitationCodeRepository`, has 7 (table above).
+
+When the credit service (RX-22) owns the balance, the balance write of a redemption moves to it and the redemption passes its transaction on.
 
 ## The rules (decision 17)
 
 Each rule is given as approved, then one example from the pilot.
 
 **(a) Only repositories, the Prisma module, the seed and tests import `PrismaService` or the generated Prisma client. Controllers, guards and schedulers import services only, never repositories.**
-Pilot: `codes.repository.ts` is the only file of the codes module that imports `PrismaService`. `codes.service.ts` imports `CodesRepository`, and from the Prisma module only `TransactionService`. `codes.controller.ts` imports `CodesService` only. Held by the step "prisma imports" of `bun run check` (below).
+Pilot: in the codes module only its two repositories (`invitation-code.repository.ts`, `code-redemption.repository.ts`) and the spec files import `PrismaService`. `codes.service.ts` imports the six repositories it uses, and from the Prisma module only `TransactionService`. `codes.controller.ts` imports `CodesService` only. Held by the step "prisma imports" of `bun run check` (below).
 
 **(b) A repository holds queries only. The scope (user id, workspace id) is a required argument, never optional. Methods are named for the operation, not a generic `findMany(where)`, so services never build query conditions. Who may do what stays in services.**
-Pilot: `findRedemption(codeId, userId, tx?)` and `findRedemptionsByUser(userId, tx?)` take the user as a required argument; the service calls `this.codes.findRedemption(code.id, userId)` and writes no `where`. The checks (code not found, deactivated, expired, used up, already redeemed) stay in `CodesService.redeemCode`. The admin methods (`listCodes(skip, take)`, `countCodes()`, `findCodeById(id)`, `updateCode(id, data)`) have no user argument because an invitation code belongs to no user; the admin check stays on the route.
+Pilot: `findRedemption(codeId, userId, tx?)` and `findRedemptionsByUser(userId, tx?)` take the user as a required argument; the service calls `this.redemptions.findRedemption(code.id, userId)` and writes no `where`. The checks (code not found, deactivated, expired, used up, already redeemed) stay in `CodesService.redeemCode`. The admin methods (`listCodes(skip, take)`, `countCodes()`, `findCodeById(id)`, `updateCode(id, data)`) have no user argument because an invitation code belongs to no user; the admin check stays on the route.
 
 **(c) Repositories return Prisma's generated types, with no mapping layer.**
-Pilot: `findCodeWithPlan(code)` returns what `invitationCode.findUnique({ where: { code }, include: { plan: true } })` returns. The repository's return types are inferred, not declared, so they are exactly Prisma's; the service reads `code.plan?.slug` and `code.creditAmount` (a Prisma `Decimal`) from that type.
+Pilot: `InvitationCodeRepository.findCodeWithPlan(code)` returns what `invitationCode.findUnique({ where: { code }, include: { plan: true } })` returns. The repository's return types are inferred, not declared, so they are exactly Prisma's; the service reads `code.plan?.slug` and `code.creditAmount` (a Prisma `Decimal`) from that type.
 
 **(d) One helper lets a service run several repositories in one transaction. The transaction is passed as an explicit argument, the helper joins a transaction that is already open, and a transaction is never held open across a model call or a stream.**
 Pilot, `CodesService.redeemCode` (shortened):
 
 ```ts
 const result = await this.transactions.run(async (tx) => {
-  if (!(await this.codes.claimRedemption(code.id, tx))) throw new BadRequestException(NO_REDEMPTIONS_LEFT);
-  if (await this.codes.findRedemption(code.id, userId, tx)) throw new ConflictException(ALREADY_REDEEMED);
-  await this.codes.incrementUserBalance(userId, code.creditAmount, tx);
-  await this.codes.createTopupTransaction(userId, code.creditAmount, `code:${code.code}:${userId}`, tx);
-  // ... the subscription, when the code grants one
-  await this.codes.createRedemption(code.id, userId, { creditsGranted, planGranted, daysGranted }, tx);
+  if (!(await this.codes.claimRedemption(code.id, tx))) {
+    throw new BadRequestException(NO_REDEMPTIONS_LEFT);
+  }
+  if (await this.redemptions.findRedemption(code.id, userId, tx)) {
+    throw new ConflictException(ALREADY_REDEEMED);
+  }
+  // ... when the code grants credits:
+  await this.users.incrementUserBalance(userId, code.creditAmount, tx);
+  await this.ledger.createTopupTransaction(
+    userId,
+    code.creditAmount,
+    `code:${code.code}:${userId}`,
+    tx,
+  );
+  // ... when the code grants a plan: this.subscriptions.findSubscriptionByUserId(userId, tx),
+  // then this.subscriptions.updateSubscription(userId, { ... }, tx) or createSubscription(userId, { ... }, tx)
+  await this.redemptions.createRedemption(
+    code.id,
+    userId,
+    { creditsGranted, planGranted, daysGranted },
+    tx,
+  );
   return { creditsGranted, planGranted, daysGranted };
 });
 ```
 
-The six writes of a redemption take `tx` as a required argument and have no fallback to the normal client. The two reads before the transaction run without one.
+The six writes of a redemption (`claimRedemption`, `incrementUserBalance`, `createTopupTransaction`, `createSubscription`, `updateSubscription`, `createRedemption`) take `tx` as a required argument and have no fallback to the normal client. The two reads before the transaction (`findCodeWithPlan`, `findRedemption`) run without one.
 
 **(e) Raw SQL lives only in repositories.**
 Pilot: the codes module has no raw SQL, so the pilot has no example. The first one comes with the knowledge slice (RX-137); a repository method that runs raw SQL takes the transaction the same way (`(tx ?? this.prisma).$queryRaw`).
