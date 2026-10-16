@@ -6,13 +6,13 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
-import { PrismaService } from "../../prisma/prisma.service";
+import { UserRepository } from "../repository/user.repository";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../dto/create-auth.dto";
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly users: UserRepository,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -25,9 +25,7 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
+    const existing = await this.users.findUserByEmail(dto.email);
     if (existing) {
       throw new ConflictException("Email already registered");
     }
@@ -35,21 +33,11 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.password, 12);
     const apiKey = this.generateApiKey();
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        password: hashedPassword,
-        apiKey,
-        name: dto.name || null,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        apiKey: true,
-        balance: true,
-        createdAt: true,
-      },
+    const user = await this.users.createUser({
+      email: dto.email,
+      password: hashedPassword,
+      apiKey,
+      name: dto.name || null,
     });
 
     const token = this.signToken(user.id, user.email);
@@ -63,9 +51,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
+    const user = await this.users.findUserByEmail(dto.email);
     if (!user) {
       throw new UnauthorizedException("Invalid email or password");
     }
@@ -82,10 +68,7 @@ export class AuthService {
     }
 
     // Track last login
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
+    await this.users.updateLastLogin(user.id);
 
     const token = this.signToken(user.id, user.email);
 
@@ -102,28 +85,7 @@ export class AuthService {
   }
 
   async getProfile(userId: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        emailVerified: true,
-        name: true,
-        firstName: true,
-        lastName: true,
-        avatar: true,
-        phone: true,
-        company: true,
-        jobTitle: true,
-        timezone: true,
-        locale: true,
-        status: true,
-        balance: true,
-        apiKey: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const user = await this.users.findProfileOrThrow(userId);
     return {
       ...user,
       apiKey: this.maskApiKey(user.apiKey),
@@ -132,10 +94,7 @@ export class AuthService {
 
   async regenerateApiKey(userId: string) {
     const apiKey = this.generateApiKey();
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { apiKey },
-    });
+    await this.users.updateApiKey(userId, apiKey);
     return {
       apiKey,
       apiKeyWarning:
@@ -144,23 +103,7 @@ export class AuthService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    const user = await this.prisma.user.update({
-      where: { id: userId },
-      data: dto,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        firstName: true,
-        lastName: true,
-        phone: true,
-        company: true,
-        jobTitle: true,
-        timezone: true,
-        locale: true,
-        updatedAt: true,
-      },
-    });
+    const user = await this.users.updateProfile(userId, dto);
     return user;
   }
 

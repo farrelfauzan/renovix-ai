@@ -102,6 +102,26 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
     expect(res.statusCode).toBe(400);
   });
 
+  it.each([
+    [
+      "an expired login JWT of an existing user",
+      (user: { id: string }) => ({
+        authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: "x@test.local" }, { expiresIn: -60 })}`,
+      }),
+    ],
+    ["an expired Better Auth session cookie (getSession returns null)", () => ({ cookie: "better-auth.session_token=expired" })],
+  ])("RX-138: %s with a portal session: portal conversation list is 400 (treated as anonymous)", async (_case, credential: (user: { id: string }) => Record<string, string>) => {
+    const user = await createUser(prisma, { balance: 5 });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/chat/portal/conversations",
+      headers: { "x-portal-session": SESSION, ...credential(user) },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
   it("owner can read their conversation and knowledge base, and delete both (positive control)", async () => {
     const { alice, conversation, kb } = await setup();
 

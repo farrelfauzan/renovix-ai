@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { AdminSessionModule } from "../app/admin-auth/admin-session.module";
 import { PortalGuard } from "../app/portal/guard/portal.guard";
+import { PortalUserService } from "../app/portal/service/portal-user.service";
 import { AccessGuard } from "./guards/access.guard";
 import { AdminOriginGuard } from "./guards/admin-origin.guard";
 import { ApiKeyGuard } from "./guards/api-key.guard";
@@ -24,7 +25,7 @@ import { CombinedAuthGuard } from "./guards/combined-auth.guard";
     }),
     AdminSessionModule,
   ],
-  providers: [AccessGuard, AdminOriginGuard, CombinedAuthGuard, ApiKeyGuard, PortalGuard],
+  providers: [AccessGuard, AdminOriginGuard, CombinedAuthGuard, ApiKeyGuard, PortalGuard, PortalUserService],
   exports: [AccessGuard, AdminOriginGuard],
 })
 export class AccessModule {}

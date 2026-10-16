@@ -28,7 +28,6 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
   [`${SRC}/mcp/service/web-search.service.ts WebSearchService.validateBraveKey`]: "test 2: network (fetch)",
   [`${SRC}/mcp/service/web-search.service.ts WebSearchService.searchDuckDuckGo`]: "test 2: network (fetch)",
   [`${SRC}/mcp/service/web-search.service.ts WebSearchService.usageKey`]: "test 2: clock (new Date)",
-  [`${SRC}/portal/service/portal-tier.service.ts PortalTierService.bump`]: "test 2: database (a transaction client is passed in)",
   [`${SRC}/email/service/email-template.service.ts EmailTemplateService.buildInviteEmail`]: "test 2: environment (toLocaleDateString formats the date in the server's time zone)",
 
   // Owned by a named ticket
