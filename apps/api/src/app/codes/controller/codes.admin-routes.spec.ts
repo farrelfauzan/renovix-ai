@@ -41,8 +41,8 @@ const makePrisma = () => {
       create: jest.fn().mockResolvedValue({}),
       update: jest.fn().mockResolvedValue({}),
     },
-    invitationCode: { update: jest.fn().mockResolvedValue({}) },
-    codeRedemption: { create: jest.fn().mockResolvedValue({}) },
+    invitationCode: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), fields: { maxRedemptions: {} } },
+    codeRedemption: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
   };
   return {
     tx,

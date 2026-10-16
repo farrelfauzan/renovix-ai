@@ -155,12 +155,19 @@ export class CodesRepository {
     });
   }
 
-  /** Counts one more redemption on this code. Only inside a transaction. */
-  incrementTimesRedeemed(codeId: string, tx: DbTransaction) {
-    return tx.invitationCode.update({
-      where: { id: codeId },
+  /**
+   * Counts one more redemption on this code if it has one left, and says whether it did. The row lock
+   * this takes makes concurrent redemptions of the same code wait for each other. Only inside a transaction.
+   */
+  async claimRedemption(codeId: string, tx: DbTransaction): Promise<boolean> {
+    const { count } = await tx.invitationCode.updateMany({
+      where: {
+        id: codeId,
+        timesRedeemed: { lt: tx.invitationCode.fields.maxRedemptions },
+      },
       data: { timesRedeemed: { increment: 1 } },
     });
+    return count === 1;
   }
 
   /** Writes the row that says this user redeemed this code, with what it granted. Only inside a transaction. */
