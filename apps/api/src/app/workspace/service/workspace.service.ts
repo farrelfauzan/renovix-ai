@@ -7,6 +7,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import type { CreateWorkspaceDto } from "../dto/create-workspace.dto";
 import type { UpdateWorkspaceDto } from "../dto/update-workspace.dto";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
+import { slugify } from "../../../common/utils/slugify";
 
 @Injectable()
 export class WorkspaceService {
@@ -15,18 +16,11 @@ export class WorkspaceService {
     private readonly quotaService: WorkspaceQuotaService,
   ) {}
 
-  private slugify(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-  }
-
   private async generateUniqueSlug(
     ownerId: string,
     name: string,
   ): Promise<string> {
-    const baseSlug = this.slugify(name);
+    const baseSlug = slugify(name);
     let slug = baseSlug;
     let counter = 1;
 

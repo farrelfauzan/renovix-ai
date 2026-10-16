@@ -16,6 +16,7 @@ import { PromptTuningService } from "./prompt-tuning.service";
 import { ConversationService } from "./conversation.service";
 import { DocumentService } from "../../document/service/document.service";
 import { ChatCompletionRequest } from "../dto/chat-completion.dto";
+import { buildDocumentResponseText } from "../utils/build-document-response-text";
 
 interface AuthenticatedUser {
   id: string;
@@ -167,7 +168,7 @@ export class ChatService {
       );
 
       const assistantContent = document
-        ? this.buildDocumentResponseText(document)
+        ? buildDocumentResponseText(document)
         : assistantMarkdown;
 
       this.conversation
@@ -218,12 +219,5 @@ export class ChatService {
         total_tokens: providerResponse.usage.total_tokens,
       },
     };
-  }
-
-  private buildDocumentResponseText(document: {
-    format: string;
-    filename: string;
-  }): string {
-    return `I've generated your ${document.format.toUpperCase()} document: **${document.filename}**`;
   }
 }

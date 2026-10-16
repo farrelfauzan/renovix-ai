@@ -6,6 +6,8 @@ import {
   DocumentService,
   type DocumentResult,
 } from "../../document/service/document.service";
+import { buildFallbackTitle } from "../utils/build-fallback-title";
+import { normalizeTitle } from "../utils/normalize-title";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -144,10 +146,10 @@ export class ConversationService {
       }
 
       if (!title) {
-        title = this.buildFallbackTitle(assistantResponse);
+        title = buildFallbackTitle(assistantResponse);
       }
 
-      const normalizedTitle = this.normalizeTitle(title);
+      const normalizedTitle = normalizeTitle(title);
 
       if (normalizedTitle) {
         await this.prisma.conversation.update({
@@ -164,35 +166,6 @@ export class ConversationService {
         `Failed to generate title for conversation ${conversationId}: ${error.message}`,
       );
     }
-  }
-
-  private buildFallbackTitle(content: string): string {
-    const cleaned = content
-      .replace(/```[\s\S]*?```/g, " ")
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
-      .replace(/[\r\n]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (!cleaned) {
-      return "New Conversation";
-    }
-
-    const words = cleaned.split(" ").filter(Boolean).slice(0, 6);
-
-    return words.join(" ");
-  }
-
-  private normalizeTitle(title: string | undefined): string {
-    if (!title) return "";
-
-    return title
-      .replace(/[\r\n]+/g, " ")
-      .replace(/\s+/g, " ")
-      .replace(/^['"`\s]+|['"`\s]+$/g, "")
-      .replace(/[.?!,:;\-]+$/g, "")
-      .trim()
-      .slice(0, 120);
   }
 
   /**
