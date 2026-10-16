@@ -36,10 +36,11 @@ Pilot, `CodesService.redeemCode` (shortened):
 
 ```ts
 const result = await this.transactions.run(async (tx) => {
+  if (!(await this.codes.claimRedemption(code.id, tx))) throw new BadRequestException(NO_REDEMPTIONS_LEFT);
+  if (await this.codes.findRedemption(code.id, userId, tx)) throw new ConflictException(ALREADY_REDEEMED);
   await this.codes.incrementUserBalance(userId, code.creditAmount, tx);
-  await this.codes.createTopupTransaction(userId, code.creditAmount, `code:${code.code}`, tx);
+  await this.codes.createTopupTransaction(userId, code.creditAmount, `code:${code.code}:${userId}`, tx);
   // ... the subscription, when the code grants one
-  await this.codes.incrementTimesRedeemed(code.id, tx);
   await this.codes.createRedemption(code.id, userId, { creditsGranted, planGranted, daysGranted }, tx);
   return { creditsGranted, planGranted, daysGranted };
 });

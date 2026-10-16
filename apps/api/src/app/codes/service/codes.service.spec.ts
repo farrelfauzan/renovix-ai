@@ -9,8 +9,8 @@ jest.mock("../../prisma/prisma.service", () => ({ PrismaService: class {} }));
 function setup(code: unknown) {
   const tx = {
     userSubscription: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
-    invitationCode: { update: jest.fn() },
-    codeRedemption: { create: jest.fn() },
+    invitationCode: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), fields: { maxRedemptions: {} } },
+    codeRedemption: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
     user: { update: jest.fn() },
     transaction: { create: jest.fn() },
   };

@@ -10,6 +10,10 @@ import { TransactionService } from "../../prisma/transaction.service";
 import { CreateCodeDto } from "../dto/redeem-code.dto";
 import { CodesRepository } from "../repository/codes.repository";
 
+const NO_REDEMPTIONS_LEFT =
+  "This code has reached its maximum number of redemptions";
+const ALREADY_REDEEMED = "You have already redeemed this code";
+
 @Injectable()
 export class CodesService {
   constructor(
@@ -45,20 +49,27 @@ export class CodesService {
     }
 
     if (code.timesRedeemed >= code.maxRedemptions) {
-      throw new BadRequestException(
-        "This code has reached its maximum number of redemptions",
-      );
+      throw new BadRequestException(NO_REDEMPTIONS_LEFT);
     }
 
     // Check if user already redeemed this code
     const existingRedemption = await this.codes.findRedemption(code.id, userId);
 
     if (existingRedemption) {
-      throw new ConflictException("You have already redeemed this code");
+      throw new ConflictException(ALREADY_REDEEMED);
     }
 
     // Execute redemption in a transaction
     const result = await this.transactions.run(async (tx) => {
+      // The checks above can race: claim a redemption first (this waits for any other redemption
+      // of this code to finish), then look again for this user's redemption.
+      if (!(await this.codes.claimRedemption(code.id, tx))) {
+        throw new BadRequestException(NO_REDEMPTIONS_LEFT);
+      }
+      if (await this.codes.findRedemption(code.id, userId, tx)) {
+        throw new ConflictException(ALREADY_REDEEMED);
+      }
+
       let creditsGranted: Decimal | null = null;
       let planGranted: string | null = null;
       let daysGranted: number | null = null;
@@ -75,7 +86,7 @@ export class CodesService {
         await this.codes.createTopupTransaction(
           userId,
           code.creditAmount,
-          `code:${code.code}`,
+          `code:${code.code}:${userId}`,
           tx,
         );
       }
@@ -133,9 +144,6 @@ export class CodesService {
           );
         }
       }
-
-      // Increment times redeemed
-      await this.codes.incrementTimesRedeemed(code.id, tx);
 
       // Create redemption record
       await this.codes.createRedemption(

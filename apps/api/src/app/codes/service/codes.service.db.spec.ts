@@ -1,4 +1,4 @@
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { CodesService } from "./codes.service";
 import { CodesRepository } from "../repository/codes.repository";
@@ -21,12 +21,144 @@ describe("CodesService.redeemCode (test database)", () => {
 
   beforeEach(() => resetDatabase(prisma));
 
+  afterEach(() => jest.restoreAllMocks());
+
   afterAll(() => moduleRef?.close());
 
   const subscriptionCode = (planId: string, code = "PERF-TEST-0001") =>
     prisma.invitationCode.create({
       data: { code, type: "subscription", planId, durationDays: 30 },
     });
+
+  const topupCode = (maxRedemptions: number, code = "PERF-TOPUP-0001") =>
+    prisma.invitationCode.create({
+      data: { code, type: "topup", creditAmount: 25, maxRedemptions },
+    });
+
+  /** Holds every caller at `findRedemption` (after the limit check, before the transaction) until `callers` are waiting. */
+  const holdCallersAtRedemptionCheck = (callers: number) => {
+    const repository = moduleRef.get(CodesRepository);
+    const findRedemption = repository.findRedemption.bind(repository);
+    let arrived = 0;
+    let releaseAll!: () => void;
+    const allArrived = new Promise<void>((resolve) => (releaseAll = resolve));
+    const heldFindRedemption = async (...args: Parameters<typeof findRedemption>) => {
+      arrived += 1;
+      if (arrived === callers) releaseAll();
+      await allArrived;
+      return findRedemption(...args);
+    };
+    jest
+      .spyOn(repository, "findRedemption")
+      .mockImplementation(heldFindRedemption as typeof findRedemption);
+  };
+
+  /** The user's balance and the sum of the user's successful top-up rows. */
+  const balanceAndLedger = async (userId: string) => {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const ledger = await prisma.transaction.aggregate({
+      where: { userId, type: "topup", status: "success" },
+      _sum: { amount: true },
+    });
+    return { balance: user.balance.toNumber(), ledgerSum: ledger._sum.amount?.toNumber() ?? 0 };
+  };
+
+  it("RX-147: lets two users redeem a multi-use credit code, one ledger row each", async () => {
+    const [userA, userB] = [await createUser(prisma), await createUser(prisma)];
+    const plan = await createPlan(prisma, { slug: "pro" });
+    const code = await prisma.invitationCode.create({
+      data: { code: "PERF-BOTH-0003", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30, maxRedemptions: 3 },
+    });
+
+    await service.redeemCode(userA.id, code.code);
+    const resB = await service.redeemCode(userB.id, code.code);
+
+    expect(resB).toMatchObject({ success: true, creditsGranted: 25, planGranted: "pro" });
+    for (const user of [userA, userB]) {
+      expect(await balanceAndLedger(user.id)).toEqual({ balance: 25, ledgerSum: 25 });
+      expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
+    }
+  });
+
+  it("RX-147: refuses a user's second redemption of a code with uses left and changes nothing", async () => {
+    const user = await createUser(prisma);
+    const code = await topupCode(3);
+    await service.redeemCode(user.id, code.code);
+
+    await expect(service.redeemCode(user.id, code.code)).rejects.toBeInstanceOf(ConflictException);
+
+    expect(await balanceAndLedger(user.id)).toEqual({ balance: 25, ledgerSum: 25 });
+    expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
+    expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
+      timesRedeemed: 1,
+    });
+  });
+
+  it("RX-147: refuses a second user on a single-use code with the maximum-redemptions 400", async () => {
+    const [userA, userB] = [await createUser(prisma), await createUser(prisma)];
+    const code = await topupCode(1);
+    await service.redeemCode(userA.id, code.code);
+
+    const redeemB = service.redeemCode(userB.id, code.code);
+
+    await expect(redeemB).rejects.toBeInstanceOf(BadRequestException);
+    await expect(redeemB).rejects.toThrow("maximum number of redemptions");
+    expect(await balanceAndLedger(userB.id)).toEqual({ balance: 0, ledgerSum: 0 });
+  });
+
+  it("RX-147: keeps a fresh user's balance equal to the sum of the user's ledger rows after each redemption", async () => {
+    const user = await createUser(prisma);
+    const first = await topupCode(5, "PERF-TOPUP-0001");
+    const second = await topupCode(5, "PERF-TOPUP-0002");
+
+    await service.redeemCode(user.id, first.code);
+    expect(await balanceAndLedger(user.id)).toEqual({ balance: 25, ledgerSum: 25 });
+    await service.redeemCode(user.id, second.code);
+    expect(await balanceAndLedger(user.id)).toEqual({ balance: 50, ledgerSum: 50 });
+  });
+
+  it("RX-147: grants a two-use code to exactly two of three users redeeming at the same moment", async () => {
+    const users = [await createUser(prisma), await createUser(prisma), await createUser(prisma)];
+    const code = await topupCode(2);
+    holdCallersAtRedemptionCheck(users.length);
+
+    const results = await Promise.allSettled(users.map((u) => service.redeemCode(u.id, code.code)));
+
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    expect(refused).toHaveLength(1);
+    expect((refused[0] as PromiseRejectedResult).reason).toBeInstanceOf(BadRequestException);
+    expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
+      timesRedeemed: 2,
+    });
+    expect(await prisma.codeRedemption.count()).toBe(2);
+    expect(await prisma.transaction.count()).toBe(2);
+    const balances = await Promise.all(users.map((u) => balanceAndLedger(u.id)));
+    expect(balances.map((b) => b.balance).sort()).toEqual([0, 25, 25]);
+    balances.forEach((b) => expect(b.balance).toBe(b.ledgerSum));
+  });
+
+  it("RX-147: grants once when the same user redeems one code twice at the same moment (201 and 409, never 500)", async () => {
+    const user = await createUser(prisma);
+    const code = await topupCode(3);
+    holdCallersAtRedemptionCheck(2);
+
+    const results = await Promise.allSettled([
+      service.redeemCode(user.id, code.code),
+      service.redeemCode(user.id, code.code),
+    ]);
+
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect((refused[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
+    expect(await prisma.codeRedemption.count({ where: { userId: user.id } })).toBe(1);
+    expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
+    expect(await balanceAndLedger(user.id)).toEqual({ balance: 25, ledgerSum: 25 });
+    expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
+      timesRedeemed: 1,
+    });
+  });
 
   it("grants the code's plan as an active subscription", async () => {
     const user = await createUser(prisma);
