@@ -4,7 +4,7 @@ import { Decimal } from "@prisma/client/runtime/client";
 import type { DbTransaction } from "./db-transaction";
 import { PrismaService } from "./prisma.service";
 import { TransactionService } from "./transaction.service";
-import { CodesRepository } from "../codes/repository/codes.repository";
+import { UserRepository } from "../auth/repository/user.repository";
 import { createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import { createUser } from "../../../test/factories";
@@ -24,7 +24,7 @@ describe("TransactionService.run (test database)", () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let transactions: TransactionService;
-  let codes: CodesRepository;
+  let codes: UserRepository;
   let users: UsersRepository;
   let userId: string;
 
@@ -39,7 +39,7 @@ describe("TransactionService.run (test database)", () => {
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({ providers: [UsersRepository] }));
     transactions = moduleRef.get(TransactionService);
-    codes = moduleRef.get(CodesRepository);
+    codes = moduleRef.get(UserRepository);
     users = moduleRef.get(UsersRepository);
   });
 

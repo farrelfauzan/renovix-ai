@@ -974,7 +974,7 @@ model AdminNotification {
 // ─── Offer catalog and platform settings (RX-86, docs/credits.md section 9) ─────
 // Offers are rows managed in the back office, never code (D46); values come from prisma/offers.seed.json
 // (`bun run seed:offers`) until the catalog screens exist (RX-98). SubscriptionPlan, UserSubscription and
-// InvitationCode stay as they are: live code (agent.service.ts, codes.repository.ts) still reads them;
+// InvitationCode stay as they are: live code (agent.service.ts, the billing and codes repositories) still reads them;
 // retiring them is later work. Version rows, purchase snapshots and change records are append-only: a
 // trigger refuses every UPDATE and DELETE (migration 20261015150000_offer_catalog).
 

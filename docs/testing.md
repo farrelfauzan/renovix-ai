@@ -63,7 +63,7 @@ beforeEach(() => resetDatabase(prisma));
 afterAll(() => moduleRef?.close());
 ```
 
-- `createTestModule(metadata, override?)` builds a Nest testing module with the real `PrismaService` (on the test database), every repository (the list `REPOSITORIES` in `apps/api/test/test-module.ts`; add a new repository there), the global `AccessGuard` registered as in `AppModule` (RX-114: a route without `@Access` answers 403) plus your `metadata`. `override` receives the builder for `overrideProvider` / `overrideGuard`.
+- `createTestModule(metadata, override?)` builds a Nest testing module with the real `PrismaService` (on the test database), every repository (it imports `RepositoriesModule`, `apps/api/src/app/prisma/repositories.module.ts`, as `AppModule` does; a new repository is added there), the global `AccessGuard` registered as in `AppModule` (RX-114: a route without `@Access` answers 403) plus your `metadata`. `override` receives the builder for `overrideProvider` / `overrideGuard`.
 - `createFastifyApp(moduleRef)` starts it as a Fastify app for `app.inject(...)`; close it with `app.close()`.
 - `resetDatabase(prisma)` truncates every table except `_prisma_migrations`. The migrations insert no plans (RX-90); create the plans a test needs with `createPlan`. The truncate also removes the five built-in back-office roles (RX-96): `seedAdminRoles(prisma)` in `apps/api/test/admin-auth.ts` runs the baseline migration's own INSERT again (`createAdmin` there calls it).
 - Files run one at a time (`maxWorkers: 1`) because they share one database.
@@ -79,7 +79,7 @@ Use a held-callers spy. `jest.spyOn` the method that every caller reaches after 
 
 ```ts
 const holdCallersAtRedemptionCheck = (callers: number) => {
-  const repository = moduleRef.get(CodesRepository);
+  const repository = moduleRef.get(CodeRedemptionRepository);
   const findRedemption = repository.findRedemption.bind(repository);
   let arrived = 0;
   let releaseAll!: () => void;
@@ -111,7 +111,7 @@ A race-fix PR shows D83 evidence:
 - Red on the old code on every run (at least 3 runs).
 - Green after the fix on every run (at least 3 runs).
 - Two planted faults, each turning its test red before the code is restored:
-  - (a) Remove the guard: the `timesRedeemed: { lt: ... maxRedemptions }` condition of `claimRedemption` in `codes.repository.ts`.
+  - (a) Remove the guard: the `timesRedeemed: { lt: ... maxRedemptions }` condition of `claimRedemption` in `invitation-code.repository.ts`.
   - (b) Wrong order: move `findRedemption(code.id, userId, tx)` before `claimRedemption` in `codes.service.ts`.
 
 ## Factories

@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { CodesService } from "./codes.service";
-import { CodesRepository } from "../repository/codes.repository";
+import { CodeRedemptionRepository } from "../repository/code-redemption.repository";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -37,7 +37,7 @@ describe("CodesService.redeemCode (test database)", () => {
 
   /** Holds every caller at `findRedemption` (after the limit check, before the transaction) until `callers` are waiting. */
   const holdCallersAtRedemptionCheck = (callers: number) => {
-    const repository = moduleRef.get(CodesRepository);
+    const repository = moduleRef.get(CodeRedemptionRepository);
     const findRedemption = repository.findRedemption.bind(repository);
     let arrived = 0;
     let releaseAll!: () => void;
@@ -208,7 +208,7 @@ describe("CodesService.redeemCode (test database)", () => {
       data: { code: "PERF-BOTH-0001", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30 },
     });
     jest
-      .spyOn(moduleRef.get(CodesRepository), "createRedemption")
+      .spyOn(moduleRef.get(CodeRedemptionRepository), "createRedemption")
       .mockRejectedValueOnce(new Error("the redemption row cannot be written"));
 
     const redeem = service.redeemCode(user.id, code.code);
@@ -234,7 +234,7 @@ describe("CodesService.redeemCode (test database)", () => {
     const before = await createSubscription(prisma, { userId: user.id, planId: basic.id, status: "active", messagesUsed: 7 });
     const code = await subscriptionCode(pro.id);
     jest
-      .spyOn(moduleRef.get(CodesRepository), "createRedemption")
+      .spyOn(moduleRef.get(CodeRedemptionRepository), "createRedemption")
       .mockRejectedValueOnce(new Error("the redemption row cannot be written"));
 
     const redeem = service.redeemCode(user.id, code.code);

@@ -7,6 +7,7 @@ import { ScheduleModule } from "@nestjs/schedule";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { PrismaModule } from "./prisma/prisma.module";
+import { RepositoriesModule } from "./prisma/repositories.module";
 import { AuthModule } from "./auth/auth.module";
 import { ChatModule } from "./chat/chat.module";
 import { BillingModule } from "./billing/billing.module";
@@ -50,6 +51,7 @@ import { clientIp } from "../common/utils/client-ip";
       getTracker: (req) => clientIp(req as FastifyRequest),
     }),
     PrismaModule,
+    RepositoriesModule,
     ConfigRegistryModule,
     AuthModule,
     ChatModule,

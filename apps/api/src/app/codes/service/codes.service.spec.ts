@@ -1,6 +1,11 @@
 import { NotFoundException } from "@nestjs/common";
 import { CodesService } from "./codes.service";
-import { CodesRepository } from "../repository/codes.repository";
+import { InvitationCodeRepository } from "../repository/invitation-code.repository";
+import { CodeRedemptionRepository } from "../repository/code-redemption.repository";
+import { SubscriptionPlanRepository } from "../../billing/repository/subscription-plan.repository";
+import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
+import { TransactionRepository } from "../../billing/repository/transaction.repository";
+import { UserRepository } from "../../auth/repository/user.repository";
 import { TransactionService } from "../../prisma/transaction.service";
 
 // PrismaService loads the generated client; a plain mock object is passed in instead.
@@ -20,7 +25,12 @@ function setup(code: unknown) {
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const service = new CodesService(
-    new CodesRepository(prisma as never),
+    new InvitationCodeRepository(prisma as never),
+    new CodeRedemptionRepository(prisma as never),
+    new SubscriptionPlanRepository(prisma as never),
+    new UserSubscriptionRepository(prisma as never),
+    new TransactionRepository(),
+    new UserRepository(),
     new TransactionService(prisma as never),
   );
   return { service, tx };

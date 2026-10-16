@@ -103,12 +103,17 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 
 ### Repositories
 
-- New code reaches the database only through a repository: `<module>/repository/<name>.repository.ts`, an injectable class that takes `PrismaService`. Only repositories and the Prisma module (`apps/api/src/app/prisma/`) import `PrismaService` or the generated Prisma client; `import type` from the generated client is allowed everywhere. Controllers, guards and schedulers use services, never repositories.
+- New code reaches the database only through a repository: `<module>/repository/<table>.repository.ts`, an injectable class that takes `PrismaService` (unless every method needs `tx`). Only repositories and the Prisma module (`apps/api/src/app/prisma/`) import `PrismaService` or the generated Prisma client; `import type` from the generated client is allowed everywhere. Controllers, guards and schedulers use services, never repositories.
 - A repository holds queries only. Its methods are named for the operation (`findRedemption(codeId, userId)`), take the user or workspace as a required argument and return Prisma's generated types. A service never builds a query condition; who may do what stays in the service. Raw SQL lives only in repositories.
 - Every repository method takes the transaction (`DbTransaction`) as its last argument: optional, and required on a method that changes a balance or writes a ledger or redemption row. A service runs several repository calls in one transaction with `TransactionService.run(work, options?, tx?)`; given `tx` it joins that transaction. Both come from the Prisma module. Never keep a transaction open across a model call or a stream.
 - `PrismaService` carries the default filter for soft-deleted rows (no model on it yet). It covers top-level reads only: a relation in `include` or `select`, `_count`, a relation filter, raw SQL and every write need the condition written in the repository.
 - `bun run check` enforces the import rule (step "prisma imports", `scripts/check-prisma-imports.ts`). `scripts/prisma-import-exceptions.ts` lists the files not moved yet; it may only shrink, never add a file to it.
-- In tests `createTestModule` provides the repositories; add a new one to the list in `apps/api/test/test-module.ts`. Pilot: `apps/api/src/app/codes/`. Rules, decisions and measurements: `docs/repository-layer.md`.
+- Four rules (RX-148), examples in `docs/repository-layer.md`, section "Where repositories live":
+  1. One repository per table, not per module (D100). The codes module uses six: `InvitationCodeRepository`, `CodeRedemptionRepository`, `UserSubscriptionRepository`, `SubscriptionPlanRepository`, `TransactionRepository`, `UserRepository`. A method that also reads a second table through `include` goes to the repository of the table it is called on (`InvitationCodeRepository.findCodeWithPlan`).
+  2. No value import of the generated Prisma client outside repositories; services write enum values as strings (`status: "active"`); a repository turns a Prisma error into one of the app's error classes, which are Nest's HTTP exceptions (D101, D103). Example: `AdminUserRepository.updateRole` turns `P2003` into `BadRequestException("Unknown role")`; the codes repositories map none.
+  3. A table used by several modules has its repository in the module that owns the table: `invitation_codes` and `code_redemptions` in codes; `user_subscriptions`, `subscription_plans` and `transactions` in billing; `users` in auth. One global module, `RepositoriesModule` (`apps/api/src/app/prisma/repositories.module.ts`), provides and exports every repository; `AppModule` imports it once and a new repository is added to its list. A feature module lists no repository in its `providers` and never imports another module to get one (D103).
+  4. "Fewer than 10 public methods" is a number the pull request reports for each repository it adds or grows, with a reason when it is above 10; it is not a hard limit (D103).
+- In tests `createTestModule` imports `RepositoriesModule`, so a test lists only the service it tests. Pilot: `apps/api/src/app/codes/`. Rules, decisions and measurements: `docs/repository-layer.md`.
 
 ## Database
 
@@ -126,7 +131,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - Platform settings (`platform_settings`) are typed: each name has a Zod schema in `offers/config/platform-settings.ts`, checked on every write; an unknown name or an invalid value is refused and nothing is written. A setting without a row is not set.
 - Every write to a catalog row, a contract or a setting writes a `catalog_changes` row in the same transaction: who (admin id, or `seed:<operator>`), why, when it takes effect, values before and after.
 - Values come only from `prisma/offers.seed.json`, which the Tech Lead edits; no price, credit amount or limit is written in code. `SEED_OPERATOR=<name> bun run seed:offers [file]` validates the file and applies it in one transaction to the database `DATABASE_URL` names; running it again with the same file writes nothing, changed terms create a new version. null or a missing entry means not decided yet and writes nothing.
-- `SubscriptionPlan`, `UserSubscription` and `InvitationCode` are unchanged and still read by the live code (`agent.service.ts`, `codes.repository.ts`); `prisma/seed.ts` still seeds the old plans. Retiring them is later work.
+- `SubscriptionPlan`, `UserSubscription` and `InvitationCode` are unchanged and still read by the live code (`agent.service.ts`, and `codes.service.ts` through `SubscriptionPlanRepository`, `UserSubscriptionRepository` and `InvitationCodeRepository`); `prisma/seed.ts` still seeds the old plans. Retiring them is later work.
 
 ## Frontend Patterns
 

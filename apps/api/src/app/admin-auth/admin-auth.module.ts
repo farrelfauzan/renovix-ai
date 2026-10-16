@@ -1,14 +1,8 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { AdminAuditModule } from "./admin-audit.module";
 import { AdminSessionModule } from "./admin-session.module";
 import { AdminAuditLogController } from "./controller/admin-audit-log.controller";
 import { AdminAuthController } from "./controller/admin-auth.controller";
-import { AdminNotificationRepository } from "./repository/admin-notification.repository";
-import { AdminPiiGrantRepository } from "./repository/admin-pii-grant.repository";
-import { AdminRecoveryCodeRepository } from "./repository/admin-recovery-code.repository";
-import { AdminRoleRepository } from "./repository/admin-role.repository";
-import { AdminUserRepository } from "./repository/admin-user.repository";
 import { AdminAuditLogService } from "./service/admin-audit-log.service";
 import { AdminEnrolmentService } from "./service/admin-enrolment.service";
 import { AdminRoleService } from "./service/admin-role.service";
@@ -26,14 +20,9 @@ import { TotpService } from "./service/totp.service";
  * Audit log screen (RX-164): the read route and the CSV export under /admin/audit-log.
  */
 @Module({
-  imports: [ConfigModule, AdminSessionModule, AdminAuditModule],
+  imports: [ConfigModule, AdminSessionModule],
   controllers: [AdminAuthController, AdminAuditLogController],
   providers: [
-    AdminUserRepository,
-    AdminRecoveryCodeRepository,
-    AdminNotificationRepository,
-    AdminRoleRepository,
-    AdminPiiGrantRepository,
     PasswordService,
     TotpService,
     AdminSignInService,
