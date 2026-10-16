@@ -71,6 +71,49 @@ afterAll(() => moduleRef?.close());
 
 Examples: `codes/service/codes.service.db.spec.ts` (service), `guards/api-key.guard.spec.ts` (guard), `codes/controller/codes.controller.spec.ts` (controller via Fastify `inject`).
 
+### Race tests
+
+A plain `Promise.all` over the callers does not show a race. Each caller usually finishes before the next one starts on the event loop, so the test passes on broken code on most runs. D83 needs red on every run, so a race test must force the callers to overlap.
+
+Use a held-callers spy. `jest.spyOn` the method that every caller reaches after the checks that can race and before the guarded write. Count the callers as they arrive. Release all of them once N have arrived. Later calls of the same method (inside the transaction) pass straight through, because the promise is already resolved. `afterEach(() => jest.restoreAllMocks())` removes the spy.
+
+```ts
+const holdCallersAtRedemptionCheck = (callers: number) => {
+  const repository = moduleRef.get(CodesRepository);
+  const findRedemption = repository.findRedemption.bind(repository);
+  let arrived = 0;
+  let releaseAll!: () => void;
+  const allArrived = new Promise<void>((resolve) => (releaseAll = resolve));
+  const heldFindRedemption = async (...args: Parameters<typeof findRedemption>) => {
+    arrived += 1;
+    if (arrived === callers) releaseAll();
+    await allArrived;
+    return findRedemption(...args);
+  };
+  jest
+    .spyOn(repository, "findRedemption")
+    .mockImplementation(heldFindRedemption as typeof findRedemption);
+};
+```
+
+Hold at the point after every read that decides whether the write is allowed, and before the transaction that writes. Then every caller has passed the checks on the same state before any of them writes, which is the race. Hold inside the transaction instead and the first caller's row lock makes the others wait, so the test proves nothing about the checks. In RX-147 the held method is `findRedemption`: every caller reaches it after the limit check and before `transactions.run` in `codes.service.ts`.
+
+The RX-147 race tests are in `codes/service/codes.service.db.spec.ts`:
+
+- "RX-147: lets two users redeem a multi-use credit code, one ledger row each"
+- "RX-147: grants a two-use code to exactly two of three users redeeming at the same moment"
+- "RX-147: grants once when the same user redeems one code twice at the same moment (201 and 409, never 500)"
+
+These tests rely on Postgres READ COMMITTED, the default isolation level of `TransactionService.run` (`apps/api/src/app/prisma/transaction.service.ts`), which sets no isolation level unless `options` are passed. Under READ COMMITTED a conditional `updateMany` re-reads the row after a concurrent commit, which is why `claimRedemption` is safe.
+
+A race-fix PR shows D83 evidence:
+
+- Red on the old code on every run (at least 3 runs).
+- Green after the fix on every run (at least 3 runs).
+- Two planted faults, each turning its test red before the code is restored:
+  - (a) Remove the guard: the `timesRedeemed: { lt: ... maxRedemptions }` condition of `claimRedemption` in `codes.repository.ts`.
+  - (b) Wrong order: move `findRedemption(code.id, userId, tx)` before `claimRedemption` in `codes.service.ts`.
+
 ## Factories
 
 `apps/api/test/factories.ts`: `createUser`, `createPlan`, `createSubscription({ userId, planId })`, `createAgent({ userId })`, `createWorkspace({ ownerId })`. Each fills the required fields with unique values; pass any field to override it.
