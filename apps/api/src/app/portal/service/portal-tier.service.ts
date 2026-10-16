@@ -2,8 +2,9 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Cron } from "@nestjs/schedule";
 import { createHmac } from "node:crypto";
-import type { Prisma } from "@generated/prisma/client.js";
-import { PrismaService } from "../../prisma/prisma.service";
+import { TransactionService } from "../../prisma/transaction.service";
+import { AnonymousUsageCounterRepository } from "../repository/anonymous-usage-counter.repository";
+import { PortalSessionRepository } from "../repository/portal-session.repository";
 
 const FREE_REQUEST_LIMIT = 20;
 const MAX_SESSIONS_PER_IP = 3;
@@ -48,7 +49,9 @@ export class PortalTierService {
   private readonly dailyGlobalCap: number;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly sessions: PortalSessionRepository,
+    private readonly counters: AnonymousUsageCounterRepository,
+    private readonly transactions: TransactionService,
     config: ConfigService,
   ) {
     this.ipHashSecret = config.getOrThrow<string>("IP_HASH_SECRET");
@@ -83,17 +86,12 @@ export class PortalTierService {
   }
 
   async getOrCreateSession(sessionToken: string, ip?: string) {
-    const existing = await this.prisma.portalSession.findUnique({
-      where: { sessionToken },
-    });
+    const existing = await this.sessions.findSessionByToken(sessionToken);
 
     if (existing) {
       // Reset request count if last reset was before today
       if (existing.lastResetAt < startOfJakartaDay()) {
-        return this.prisma.portalSession.update({
-          where: { sessionToken },
-          data: { requestCount: 0, lastResetAt: new Date() },
-        });
+        return this.sessions.resetRequestCount(sessionToken);
       }
       return existing;
     }
@@ -102,27 +100,17 @@ export class PortalTierService {
 
     // Check IP-based session limit (only count sessions created in last 24h)
     if (ipAddress) {
-      const recentSessions = await this.prisma.portalSession.count({
-        where: {
-          ipAddress,
-          createdAt: {
-            gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          },
-        },
-      });
+      const recentSessions = await this.sessions.countSessionsCreatedSince(
+        ipAddress,
+        new Date(Date.now() - 24 * 60 * 60 * 1000),
+      );
 
       if (recentSessions >= MAX_SESSIONS_PER_IP) {
         return null; // signal that session creation is blocked
       }
     }
 
-    return this.prisma.portalSession.create({
-      data: {
-        sessionToken,
-        ipAddress: ipAddress ?? null,
-        lastResetAt: new Date(),
-      },
-    });
+    return this.sessions.createSession(sessionToken, ipAddress ?? null);
   }
 
   /**
@@ -137,19 +125,34 @@ export class PortalTierService {
     const ipHash = this.hashIp(ip);
     const day = jakartaDay();
     try {
-      await this.prisma.$transaction(async (tx) => {
-        const session = await tx.$queryRaw<unknown[]>`
-          UPDATE "portal_sessions"
-          SET "requestCount" = "requestCount" + 1, "lastRequestAt" = now()
-          WHERE "sessionToken" = ${sessionToken}
-            AND "requestCount" < ${FREE_REQUEST_LIMIT}
-          RETURNING "requestCount"`;
-        if (session.length === 0) throw new CapReached("session");
-
-        if (!(await this.bump(tx, `ip:${ipHash}`, day, this.dailyIpCap))) {
+      await this.transactions.run(async (tx) => {
+        if (
+          !(await this.sessions.incrementFreeRequestCount(
+            sessionToken,
+            FREE_REQUEST_LIMIT,
+            tx,
+          ))
+        ) {
+          throw new CapReached("session");
+        }
+        if (
+          !(await this.counters.incrementCounterBelowCap(
+            `ip:${ipHash}`,
+            day,
+            this.dailyIpCap,
+            tx,
+          ))
+        ) {
           throw new CapReached("ip");
         }
-        if (!(await this.bump(tx, "global", day, this.dailyGlobalCap))) {
+        if (
+          !(await this.counters.incrementCounterBelowCap(
+            "global",
+            day,
+            this.dailyGlobalCap,
+            tx,
+          ))
+        ) {
           throw new CapReached("global");
         }
       });
@@ -165,23 +168,6 @@ export class PortalTierService {
     }
   }
 
-  /** Adds one to a daily counter unless it is at `cap`; false when at the cap. */
-  private async bump(
-    tx: Prisma.TransactionClient,
-    bucket: string,
-    day: string,
-    cap: number,
-  ): Promise<boolean> {
-    const rows = await tx.$queryRaw<unknown[]>`
-      INSERT INTO "anonymous_usage_counters" ("bucket", "day", "count")
-      VALUES (${bucket}, ${day}::date, 1)
-      ON CONFLICT ("bucket", "day") DO UPDATE
-      SET "count" = "anonymous_usage_counters"."count" + 1
-      WHERE "anonymous_usage_counters"."count" < ${cap}
-      RETURNING "count"`;
-    return rows.length > 0;
-  }
-
   async getUsage(
     sessionToken: string,
     userBalance?: number,
@@ -194,18 +180,13 @@ export class PortalTierService {
       };
     }
 
-    const session = await this.prisma.portalSession.findUnique({
-      where: { sessionToken },
-    });
+    const session = await this.sessions.findSessionByToken(sessionToken);
 
     let used = session?.requestCount ?? 0;
 
     // Auto-reset if a new day has started
     if (session && session.lastResetAt < startOfJakartaDay()) {
-      await this.prisma.portalSession.update({
-        where: { sessionToken: session.sessionToken },
-        data: { requestCount: 0, lastResetAt: new Date() },
-      });
+      await this.sessions.resetRequestCount(session.sessionToken);
       used = 0;
     }
 
@@ -218,26 +199,15 @@ export class PortalTierService {
   }
 
   async linkSessionToUser(sessionToken: string, userId: string): Promise<void> {
-    await this.prisma.portalSession.upsert({
-      where: { sessionToken },
-      update: { userId },
-      create: {
-        sessionToken,
-        userId,
-        lastResetAt: new Date(),
-      },
-    });
+    await this.sessions.linkSessionToUser(sessionToken, userId);
   }
 
   /** Daily at 00:00 WIB: reset all request counts */
   @Cron("0 0 * * *", { timeZone: "Asia/Jakarta" })
   async resetDailyRequestCounts(): Promise<void> {
-    const result = await this.prisma.portalSession.updateMany({
-      where: {
-        lastResetAt: { lt: startOfJakartaDay() },
-      },
-      data: { requestCount: 0, lastResetAt: new Date() },
-    });
+    const result = await this.sessions.resetRequestCountsResetBefore(
+      startOfJakartaDay(),
+    );
 
     if (result.count > 0) {
       this.logger.log(
@@ -252,20 +222,15 @@ export class PortalTierService {
     const cutoff = jakartaDay(
       new Date(Date.now() - COUNTER_RETENTION_DAYS * 24 * 60 * 60 * 1000),
     );
-    await this.prisma.anonymousUsageCounter.deleteMany({
-      where: { day: { lt: new Date(`${cutoff}T00:00:00Z`) } },
-    });
+    await this.counters.deleteCountersBefore(new Date(`${cutoff}T00:00:00Z`));
   }
 
   /** Weekly cleanup: remove sessions inactive for 30+ days */
   @Cron("0 1 * * 0")
   async cleanupStaleSessions(): Promise<void> {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const result = await this.prisma.portalSession.deleteMany({
-      where: {
-        lastRequestAt: { lt: thirtyDaysAgo },
-      },
-    });
+    const result =
+      await this.sessions.deleteSessionsLastRequestedBefore(thirtyDaysAgo);
 
     if (result.count > 0) {
       this.logger.log(`Cleaned up ${result.count} stale portal sessions`);

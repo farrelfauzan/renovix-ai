@@ -15,7 +15,7 @@ Decided by the Tech Lead: the rules on 2026-10-10 (plan decisions 16, 17, 18 and
 Four rules, each with its example in the code.
 
 **(1) One repository per table, not per module (D100).**
-`apps/api/src/app/<module>/repository/<table>.repository.ts`: an injectable class named for its table. It takes `PrismaService` in its constructor for the methods that run without a transaction; `UserRepository` and `TransactionRepository` have only methods that need `tx`, so their constructor takes nothing. The codes module reaches six tables through six repositories:
+`apps/api/src/app/<module>/repository/<table>.repository.ts`: an injectable class named for its table. It takes `PrismaService` in its constructor for the methods that run without a transaction; `TransactionRepository` has only methods that need `tx`, so its constructor takes nothing. The codes module reaches six tables through six repositories:
 
 | Table | Repository | File | Owner module | Public methods |
 |---|---|---|---|---|
@@ -24,7 +24,7 @@ Four rules, each with its example in the code.
 | `user_subscriptions` | `UserSubscriptionRepository` | `billing/repository/user-subscription.repository.ts` | billing | 3: `findSubscriptionByUserId`, `createSubscription`, `updateSubscription` |
 | `subscription_plans` | `SubscriptionPlanRepository` | `billing/repository/subscription-plan.repository.ts` | billing | 1: `findPlanById` |
 | `transactions` | `TransactionRepository` | `billing/repository/transaction.repository.ts` | billing | 1: `createTopupTransaction` |
-| `users` | `UserRepository` | `auth/repository/user.repository.ts` | auth | 1: `incrementUserBalance` |
+| `users` | `UserRepository` | `auth/repository/user.repository.ts` | auth | 8 (RX-138): `findUserByEmail`, `createUser`, `updateLastLogin`, `findProfileOrThrow`, `updateApiKey`, `updateProfile`, `findPortalUser`, `incrementUserBalance`; codes uses `incrementUserBalance` |
 
 A method that also reads a second table (an `include`) belongs to the table it is called on: `findCodeWithPlan`, `listCodes` and `createCode` (with the plan) are in `InvitationCodeRepository`, `findRedemptionsByUser` (with the code text and type) is in `CodeRedemptionRepository`. A service injects every repository it uses: `CodesService` takes the six above and `TransactionService`.
 
@@ -32,7 +32,7 @@ A method that also reads a second table (an `include`) belongs to the table it i
 No value import of the generated Prisma client outside the repositories and the Prisma module (`import type` is allowed, rule (a) and the import check below). Services write enum values as strings: `CodesService` checks `code.type === "topup"` and passes `status: "active"`, and `TransactionRepository.createTopupTransaction` writes `type: "topup", status: "success"`. A repository turns a Prisma error into one of the app's error classes, which are Nest's HTTP exceptions (D103). The six repositories above map no Prisma error, so the example is `AdminUserRepository.updateRole` (`admin-auth/repository/admin-user.repository.ts`): a `PrismaClientKnownRequestError` with code `P2003` (no role with that name) becomes `BadRequestException("Unknown role")`.
 
 **(3) A table used by several modules: its repository sits in the module that owns the table; one global module provides them all (D103).**
-Owners: `invitation_codes` and `code_redemptions` belong to codes; `user_subscriptions`, `subscription_plans` and `transactions` to billing; `users` to auth. `RepositoriesModule` (`apps/api/src/app/prisma/repositories.module.ts`) is `@Global()` and lists every repository of the API in its `providers` and `exports`; `AppModule` imports it once. No feature module lists a repository in its `providers`, and a feature module never imports another module to get a repository: `CodesModule` imports nothing to use the billing and auth repositories, and `AdminAuthModule` no longer imports `AdminAuditModule`, which it did only for `AdminAuditLogRepository`. A new repository is added to the list in `repositories.module.ts`.
+Owners: `invitation_codes` and `code_redemptions` belong to codes; `user_subscriptions`, `subscription_plans` and `transactions` to billing; `users` to auth; `portal_sessions` (`PortalSessionRepository`, 8 methods) and `anonymous_usage_counters` (`AnonymousUsageCounterRepository`, 2) to portal (RX-138). `RepositoriesModule` (`apps/api/src/app/prisma/repositories.module.ts`) is `@Global()` and lists every repository of the API in its `providers` and `exports`; `AppModule` imports it once. No feature module lists a repository in its `providers`, and a feature module never imports another module to get a repository: `CodesModule` imports nothing to use the billing and auth repositories, and `AdminAuthModule` no longer imports `AdminAuditModule`, which it did only for `AdminAuditLogRepository`. A new repository is added to the list in `repositories.module.ts`.
 
 In tests, `createTestModule` (`apps/api/test/test-module.ts`) imports `RepositoriesModule` as `AppModule` does, so a test lists the service it tests and nothing else.
 
@@ -99,7 +99,7 @@ In `apps/api/src/app/prisma/`:
 
 The seven points as decided:
 
-1. A repository method takes the transaction as its optional last argument and runs on the normal client without it. A method that changes a balance or writes a ledger or redemption row takes it as a required argument, so the compiler refuses a call outside a transaction.
+1. A repository method takes the transaction as its optional last argument and runs on the normal client without it. A method that changes a balance or writes a ledger or redemption row takes it as a required argument (so do the free tier's counter writes `incrementFreeRequestCount` and `incrementCounterBelowCap`, which run only inside the reservation transaction, RX-138), so the compiler refuses a call outside a transaction.
 2. Join: when the caller passes `tx`, `run` uses that transaction and opens nothing. An error that reaches the outer `run` rolls back the whole outer transaction. An error of a joined `run` that the outer work catches undoes nothing: the inner writes stay and are committed, so never catch one and go on. No nested transaction, no savepoint.
 3. No transaction across a model call or a stream. The helper has no begin and commit handle, so it cannot be kept open that way. For the credit service (RX-22) this means reserve, each ledger line and settle are separate short transactions, and a killed request is undone by a `release` call, not by a rollback.
 4. `options` may hold `isolationLevel`, `timeout` and `maxWait`. They are passed to Prisma only when `run` opens the transaction. Given together with `tx` they cannot be honoured, so `run` throws.

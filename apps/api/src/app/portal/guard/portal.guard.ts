@@ -6,7 +6,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { PrismaService } from "../../prisma/prisma.service";
+import { PortalUserService } from "../service/portal-user.service";
 import { auth } from "../../../lib/auth";
 
 export interface PortalIdentity {
@@ -25,7 +25,7 @@ export class PortalGuard implements CanActivate {
 
   constructor(
     private readonly jwtService: JwtService,
-    private readonly prisma: PrismaService,
+    private readonly portalUsers: PortalUserService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -47,10 +47,9 @@ export class PortalGuard implements CanActivate {
       if (!token.startsWith("sk_live_")) {
         try {
           const payload = this.jwtService.verify(token);
-          const dbUser = await this.prisma.user.findUnique({
-            where: { id: payload.userId },
-            select: { id: true, email: true, balance: true },
-          });
+          const dbUser = await this.portalUsers.findPortalUser(
+            payload.userId,
+          );
           if (dbUser) {
             user = {
               id: dbUser.id,
@@ -79,10 +78,9 @@ export class PortalGuard implements CanActivate {
         }
         const session = await auth.api.getSession({ headers });
         if (session?.user) {
-          const dbUser = await this.prisma.user.findUnique({
-            where: { id: session.user.id },
-            select: { id: true, email: true, balance: true },
-          });
+          const dbUser = await this.portalUsers.findPortalUser(
+            session.user.id,
+          );
           if (dbUser) {
             user = {
               id: dbUser.id,

@@ -30,7 +30,7 @@ function setup(code: unknown) {
     new SubscriptionPlanRepository(prisma as never),
     new UserSubscriptionRepository(prisma as never),
     new TransactionRepository(),
-    new UserRepository(),
+    new UserRepository(prisma as never),
     new TransactionService(prisma as never),
   );
   return { service, tx };

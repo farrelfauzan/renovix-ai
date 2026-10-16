@@ -4,6 +4,9 @@ import { TestingModule } from "@nestjs/testing";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../../prisma/prisma.service";
 import { PortalTierService, jakartaDay } from "./portal-tier.service";
+import { TransactionService } from "../../prisma/transaction.service";
+import { AnonymousUsageCounterRepository } from "../repository/anonymous-usage-counter.repository";
+import { PortalSessionRepository } from "../repository/portal-session.repository";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 
@@ -25,7 +28,9 @@ describe("RX-10: free-tier reservation (test database)", () => {
 
   const tierService = (caps: { ip?: number; global?: number } = {}) =>
     new PortalTierService(
-      prisma,
+      moduleRef.get(PortalSessionRepository),
+      moduleRef.get(AnonymousUsageCounterRepository),
+      moduleRef.get(TransactionService),
       new ConfigService({
         IP_HASH_SECRET: "rx10-test-secret",
         ANON_DAILY_IP_CAP: String(caps.ip ?? 60),
@@ -208,7 +213,9 @@ describe("RX-10: free-tier reservation (test database)", () => {
       .spyOn(Logger.prototype, "warn")
       .mockImplementation(() => undefined);
     const tier = new PortalTierService(
-      prisma,
+      moduleRef.get(PortalSessionRepository),
+      moduleRef.get(AnonymousUsageCounterRepository),
+      moduleRef.get(TransactionService),
       new ConfigService({
         IP_HASH_SECRET: "rx10-test-secret",
         ANON_DAILY_IP_CAP: "-3",
@@ -228,7 +235,15 @@ describe("RX-10: free-tier reservation (test database)", () => {
   });
 
   it("requires IP_HASH_SECRET", () => {
-    expect(() => new PortalTierService(prisma, new ConfigService({}))).toThrow(
+    expect(
+      () =>
+        new PortalTierService(
+          moduleRef.get(PortalSessionRepository),
+          moduleRef.get(AnonymousUsageCounterRepository),
+          moduleRef.get(TransactionService),
+          new ConfigService({}),
+        ),
+    ).toThrow(
       /IP_HASH_SECRET/,
     );
   });

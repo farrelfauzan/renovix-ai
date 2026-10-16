@@ -22,7 +22,6 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
   [`${SRC}/mcp/service/mcp-user.service.ts McpUserService.exchangeSlackCode`]: "test 2: network (fetch)",
   [`${SRC}/mcp/service/web-search.service.ts WebSearchService.validateBraveKey`]: "test 2: network (fetch)",
   [`${SRC}/mcp/service/web-search.service.ts WebSearchService.usageKey`]: "test 2: clock (new Date)",
-  [`${SRC}/portal/service/portal-tier.service.ts PortalTierService.bump`]: "test 2: database (a transaction client is passed in)",
 
   // Owned by a named ticket
   [`${SRC}/agent/service/agent-tool.service.ts AgentToolService.safeMathEval`]: "RX-55",

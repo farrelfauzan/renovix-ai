@@ -181,6 +181,38 @@ describe("RX-10: POST /chat/portal/completions free tier (Fastify, test database
     expect(JSON.stringify([sessions, counters])).not.toContain(ip);
   });
 
+  it("RX-138: without X-Portal-Session, POST /chat/portal/completions is 401 and counts nothing", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/chat/portal/completions",
+      remoteAddress: ip,
+      headers: { origin },
+      payload: { messages: [{ role: "user", content: "Hi" }] },
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(await prisma.portalSession.count()).toBe(0);
+    expect(await prisma.anonymousUsageCounter.count()).toBe(0);
+  });
+
+  it("RX-138: a session already at today's 20 requests answers 429 free_limit_reached and counts nothing", async () => {
+    const session = "55555555-5555-4555-8555-555555555555";
+    await prisma.portalSession.create({
+      data: { sessionToken: session, requestCount: 20, lastResetAt: new Date() },
+    });
+    const modelCallsBefore = fake.requests.length;
+
+    const res = await complete(session);
+
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error.code).toBe("free_limit_reached");
+    expect(fake.requests).toHaveLength(modelCallsBefore);
+    expect(
+      (await prisma.portalSession.findUniqueOrThrow({ where: { sessionToken: session } })).requestCount,
+    ).toBe(20);
+    expect(await prisma.anonymousUsageCounter.count()).toBe(0);
+  });
+
   it("GET /chat/portal/models offers the free tier only the cheapest standard model", async () => {
     const res = await app.inject({
       method: "GET",

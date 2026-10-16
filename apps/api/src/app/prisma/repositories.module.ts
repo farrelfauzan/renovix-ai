@@ -20,6 +20,8 @@ import { PackageRepository } from "../offers/repository/package.repository";
 import { PlatformSettingRepository } from "../offers/repository/platform-setting.repository";
 import { PurchaseSnapshotRepository } from "../offers/repository/purchase-snapshot.repository";
 import { TopUpPackRepository } from "../offers/repository/top-up-pack.repository";
+import { AnonymousUsageCounterRepository } from "../portal/repository/anonymous-usage-counter.repository";
+import { PortalSessionRepository } from "../portal/repository/portal-session.repository";
 
 const REPOSITORIES = [
   AdminAuditLogRepository,
@@ -43,6 +45,8 @@ const REPOSITORIES = [
   PlatformSettingRepository,
   PurchaseSnapshotRepository,
   TopUpPackRepository,
+  AnonymousUsageCounterRepository,
+  PortalSessionRepository,
 ];
 
 /**
