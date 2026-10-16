@@ -1,15 +1,15 @@
 import { Injectable, Logger, OnApplicationBootstrap } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { ConfigService } from "@nestjs/config";
-import { Prisma } from "@generated/prisma/client.js";
 import {
   S3Client,
   ListObjectsV2Command,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
-import { PrismaService } from "../../prisma/prisma.service";
 import { EmbeddingService } from "./embedding.service";
 import { chunkMarkdown } from "../utils/markdown-chunker";
+import { KnowledgeBaseRepository } from "../repository/knowledge-base.repository";
+import { KnowledgeChunkRepository } from "../repository/knowledge-chunk.repository";
 
 @Injectable()
 export class SystemKnowledgeService implements OnApplicationBootstrap {
@@ -20,9 +20,10 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
   cdnBaseUrl: string;
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
     private readonly configService: ConfigService,
+    private readonly knowledgeBases: KnowledgeBaseRepository,
+    private readonly knowledgeChunks: KnowledgeChunkRepository,
   ) {
     this.bucket = this.configService.getOrThrow<string>("S3_BUCKET");
     this.prefix =
@@ -106,20 +107,14 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
   }
 
   private async getOrCreateSystemKB() {
-    const existing = await this.prisma.knowledgeBase.findFirst({
-      where: { isSystem: true },
-    });
+    const existing = await this.knowledgeBases.findSystemKnowledgeBase();
 
     if (existing) return existing;
 
-    return this.prisma.knowledgeBase.create({
-      data: {
-        name: "Renovix AI System Knowledge",
-        description: "System knowledge base for Renovix AI product information",
-        isSystem: true,
-        active: true,
-      },
-    });
+    return this.knowledgeBases.createSystemKnowledgeBase(
+      "Renovix AI System Knowledge",
+      "System knowledge base for Renovix AI product information",
+    );
   }
 
   private async listMarkdownFiles() {
@@ -136,10 +131,7 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
   }
 
   private async getStoredEtags(kbId: string): Promise<Map<string, string>> {
-    const chunks = await this.prisma.knowledgeChunk.findMany({
-      where: { knowledgeBaseId: kbId },
-      select: { metadata: true },
-    });
+    const chunks = await this.knowledgeChunks.listChunkMetadata(kbId);
 
     const map = new Map<string, string>();
     for (const chunk of chunks) {
@@ -174,39 +166,21 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     }
 
     // Delete old chunks for this file
-    await this.prisma.$executeRaw(
-      Prisma.sql`
-        DELETE FROM "knowledge_chunks"
-        WHERE "knowledgeBaseId" = ${kbId}
-          AND metadata->>'s3Key' = ${key}
-      `,
-    );
+    await this.knowledgeChunks.deleteChunksOfFile(kbId, key);
 
     // Generate embeddings in batch
     const texts = chunks.map((c) => c.content);
     const embeddings = await this.embeddingService.embed(texts);
 
     // Insert new chunks with embeddings
-    await this.prisma.$transaction(
-      chunks.map((chunk, i) => {
-        const vector = `[${embeddings[i].embedding.join(",")}]`;
-        const metadata = { ...chunk.metadata, s3Key: key, etag };
-
-        return this.prisma.$executeRaw(
-          Prisma.sql`
-            INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
-            VALUES (
-              gen_random_uuid(),
-              ${kbId},
-              ${chunk.content},
-              ${JSON.stringify(metadata)}::jsonb,
-              ${vector}::vector,
-              ${embeddings[i].tokenCount},
-              now()
-            )
-          `,
-        );
-      }),
+    await this.knowledgeChunks.insertChunks(
+      kbId,
+      chunks.map((chunk, i) => ({
+        content: chunk.content,
+        metadata: { ...chunk.metadata, s3Key: key, etag },
+        embedding: embeddings[i].embedding,
+        tokenCount: embeddings[i].tokenCount,
+      })),
     );
 
     this.logger.log(`  ✓ ${key} → ${chunks.length} chunks`);
@@ -220,29 +194,17 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     const topK = options?.topK ?? 3;
     const threshold = options?.threshold ?? 0.7;
 
-    const kb = await this.prisma.knowledgeBase.findFirst({
-      where: { isSystem: true, active: true },
-    });
+    const kb = await this.knowledgeBases.findActiveSystemKnowledgeBase();
 
     if (!kb) return [];
 
     const { embedding } = await this.embeddingService.embedSingle(query);
-    const vector = `[${embedding.join(",")}]`;
 
-    const results = await this.prisma.$queryRaw<
-      { content: string; similarity: number }[]
-    >(
-      Prisma.sql`
-        SELECT
-          kc.content,
-          1 - (kc.embedding <=> ${vector}::vector) AS similarity
-        FROM "knowledge_chunks" kc
-        WHERE kc."knowledgeBaseId" = ${kb.id}
-          AND kc.embedding IS NOT NULL
-          AND 1 - (kc.embedding <=> ${vector}::vector) >= ${threshold}
-        ORDER BY kc.embedding <=> ${vector}::vector
-        LIMIT ${topK}
-      `,
+    const results = await this.knowledgeChunks.searchSystemChunks(
+      kb.id,
+      embedding,
+      threshold,
+      topK,
     );
 
     return results.map((r) => ({
