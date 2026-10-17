@@ -56,6 +56,14 @@ RX-133 moved `agent/service/agent.service.ts` and `agent/service/agent-tool.serv
 
 The writes by id of the agent tables (`updateAgent`, `deleteAgent`, `deleteAgentTool`, ...) take no user: the service checks the owner first (`findUserAgent`), as before; changing that is RX-117. Neither service used a transaction, and none of these repositories maps a Prisma error.
 
+RX-134 moved the agent lookups of `agent/service/agent-run.service.ts` (the agent of a run with its sub-agents and knowledge bases, the sub-agent of a delegation, the agent of the run history routes), so the soft delete filter (RX-124) has one place to apply to them. Each query stayed exactly as it was:
+
+| Table | Repository | File | Owner module | Public methods |
+|---|---|---|---|---|
+| `agents` | `AgentRepository` | `agent/repository/agent.repository.ts` | agent | 15: adds `findRunnableAgent` (`chat`, `chatStream`) and `findDelegateSubAgent` (delegation to a sub-agent); reuses `findUserAgent` (`listRuns`, `getRun`, `deleteRun`) (above 10: as in RX-133, one method per distinct query) |
+
+The knowledge bases and sub-agents come with the agent (`include`), so no other repository changed. The service handled no Prisma error around these lookups, so none is mapped. `agent-run.service.ts` stays on the import check's list: its 21 run, message and metering calls (`agentRun`, `agentMessage`, the quota check's `$transaction` and `userSubscription.update`) move with the chat engine tickets RX-23 and RX-25.
+
 When the credit service (RX-22) owns the balance, the balance write of a redemption moves to it and the redemption passes its transaction on.
 
 ## The rules (decision 17)

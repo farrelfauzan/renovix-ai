@@ -15,6 +15,7 @@ import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { Decimal } from "@prisma/client/runtime/client";
 import { ownSubAgents } from "../utils/own-sub-agents";
+import { AgentRepository } from "../repository/agent.repository";
 
 const MAX_TOOL_ITERATIONS = 15;
 
@@ -60,6 +61,7 @@ export class AgentRunService {
     private readonly knowledge: KnowledgeService,
     private readonly usage: UsageService,
     private readonly guardrail: GuardrailService,
+    private readonly agents: AgentRepository,
   ) {}
 
   async chat(
@@ -70,28 +72,7 @@ export class AgentRunService {
     options?: { documentFormat?: string },
   ) {
     // Verify agent access
-    const agent = await this.prisma.agent.findFirst({
-      where: {
-        id: agentId,
-        OR: [{ userId }, { isPublic: true, status: "active" }],
-      },
-      include: {
-        tools: { where: { enabled: true } },
-        knowledgeBases: true,
-        integrations: { where: { status: "connected" } },
-        subAgents: {
-          where: { status: "active" },
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            status: true,
-            model: true,
-            userId: true,
-          },
-        },
-      },
-    });
+    const agent = await this.agents.findRunnableAgent(agentId, userId);
 
     if (!agent) {
       throw new NotFoundException("Agent not found");
@@ -273,28 +254,7 @@ export class AgentRunService {
   }> {
     console.log(`Starting chat stream for agentId=${agentId} userId=${userId}`);
     // Verify agent access
-    const agent = await this.prisma.agent.findFirst({
-      where: {
-        id: agentId,
-        OR: [{ userId }, { isPublic: true, status: "active" }],
-      },
-      include: {
-        tools: { where: { enabled: true } },
-        knowledgeBases: true,
-        integrations: { where: { status: "connected" } },
-        subAgents: {
-          where: { status: "active" },
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            status: true,
-            model: true,
-            userId: true,
-          },
-        },
-      },
-    });
+    const agent = await this.agents.findRunnableAgent(agentId, userId);
 
     console.log(`Agent found: ${agent ? agent.name : "not found"}`);
 
@@ -763,9 +723,7 @@ export class AgentRunService {
 
   async listRuns(userId: string, agentId: string) {
     // Verify access
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-    });
+    const agent = await this.agents.findUserAgent(agentId, userId);
     if (!agent) throw new NotFoundException("Agent not found");
 
     return this.prisma.agentRun.findMany({
@@ -784,9 +742,7 @@ export class AgentRunService {
   }
 
   async getRun(userId: string, agentId: string, runId: string) {
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-    });
+    const agent = await this.agents.findUserAgent(agentId, userId);
     if (!agent) throw new NotFoundException("Agent not found");
 
     const run = await this.prisma.agentRun.findFirst({
@@ -801,9 +757,7 @@ export class AgentRunService {
   }
 
   async deleteRun(userId: string, agentId: string, runId: string) {
-    const agent = await this.prisma.agent.findFirst({
-      where: { id: agentId, userId },
-    });
+    const agent = await this.agents.findUserAgent(agentId, userId);
     if (!agent) throw new NotFoundException("Agent not found");
 
     const run = await this.prisma.agentRun.findFirst({
@@ -972,22 +926,11 @@ export class AgentRunService {
       return "Error: Missing task for sub-agent delegation.";
     }
 
-    const subAgent = await this.prisma.agent.findFirst({
-      where: {
-        parentAgentId: agent.id,
-        userId: agent.userId,
-        agentType: "sub_agent",
-        OR: [
-          { id: rawIdentifier },
-          { name: { equals: rawIdentifier, mode: "insensitive" } },
-        ],
-      },
-      include: {
-        tools: { where: { enabled: true } },
-        knowledgeBases: true,
-        integrations: { where: { status: "connected" } },
-      },
-    });
+    const subAgent = await this.agents.findDelegateSubAgent(
+      agent.id,
+      agent.userId,
+      rawIdentifier,
+    );
 
     if (!subAgent) {
       this.logger.warn(

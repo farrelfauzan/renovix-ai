@@ -5,6 +5,7 @@
 // such an import and on an entry the base branch's list does not have. Never add a file here.
 export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   "apps/api/src/app/agent/service/agent-memory.service.ts",
+  // RX-134 moved its agent and sub-agent lookups to AgentRepository; the run, message and metering calls stay for RX-23 and RX-25.
   "apps/api/src/app/agent/service/agent-run.service.ts",
   "apps/api/src/app/billing/controller/billing.controller.ts",
   "apps/api/src/app/billing/service/billing.service.ts",
