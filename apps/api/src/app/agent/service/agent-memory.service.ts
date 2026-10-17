@@ -1,5 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
+import { UserMemoryRepository } from "../../memory/repository/user-memory.repository";
+import { WorkspaceMemoryRepository } from "../../workspace/repository/workspace-memory.repository";
+import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
+import { AgentRepository } from "../repository/agent.repository";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 
@@ -8,42 +11,35 @@ export class AgentMemoryService {
   private readonly logger = new Logger(AgentMemoryService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly agents: AgentRepository,
+    private readonly workspaces: WorkspaceRepository,
+    private readonly workspaceMemories: WorkspaceMemoryRepository,
+    private readonly userMemories: UserMemoryRepository,
     private readonly providerRouter: ProviderRouter,
     private readonly registry: ModelRegistryService,
   ) {}
 
   async getMemoryContext(agentId: string, userId: string): Promise<string> {
     // Resolve workspace from agent
-    const agent = await this.prisma.agent.findUnique({
-      where: { id: agentId },
-      select: { workspaceId: true },
-    });
+    const agent = await this.agents.findAgentWorkspaceId(agentId);
 
     const parts: string[] = [];
 
     // Workspace memories (shared across all agents in workspace)
     if (agent?.workspaceId) {
-      const workspaceMemories = await this.prisma.workspaceMemory.findMany({
-        where: {
-          workspaceId: agent.workspaceId,
-          status: "active",
-        },
-        orderBy: { confidence: "desc" },
-        take: 20,
-      });
+      const workspaceMemories =
+        await this.workspaceMemories.listActiveWorkspaceMemories(
+          agent.workspaceId,
+          20,
+        );
       parts.push(...workspaceMemories.map((m) => `- [${m.type}] ${m.content}`));
     }
 
     // User memories (personal to the user)
-    const userMemories = await this.prisma.userMemory.findMany({
-      where: {
-        userId,
-        status: "active",
-      },
-      orderBy: { confidence: "desc" },
-      take: 10,
-    });
+    const userMemories = await this.userMemories.listTopActiveMemories(
+      userId,
+      10,
+    );
     parts.push(...userMemories.map((m) => `- [${m.type}] ${m.content}`));
 
     return parts.join("\n");
@@ -53,21 +49,14 @@ export class AgentMemoryService {
    * Get only workspace-scoped memories for agent chat (no user memories).
    */
   async getWorkspaceMemoryContext(agentId: string): Promise<string> {
-    const agent = await this.prisma.agent.findUnique({
-      where: { id: agentId },
-      select: { workspaceId: true },
-    });
+    const agent = await this.agents.findAgentWorkspaceId(agentId);
 
     if (!agent?.workspaceId) return "";
 
-    const memories = await this.prisma.workspaceMemory.findMany({
-      where: {
-        workspaceId: agent.workspaceId,
-        status: "active",
-      },
-      orderBy: { confidence: "desc" },
-      take: 20,
-    });
+    const memories = await this.workspaceMemories.listActiveWorkspaceMemories(
+      agent.workspaceId,
+      20,
+    );
 
     if (memories.length === 0) return "";
 
@@ -127,17 +116,12 @@ Rules:
       // Resolve workspace from channel or agent
       let workspaceId: string | null = null;
       if (channelId) {
-        const workspace = await this.prisma.workspace.findUnique({
-          where: { channelId },
-          select: { id: true },
-        });
+        const workspace =
+          await this.workspaces.findWorkspaceIdByChannel(channelId);
         workspaceId = workspace?.id ?? null;
       }
       if (!workspaceId) {
-        const agent = await this.prisma.agent.findUnique({
-          where: { id: agentId },
-          select: { workspaceId: true },
-        });
+        const agent = await this.agents.findAgentWorkspaceId(agentId);
         workspaceId = agent?.workspaceId ?? null;
       }
 
@@ -147,63 +131,46 @@ Rules:
 
         if (workspaceId) {
           // Store to workspace memory
-          const existing = await this.prisma.workspaceMemory.findFirst({
-            where: {
+          const existing =
+            await this.workspaceMemories.findActiveWorkspaceMemoryContaining(
               workspaceId,
-              content: { contains: fact.content.substring(0, 50) },
-              status: "active",
-            },
-          });
+              fact.content.substring(0, 50),
+            );
 
           if (existing) {
-            await this.prisma.workspaceMemory.update({
-              where: { id: existing.id },
-              data: {
-                confidence: Math.min(1, existing.confidence + 0.1),
-                lastConfirmedAt: new Date(),
-              },
+            await this.workspaceMemories.updateWorkspaceMemory(existing.id, {
+              confidence: Math.min(1, existing.confidence + 0.1),
+              lastConfirmedAt: new Date(),
             });
           } else {
-            await this.prisma.workspaceMemory.create({
-              data: {
-                workspaceId,
-                type: fact.type,
-                content: fact.content,
-                confidence: fact.confidence || 0.75,
-                sourceRunId: `agent:${agentId}`,
-                createdById: userId,
-                status: "active",
-              },
+            await this.workspaceMemories.createWorkspaceMemory(workspaceId, {
+              type: fact.type,
+              content: fact.content,
+              confidence: fact.confidence || 0.75,
+              sourceRunId: `agent:${agentId}`,
+              createdById: userId,
+              status: "active",
             });
           }
         } else {
           // Fallback to user memory
-          const existing = await this.prisma.userMemory.findFirst({
-            where: {
-              userId,
-              content: { contains: fact.content.substring(0, 50) },
-              status: "active",
-            },
-          });
+          const existing = await this.userMemories.findActiveMemoryContaining(
+            userId,
+            fact.content.substring(0, 50),
+          );
 
           if (existing) {
-            await this.prisma.userMemory.update({
-              where: { id: existing.id },
-              data: {
-                confidence: Math.min(1, existing.confidence + 0.1),
-                lastConfirmedAt: new Date(),
-              },
+            await this.userMemories.updateMemory(existing.id, {
+              confidence: Math.min(1, existing.confidence + 0.1),
+              lastConfirmedAt: new Date(),
             });
           } else {
-            await this.prisma.userMemory.create({
-              data: {
-                userId,
-                type: fact.type,
-                content: fact.content,
-                confidence: fact.confidence || 0.75,
-                sourceConversationId: `agent:${agentId}`,
-                status: "active",
-              },
+            await this.userMemories.createMemory(userId, {
+              type: fact.type,
+              content: fact.content,
+              confidence: fact.confidence || 0.75,
+              sourceConversationId: `agent:${agentId}`,
+              status: "active",
             });
           }
         }
@@ -224,18 +191,13 @@ Rules:
     let workspaceId: string | null = null;
 
     if (channelId) {
-      const workspace = await this.prisma.workspace.findUnique({
-        where: { channelId },
-        select: { id: true },
-      });
+      const workspace =
+        await this.workspaces.findWorkspaceIdByChannel(channelId);
       workspaceId = workspace?.id ?? null;
     }
 
     if (!workspaceId) {
-      const agent = await this.prisma.agent.findUnique({
-        where: { id: agentId },
-        select: { workspaceId: true },
-      });
+      const agent = await this.agents.findAgentWorkspaceId(agentId);
       workspaceId = agent?.workspaceId ?? null;
     }
 
@@ -245,29 +207,23 @@ Rules:
 
     if (workspaceId) {
       // Store as workspace memory (shared across all agents in the workspace)
-      await this.prisma.workspaceMemory.create({
-        data: {
-          workspaceId,
-          type,
-          content: fact,
-          confidence: 1.0,
-          sourceRunId: `agent:${agentId}`,
-          createdById: userId,
-          status: "active",
-        },
+      await this.workspaceMemories.createWorkspaceMemory(workspaceId, {
+        type,
+        content: fact,
+        confidence: 1.0,
+        sourceRunId: `agent:${agentId}`,
+        createdById: userId,
+        status: "active",
       });
       this.logger.log(`[storeExplicit] Stored workspace memory successfully`);
     } else {
       // Fallback to user memory for standalone agents without a workspace
-      await this.prisma.userMemory.create({
-        data: {
-          userId,
-          type,
-          content: fact,
-          confidence: 1.0,
-          sourceConversationId: `agent:${agentId}`,
-          status: "active",
-        },
+      await this.userMemories.createMemory(userId, {
+        type,
+        content: fact,
+        confidence: 1.0,
+        sourceConversationId: `agent:${agentId}`,
+        status: "active",
       });
       this.logger.log(`[storeExplicit] Stored user memory successfully`);
     }

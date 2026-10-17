@@ -1,7 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { UserMemoryService } from "./user-memory.service";
 import { MemoryPolicyService } from "./memory-policy.service";
-import { PrismaService } from "../../prisma/prisma.service";
+import { UserRepository } from "../../auth/repository/user.repository";
+import { ConversationRepository } from "../../chat/repository/conversation.repository";
+import { MessageRepository } from "../../chat/repository/message.repository";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 
@@ -42,7 +44,9 @@ export class MemoryExtractionService {
   constructor(
     private readonly memoryService: UserMemoryService,
     private readonly policyService: MemoryPolicyService,
-    private readonly prisma: PrismaService,
+    private readonly users: UserRepository,
+    private readonly conversations: ConversationRepository,
+    private readonly messages: MessageRepository,
     private readonly providerRouter: ProviderRouter,
     private readonly modelRegistry: ModelRegistryService,
   ) {}
@@ -57,17 +61,7 @@ export class MemoryExtractionService {
     );
     try {
       // Check eligibility: user must have topped up at least once
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          balance: true,
-          transactions: {
-            take: 1,
-            where: { type: "topup", status: "success" },
-          },
-        },
-      });
+      const user = await this.users.findUserWithFirstTopup(userId);
 
       if (!user || user.transactions.length === 0) {
         this.logger.debug(
@@ -89,11 +83,8 @@ export class MemoryExtractionService {
       }
 
       // Load conversation messages
-      const messages = await this.prisma.message.findMany({
-        where: { conversationId },
-        orderBy: { createdAt: "asc" },
-        select: { role: true, content: true },
-      });
+      const messages =
+        await this.messages.listConversationMessages(conversationId);
 
       // Must have at least 2 user messages to qualify
       const userMessages = messages.filter((m) => m.role === "user");
@@ -137,15 +128,11 @@ export class MemoryExtractionService {
     conversationId: string,
   ): Promise<boolean> {
     // Get latest 5 qualifying conversations (at least 2 user messages)
-    const conversations = await this.prisma.conversation.findMany({
-      where: { userId },
-      orderBy: { updatedAt: "desc" },
-      take: 20, // fetch more to filter
-      select: {
-        id: true,
-        _count: { select: { messages: { where: { role: "user" } } } },
-      },
-    });
+    const conversations =
+      await this.conversations.listRecentConversationsWithUserMessageCount(
+        userId,
+        20, // fetch more to filter
+      );
 
     const qualifying = conversations
       .filter((c) => c._count.messages >= 2)

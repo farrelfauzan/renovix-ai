@@ -100,4 +100,21 @@ export class ConversationRepository {
       where: { id: conversationId },
     });
   }
+
+  /** This user's `take` most recently updated conversations, each with how many user messages it has. */
+  listRecentConversationsWithUserMessageCount(
+    userId: string,
+    take: number,
+    tx?: DbTransaction,
+  ) {
+    return (tx ?? this.prisma).conversation.findMany({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      take,
+      select: {
+        id: true,
+        _count: { select: { messages: { where: { role: "user" } } } },
+      },
+    });
+  }
 }

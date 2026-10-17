@@ -28,6 +28,7 @@ import { InvitationCodeRepository } from "../codes/repository/invitation-code.re
 import { KnowledgeBaseRepository } from "../knowledge/repository/knowledge-base.repository";
 import { KnowledgeChunkRepository } from "../knowledge/repository/knowledge-chunk.repository";
 import { McpOAuthStateRepository } from "../mcp/repository/mcp-oauth-state.repository";
+import { UserMemoryRepository } from "../memory/repository/user-memory.repository";
 import { CatalogChangeRepository } from "../offers/repository/catalog-change.repository";
 import { CompanyContractRepository } from "../offers/repository/company-contract.repository";
 import { EnterpriseBundleRepository } from "../offers/repository/enterprise-bundle.repository";
@@ -38,6 +39,8 @@ import { TopUpPackRepository } from "../offers/repository/top-up-pack.repository
 import { AnonymousUsageCounterRepository } from "../portal/repository/anonymous-usage-counter.repository";
 import { PortalSessionRepository } from "../portal/repository/portal-session.repository";
 import { ReminderRepository } from "../reminder/repository/reminder.repository";
+import { WorkspaceMemoryRepository } from "../workspace/repository/workspace-memory.repository";
+import { WorkspaceRepository } from "../workspace/repository/workspace.repository";
 
 const REPOSITORIES = [
   AdminAuditLogRepository,
@@ -69,6 +72,7 @@ const REPOSITORIES = [
   KnowledgeBaseRepository,
   KnowledgeChunkRepository,
   McpOAuthStateRepository,
+  UserMemoryRepository,
   CatalogChangeRepository,
   CompanyContractRepository,
   EnterpriseBundleRepository,
@@ -79,6 +83,8 @@ const REPOSITORIES = [
   AnonymousUsageCounterRepository,
   PortalSessionRepository,
   ReminderRepository,
+  WorkspaceMemoryRepository,
+  WorkspaceRepository,
 ];
 
 /**
