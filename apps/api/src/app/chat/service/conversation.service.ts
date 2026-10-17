@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
+import { ConversationRepository } from "../repository/conversation.repository";
+import { MessageRepository } from "../repository/message.repository";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import {
@@ -25,7 +26,8 @@ export class ConversationService {
   private readonly logger = new Logger(ConversationService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly conversations: ConversationRepository,
+    private readonly messages: MessageRepository,
     private readonly providerRouter: ProviderRouter,
     private readonly registry: ModelRegistryService,
     private readonly documentService: DocumentService,
@@ -42,9 +44,10 @@ export class ConversationService {
     conversationId?: string,
   ): Promise<string> {
     if (conversationId) {
-      const existing = await this.prisma.conversation.findFirst({
-        where: { id: conversationId, userId },
-      });
+      const existing = await this.conversations.findUserConversation(
+        conversationId,
+        userId,
+      );
 
       if (existing) {
         return existing.id;
@@ -55,9 +58,10 @@ export class ConversationService {
       );
     }
 
-    const conversation = await this.prisma.conversation.create({
-      data: { userId, model },
-    });
+    const conversation = await this.conversations.createConversation(
+      userId,
+      model,
+    );
 
     return conversation.id;
   }
@@ -91,7 +95,7 @@ export class ConversationService {
       },
     ];
 
-    await this.prisma.message.createMany({ data });
+    await this.messages.createMessages(data);
   }
 
   /**
@@ -152,10 +156,10 @@ export class ConversationService {
       const normalizedTitle = normalizeTitle(title);
 
       if (normalizedTitle) {
-        await this.prisma.conversation.update({
-          where: { id: conversationId },
-          data: { title: normalizedTitle },
-        });
+        await this.conversations.updateConversationTitle(
+          conversationId,
+          normalizedTitle,
+        );
 
         this.logger.debug(
           `Generated title for conversation ${conversationId}: "${normalizedTitle}"`,
@@ -173,20 +177,8 @@ export class ConversationService {
    */
   async listConversations(userId: string, limit = 20, offset = 0) {
     const [conversations, total] = await Promise.all([
-      this.prisma.conversation.findMany({
-        where: { userId },
-        orderBy: { updatedAt: "desc" },
-        skip: offset,
-        take: limit,
-        select: {
-          id: true,
-          title: true,
-          model: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      }),
-      this.prisma.conversation.count({ where: { userId } }),
+      this.conversations.listUserConversations(userId, offset, limit),
+      this.conversations.countUserConversations(userId),
     ]);
 
     return { conversations, total };
@@ -196,23 +188,11 @@ export class ConversationService {
    * Retrieves a single conversation with all its messages.
    */
   async getConversation(conversationId: string, userId: string) {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
-      include: {
-        messages: {
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            role: true,
-            content: true,
-            documentFormat: true,
-            documentFilename: true,
-            documentKey: true,
-            createdAt: true,
-          },
-        },
-      },
-    });
+    const conversation =
+      await this.conversations.findUserConversationWithMessages(
+        conversationId,
+        userId,
+      );
 
     if (!conversation) {
       return null;
@@ -263,17 +243,16 @@ export class ConversationService {
     conversationId: string,
     userId: string,
   ): Promise<boolean> {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
-    });
+    const conversation = await this.conversations.findUserConversation(
+      conversationId,
+      userId,
+    );
 
     if (!conversation) {
       return false;
     }
 
-    await this.prisma.conversation.delete({
-      where: { id: conversationId },
-    });
+    await this.conversations.deleteConversation(conversationId);
 
     return true;
   }

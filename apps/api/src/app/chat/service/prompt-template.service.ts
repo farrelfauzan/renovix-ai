@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
+import { PromptTemplateRepository } from "../repository/prompt-template.repository";
 import { extractRecentUserMessages } from "../utils/extract-recent-user-messages";
 import { scoreTemplateForText } from "../utils/score-template-for-text";
 
@@ -25,7 +25,7 @@ export class PromptTemplateService {
   private cacheExpiresAt = 0;
   private readonly cacheTtlMs = 60_000;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly promptTemplates: PromptTemplateRepository) {}
 
   private async getTemplates(): Promise<PromptTemplate[]> {
     const now = Date.now();
@@ -34,10 +34,7 @@ export class PromptTemplateService {
       return this.cachedTemplates;
     }
 
-    const templates = await this.prisma.promptTemplate.findMany({
-      where: { active: true },
-      orderBy: { priority: "desc" },
-    });
+    const templates = await this.promptTemplates.listActivePromptTemplates();
 
     this.cachedTemplates = templates.map((t) => ({
       slug: t.slug,

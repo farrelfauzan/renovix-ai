@@ -120,6 +120,16 @@ export class AgentRepository {
     });
   }
 
+  /** The agent with this id if this user may add it to a channel: their own, or any public active one (RX-136). */
+  findUsableAgent(agentId: string, userId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.findFirst({
+      where: {
+        id: agentId,
+        OR: [{ userId }, { isPublic: true, status: "active" }],
+      },
+    });
+  }
+
   /** The agent with this id and its relations. */
   findAgentWithRelations(agentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findUnique({

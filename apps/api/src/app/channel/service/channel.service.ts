@@ -3,86 +3,39 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
+import { AgentRepository } from "../../agent/repository/agent.repository";
+import { ChannelAgentRepository } from "../repository/channel-agent.repository";
+import { ChannelChatRoomRepository } from "../repository/channel-chat-room.repository";
+import { ChannelMessageRepository } from "../repository/channel-message.repository";
+import { ChannelRepository } from "../repository/channel.repository";
 import { extractDocumentFromMetadata } from "../utils/extract-document-from-metadata";
 
 @Injectable()
 export class ChannelService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly channels: ChannelRepository,
+    private readonly channelAgents: ChannelAgentRepository,
+    private readonly channelMessages: ChannelMessageRepository,
+    private readonly chatRooms: ChannelChatRoomRepository,
+    private readonly agents: AgentRepository,
+  ) {}
 
   async create(
     userId: string,
     data: { name: string; icon?: string; color?: string },
   ) {
-    return this.prisma.channel.create({
-      data: {
-        userId,
-        name: data.name,
-        icon: data.icon,
-        color: data.color,
-      },
-      include: {
-        agents: {
-          include: {
-            agent: {
-              select: {
-                id: true,
-                name: true,
-                avatar: true,
-                avatarColor: true,
-                status: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    return this.channels.createChannel(userId, data);
   }
 
   async list(userId: string) {
-    return this.prisma.channel.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        agents: {
-          include: {
-            agent: {
-              select: {
-                id: true,
-                name: true,
-                avatar: true,
-                avatarColor: true,
-                status: true,
-              },
-            },
-          },
-        },
-        _count: { select: { agents: true } },
-      },
-    });
+    return this.channels.listUserChannels(userId);
   }
 
   async findById(userId: string, channelId: string) {
-    const channel = await this.prisma.channel.findFirst({
-      where: { id: channelId, userId },
-      include: {
-        agents: {
-          include: {
-            agent: {
-              select: {
-                id: true,
-                name: true,
-                avatar: true,
-                avatarColor: true,
-                status: true,
-                model: true,
-                description: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    const channel = await this.channels.findUserChannelWithAgents(
+      channelId,
+      userId,
+    );
 
     if (!channel) throw new NotFoundException("Channel not found");
     return channel;
@@ -93,37 +46,17 @@ export class ChannelService {
     channelId: string,
     data: { name?: string; icon?: string; color?: string },
   ) {
-    const channel = await this.prisma.channel.findFirst({
-      where: { id: channelId, userId },
-    });
+    const channel = await this.channels.findUserChannel(channelId, userId);
     if (!channel) throw new NotFoundException("Channel not found");
 
-    return this.prisma.channel.update({
-      where: { id: channelId },
-      data,
-      include: {
-        agents: {
-          include: {
-            agent: {
-              select: {
-                id: true,
-                name: true,
-                avatar: true,
-                avatarColor: true,
-                status: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    return this.channels.updateChannel(channelId, data);
   }
 
   async delete(userId: string, channelId: string) {
-    const channel = await this.prisma.channel.findFirst({
-      where: { id: channelId, userId },
-      select: { workspace: { select: { id: true } } },
-    });
+    const channel = await this.channels.findUserChannelWorkspace(
+      channelId,
+      userId,
+    );
     if (!channel) throw new NotFoundException("Channel not found");
     // The workspace row cascades from its channel (schema: Workspace.channel onDelete: Cascade),
     // so deleting the channel would delete the workspace and everything under it (RX-144).
@@ -133,7 +66,7 @@ export class ChannelService {
       );
     }
 
-    await this.prisma.channel.delete({ where: { id: channelId } });
+    await this.channels.deleteChannel(channelId);
     return { deleted: true };
   }
 
@@ -145,55 +78,26 @@ export class ChannelService {
     agentId: string,
     role: string = "primary",
   ) {
-    const channel = await this.prisma.channel.findFirst({
-      where: { id: channelId, userId },
-    });
+    const channel = await this.channels.findUserChannel(channelId, userId);
     if (!channel) throw new NotFoundException("Channel not found");
 
-    const agent = await this.prisma.agent.findFirst({
-      where: {
-        id: agentId,
-        OR: [{ userId }, { isPublic: true, status: "active" }],
-      },
-    });
+    const agent = await this.agents.findUsableAgent(agentId, userId);
     if (!agent) throw new NotFoundException("Agent not found");
 
-    return this.prisma.channelAgent.create({
-      data: { channelId, agentId, role },
-      include: {
-        agent: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            avatarColor: true,
-            status: true,
-          },
-        },
-      },
-    });
+    return this.channelAgents.createChannelAgent(channelId, agentId, role);
   }
 
   async removeAgent(userId: string, channelId: string, agentId: string) {
-    const channel = await this.prisma.channel.findFirst({
-      where: { id: channelId, userId },
-    });
+    const channel = await this.channels.findUserChannel(channelId, userId);
     if (!channel) throw new NotFoundException("Channel not found");
 
-    const link = await this.prisma.channelAgent.findFirst({
-      where: { channelId, agentId },
-    });
+    const link = await this.channelAgents.findChannelAgent(channelId, agentId);
     if (!link) throw new NotFoundException("Agent not linked to this channel");
 
     // Clear chat history for this agent in this channel before unlinking.
-    await this.prisma.channelMessage.deleteMany({
-      where: {
-        agentId,
-        chatRoom: { channelId },
-      },
-    });
+    await this.channelMessages.deleteChannelAgentMessages(channelId, agentId);
 
-    await this.prisma.channelAgent.delete({ where: { id: link.id } });
+    await this.channelAgents.deleteChannelAgent(link.id);
     return { deleted: true };
   }
 
@@ -213,12 +117,12 @@ export class ChannelService {
     );
     const chatRoom = await this.getOrCreateChatRoom(channelAgent.channelId);
 
-    const rows = await this.prisma.channelMessage.findMany({
-      where: { chatRoomId: chatRoom.id, agentId: channelAgent.agentId },
-      orderBy: { createdAt: "asc" },
-      take: limit,
-      skip: offset,
-    });
+    const rows = await this.channelMessages.listRoomAgentMessages(
+      chatRoom.id,
+      channelAgent.agentId,
+      limit,
+      offset,
+    );
 
     return rows.map((row) => {
       const document = extractDocumentFromMetadata(row.metadata);
@@ -246,20 +150,17 @@ export class ChannelService {
     );
     const chatRoom = await this.getOrCreateChatRoom(channelAgent.channelId);
 
-    await this.prisma.channelMessage.updateMany({
-      where: {
-        id: messageId,
-        role: "assistant",
-        agentId: channelAgent.agentId,
-        chatRoomId: chatRoom.id,
-      },
-      data: {
+    await this.channelMessages.updateAssistantMessage(
+      messageId,
+      chatRoom.id,
+      channelAgent.agentId,
+      {
         content,
         metadata: {
           document,
         },
       },
-    });
+    );
   }
 
   async clearMessages(userId: string, channelId: string, agentId: string) {
@@ -270,9 +171,10 @@ export class ChannelService {
     );
     const chatRoom = await this.getOrCreateChatRoom(channelAgent.channelId);
 
-    await this.prisma.channelMessage.deleteMany({
-      where: { chatRoomId: chatRoom.id, agentId: channelAgent.agentId },
-    });
+    await this.channelMessages.deleteRoomAgentMessages(
+      chatRoom.id,
+      channelAgent.agentId,
+    );
     return { cleared: true };
   }
 
@@ -287,10 +189,8 @@ export class ChannelService {
       metadata?: Record<string, unknown>;
     },
   ) {
-    const channelAgent = await this.prisma.channelAgent.findUnique({
-      where: { id: channelAgentId },
-      select: { channelId: true, agentId: true },
-    });
+    const channelAgent =
+      await this.channelAgents.findChannelAgentIds(channelAgentId);
     if (!channelAgent) {
       throw new NotFoundException("Channel agent not found");
     }
@@ -308,29 +208,20 @@ export class ChannelService {
       createData.metadata = data.metadata;
     }
 
-    return this.prisma.channelMessage.create({
-      data: createData,
-    });
+    return this.channelMessages.createChannelMessage(createData);
   }
 
   async getOrCreateChatRoom(channelId: string) {
-    const existing = await this.prisma.channelChatRoom.findFirst({
-      where: {
-        channelId,
-        name: "general",
-      },
-    });
+    const existing = await this.chatRooms.findChatRoomByName(
+      channelId,
+      "general",
+    );
 
     if (existing) {
       return existing;
     }
 
-    return this.prisma.channelChatRoom.create({
-      data: {
-        channelId,
-        name: "general",
-      },
-    });
+    return this.chatRooms.createChatRoom(channelId, "general");
   }
 
   // ─── Helpers ───
@@ -340,25 +231,16 @@ export class ChannelService {
     channelId: string,
     agentId: string,
   ) {
-    const channel = await this.prisma.channel.findFirst({
-      where: { id: channelId, userId },
-      include: { workspace: true },
-    });
+    const channel = await this.channels.findUserChannelWithWorkspace(
+      channelId,
+      userId,
+    );
     if (!channel) throw new NotFoundException("Channel not found");
 
-    const channelAgent = await this.prisma.channelAgent.findFirst({
-      where: { channelId, agentId },
-      include: {
-        channel: { include: { workspace: true } },
-        agent: {
-          include: {
-            tools: { where: { enabled: true } },
-            knowledgeBases: true,
-            integrations: { where: { status: "connected" } },
-          },
-        },
-      },
-    });
+    const channelAgent = await this.channelAgents.findChannelAgentWithAgent(
+      channelId,
+      agentId,
+    );
     if (!channelAgent) throw new NotFoundException("Agent not in this channel");
 
     return channelAgent;

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
+import { SystemPromptRepository } from "../repository/system-prompt.repository";
 import { PromptTemplateService } from "./prompt-template.service";
 import { SystemKnowledgeService } from "../../knowledge/service/system-knowledge.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
@@ -35,7 +35,7 @@ export class PromptTuningService {
   private readonly cacheTtlMs = 60_000; // 60 seconds
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly systemPrompts: SystemPromptRepository,
     private readonly promptTemplate: PromptTemplateService,
     private readonly systemKnowledge: SystemKnowledgeService,
     private readonly knowledgeService: KnowledgeService,
@@ -53,10 +53,7 @@ export class PromptTuningService {
       return this.cachedPrompt;
     }
 
-    const prompts = await this.prisma.systemPrompt.findMany({
-      where: { active: true },
-      orderBy: { priority: "desc" },
-    });
+    const prompts = await this.systemPrompts.listActiveSystemPrompts();
 
     if (prompts.length === 0) {
       this.cachedPrompt = null;
