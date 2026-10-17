@@ -124,4 +124,19 @@ export class UserRepository {
       },
     });
   }
+
+  /** The id and balance of this user with their first successful top-up transaction, if there is one. */
+  findUserWithFirstTopup(userId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        balance: true,
+        transactions: {
+          take: 1,
+          where: { type: "topup", status: "success" },
+        },
+      },
+    });
+  }
 }

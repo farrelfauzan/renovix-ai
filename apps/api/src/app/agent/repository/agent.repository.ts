@@ -226,4 +226,12 @@ export class AgentRepository {
   deleteAgent(agentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.delete({ where: { id: agentId } });
   }
+
+  /** The workspace id of the agent with this id (null for an agent outside a workspace), if the agent exists. */
+  findAgentWorkspaceId(agentId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.findUnique({
+      where: { id: agentId },
+      select: { workspaceId: true },
+    });
+  }
 }

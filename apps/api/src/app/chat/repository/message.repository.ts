@@ -12,4 +12,13 @@ export class MessageRepository {
   createMessages(data: Prisma.MessageCreateManyInput[], tx?: DbTransaction) {
     return (tx ?? this.prisma).message.createMany({ data });
   }
+
+  /** The role and text of every message of this conversation, oldest first. */
+  listConversationMessages(conversationId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "asc" },
+      select: { role: true, content: true },
+    });
+  }
 }
