@@ -13,4 +13,11 @@ export class SubscriptionPlanRepository {
       where: { id: planId },
     });
   }
+
+  /** The subscription plan with this slug (RX-133). */
+  findPlanBySlug(slug: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).subscriptionPlan.findUnique({
+      where: { slug },
+    });
+  }
 }
