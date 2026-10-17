@@ -15,6 +15,29 @@ export class AgentChannelRepository {
     });
   }
 
+  /**
+   * Every active whatsapp channel whose config has this phone number, each with its agent and the agent's
+   * enabled tools, knowledge bases and connected integrations (the GOWA webhook, RX-115, RX-136).
+   */
+  findActiveWhatsappChannels(phoneNumber: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agentChannel.findMany({
+      where: {
+        channelType: "whatsapp",
+        status: "active",
+        config: { path: ["phoneNumber"], equals: phoneNumber },
+      },
+      include: {
+        agent: {
+          include: {
+            tools: { where: { enabled: true } },
+            knowledgeBases: true,
+            integrations: { where: { status: "connected" } },
+          },
+        },
+      },
+    });
+  }
+
   /** Adds a channel to this agent. */
   createAgentChannel(
     agentId: string,

@@ -15,7 +15,14 @@ import { UserRepository } from "../auth/repository/user.repository";
 import { SubscriptionPlanRepository } from "../billing/repository/subscription-plan.repository";
 import { TransactionRepository } from "../billing/repository/transaction.repository";
 import { UserSubscriptionRepository } from "../billing/repository/user-subscription.repository";
+import { ChannelAgentRepository } from "../channel/repository/channel-agent.repository";
 import { ChannelChatRoomRepository } from "../channel/repository/channel-chat-room.repository";
+import { ChannelMessageRepository } from "../channel/repository/channel-message.repository";
+import { ChannelRepository } from "../channel/repository/channel.repository";
+import { ConversationRepository } from "../chat/repository/conversation.repository";
+import { MessageRepository } from "../chat/repository/message.repository";
+import { PromptTemplateRepository } from "../chat/repository/prompt-template.repository";
+import { SystemPromptRepository } from "../chat/repository/system-prompt.repository";
 import { CodeRedemptionRepository } from "../codes/repository/code-redemption.repository";
 import { InvitationCodeRepository } from "../codes/repository/invitation-code.repository";
 import { KnowledgeBaseRepository } from "../knowledge/repository/knowledge-base.repository";
@@ -49,7 +56,14 @@ const REPOSITORIES = [
   SubscriptionPlanRepository,
   TransactionRepository,
   UserSubscriptionRepository,
+  ChannelAgentRepository,
   ChannelChatRoomRepository,
+  ChannelMessageRepository,
+  ChannelRepository,
+  ConversationRepository,
+  MessageRepository,
+  PromptTemplateRepository,
+  SystemPromptRepository,
   CodeRedemptionRepository,
   InvitationCodeRepository,
   KnowledgeBaseRepository,

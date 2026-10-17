@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
+import { AgentChannelRepository } from "../../agent/repository/agent-channel.repository";
 import type { GowaOutboundMessage } from "../types/gowa.types";
 import { splitMessage } from "../utils/split-message";
 
@@ -7,7 +7,7 @@ import { splitMessage } from "../utils/split-message";
 export class GowaService {
   private readonly logger = new Logger(GowaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly agentChannels: AgentChannelRepository) {}
 
   /**
    * Send a text message via GOWA API
@@ -58,22 +58,8 @@ export class GowaService {
    */
   async findWhatsappChannels(toNumber: unknown) {
     if (typeof toNumber !== "string" || !toNumber) return [];
-    const channels = await this.prisma.agentChannel.findMany({
-      where: {
-        channelType: "whatsapp",
-        status: "active",
-        config: { path: ["phoneNumber"], equals: toNumber },
-      },
-      include: {
-        agent: {
-          include: {
-            tools: { where: { enabled: true } },
-            knowledgeBases: true,
-            integrations: { where: { status: "connected" } },
-          },
-        },
-      },
-    });
+    const channels =
+      await this.agentChannels.findActiveWhatsappChannels(toNumber);
     return channels.map((channel) => ({ agent: channel.agent, channel }));
   }
 }

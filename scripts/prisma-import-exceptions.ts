@@ -9,12 +9,8 @@ export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   "apps/api/src/app/agent/service/agent-run.service.ts",
   "apps/api/src/app/billing/controller/billing.controller.ts",
   "apps/api/src/app/billing/service/billing.service.ts",
+  // The channel chat run path; RX-136 left its 3 calls (sub-agents, history, delegation) for RX-24, which rewrites it.
   "apps/api/src/app/channel/service/channel-chat.service.ts",
-  "apps/api/src/app/channel/service/channel.service.ts",
-  "apps/api/src/app/channel/service/gowa.service.ts",
-  "apps/api/src/app/chat/service/conversation.service.ts",
-  "apps/api/src/app/chat/service/prompt-template.service.ts",
-  "apps/api/src/app/chat/service/prompt-tuning.service.ts",
   "apps/api/src/app/config/model-registry.service.ts",
   "apps/api/src/app/email/service/email-job.service.ts",
   "apps/api/src/app/guardrail/service/violation-tracker.service.ts",
