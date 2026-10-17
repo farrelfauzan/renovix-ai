@@ -597,6 +597,56 @@ describe("RX-161: provider transport", () => {
     });
   });
 
+  describe("RX-183: the stream's Retry-After wait follows the caller's signal", () => {
+    const NOT_FAKED = [
+      "Date", "setImmediate", "clearImmediate", "setInterval", "clearInterval",
+      "nextTick", "queueMicrotask", "performance", "requestAnimationFrame",
+      "cancelAnimationFrame", "requestIdleCallback", "cancelIdleCallback", "hrtime",
+    ] as const;
+
+    afterEach(() => jest.useRealTimers());
+
+    it("AC1: abort 1 s into a 30 s wait → the generator ends at once, one request, no timer left", async () => {
+      setTimeoutSpy.mockRestore();
+      jest.useFakeTimers({ doNotFake: [...NOT_FAKED] });
+      unavailable("30");
+      const disconnected = new AbortController();
+      const stream = makeAdapter(stubOnly()).chatStream(request({ signal: disconnected.signal }));
+      const reading = drain(stream).then(
+        () => "finished",
+        (err: Error) => err.name,
+      );
+      while (primary.requests.length === 0) await new Promise((r) => realSetTimeout(r, 5));
+      await new Promise((r) => realSetTimeout(r, 50));
+      jest.advanceTimersByTime(1000);
+      expect(jest.getTimerCount()).toBe(1);
+
+      disconnected.abort();
+
+      const outcome = await Promise.race([reading, new Promise((r) => realSetTimeout(() => r("still waiting"), 500))]);
+      expect(outcome).toBe("AbortError");
+      expect(primary.requests).toHaveLength(1);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it("a signal that never fires → the primary is retried once after the stated wait (real 1 s)", async () => {
+      setTimeoutSpy.mockRestore();
+      let calls = 0;
+      primary.respond((_r, res) => {
+        if (++calls > 1) return sendSse(res, ['{"retried":true}']);
+        res.writeHead(503, { "Retry-After": "1" });
+        res.end();
+      });
+      const startedAt = Date.now();
+
+      const payloads = await drain(makeAdapter(stubOnly()).chatStream(request({ signal: new AbortController().signal })));
+
+      expect(payloads).toEqual(['{"retried":true}']);
+      expect(primary.requests).toHaveLength(2);
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(900);
+    }, 10000);
+  });
+
   it("the plain and the streaming request both carry Accept and Content-Type JSON", async () => {
     const adapter = makeAdapter(stubOnly());
     await adapter.chat(request());

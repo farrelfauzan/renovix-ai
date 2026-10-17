@@ -146,16 +146,31 @@ export class OpenRouterAdapter implements ProviderAdapter {
   /**
    * RX-161: a 502/503 with Retry-After goes straight on to the fallback when one is
    * configured (rethrown here); without one, the primary is retried once after the stated wait.
+   * RX-183: when `signal` fires during the wait, the timer is cleared, the wait rejects with the
+   * signal's reason (as an aborted fetch does) and the primary is not called again; chat passes no
+   * signal and waits the full time exactly as before.
    */
   private async retryOnceAfter<T>(
     err: unknown,
     send: (endpoint: LlmEndpoint) => Promise<T>,
+    signal?: AbortSignal,
   ): Promise<T> {
     if (!isRetryAfterOutage(err) || this.fallback) throw err;
     this.logger.warn(
       `[LLM] primary (${new URL(this.primary.baseUrl).host}) answered ${err.status} with Retry-After; retrying once in ${err.retryAfterMs}ms`,
     );
-    await new Promise((r) => setTimeout(r, err.retryAfterMs));
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        reject(signal?.reason);
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, err.retryAfterMs);
+      if (signal?.aborted) return onAbort();
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
     return send(this.primary);
   }
 
@@ -308,14 +323,13 @@ export class OpenRouterAdapter implements ProviderAdapter {
       `[OpenRouter chatStream] model=${params.providerId} tool_choice=${JSON.stringify(body.tool_choice)} tools=${(params.tools || []).length}`,
     );
 
-    // RX-161: the upstream request is aborted when the caller's signal fires (client gone)
-    // or the consumer stops iterating early (see finally below).
-    const upstream = new AbortController();
-    const signal = params.signal ? AbortSignal.any([upstream.signal, params.signal]) : upstream.signal;
+    // RX-161: the upstream request is aborted when the caller's signal fires (client gone).
+    // RX-183: a consumer that stops iterating closes the upstream by leaving the for await.
+    const { signal } = params;
     const send = (endpoint: LlmEndpoint) => this.openStream(endpoint, body, signal);
     // No retries on a stream (today's behaviour); a 502/503 goes once to the fallback.
     const response = await this.openStream(this.primary, body, signal)
-      .catch((err) => this.retryOnceAfter(err, send))
+      .catch((err) => this.retryOnceAfter(err, send, signal))
       .catch((err) => this.sendToFallback(err, send));
 
     const decoder = new TextDecoder();
@@ -368,8 +382,6 @@ export class OpenRouterAdapter implements ProviderAdapter {
         return;
       }
       throw err;
-    } finally {
-      upstream.abort();
     }
 
     if (!hasAnswer && finishReason === "length") {
@@ -383,11 +395,11 @@ export class OpenRouterAdapter implements ProviderAdapter {
     );
   }
 
-  /** Opens the stream; its timeout covers the wait for the response headers, never the body. */
+  /** Opens the stream; its timeout covers the wait for the response headers, never the body. The optional caller signal aborts it too. */
   private async openStream(
     endpoint: LlmEndpoint,
     body: Record<string, unknown>,
-    signal: AbortSignal,
+    signal?: AbortSignal,
   ): Promise<Response> {
     const connect = new AbortController();
     const timer = setTimeout(
@@ -395,7 +407,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
       STREAM_CONNECT_TIMEOUT_MS,
     );
     try {
-      return await this.post(endpoint, body, AbortSignal.any([signal, connect.signal]));
+      return await this.post(endpoint, body, AbortSignal.any(signal ? [signal, connect.signal] : [connect.signal]));
     } catch (err: any) {
       // RX-169: callers get the status and the body text (ProviderHttpError), never a stream.
       this.logger.error(
