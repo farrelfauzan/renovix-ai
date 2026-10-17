@@ -68,13 +68,20 @@ export class InvitationCodeRepository {
   }
 
   /**
-   * Counts one more redemption on this code if it has one left, and says whether it did. The row lock
-   * this takes makes concurrent redemptions of the same code wait for each other. Only inside a transaction.
+   * Counts one more redemption on this code if, at `now`, it is active, not expired and has one left, and says
+   * whether it did. The three conditions are checked in this one conditional update, under the row lock it takes,
+   * so a code deactivated or expired after the service's pre-checks is refused (RX-181), and concurrent redemptions
+   * of the same code wait for each other. The service's re-check after this call (the user's redemption, a 409)
+   * relies on READ COMMITTED, the default isolation level of `TransactionService.run`: the update re-reads the row
+   * after a concurrent commit. Under a stricter isolation level the waiting redemption fails with a serialization
+   * error instead of that 409. Only inside a transaction.
    */
-  async claimRedemption(codeId: string, tx: DbTransaction): Promise<boolean> {
+  async claimRedemption(codeId: string, now: Date, tx: DbTransaction): Promise<boolean> {
     const { count } = await tx.invitationCode.updateMany({
       where: {
         id: codeId,
+        isActive: true,
+        expiresAt: { gte: now },
         timesRedeemed: { lt: tx.invitationCode.fields.maxRedemptions },
       },
       data: { timesRedeemed: { increment: 1 } },
