@@ -9,6 +9,7 @@ import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AgentRepository } from "../repository/agent.repository";
 import {
   blockOutbound,
   OutboundBlocker,
@@ -50,6 +51,7 @@ describe("RX-169: provider error on AgentRunService.streamExecution", () => {
         { provide: KnowledgeService, useValue: {} },
         { provide: UsageService, useValue: {} },
         { provide: GuardrailService, useValue: {} },
+        { provide: AgentRepository, useValue: {} },
       ],
     }).compile();
   });

@@ -63,6 +63,63 @@ export class AgentRepository {
     });
   }
 
+  /**
+   * The agent with this id that this user may run (their own, or any public active one), with its enabled tools,
+   * its knowledge bases, its connected integrations and its active sub-agents (RX-134).
+   */
+  findRunnableAgent(agentId: string, userId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.findFirst({
+      where: {
+        id: agentId,
+        OR: [{ userId }, { isPublic: true, status: "active" }],
+      },
+      include: {
+        tools: { where: { enabled: true } },
+        knowledgeBases: true,
+        integrations: { where: { status: "connected" } },
+        subAgents: {
+          where: { status: "active" },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            status: true,
+            model: true,
+            userId: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * This user's sub-agent under this parent agent, named by its id or by its name (any case), with its enabled
+   * tools, its knowledge bases and its connected integrations (RX-134).
+   */
+  findDelegateSubAgent(
+    parentAgentId: string,
+    userId: string,
+    identifier: string,
+    tx?: DbTransaction,
+  ) {
+    return (tx ?? this.prisma).agent.findFirst({
+      where: {
+        parentAgentId,
+        userId,
+        agentType: "sub_agent",
+        OR: [
+          { id: identifier },
+          { name: { equals: identifier, mode: "insensitive" } },
+        ],
+      },
+      include: {
+        tools: { where: { enabled: true } },
+        knowledgeBases: true,
+        integrations: { where: { status: "connected" } },
+      },
+    });
+  }
+
   /** The agent with this id and its relations. */
   findAgentWithRelations(agentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findUnique({
