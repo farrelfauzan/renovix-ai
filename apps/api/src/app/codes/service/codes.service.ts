@@ -15,6 +15,8 @@ import { UserSubscriptionRepository } from "../../billing/repository/user-subscr
 import { TransactionRepository } from "../../billing/repository/transaction.repository";
 import { UserRepository } from "../../auth/repository/user.repository";
 
+const CODE_DEACTIVATED = "This code has been deactivated";
+const CODE_EXPIRED = "This code has expired";
 const NO_REDEMPTIONS_LEFT =
   "This code has reached its maximum number of redemptions";
 const ALREADY_REDEEMED = "You have already redeemed this code";
@@ -51,11 +53,11 @@ export class CodesService {
     }
 
     if (!code.isActive) {
-      throw new BadRequestException("This code has been deactivated");
+      throw new BadRequestException(CODE_DEACTIVATED);
     }
 
     if (new Date() > code.expiresAt) {
-      throw new BadRequestException("This code has expired");
+      throw new BadRequestException(CODE_EXPIRED);
     }
 
     if (code.timesRedeemed >= code.maxRedemptions) {
@@ -72,8 +74,18 @@ export class CodesService {
     // Execute redemption in a transaction
     const result = await this.transactions.run(async (tx) => {
       // The checks above can race: claim a redemption first (this waits for any other redemption
-      // of this code to finish), then look again for this user's redemption.
-      if (!(await this.codes.claimRedemption(code.id, tx))) {
+      // of this code to finish, and checks again that the code is active, not expired and not used up),
+      // then look again for this user's redemption.
+      const now = new Date();
+      if (!(await this.codes.claimRedemption(code.id, now, tx))) {
+        // Read the code again to give the reason the claim refused it, in the order of the checks above.
+        const current = await this.codes.findCodeById(code.id, tx);
+        if (current && !current.isActive) {
+          throw new BadRequestException(CODE_DEACTIVATED);
+        }
+        if (current && now > current.expiresAt) {
+          throw new BadRequestException(CODE_EXPIRED);
+        }
         throw new BadRequestException(NO_REDEMPTIONS_LEFT);
       }
       if (await this.redemptions.findRedemption(code.id, userId, tx)) {
@@ -131,6 +143,7 @@ export class CodesService {
 
           await this.subscriptions.updateSubscription(
             userId,
+            existing.currentPeriodEnd,
             {
               planId: code.planId,
               status: "active",

@@ -1,7 +1,10 @@
-import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@generated/prisma/client.js";
+import { ConflictException, Injectable } from "@nestjs/common";
+import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+
+const SUBSCRIPTION_CHANGED =
+  "Your subscription was changed by another redemption at the same time; please try again";
 
 /**
  * The queries on `user_subscriptions`. Every method takes the transaction as its last argument: optional on
@@ -27,27 +30,49 @@ export class UserSubscriptionRepository {
     });
   }
 
-  /** Creates this user's subscription. Only inside a transaction. */
-  createSubscription(
+  /**
+   * Creates this user's subscription. A 409 when the user has one already (the unique `user_id`): another
+   * redemption created it after this caller read none (RX-181). Only inside a transaction.
+   */
+  async createSubscription(
     userId: string,
     data: Omit<Prisma.UserSubscriptionUncheckedCreateInput, "userId">,
     tx: DbTransaction,
   ) {
-    return tx.userSubscription.create({
-      data: { userId, ...data },
-    });
+    try {
+      return await tx.userSubscription.create({
+        data: { userId, ...data },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException(SUBSCRIPTION_CHANGED);
+      }
+      throw err;
+    }
   }
 
-  /** Updates this user's subscription. Only inside a transaction. */
-  updateSubscription(
+  /**
+   * Updates this user's subscription if its `currentPeriodEnd` is still `readPeriodEnd`, the end the caller read.
+   * A 409 when it is not: another redemption changed it after this caller read it (RX-181). The match is to the
+   * millisecond read, not exact: a stored end with microseconds (a row this API did not write) reads truncated.
+   * Only inside a transaction.
+   */
+  async updateSubscription(
     userId: string,
+    readPeriodEnd: Date,
     data: Prisma.UserSubscriptionUncheckedUpdateInput,
     tx: DbTransaction,
-  ) {
-    return tx.userSubscription.update({
-      where: { userId },
+  ): Promise<void> {
+    const { count } = await tx.userSubscription.updateMany({
+      where: {
+        userId,
+        currentPeriodEnd: { gte: readPeriodEnd, lt: new Date(readPeriodEnd.getTime() + 1) },
+      },
       data,
     });
+    if (count === 0) {
+      throw new ConflictException(SUBSCRIPTION_CHANGED);
+    }
   }
 
   /** Creates this user's subscription and returns it with its plan (RX-133). */

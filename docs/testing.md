@@ -104,6 +104,8 @@ The RX-147 race tests are in `codes/service/codes.service.db.spec.ts`:
 - "RX-147: grants a two-use code to exactly two of three users redeeming at the same moment"
 - "RX-147: grants once when the same user redeems one code twice at the same moment (201 and 409, never 500)"
 
+The RX-181 race tests are in the same file. Two of them hold inside the transaction on purpose: the two callers redeem different codes, so they lock different code rows and both reach the hold. "a user with no subscription redeeming two plan codes at once ..." holds both callers at `createSubscription` (`holdSubscriptionCreates`); "a user with an active subscription redeeming two plan codes at once ..." holds both right after `findSubscriptionByUserId` (`holdCallersAfterSubscriptionRead`). The deactivated and expired tests run the admin's change while the caller is held at `findRedemption` (`changeCodeAfterPreChecks`).
+
 These tests rely on Postgres READ COMMITTED, the default isolation level of `TransactionService.run` (`apps/api/src/app/prisma/transaction.service.ts`), which sets no isolation level unless `options` are passed. Under READ COMMITTED a conditional `updateMany` re-reads the row after a concurrent commit, which is why `claimRedemption` is safe.
 
 A race-fix PR shows D83 evidence:

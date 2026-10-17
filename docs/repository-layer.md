@@ -29,7 +29,7 @@ Four rules, each with its example in the code.
 A method that also reads a second table (an `include`) belongs to the table it is called on: `findCodeWithPlan`, `listCodes` and `createCode` (with the plan) are in `InvitationCodeRepository`, `findRedemptionsByUser` (with the code text and type) is in `CodeRedemptionRepository`. A service injects every repository it uses: `CodesService` takes the six above and `TransactionService`.
 
 **(2) Prisma stays inside the repositories (D101, D103).**
-No value import of the generated Prisma client outside the repositories and the Prisma module (`import type` is allowed, rule (a) and the import check below). Services write enum values as strings: `CodesService` checks `code.type === "topup"` and passes `status: "active"`, and `TransactionRepository.createTopupTransaction` writes `type: "topup", status: "success"`. A repository turns a Prisma error into one of the app's error classes, which are Nest's HTTP exceptions (D103). The six repositories above map no Prisma error, so the example is `AdminUserRepository.updateRole` (`admin-auth/repository/admin-user.repository.ts`): a `PrismaClientKnownRequestError` with code `P2003` (no role with that name) becomes `BadRequestException("Unknown role")`.
+No value import of the generated Prisma client outside the repositories and the Prisma module (`import type` is allowed, rule (a) and the import check below). Services write enum values as strings: `CodesService` checks `code.type === "topup"` and passes `status: "active"`, and `TransactionRepository.createTopupTransaction` writes `type: "topup", status: "success"`. A repository turns a Prisma error into one of the app's error classes, which are Nest's HTTP exceptions (D103). Example: `AdminUserRepository.updateRole` (`admin-auth/repository/admin-user.repository.ts`): a `PrismaClientKnownRequestError` with code `P2003` (no role with that name) becomes `BadRequestException("Unknown role")`. Of the six repositories above only `UserSubscriptionRepository` maps one (RX-181): `createSubscription` turns `P2002` (the user has a subscription already) into a `ConflictException`.
 
 **(3) A table used by several modules: its repository sits in the module that owns the table; one global module provides them all (D103).**
 Owners: `invitation_codes` and `code_redemptions` belong to codes; `user_subscriptions`, `subscription_plans` and `transactions` to billing; `users` to auth; `portal_sessions` (`PortalSessionRepository`, 8 methods) and `anonymous_usage_counters` (`AnonymousUsageCounterRepository`, 2) to portal (RX-138); `agents`, `agent_tools`, `agent_integrations`, `agent_knowledge_bases` and `agent_channels` to agent; `channel_chat_rooms` to channel; `reminders` to reminder; `knowledge_bases` to knowledge (RX-133). `RepositoriesModule` (`apps/api/src/app/prisma/repositories.module.ts`) is `@Global()` and lists every repository of the API in its `providers` and `exports`; `AppModule` imports it once. No feature module lists a repository in its `providers`, and a feature module never imports another module to get a repository: `CodesModule` imports nothing to use the billing and auth repositories, and `AdminAuthModule` no longer imports `AdminAuditModule`, which it did only for `AdminAuditLogRepository`. A new repository is added to the list in `repositories.module.ts`.
@@ -76,8 +76,9 @@ Pilot, `CodesService.redeemCode` (shortened):
 
 ```ts
 const result = await this.transactions.run(async (tx) => {
-  if (!(await this.codes.claimRedemption(code.id, tx))) {
-    throw new BadRequestException(NO_REDEMPTIONS_LEFT);
+  const now = new Date();
+  if (!(await this.codes.claimRedemption(code.id, now, tx))) {
+    // ... read the code again and throw the 400 for its state (deactivated, expired, used up)
   }
   if (await this.redemptions.findRedemption(code.id, userId, tx)) {
     throw new ConflictException(ALREADY_REDEEMED);
@@ -91,7 +92,7 @@ const result = await this.transactions.run(async (tx) => {
     tx,
   );
   // ... when the code grants a plan: this.subscriptions.findSubscriptionByUserId(userId, tx),
-  // then this.subscriptions.updateSubscription(userId, { ... }, tx) or createSubscription(userId, { ... }, tx)
+  // then this.subscriptions.updateSubscription(userId, existing.currentPeriodEnd, { ... }, tx) or createSubscription(userId, { ... }, tx)
   await this.redemptions.createRedemption(
     code.id,
     userId,
