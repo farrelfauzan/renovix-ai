@@ -21,7 +21,7 @@ import { PRISMA_IMPORT_EXCEPTIONS } from "./prisma-import-exceptions";
 const ROOT = resolve(import.meta.dir, "..");
 const SRC = "apps/api/src";
 const LIST = "scripts/prisma-import-exceptions.ts";
-const BASE = process.argv[2] ?? process.env.PRISMA_IMPORTS_BASE ?? "origin/main";
+const BASE = process.argv[2] || process.env.PRISMA_IMPORTS_BASE || "origin/main";
 const ALLOWED = /^apps\/api\/src\/app\/(prisma\/|[^/]+\/repository\/[^/]+\.repository\.ts$)/;
 const FORBIDDEN = /(^|\/)prisma\/prisma\.service(\.[cm]?[jt]s)?$|^\.\/prisma\.service(\.[cm]?[jt]s)?$|(^@|\/)generated\/prisma(\/|$)/;
 

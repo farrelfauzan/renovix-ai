@@ -88,6 +88,15 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(plan.maxAgents).toBe(1);
     });
 
+    it("only the caller's agents count toward the limit: another user's agent does not block (201)", async () => {
+      const { user } = await subscribed({ maxAgents: 1 });
+      await createAgent(prisma, { userId: (await createUser(prisma)).id });
+
+      const res = await app.inject({ method: "POST", url: "/agents", headers: auth(user), payload: newAgent });
+
+      expect(res.statusCode).toBe(201);
+    });
+
     it("creates with the defaults and the relations; the slug is unique per user only", async () => {
       const { user } = await subscribed({ maxAgents: 10 });
       const other = await createUser(prisma);
@@ -313,6 +322,16 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
         tokensUsed: "0",
         plan: { id: plan.id, maxTokensPerMonth: "5000000", priceMonthly: 99000 },
       });
+    });
+
+    it("returns the caller's plan, not another user's", async () => {
+      await subscribed({ name: "Other" });
+      const { user, plan } = await subscribed({ name: "Mine" });
+
+      const res = await app.inject({ method: "GET", url: "/agents/subscription", headers: auth(user) });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().subscription).toMatchObject({ userId: user.id, planId: plan.id });
     });
   });
 
