@@ -1,0 +1,40 @@
+{
+  "notes": [
+    "Tier rate table (RX-21). Edit this file, then run `bun run seed:tier-rates` (SEED_OPERATOR=<your name>).",
+    "Each rate is CREDITS PER 1,000,000 TOKENS of one token kind (docs/credits.md section 1). The seed",
+    "stores these numbers verbatim; the cost helpers divide the token-weighted sum by 1,000,000 (section 1.3).",
+    "Column order is input / cached / output. Values are docs/credits.md section 1.4's four tables:",
+    "Standard 1/1/1; Advanced new 5, cached 6, output 4; Premium new 10, cached 20, output 11;",
+    "Frontier 29/29/42 (new / cached / output) per the Tech Lead's D182 ruling on R-16:",
+    "Opus 5.5 at $4 / $0.20 / $20 per M tokens, ratio 29.52, break-even 29/29/42;",
+    "PRD 02's 17/17/25 is on record only (docs/credits.md section 14 keeps it).",
+    "No rate is written in code."
+  ],
+  "reason": "Adopted per-1,000,000-token credit rates by tier (RX-21, docs/credits.md section 1.4; Frontier per D182)",
+  "rates": [
+    {
+      "tier": "standard",
+      "input": 1,
+      "cached": 1,
+      "output": 1
+    },
+    {
+      "tier": "advanced",
+      "input": 5,
+      "cached": 6,
+      "output": 4
+    },
+    {
+      "tier": "premium",
+      "input": 10,
+      "cached": 20,
+      "output": 11
+    },
+    {
+      "tier": "frontier",
+      "input": 29,
+      "cached": 29,
+      "output": 42
+    }
+  ]
+}

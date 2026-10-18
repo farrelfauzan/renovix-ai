@@ -106,6 +106,11 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
         maxTokens: 8192,
       },
     });
+    // RX-21: charging reads the tier rate table (credits per 1,000,000 tokens); resetDatabase
+    // wipes it, so seed the standard 1/1/1 rate with the model row.
+    await prisma.tierRate.create({
+      data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
+    });
     await moduleRef.get(ModelRegistryService).refresh();
   });
 

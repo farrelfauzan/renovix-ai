@@ -181,12 +181,19 @@ export class AgentRunService {
       },
     });
 
-    // Log usage to usage_logs table
-    const pricing = await this.registry.getUserPrice(context.model);
-    const cost = pricing
+    // Log usage to usage_logs table — tier credit rates (RX-21), not price x multiplier.
+    const modelConfig = await this.registry.getModel(context.model);
+    const tierRates = modelConfig
+      ? await this.registry.getTierRates(modelConfig.tier)
+      : undefined;
+    const cost = tierRates
       ? new Decimal(result.totalInputTokens)
-          .mul(pricing.inputPrice)
-          .add(new Decimal(result.totalOutputTokens).mul(pricing.outputPrice))
+          .mul(tierRates.inputCreditsPerToken)
+          .add(
+            new Decimal(result.totalOutputTokens).mul(
+              tierRates.outputCreditsPerToken,
+            ),
+          )
       : new Decimal(0);
 
     this.usage
@@ -689,12 +696,23 @@ export class AgentRunService {
     const estimatedOutput = outputTokens || totalTokens - estimatedInput;
 
     this.registry
-      .getUserPrice(context.model)
-      .then((pricing) => {
-        const cost = pricing
+      .getModel(context.model)
+      .then(async (modelConfig) =>
+        modelConfig
+          ? {
+              rates: await this.registry.getTierRates(modelConfig.tier),
+            }
+          : undefined,
+      )
+      .then((model) => {
+        const cost = model?.rates
           ? new Decimal(estimatedInput)
-              .mul(pricing.inputPrice)
-              .add(new Decimal(estimatedOutput).mul(pricing.outputPrice))
+              .mul(model.rates.inputCreditsPerToken)
+              .add(
+                new Decimal(estimatedOutput).mul(
+                  model.rates.outputCreditsPerToken,
+                ),
+              )
           : new Decimal(0);
 
         this.usage

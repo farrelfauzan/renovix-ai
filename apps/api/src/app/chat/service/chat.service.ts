@@ -50,19 +50,17 @@ export class ChatService {
       );
     }
 
-    const pricing = await this.registry.getUserPrice(body.model);
-    if (!pricing) {
+    // 2. Estimate cost — the tier's per-token credit rate (RX-21), not price x multiplier.
+    const tierRates = await this.registry.getTierRates(modelConfig.tier);
+    if (!tierRates) {
       throw new BadRequestException(
-        `Pricing not found for model "${body.model}"`,
+        `No credit rates found for tier "${modelConfig.tier}"`,
       );
     }
-
-    // 2. Estimate cost
     const estimatedTokens = estimateTokens(body.messages);
     const estimatedCost = estimateCost(
       estimatedTokens,
-      pricing.inputPrice.toNumber(),
-      pricing.creditMultiplier.toNumber(),
+      tierRates.inputCreditsPerToken.toNumber(),
     );
 
     // 3. Reserve credits (atomic balance check + deduction)
@@ -103,13 +101,14 @@ export class ChatService {
 
     const latencyMs = Date.now() - startTime;
 
-    // 6. Calculate actual cost
+    // 6. Calculate actual cost — tier credit rates (RX-21). The adapter's usage shape does not
+    // surface the provider's cached-token count today, so cached input is priced as input; when
+    // the adapter reports cachedTokens, they are priced at the tier's cached rate.
     const actualCost = calculateActualCost(
       providerResponse.usage.prompt_tokens,
       providerResponse.usage.completion_tokens,
-      pricing.inputPrice.toNumber(),
-      pricing.outputPrice.toNumber(),
-      pricing.creditMultiplier.toNumber(),
+      tierRates.inputCreditsPerToken.toNumber(),
+      tierRates.outputCreditsPerToken.toNumber(),
     );
 
     // 7. Adjust balance (refund difference)

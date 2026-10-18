@@ -109,6 +109,10 @@ model AiModel {
   providerId       String   @map("provider_id")
   inputPrice       Decimal  @db.Decimal(18, 12) @map("input_price")
   outputPrice      Decimal  @db.Decimal(18, 12) @map("output_price")
+  /// RX-21: the provider's cached-input price; null when the provider reports none yet.
+  cachedInputPrice Decimal? @db.Decimal(18, 12) @map("cached_input_price")
+  /// RX-21: when the price-refresh job last updated this row's prices.
+  priceUpdatedAt   DateTime? @map("price_updated_at") @db.Timestamptz()
   maxTokens        Int      @map("max_tokens")
   maxOutputTokens  Int?     @map("max_output_tokens")
   tier             String   @default("standard")
@@ -121,6 +125,21 @@ model AiModel {
   @@index([tier])
   @@index([active, tier])
   @@map("ai_models")
+}
+
+/// RX-21: the tier rate table, one row per tier. Each column holds the tier's rate for one
+/// token kind as docs/credits.md defines it: CREDITS PER 1,000,000 TOKENS of that kind
+/// (column names keep the short form). The adopted values (Standard 1/1/1, Advanced 5/4/6,
+/// Premium 10/11/20, Frontier 17/25/17 for input/cached/output) come only from
+/// prisma/tier-rates.seed.json (`bun run seed:tier-rates`); no rate is written in code.
+model TierRate {
+  tier                   String   @unique
+  inputCreditsPerToken  Decimal  @map("input_credits_per_token") @db.Decimal(18, 12)
+  cachedCreditsPerToken Decimal  @map("cached_credits_per_token") @db.Decimal(18, 12)
+  outputCreditsPerToken  Decimal  @map("output_credits_per_token") @db.Decimal(18, 12)
+  updatedAt             DateTime @updatedAt @db.Timestamptz()
+
+  @@map("tier_rates")
 }
 
 model AppConfig {
@@ -994,6 +1013,9 @@ enum CatalogEntity {
   enterprise_bundle_version
   company_contract
   platform_setting
+  /// RX-21: a tier's credit rates (tier-rate seed) and a provider price refresh (ai_models row).
+  tier_rate
+  ai_model
 }
 
 /// A package (Starter, Pro, Enterprise). Price, credits and limits live on its versions.
