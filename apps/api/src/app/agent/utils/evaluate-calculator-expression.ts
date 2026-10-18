@@ -9,7 +9,10 @@ const WHITESPACE_PATTERN = /^[ \t\r\n]$/;
 const NUMBER_CHARACTER_PATTERN = /^[0-9.]$/;
 const NUMBER_RUN_PATTERN = /^[0-9.]+/;
 // digits with at most one decimal point: 1, 2.5, 5., .5
-const NUMBER_LITERAL_PATTERN = /^(\d+\.?\d*|\.\d+)$/;
+// (?:\d+(?:\.\d*)?|\.\d+) is the same language as (\d+\.?\d*|\.\d+) but backtracks
+// linearly: the old grouping re-split the digit run for every position after ".."
+// (RX-55 failed test: a 65000-digit run took ~3s and blocked the event loop).
+const NUMBER_LITERAL_PATTERN = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
 const INVALID_RESULT_MESSAGE = "Expression did not evaluate to a valid number";
 
 function assertFinite(value: number): number {
