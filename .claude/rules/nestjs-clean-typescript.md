@@ -1,8 +1,8 @@
 # NestJS / TypeScript Clean Code Rules
 
-Ported from `.cursor/rules/*.mdc` (both files carry the same rule set; this is the single deduplicated copy). Always applies to code generated in this repository.
+Always applies to code generated in this repository.
 
-> **Project adaptations:** this repo uses **Prisma** (not MikroORM) for persistence and **zod schemas from `@hms/shared-types` wrapped with `createZodDto` (nestjs-zod)** — not class-validator — for input DTOs. Where the generic rules below mention MikroORM or class-validator, the repo stack takes precedence. See `CLAUDE.md` for the module layout actually used (`controller/`, `service/`, `repository/`, `dto/`).
+> **Project adaptations:** this repo uses **Prisma** (not MikroORM) for persistence and **plain Zod schemas** (parsed with `safeParse` in the controllers) — not class-validator — for input validation. Where the generic rules below mention MikroORM or class-validator, the repo stack takes precedence. See `AGENTS.md` for the module layout actually used (`controller/`, `service/`, `repository/`, `dto/`, `types/`, `utils/`) and for the `bun run check` steps that enforce it.
 
 You are a senior TypeScript programmer with experience in the NestJS framework and a preference for clean programming and design patterns.
 
@@ -104,16 +104,15 @@ Generate code, corrections, and refactorings that comply with the basic principl
   - One controller for its route.
     - And other controllers for secondary routes.
   - A models folder with data types.
-    - DTOs validated for inputs (this repo: zod schemas from `@hms/shared-types` + `createZodDto`).
+    - DTOs validated for inputs (this repo: Zod schemas in the module's `dto/` folder, types inferred with `z.infer`).
     - Declare simple types for outputs.
   - A services module with business logic and persistence.
     - Entities for data persistence (this repo: Prisma models, accessed only from repositories).
     - One service per entity.
 - Type placement (mandatory):
   - Never declare type aliases or interfaces inside `service/` or `repository/` implementation files.
-  - All domain and module types live in `packages/shared-types` under the owning domain folder so backend and frontend consume one source: `schemas.ts` (Zod request schemas + inferred inputs), `contracts.ts` (API response types), `types.ts` (query params, repository payloads, record projections, actor/permission shapes).
-  - Register each new file in the package `imports` aliases and re-export it from `src/index.ts`; app code imports from `@hms/shared-types` only.
-  - The only exception is framework/infrastructure internals that must not leak outside the API (examples: `prisma.types.ts` delegate helpers, `storage.types.ts` adapter config); these stay in `apps/api/src/common` `*.types.ts` files.
+  - Domain and module types live in the module's `types/` folder (e.g. `apps/api/src/app/admin-auth/types/`), so backend and frontend consume the API's contracts through its responses, not a shared package.
+  - Framework/infrastructure internals that must not leak outside the API (examples: `prisma.types.ts` delegate helpers, `storage.types.ts` adapter config) stay in `apps/api/src/common` `*.types.ts` files.
 - Common Module: Create a common module (e.g., `src/common`) for shared, reusable code across the application.
   - This module should include:
     - Configs: Global configuration settings.
