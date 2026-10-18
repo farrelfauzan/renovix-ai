@@ -1,9 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { Decimal } from "@prisma/client/runtime/client";
 import {
   ChatRequest,
   ChatResponse,
   ProviderAdapter,
+  ProviderModelPrice,
 } from "./provider.interface";
 import { LlmEndpoint } from "./types/llm-endpoint";
 import { ProviderHttpError } from "./errors/provider-http-error";
@@ -45,6 +47,13 @@ const emptyAnswerError = (providerId: string, maxTokens: unknown): Error =>
   new Error(
     `Model ${providerId} returned an empty answer: max_tokens (${maxTokens}) ran out before any content (finish_reason "length")`,
   );
+
+/** A provider price field as a decimal string per token; null when the provider reports none. */
+const readPrice = (value: unknown): string | null => {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const price = new Decimal(value as string).div(1_000_000);
+  return price.isFinite() && price.greaterThanOrEqualTo(0) ? price.toFixed() : null;
+};
 
 @Injectable()
 export class OpenRouterAdapter implements ProviderAdapter {
@@ -198,6 +207,39 @@ export class OpenRouterAdapter implements ProviderAdapter {
   private async postChat(endpoint: LlmEndpoint, body: Record<string, unknown>): Promise<any> {
     const response = await this.post(endpoint, body, AbortSignal.timeout(CHAT_TIMEOUT_MS));
     return response.json();
+  }
+
+  /**
+   * Lists the provider's models with their current prices (RX-21): GET /models on the primary
+   * endpoint, the OpenAI-compatible shape the adapter already speaks
+   * ({ data: [{ id, pricing: { prompt, completion, input_cache_read? } }] }).
+   */
+  async listModels(): Promise<ProviderModelPrice[]> {
+    const response = await fetch(`${this.primary.baseUrl}/models`, {
+      headers: this.buildHeaders(this.primary),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new ProviderHttpError({
+        message: `Listing models failed with status code ${response.status}`,
+        status: response.status,
+        bodyText: await response.text(),
+      });
+    }
+    const body = (await response.json()) as {
+      data?: Array<{
+        id?: unknown;
+        pricing?: Record<string, unknown>;
+      }>;
+    };
+    return (body.data ?? []).map((model) => ({
+      providerId: typeof model.id === "string" ? model.id : "",
+      inputPrice: readPrice(model.pricing?.prompt),
+      outputPrice: readPrice(model.pricing?.completion),
+      cachedInputPrice: readPrice(
+        model.pricing?.input_cache_read ?? model.pricing?.cached_input,
+      ),
+    }));
   }
 
   async chat(params: ChatRequest): Promise<ChatResponse> {

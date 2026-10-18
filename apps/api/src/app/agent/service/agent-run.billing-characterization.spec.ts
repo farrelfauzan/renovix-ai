@@ -105,6 +105,12 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
         maxTokens: 8192,
       },
     });
+    // RX-21: charging reads the tier rate table (credits per 1,000,000 tokens). Seed the
+    // standard rate 1/1/1 so the completion path can charge; the D106 numbers below are
+    // updated to what the tier-rate path writes (the price x multiplier story is gone).
+    await prisma.tierRate.create({
+      data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
+    });
     await registry.refresh();
   });
 
@@ -226,25 +232,13 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
   });
 
   describe("D106: the numbers one chat completion writes (ChatService.createCompletion, real BillingService, fake provider)", () => {
-    // The model row: input 0.000001, output 0.000002, creditMultiplier 1
-    // (the AiModel default). ModelRegistryService doubles the prices for the
-    // user (markup_multiplier defaults to 2 when no AppConfig row exists),
-    // and pricing.inputPrice.toNumber() hands the JS double 0.000002 to
-    // estimateCost/calculateActualCost.
-    //
-    // With the message "Hi" (2 chars): estimateTokens = ceil(2/4) = 1, so
-    // estimatedCost = 1 x 0.000002 = 0.000002 exactly. But `users.balance`
-    // and `transactions.amount` are numeric(12,6): the reservation UPDATE
-    // subtracts 0.000002 and Postgres rounds it to 0.000002 -> the balance
-    // stays 1.000000 - 0.000002 = 0.999998, while the pending ledger row
-    // stores ROUND(-0.000002, 6) = -0.000002... at six decimals both are
-    // exact here. The 1-ulp story shows with the actual cost: the provider
-    // usage (prompt 2, completion 115) makes actualCost =
-    // 2x0.000002 + 115x0.000004 = 0.000464 exactly (no rounding), so this
-    // scenario pins the mechanism (pending row rounds to 6dp separately from
-    // the balance arithmetic) with clean numbers. The exact D106 pair
-    // (-0.000045 balance vs -0.000046 ledger) is reproduced below with the
-    // seed's deepseek-v4-flash prices and a one-token estimate.
+    // RX-21 rewrote the charging path: credits = tokens x tier rate / 1,000,000 (docs/credits.md
+    // section 1.3), the tier rate seeded above as standard 1/1/1. The old D106 story (price x
+    // markup x creditMultiplier with three divergent roundings) is gone: the estimate is the
+    // estimated token count x 1 / 1,000,000, the actual is (input + output) x 1 / 1,000,000, and
+    // the ledger's pending and success rows now agree with the balance to the micro-credit.
+    // estimateTokens("Hi") = ceil(2/4) = 1 token -> 0.000001 credit; usage 2 + 115 = 117 tokens
+    // -> 0.000117 credits.
     const userWith = async (balance: string) => createUser(prisma, { balance: new Decimal(balance) });
 
     const complete = (userId: string) =>
@@ -269,26 +263,27 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       });
       expect(ledger).toHaveLength(2);
 
-      // estimatedCost = 1 token x 0.000002 = 0.000002; round6(-0.000002) = -0.000002
+      // estimatedCost = 1 token x rate 1 / 1,000,000 = 0.000001
       expect(ledger[0].type).toBe("deduction");
       expect(ledger[0].status).toBe("pending");
-      expect(ledger[0].amount.toFixed(6)).toBe("-0.000002");
+      expect(ledger[0].amount.toFixed(6)).toBe("-0.000001");
 
-      // actualCost = 2x0.000002 + 115x0.000004 = 0.000464
+      // actualCost = (2 input + 115 output) x rate 1 / 1,000,000 = 0.000117
       expect(ledger[1].type).toBe("deduction");
       expect(ledger[1].status).toBe("success");
-      expect(ledger[1].amount.toFixed(6)).toBe("-0.000464");
+      expect(ledger[1].amount.toFixed(6)).toBe("-0.000117");
 
-      // balance: 1.0 - 0.000002 (reserve, rounded to 6dp) - 0.000462 (extra) = 0.999536
-      // which is 0.000464 less than 1.0 — sum(ledger) here, because both costs are exact at 6dp
-      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999536");
+      // balance: 1.0 - 0.000001 (reserve) - 0.000116 (extra) = 0.999883 — and sum(ledger)
+      // (-0.000117) now equals the balance delta to the micro-credit: the 1-ulp D106 drift is gone.
+      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999883");
     });
 
-    it("the exact D106 pair: balance loses 0.000045 while the success ledger row says -0.000046 (deepseek-v4-flash prices, one-token estimate)", async () => {
-      // The seed's deepseek-v4-flash: input 0.0000000983, output 0.0000001966,
-      // creditMultiplier 1. Doubled for the user: 0.0000001966 / 0.0000003932.
-      // pricing.inputPrice.toNumber() = 1.966e-7 — a JS double that is not the
-      // exact decimal 0.0000001966, which is where the two computations drift.
+    it("the D106 scenario after RX-21: the same deepseek-v4-flash request charges by tokens and tier rate, and the ledger agrees with the balance", async () => {
+      // The same model row the D106 finding used (deepseek-v4-flash prices) — under RX-21 the
+      // provider prices no longer enter the charge at all: credits = tokens x tier rate / 1,000,000
+      // with the standard 1/1/1 rate seeded above. The 1-ulp divergence (pending 0, success
+      // -0.000046, balance -0.000045) is gone: estimate 1 token -> 0.000001; actual 2 + 115 = 117
+      // tokens -> 0.000117; the balance delta and sum(ledger) both say 0.000117.
       await prisma.aiModel.create({
         data: {
           slug: "d106-model",
@@ -319,25 +314,23 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       });
       expect(ledger).toHaveLength(2);
 
-      // estimate: 1 token x 1.966e-7 = 0.0000001966; the pending row rounds to 6dp: 0
-      // (QA saw a pending deduction row with amount 0 written first — that is this)
-      expect(ledger[0].type).toBe("deduction");
+      // estimate: 1 token x 1 / 1,000,000 = 0.000001 (no longer rounds to 0)
       expect(ledger[0].status).toBe("pending");
-      expect(ledger[0].amount.toFixed(6)).toBe("0.000000");
+      expect(ledger[0].amount.toFixed(6)).toBe("-0.000001");
 
-      // actual: 2x1.966e-7 + 115x3.932e-7 = 0.0000456112; the success row rounds to -0.000046
-      expect(ledger[1].type).toBe("deduction");
+      // actual: 117 tokens x 1 / 1,000,000 = 0.000117
       expect(ledger[1].status).toBe("success");
-      expect(ledger[1].amount.toFixed(6)).toBe("-0.000046");
+      expect(ledger[1].amount.toFixed(6)).toBe("-0.000117");
 
-      // balance: 1.0 - round6(0.0000001966) - round6(0.0000454146)
-      //        = 1.0 - 0.000000      - 0.000045    = 0.999955 (lost 0.000045)
-      // sum(ledger) = 0 + (-0.000046) = -0.000046. Balance and ledger differ by 0.000001.
-      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999955");
+      // balance: 1.0 - 0.000001 - 0.000116 = 0.999883; delta = 0.000117. The D106 ROUNDING
+      // divergence is gone (every amount is now an exact micro-credit multiple). What remains is
+      // the RX-14 finding #1 behaviour, still true by design: the pending row is never settled,
+      // so sum(ledger) (-0.000001 + -0.000117 = -0.000118) double-counts the reservation next to
+      // the success row. The BALANCE and the success row agree to the micro-credit (0.000117).
+      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999883");
       const ledgerSum = ledger.reduce((sum, row) => sum.add(row.amount), new Decimal(0));
-      expect(ledgerSum.toFixed(6)).toBe("-0.000046");
-      // the 1-ulp difference QA saw (D106):
-      expect(new Decimal("1.0").sub(await balanceOf(user.id)).toFixed(6)).toBe("0.000045");
+      expect(ledgerSum.toFixed(6)).toBe("-0.000118");
+      expect(new Decimal("1.0").sub(await balanceOf(user.id)).toFixed(6)).toBe("0.000117");
     });
   });
 });

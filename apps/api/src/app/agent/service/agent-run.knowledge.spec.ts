@@ -62,6 +62,9 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
             useValue: {
               resolveModel: async () => ({ providerId: "vendor/test-model", provider: "openrouter" }),
               getUserPrice: async () => null,
+              // RX-21: the usage log reads the model's tier and the tier's credit rates.
+              getModel: async () => ({ tier: "standard" }),
+              getTierRates: async () => ({ inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 }),
             },
           },
           {

@@ -58,7 +58,20 @@ export interface ChatResponse {
   usage: ChatUsage;
 }
 
+/** One model of the provider's GET /models list (RX-21). Prices are per million tokens in USD. */
+export interface ProviderModelPrice {
+  /** The provider's model id (OpenRouter: "vendor/model"). */
+  providerId: string;
+  /** USD per token as a decimal string, e.g. "0.000003"; null when the provider reports no price. */
+  inputPrice: string | null;
+  outputPrice: string | null;
+  /** The provider's cached-input price; null when the provider reports none (no cached price yet). */
+  cachedInputPrice: string | null;
+}
+
 export interface ProviderAdapter {
   chat(params: ChatRequest): Promise<ChatResponse>;
   chatStream?(params: ChatRequest): AsyncGenerator<string, void, unknown>;
+  /** Lists the provider's models with their current prices (GET /models); optional (RX-21). */
+  listModels?(): Promise<ProviderModelPrice[]>;
 }

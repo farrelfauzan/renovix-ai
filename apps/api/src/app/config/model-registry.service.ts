@@ -2,6 +2,19 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/client";
 import { PrismaService } from "../prisma/prisma.service";
 
+/**
+ * One tier's per-token credit rates (RX-21). The credit CHARGING path multiplies token counts by
+ * these rates; the DISPLAY path shows dollar prices (inputPrice x markupMultiplier).
+ */
+export interface TierRates {
+  /** The tier's rate for the kind: CREDITS PER 1,000,000 TOKENS of that kind (docs/credits.md section 1);
+   *  the cost helpers divide the token-weighted sum by 1,000,000 (section 1.3). Column names keep the
+   *  short form; the values are the adopted per-1,000,000 figures seeded from prisma/tier-rates.seed.json. */
+  inputCreditsPerToken: Decimal;
+  cachedCreditsPerToken: Decimal;
+  outputCreditsPerToken: Decimal;
+}
+
 export interface ModelConfig {
   slug: string;
   modelName: string;
@@ -9,11 +22,11 @@ export interface ModelConfig {
   providerId: string;
   inputPrice: Decimal;
   outputPrice: Decimal;
+  cachedInputPrice: Decimal | null;
   maxTokens: number;
   maxOutputTokens: number | null;
   tier: string;
   creditMultiplier: Decimal;
-  planRequired: string;
 }
 
 const CACHE_TTL_MS = 60_000; // 60 seconds
@@ -22,6 +35,7 @@ const CACHE_TTL_MS = 60_000; // 60 seconds
 export class ModelRegistryService implements OnModuleInit {
   private readonly logger = new Logger(ModelRegistryService.name);
   private models = new Map<string, ModelConfig>();
+  private tierRates = new Map<string, TierRates>();
   private markupMultiplier = new Decimal(2);
   private lastRefresh = 0;
 
@@ -35,6 +49,7 @@ export class ModelRegistryService implements OnModuleInit {
     const aiModels = await this.prisma.aiModel.findMany({
       where: { active: true },
     });
+    const rateRows = await this.prisma.tierRate.findMany();
     const markupConfig = await this.prisma.appConfig.findUnique({
       where: { key: "markup_multiplier" },
     });
@@ -48,14 +63,25 @@ export class ModelRegistryService implements OnModuleInit {
         providerId: m.providerId,
         inputPrice: m.inputPrice,
         outputPrice: m.outputPrice,
+        cachedInputPrice: m.cachedInputPrice,
         maxTokens: m.maxTokens,
         maxOutputTokens: m.maxOutputTokens,
         tier: m.tier,
+        // RX-21: kept for DISPLAY pricing only; charging uses the tier rates.
         creditMultiplier: m.creditMultiplier,
-        planRequired: m.planRequired,
       });
     }
     this.models = map;
+
+    const rates = new Map<string, TierRates>();
+    for (const row of rateRows) {
+      rates.set(row.tier, {
+        inputCreditsPerToken: row.inputCreditsPerToken,
+        cachedCreditsPerToken: row.cachedCreditsPerToken,
+        outputCreditsPerToken: row.outputCreditsPerToken,
+      });
+    }
+    this.tierRates = rates;
 
     if (markupConfig) {
       this.markupMultiplier = new Decimal(markupConfig.value);
@@ -63,7 +89,7 @@ export class ModelRegistryService implements OnModuleInit {
 
     this.lastRefresh = Date.now();
     this.logger.log(
-      `Loaded ${map.size} models, markup=${this.markupMultiplier}`,
+      `Loaded ${map.size} models, ${rates.size} tier rates, markup=${this.markupMultiplier}`,
     );
   }
 
@@ -99,11 +125,22 @@ export class ModelRegistryService implements OnModuleInit {
     return [...this.models.values()];
   }
 
+  /** The per-token credit rates of `tier` (RX-21). Undefined when the tier has no rate row. */
+  async getTierRates(tier: string): Promise<TierRates | undefined> {
+    await this.ensureFresh();
+    return this.tierRates.get(tier);
+  }
+
   async getMarkup(): Promise<Decimal> {
     await this.ensureFresh();
     return this.markupMultiplier;
   }
 
+  /**
+   * DISPLAY pricing (dollar prices for the portals): the provider prices doubled by the markup
+   * multiplier. Charging does NOT use these: it charges the tier's per-token credit rates
+   * (getTierRates, RX-21).
+   */
   async getUserPrice(
     slug: string,
   ): Promise<

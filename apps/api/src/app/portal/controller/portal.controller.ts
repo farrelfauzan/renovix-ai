@@ -617,17 +617,17 @@ export class PortalController {
       );
     }
 
-    const pricing = await this.registry.getUserPrice(body.model);
-    if (!pricing) {
-      throw new BadRequestException(`Pricing not found for "${body.model}"`);
+    // Estimate + reserve credits — the tier's per-token credit rate (RX-21), not price x multiplier.
+    const tierRates = await this.registry.getTierRates(modelConfig.tier);
+    if (!tierRates) {
+      throw new BadRequestException(
+        `No credit rates found for tier "${modelConfig.tier}"`,
+      );
     }
-
-    // Estimate + reserve credits
     const estimatedTokens = estimateTokens(body.messages);
     const estimatedCost = estimateCost(
       estimatedTokens,
-      pricing.inputPrice.toNumber(),
-      pricing.creditMultiplier.toNumber(),
+      tierRates.inputCreditsPerToken.toNumber(),
     );
 
     let reservedAmount: Decimal;
@@ -772,12 +772,13 @@ export class PortalController {
               total_tokens: estimatedTokens + Math.ceil(fullContent.length / 4),
             };
 
+      // Actual cost — tier credit rates (RX-21). The streamed usage shape does not surface
+      // cached tokens today, so cached input is priced as input.
       const actualCost = calculateActualCost(
         actualTokens.prompt_tokens,
         actualTokens.completion_tokens,
-        pricing.inputPrice.toNumber(),
-        pricing.outputPrice.toNumber(),
-        pricing.creditMultiplier.toNumber(),
+        tierRates.inputCreditsPerToken.toNumber(),
+        tierRates.outputCreditsPerToken.toNumber(),
       );
 
       // Adjust balance

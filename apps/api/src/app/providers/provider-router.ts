@@ -3,6 +3,7 @@ import type {
   ProviderAdapter,
   ChatRequest,
   ChatResponse,
+  ProviderModelPrice,
 } from "./provider.interface";
 import { OpenRouterAdapter } from "./openrouter.adapter";
 import { resolveLlmProvider } from "./llm-provider";
@@ -66,5 +67,14 @@ export class ProviderRouter {
     );
 
     yield* adapter.chatStream(params);
+  }
+
+  /** Lists the provider's models with their current prices (RX-21); undefined when the adapter cannot. */
+  async listModels(
+    provider: string,
+  ): Promise<ProviderModelPrice[] | undefined> {
+    const adapter = this.fakeAdapter ?? this.adapters[provider];
+    if (!adapter?.listModels) return undefined;
+    return adapter.listModels();
   }
 }

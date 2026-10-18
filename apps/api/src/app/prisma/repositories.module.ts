@@ -11,6 +11,8 @@ import { AgentIntegrationRepository } from "../agent/repository/agent-integratio
 import { AgentKnowledgeBaseRepository } from "../agent/repository/agent-knowledge-base.repository";
 import { AgentToolRepository } from "../agent/repository/agent-tool.repository";
 import { AgentRepository } from "../agent/repository/agent.repository";
+import { AiModelRepository } from "../config/repository/ai-model.repository";
+import { AppConfigRepository } from "../config/repository/app-config.repository";
 import { UserRepository } from "../auth/repository/user.repository";
 import { SubscriptionPlanRepository } from "../billing/repository/subscription-plan.repository";
 import { TransactionRepository } from "../billing/repository/transaction.repository";
@@ -36,6 +38,7 @@ import { PackageRepository } from "../offers/repository/package.repository";
 import { PlatformSettingRepository } from "../offers/repository/platform-setting.repository";
 import { PurchaseSnapshotRepository } from "../offers/repository/purchase-snapshot.repository";
 import { TopUpPackRepository } from "../offers/repository/top-up-pack.repository";
+import { TierRateRepository } from "../offers/repository/tier-rate.repository";
 import { AnonymousUsageCounterRepository } from "../portal/repository/anonymous-usage-counter.repository";
 import { PortalSessionRepository } from "../portal/repository/portal-session.repository";
 import { ReminderRepository } from "../reminder/repository/reminder.repository";
@@ -55,6 +58,8 @@ const REPOSITORIES = [
   AgentKnowledgeBaseRepository,
   AgentToolRepository,
   AgentRepository,
+  AiModelRepository,
+  AppConfigRepository,
   UserRepository,
   SubscriptionPlanRepository,
   TransactionRepository,
@@ -80,6 +85,7 @@ const REPOSITORIES = [
   PlatformSettingRepository,
   PurchaseSnapshotRepository,
   TopUpPackRepository,
+  TierRateRepository,
   AnonymousUsageCounterRepository,
   PortalSessionRepository,
   ReminderRepository,

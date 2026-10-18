@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { CompanyContractService } from "./service/company-contract.service";
 import { OfferCatalogService } from "./service/offer-catalog.service";
 import { OfferSeedService } from "./service/offer-seed.service";
+import { TierRateSeedService } from "./service/tier-rate-seed.service";
 import { PlatformSettingsService } from "./service/platform-settings.service";
 import { PurchaseSnapshotService } from "./service/purchase-snapshot.service";
 
@@ -16,6 +17,7 @@ import { PurchaseSnapshotService } from "./service/purchase-snapshot.service";
     CompanyContractService,
     PurchaseSnapshotService,
     OfferSeedService,
+    TierRateSeedService,
   ],
   exports: [OfferCatalogService, PlatformSettingsService, CompanyContractService, PurchaseSnapshotService],
 })

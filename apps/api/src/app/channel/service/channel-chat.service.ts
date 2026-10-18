@@ -387,12 +387,23 @@ export class ChannelChatService {
   ) {
     const latencyMs = Date.now() - startTime;
     this.registry
-      .getUserPrice(modelEntry.slug)
-      .then((pricing) => {
-        const cost = pricing
+      .getModel(modelEntry.slug)
+      .then(async (modelConfig) =>
+        modelConfig
+          ? {
+              rates: await this.registry.getTierRates(modelConfig.tier),
+            }
+          : undefined,
+      )
+      .then((model) => {
+        const cost = model?.rates
           ? new Decimal(inputTokens)
-              .mul(pricing.inputPrice)
-              .add(new Decimal(outputTokens).mul(pricing.outputPrice))
+              .mul(model.rates.inputCreditsPerToken)
+              .add(
+                new Decimal(outputTokens).mul(
+                  model.rates.outputCreditsPerToken,
+                ),
+              )
           : new Decimal(0);
 
         this.usage
