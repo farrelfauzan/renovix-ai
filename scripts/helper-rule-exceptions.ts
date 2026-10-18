@@ -31,7 +31,6 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
   [`${SRC}/email/service/email-template.service.ts EmailTemplateService.buildInviteEmail`]: "test 2: environment (toLocaleDateString formats the date in the server's time zone)",
 
   // Owned by a named ticket
-  [`${SRC}/agent/service/agent-tool.service.ts AgentToolService.safeMathEval`]: "RX-55",
   [`${SRC}/auth/service/auth.service.ts AuthService.maskApiKey`]: "RX-18",
   [`${SRC}/agent/service/agent-run.service.ts AgentRunService.getLastUserMessage`]: "RX-23..25 (sub-agent delegation)",
   [`${SRC}/agent/service/agent-run.service.ts AgentRunService.chooseSubAgentForDelegation`]: "RX-23..25 (sub-agent delegation)",

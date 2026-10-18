@@ -8,6 +8,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { ChannelChatRoomRepository } from "../../channel/repository/channel-chat-room.repository";
 import { ReminderRepository } from "../../reminder/repository/reminder.repository";
 import { CronExpressionParser } from "cron-parser";
+import { executeCalculator } from "../utils/execute-calculator";
 import { executeKnowledgeRetrieval } from "../utils/execute-knowledge-retrieval";
 import { mcpToolToOpenAI } from "../../mcp/utils/mcp-tool-to-openai";
 
@@ -376,7 +377,7 @@ export class AgentToolService {
       // Built-in tools
       switch (toolName) {
         case "calculator":
-          return this.executeCalculator(args);
+          return executeCalculator(args);
         case "web_search":
           return this.executeWebSearch(args, userId, agent?.workspaceId);
         case "knowledge_retrieval":
@@ -438,37 +439,6 @@ export class AgentToolService {
   }
 
   // ─── Tool Implementations ───
-
-  private executeCalculator(args: { expression: string }): string {
-    try {
-      // Safe math evaluation (no eval)
-      const result = this.safeMathEval(args.expression);
-      return `Result: ${result}`;
-    } catch (err: any) {
-      return `Error evaluating expression: ${err.message}`;
-    }
-  }
-
-  private safeMathEval(expression: string): number {
-    // Only allow safe math characters
-    const sanitized = expression.replace(/[^0-9+\-*/().%\s^]/g, "");
-    if (sanitized !== expression) {
-      throw new Error("Invalid characters in expression");
-    }
-
-    // Use Function constructor with restricted scope (safer than eval)
-    const fn = new Function(
-      "Math",
-      `"use strict"; return (${sanitized.replace(/\^/g, "**")});`,
-    );
-    const result = fn(Math);
-
-    if (typeof result !== "number" || !isFinite(result)) {
-      throw new Error("Expression did not evaluate to a valid number");
-    }
-
-    return result;
-  }
 
   private async executeWebSearch(
     args: { query: string; maxResults?: number },
