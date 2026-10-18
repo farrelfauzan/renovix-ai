@@ -23,30 +23,13 @@ import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { ProviderRouter } from "../../providers/provider-router";
-import { z } from "zod";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
-
-export const CreateChannelSchema = z.object({
-  name: z.string().min(1).max(100),
-  icon: z.string().max(500).optional(),
-  color: z.string().max(7).optional(),
-});
-
-export const UpdateChannelSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-  icon: z.string().max(500).optional(),
-  color: z.string().max(7).optional(),
-});
-
-export const AddAgentSchema = z.object({
-  agentId: z.string().uuid(),
-  role: z.enum(["primary", "sub"]).optional().default("primary"),
-});
-
-export const ChatMessageSchema = z.object({
-  message: z.string().min(1).max(32000),
-  output_format: z.enum(["pdf", "docx", "xlsx"]).optional(),
-});
+import {
+  CreateChannelSchema,
+  UpdateChannelSchema,
+  AddAgentSchema,
+  ChatMessageSchema,
+} from "../dto/channel.dto";
 
 @Controller("channels")
 @Access({ auth: ["jwt", "session"] })

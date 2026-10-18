@@ -27,9 +27,8 @@ import { InviteMemberSchema } from "../../app/workspace/dto/invite-member.dto";
 import { UpdateMemberSchema } from "../../app/workspace/dto/update-member.dto";
 import { AcceptInviteSchema } from "../../app/workspace/dto/accept-invite.dto";
 
-// The schemas below live inside controller files (not in a dto/ folder): imported here, not copied.
-import { CreateChannelSchema, UpdateChannelSchema, AddAgentSchema, ChatMessageSchema } from "../../app/channel/controller/channel.controller";
-import { CreateReminderSchema, UpdateReminderSchema } from "../../app/reminder/controller/reminder.controller";
+import { CreateChannelSchema, UpdateChannelSchema, AddAgentSchema, ChatMessageSchema } from "../../app/channel/dto/channel.dto";
+import { CreateReminderSchema, UpdateReminderSchema } from "../../app/reminder/dto/reminder.dto";
 
 /** The portal completion body: the chat completion schema with the model optional (portal.controller.ts). */
 const PORTAL_COMPLETION_SCHEMA: ZodType = ChatCompletionRequestSchema.extend({

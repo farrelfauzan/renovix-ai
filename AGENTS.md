@@ -91,7 +91,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - Inside a feature module, files are arranged by layer: `controller/`, `service/`, `repository/` (today: codes), `dto/`. A file of another kind goes into a folder named for its kind (today: `guard/`, `scheduler/`, `strategy/`, `converter/`, `config/`, `utils/` for helpers, `types/`).
 - Only the `<module>.module.ts` file stays at the module root.
 - A test file sits in the folder of the file it tests; a test that covers several files sits next to its main subject (HTTP tests in `controller/`).
-- `bun run check` enforces it (step "module layout", `scripts/check-module-layout.ts`): it fails and names any source file that lies directly in a feature module folder.
+- `bun run check` enforces it (step "module layout", `scripts/check-module-layout.ts`): it fails and names any source file that lies directly in a feature module folder, and any controller file that defines a Zod schema inline (`z.object`) — request schemas live in the module's `dto/` folder (RX-184, decision 2a).
 - Code rules: `.claude/rules/nestjs-clean-typescript.md` and `.claude/rules/nextjs-frontend.md` (tracked in git).
 
 ### Helpers
