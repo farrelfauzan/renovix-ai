@@ -57,18 +57,21 @@ describe("RX-184: reminder routes, invalid body (Fastify, test database)", () =>
     return { alice, agent, channel, chatRoom, reminder };
   };
 
+  // RX-184 follow-up (QA's note): the invalid field must be one CreateReminderSchema itself
+  // refuses. A valid agentId with an EMPTY prompt makes the schema the refusing layer: relaxing
+  // the schema turns this test red (the request would pass validation and reach the service).
   it("POST /reminders with an invalid body: 400, nothing stored", async () => {
-    const { alice, channel, chatRoom } = await setup();
+    const { alice, agent, channel, chatRoom } = await setup();
 
     const res = await app.inject({
       method: "POST",
       url: "/reminders",
       headers: auth(alice),
       payload: {
-        agentId: "nope",
+        agentId: agent.id,
         channelId: channel.id,
         chatRoomId: chatRoom.id,
-        prompt: "Weekly report",
+        prompt: "",
         cronExpression: "0 9 * * 1",
       },
     });
