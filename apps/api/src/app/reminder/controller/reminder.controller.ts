@@ -17,7 +17,7 @@ import { ReminderService } from "../service/reminder.service";
 import { ReminderStatus } from "@generated/prisma/client.js";
 import { z } from "zod";
 
-const CreateReminderSchema = z.object({
+export const CreateReminderSchema = z.object({
   agentId: z.string().uuid(),
   channelId: z.string().uuid(),
   chatRoomId: z.string().uuid(),
@@ -27,7 +27,7 @@ const CreateReminderSchema = z.object({
   timezone: z.string().max(50).optional().default("UTC"),
 });
 
-const UpdateReminderSchema = z.object({
+export const UpdateReminderSchema = z.object({
   prompt: z.string().min(1).max(2000).optional(),
   description: z.string().max(200).optional(),
   cronExpression: z.string().min(1).max(100).optional(),

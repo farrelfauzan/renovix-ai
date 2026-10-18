@@ -74,11 +74,11 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 ## API Architecture
 
 - 21 modules (`*.module.ts`) in `apps/api/src/app/`, plus the root `AppModule`; `AppModule` imports 20 of them, `MemoryModule` is imported by `ChatModule` and `PortalModule`
-- Request validation: Zod schemas parsed manually with `safeParse` in the controllers (`nestjs-zod` is in package.json but unused)
+- Request validation: Zod schemas parsed manually with `safeParse` in the controllers; `nestjs-zod` is used by the OpenAPI generator (its zod→OpenAPI 3.0 schema rewrite, RX-170)
 - Path alias: `@generated/prisma` -> `./src/generated/prisma`
 - OpenAI-compatible endpoint: `POST /api/v1/chat/completions` (API key auth via `ApiKeyGuard`)
 - SSE streaming for chat completions and document generation
-- Swagger UI at `/api-docs` (served from static `openapi.yaml`, not auto-generated)
+- OpenAPI docs: two generated, committed documents under `docs/openapi/` (`backoffice.openapi.json`, `portal.openapi.json`), generated from the code by `bun run openapi:generate` (a Jest spec that scans `AppModule` in preview mode). A drift check fails the API tests when a route is in neither document nor on the exclusion list (`/webhooks/*`, health, root). Served by `docker compose up docs-backoffice docs-portal` on 127.0.0.1:8081 (back office) and 127.0.0.1:8082 (portal) — not by the API (no Swagger UI at `/api-docs` anymore)
 - Rate limiting: global 60 req/60s via `ThrottlerGuard`
 - AI provider routing: `ProviderRouter` -> adapters (currently only `OpenRouterAdapter`, provider key `openrouter`; chat models and embeddings go through OpenRouter)
 - Prompt tuning: keyword-based intent matching on `PromptTemplate` injects specialized system prompts

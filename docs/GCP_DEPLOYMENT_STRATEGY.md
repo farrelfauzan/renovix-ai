@@ -2243,7 +2243,8 @@ volumes:
 | Tool | URL | Purpose |
 |------|-----|---------|
 | API | http://localhost:3000/api | Backend API |
-| API Docs | http://localhost:3000/api-docs | Swagger UI |
+| API Docs (back office) | http://127.0.0.1:8081 | Swagger UI (docker compose docs-backoffice) |
+| API Docs (portal) | http://127.0.0.1:8082 | Swagger UI (docker compose docs-portal) |
 | Chat | http://localhost:4300 | Chat portal |
 | Dashboard | http://localhost:4200 | Dashboard |
 | Landing | http://localhost:3001 | Landing page |

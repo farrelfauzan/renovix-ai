@@ -1,5 +1,4 @@
 const { join } = require('path');
-const CopyPlugin = require('copy-webpack-plugin');
 const nodeExternals = require('webpack-node-externals');
 
 module.exports = {
@@ -40,13 +39,9 @@ module.exports = {
       modulesDir: join(__dirname, '../../node_modules'),
     }),
   ],
-  plugins: [
-    new CopyPlugin({
-      patterns: [
-        { from: 'src/assets', to: 'assets' },
-      ],
-    }),
-  ],
+  // RX-170: no CopyPlugin anymore — src/assets (the static openapi.yaml) was removed with the
+  // Swagger UI, so the API image ships no assets.
+  plugins: [],
   optimization: {
     minimize: false,
   },

@@ -10,9 +10,6 @@ import { resolveLlmProvider } from "./app/providers/llm-provider";
 import { assertRequiredSecrets } from "./common/utils/assert-required-secrets";
 import { resolveCorsOrigins } from "./common/utils/resolve-cors-origins";
 import { ConfigService } from "@nestjs/config";
-import * as yaml from "js-yaml";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 async function bootstrap(): Promise<NestFastifyApplication> {
   // RX-88: refuse LLM_PROVIDER=fake in production or next to a real key, before anything starts.
@@ -63,21 +60,9 @@ async function bootstrap(): Promise<NestFastifyApplication> {
     type: 0,
   });
 
-  // Setup Swagger UI from openapi.yaml
-  const openapiPath = join(__dirname, "assets", "openapi.yaml");
-  const openapiDocument = yaml.load(
-    readFileSync(openapiPath, "utf8"),
-  ) as Record<string, unknown>;
-
-  await fastifyInstance.register(require("@fastify/swagger"), {
-    mode: "static",
-    specification: {
-      document: openapiDocument,
-    },
-  });
-  await fastifyInstance.register(require("@fastify/swagger-ui"), {
-    routePrefix: "/api-docs",
-  });
+  // RX-170: the API no longer serves Swagger UI. The OpenAPI documents are generated from the code
+  // (`bun run openapi:generate`, docs/openapi/*.json) and served by the docs-backoffice/docs-portal
+  // compose services, not by the API.
 
   const configService = app.get(ConfigService);
 
