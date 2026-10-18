@@ -10,14 +10,14 @@ These are the choices that are hard to change once the ledger holds real money. 
 
 1. **The ledger entry fields and the eight invariants** (section 2), including "balance = sum of entries" and "a balance is read from one row, never by summing entries".
 2. **The meaning of the rates** (section 1): a tier rate is an absolute number of credits per 1,000,000 tokens of one token kind (new input, cached input, output). Standard is 1 / 1 / 1. The usage mix in the credit definition sets the dollar cost of a credit, not the number of credits.
-3. **The rounding rule** (section 2.3): amounts are exact multiples of 0.000001 credit; each model call is rounded once, up, on the sum of its three token kinds. PROPOSED, open item 3.
-4. **Reserve, settle and release** (section 3): a reservation is a hold on the account row, not a ledger entry; every model call writes exactly one usage entry; a provider error is charged 0. PROPOSED, open items 4 and 5.
-5. **The peer-agent run numbers** (section 13): one hold per run of min(per-run cap, available balance), the pre-run estimate formula, the budget-stop test before each model call, the default cap of 10 credits and a floor of 1 credit. PROPOSED, open item 7.
+ 3. **The rounding rule** (section 2.3): amounts are exact multiples of 0.000001 credit; each model call is rounded once, up, on the sum of its three token kinds. Decided (D115), item 3.
+ 4. **Reserve, settle and release** (section 3): a reservation is a hold on the account row, not a ledger entry; every model call writes exactly one usage entry; a provider error is charged 0. Decided (D115), items 4 and 5.
+ 5. **The peer-agent run numbers** (section 13): one hold per run of min(per-run cap, available balance), the pre-run estimate formula, the budget-stop test before each model call, the default cap of 10 credits and a floor of 1 credit. Decided (D115), item 7.
 6. **The Frontier rates** (sections 1 and 14): the proposed table uses 29 / 29 / 42 (new / cached / output), recomputed with R-5's method; PRD 02 has 17 / 17 / 25. Open item 1.
 
 ## Open items
 
-Items 1 to 10 are questions this document needs answered; it states a recommendation and marks the rule PROPOSED until the Tech Lead approves. Items 11 to 14 are the open decisions D1, D2, D18 and D27: this document gives them **no value** anywhere.
+Items 1 to 10 are questions this document needed answered; each stated a recommendation, marked PROPOSED, until the Tech Lead approved — items 1 to 10 were approved on D115 (confirmed on D120). Items 11 to 14 are the open decisions D1, D2, D18 and D27: this document gives them **no value** anywhere.
 
 | # | Question | Options | Recommendation | Tickets that wait |
 |---|---|---|---|---|
@@ -139,7 +139,7 @@ Columns are in the order new input, cached input, output. PRD 02 prints them as 
 |---|---|---|---|
 | 10 | 20 | 11 | 15.50 |
 
-**Frontier** (Claude Opus 5.5, Claude Opus 5, GPT-5.5) — **PROPOSED, open item 1**
+**Frontier** (Claude Opus 5.5, Claude Opus 5, GPT-5.5) — **Decided (D115), item 1**
 
 | | new input | cached input | output | credits per 1M tokens at the mix |
 |---|---|---|---|---|
@@ -273,7 +273,7 @@ How the invariants are kept without read-then-write on a balance (each step is o
 
 Cost: on an Enterprise pool every collaborator's model call updates the same account row, so pool writes are serialised on that row; each is one short statement, which is acceptable at 100 seats and at most 30 model calls per run (PRD 10 Q5).
 
-### 2.3 Precision and rounding (PROPOSED, open item 3)
+### 2.3 Precision and rounding (Decided (D115), item 3)
 
 - **Unit.** Every ledger amount, balance, hold and estimate is a whole number of micro-credits (0.000001 credit). Today's `Decimal(12, 6)` columns have the same scale.
 - **When.** Each model call is rounded **once**, on the exact sum of its three products, when its usage entry is written. Nothing else rounds: settle, release and every sum are additions of whole micro-credits.
@@ -295,7 +295,7 @@ Rounding each kind up first would give 3,085 + 142 + 668 = 3,895 = 0.003895 cred
 
 ## 3. Reserve, settle and release for streaming requests; provider errors
 
-Follows: PRD 02 requirement 3, RX-22 Scope and acceptance criteria, D92 item 3 (no transaction across a model call or a stream; a killed request is handled by a separate release call), PRD 10 R7 (D81). Holds instead of reserve entries: PROPOSED, open item 4. Provider-error charge: PROPOSED, open item 5.
+Follows: PRD 02 requirement 3, RX-22 Scope and acceptance criteria, D92 item 3 (no transaction across a model call or a stream; a killed request is handled by a separate release call), PRD 10 R7 (D81). Holds instead of reserve entries: Decided (D115), item 4. Provider-error charge: Decided (D115), item 5.
 
 ### 3.1 Rules
 
@@ -304,7 +304,7 @@ Follows: PRD 02 requirement 3, RX-22 Scope and acceptance criteria, D92 item 3 (
 3. **Stream.** No transaction is open while the model streams.
 4. **Usage entry** when the call ends: compute A from the provider's reported new, cached and output tokens (section 1.3). Take A from the hold; if A exceeds the remaining hold (the count of I was low), take the excess from `available` in the same conditional update; if `available` cannot cover it, charge what it covers and record the rest in `uncharged`. Balance never goes negative (I5).
 5. **Settle**: release the remaining hold (`amountHeld` − `consumed`) and mark the reservation `settled`.
-6. **Provider error** (PROPOSED, open item 5): the call is charged 0, whether the error comes before the first token or mid-stream. The usage entry is still written (every model call has one, PRD 10 R7) with `amount` 0, `outcome` `provider_error`, the token counts the provider reported (0 if none), and `uncharged` = what those tokens would have cost. The hold is released. A retry on a fallback provider (D58) is a new model call under the same reservation, charged normally.
+6. **Provider error** (Decided (D115), item 5): the call is charged 0, whether the error comes before the first token or mid-stream. The usage entry is still written (every model call has one, PRD 10 R7) with `amount` 0, `outcome` `provider_error`, the token counts the provider reported (0 if none), and `uncharged` = what those tokens would have cost. The hold is released. A retry on a fallback provider (D58) is a new model call under the same reservation, charged normally.
 7. **Client cancel** (the user stops the stream): charged for the tokens the provider reports for the partial answer, `outcome` `client_cancel`.
 8. **Killed request** (process died, no usage entry and no settle): a sweep releases every `open` reservation past `expiresAt` and marks it `expired` (RX-22 acceptance: "A killed request releases its reservation"). The sweep reads only expired open reservations through an index on (`status`, `expiresAt`), in batches. A provider charge for a call whose usage entry was never written is lost to the platform.
 
@@ -402,11 +402,11 @@ Follows: D8 (credits never expire), D3 and D9 (zero locks everything except hist
 
 ## 5. Enterprise: company pool, member attribution, fair-share bar
 
-Follows: PRD 04 requirement 3, D7 (100 seats per company across workspaces), D23 (freeze), D44 (seats and members are Enterprise only), D77 and D78 (PRD 10 Q6, Q16, Q17), RX-31. Open: D2 (member hard caps), D18 (who tops up). Seat count in the bar: PROPOSED, open item 8.
+Follows: PRD 04 requirement 3, D7 (100 seats per company across workspaces), D23 (freeze), D44 (seats and members are Enterprise only), D77 and D78 (PRD 10 Q6, Q16, Q17), RX-31. Open: D2 (member hard caps), D18 (who tops up). Seat count in the bar: Decided (D115), item 8.
 
 - **Pool.** The company account's `paid` wallet is the pool. When a collaborator runs a workspace agent, the reservation and every usage entry are on the pool, with `memberUserId` = the collaborator (D77 Q16, RX-31). A collaborator's personal balance is never touched by workspace agents; an empty or frozen pool refuses the run with the "ask your admin" message (PRD 10 Q16, RX-60).
 - **Attribution.** Per member and per period, a counter row (`companyAccountId`, `memberUserId`, `periodStart`, `spent`) is incremented in the same transaction as each usage entry on the pool. The bar and the company owner's member table read these rows, never the ledger. Cost: one extra row update per model call on Enterprise.
-- **Fair share.** `share(member) = period grant ÷ seats` (RX-31), adjustable per member by the company admin (review report). PROPOSED (open item 8): seats = active members when the bar is computed. The period grant is the Enterprise bundle's credits for the period, whose value is D1 (open). The bar shows `spent(member, period) ÷ share(member) × 100`.
+- **Fair share.** `share(member) = period grant ÷ seats` (RX-31), adjustable per member by the company admin (review report). Decided (D115, item 8): seats = active members when the bar is computed. The period grant is the Enterprise bundle's credits for the period, whose value is D1 (open). The bar shows `spent(member, period) ÷ share(member) × 100`.
 - **Over the share.** A member above 100% is not stopped; only a per-member hard cap would stop them, and that is D2 (open). The contract record has a cap-policy field with no default (section 9).
 - **Who sees what** (D78 Q17): each person sees their own usage; only the company owner sees the pool balance, spend this period, one credit total per member and the run-out warnings; billing admins and workspace owners do not see per-member totals.
 - **Who tops up the pool:** D18 (open). Extra credits go to the pool as `top_up` entries with the payer in `memberUserId`.
@@ -414,7 +414,7 @@ Follows: PRD 04 requirement 3, D7 (100 seats per company across workspaces), D23
 
 ## 6. Account states: free and package
 
-Follows: D36 (no credits-only state; top-up requires a package), D5 (2 credits a week), D43 (demo agent), D111 option C (tiers), RX-58. Wallet choice per request: PROPOSED, open item 9.
+Follows: D36 (no credits-only state; top-up requires a package), D5 (2 credits a week), D43 (demo agent), D111 option C (tiers), RX-58. Wallet choice per request: Decided (D115), item 9.
 
 | State | How you get there | Wallets that can be spent | Top-up | Credits-only code | Model tiers |
 |---|---|---|---|---|---|
@@ -468,7 +468,7 @@ Follows: D44, D64 item 4 (no collaboration on Starter and Pro, enforced on the s
 
 ## 11. The onboarding demo agent
 
-Follows: D43 (amends D5), D47 (the Product Manager's demo proposal approved), D5, RX-39, RX-22, RX-58. "Cheapest model": PROPOSED, open item 10.
+Follows: D43 (amends D5), D47 (the Product Manager's demo proposal approved), D5, RX-39, RX-22, RX-58. "Cheapest model": Decided (D115), item 10.
 
 - **Who may run it** (RX-39): a signed-up free account with a verified email; one demo agent per account, cloned from a goal template.
 - **Model:** the cheapest active model (RX-21). Every Standard model charges 1 / 1 / 1, so "cheapest" is by provider cost: the active Standard model with the lowest provider dollar cost per 1,000,000 tokens at the definition mix (0.36 / 0.54 / 0.10), recomputed when RX-21 refreshes prices. The user cannot change it.
@@ -500,7 +500,7 @@ Example: spent in the last 7 days 9.481330 credits, so rate = 1.354476 credits p
 
 ## 13. Peer-agent runs: numbers and formulas
 
-Follows: D81 (PRD 10 approved) and D77 (Q5, Q6, Q7, Q16): the runner's spending source pays every hop (the company pool for a collaborator); one reservation per run; a per-run credit cap as a platform setting; a usage row and a ledger line per model call with `agentId`, `runId`, `parentCallId` and the runner. These rules are PRD 10's; this section gives the numbers and formulas (RX-19 Out of scope, D82). Numbers: PROPOSED, open item 7.
+Follows: D81 (PRD 10 approved) and D77 (Q5, Q6, Q7, Q16): the runner's spending source pays every hop (the company pool for a collaborator); one reservation per run; a per-run credit cap as a platform setting; a usage row and a ledger line per model call with `agentId`, `runId`, `parentCallId` and the runner. These rules are PRD 10's; this section gives the numbers and formulas (RX-19 Out of scope, D82). Numbers: Decided (D115), item 7.
 
 ### 13.1 A hop's tokens
 
@@ -508,9 +508,9 @@ A hop's model calls convert to credits with the same formula and the same tier r
 
 ### 13.2 The per-run cap
 
-- **Default: 10 credits** (PROPOSED; PRD 10 Q5 recommendation "credit cap per run as a setting (10 credits, owner may lower it)", adopted as a setting by D77; PRD 10 section 11 lists the 10 as assumed). A platform setting (D46).
+- **Default: 10 credits** (Decided (D115); PRD 10 Q5 recommendation "credit cap per run as a setting (10 credits, owner may lower it)", adopted as a setting by D77; PRD 10 section 11 lists the 10 as assumed). A platform setting (D46).
 - The workspace owner may lower it for their agents; never above the platform setting.
-- **Floor: 1 credit** (PROPOSED): the lowest value the owner may set. 1 credit is 1,000,000 Standard tokens, enough for the 30-model-call limit on Standard at about 33,000 tokens per call. A run whose first call alone does not fit under the cap is refused before it starts, with a message that names the cap.
+- **Floor: 1 credit** (Decided (D115)): the lowest value the owner may set. 1 credit is 1,000,000 Standard tokens, enough for the 30-model-call limit on Standard at about 33,000 tokens per call. A run whose first call alone does not fit under the cap is refused before it starts, with a message that names the cap.
 
 ### 13.3 The pre-run estimate
 
@@ -596,7 +596,7 @@ Check: the entries sum to −0.922915 = −consumed; 0.922915 + 1.077085 = 2.000
 
 ## 14. Frontier rates recomputed against today's prices
 
-Follows: D112 item 38 (RX-19 and RX-21 recompute the Frontier multipliers), D112 item 37 (Fable 5.1, GPT-6 Astra and Gemini 4 Argon stay out of the catalog), research note R-5 (2026-10-14), PRD 02 tier table, the review report's calculator. Result: PROPOSED, open item 1.
+Follows: D112 item 38 (RX-19 and RX-21 recompute the Frontier multipliers), D112 item 37 (Fable 5.1, GPT-6 Astra and Gemini 4 Argon stay out of the catalog), research note R-5 (2026-10-14), PRD 02 tier table, the review report's calculator. Result: Decided (D115), item 1.
 
 ### 14.1 Prices used (R-5, OpenRouter's public model list read 2026-10-14, dollars per 1,000,000 tokens)
 
