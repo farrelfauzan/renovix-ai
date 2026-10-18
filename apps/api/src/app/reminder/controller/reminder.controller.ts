@@ -15,25 +15,7 @@ import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
 import { ReminderService } from "../service/reminder.service";
 import { ReminderStatus } from "@generated/prisma/client.js";
-import { z } from "zod";
-
-export const CreateReminderSchema = z.object({
-  agentId: z.string().uuid(),
-  channelId: z.string().uuid(),
-  chatRoomId: z.string().uuid(),
-  prompt: z.string().min(1).max(2000),
-  description: z.string().max(200).optional(),
-  cronExpression: z.string().min(1).max(100),
-  timezone: z.string().max(50).optional().default("UTC"),
-});
-
-export const UpdateReminderSchema = z.object({
-  prompt: z.string().min(1).max(2000).optional(),
-  description: z.string().max(200).optional(),
-  cronExpression: z.string().min(1).max(100).optional(),
-  timezone: z.string().max(50).optional(),
-  status: z.enum(["ACTIVE", "PAUSED"]).optional(),
-});
+import { CreateReminderSchema, UpdateReminderSchema } from "../dto/reminder.dto";
 
 @Controller("reminders")
 @Access({ auth: ["jwt", "session"] })

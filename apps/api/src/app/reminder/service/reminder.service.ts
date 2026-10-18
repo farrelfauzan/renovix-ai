@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
   BadRequestException,
 } from "@nestjs/common";
@@ -10,8 +9,6 @@ import { CronExpressionParser } from "cron-parser";
 
 @Injectable()
 export class ReminderService {
-  private readonly logger = new Logger(ReminderService.name);
-
   constructor(private readonly prisma: PrismaService) {}
 
   async create(

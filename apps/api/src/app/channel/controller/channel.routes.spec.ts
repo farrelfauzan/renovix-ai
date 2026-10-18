@@ -457,6 +457,52 @@ describe("RX-136: channel routes (Fastify, test database)", () => {
       expect(await prisma.channel.count()).toBe(0);
     });
 
+    // RX-184: the body schemas moved to channel/dto/channel.dto.ts; each route still refuses an invalid body.
+    it("PATCH /channels/:id with an invalid body: 400, the channel unchanged", async () => {
+      const { alice, channelA } = await setup();
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/channels/${channelA.id}`,
+        headers: auth(alice),
+        payload: { name: "" },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(await prisma.channel.count()).toBe(2);
+      expect(await prisma.channel.findUnique({ where: { id: channelA.id } })).toMatchObject({ name: "Alice channel" });
+    });
+
+    it("POST /channels/:id/agents with an invalid body: 400, no link added", async () => {
+      const { alice, channelA, agentX } = await setup();
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/channels/${channelA.id}/agents`,
+        headers: auth(alice),
+        payload: { agentId: "not-a-uuid" },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(await prisma.channelAgent.count()).toBe(2);
+      const links = await prisma.channelAgent.findMany({ where: { channelId: channelA.id } });
+      expect(links.map((l) => l.agentId)).toEqual([agentX.id]);
+    });
+
+    it("POST /channels/:id/agents/:agentId/chat with an invalid body: 400, no message stored", async () => {
+      const { alice, channelA, agentX } = await setup();
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/channels/${channelA.id}/agents/${agentX.id}/chat`,
+        headers: auth(alice),
+        payload: { message: "" },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(await contents()).toEqual(["alice-x-1"]);
+    });
+
     it("GET /channels: the caller's channels, newest first, with their agents and agent count", async () => {
       const { alice, channelA, agentX } = await setup();
       const newer = await prisma.channel.create({
