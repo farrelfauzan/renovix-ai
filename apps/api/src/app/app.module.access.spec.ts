@@ -19,9 +19,8 @@ import type { AdminAuditOptions } from "./admin-auth/types/admin-audit-options";
 // RX-114 coverage: the route table of the real AppModule, as Nest's own
 // scanner sees it (preview mode: every module reachable from AppModule is
 // scanned, dynamic modules included, and nothing is instantiated, so no
-// database or secret is needed). marked is ESM-only.
-// Not read: a route registered on the Fastify instance outside a Nest
-// controller (main.ts: the Swagger UI under /api-docs).
+// database or secret is needed). marked is ESM-only (the app imports it
+// through the document converters).
 jest.mock("marked", () => ({}));
 // AppModule is required, not imported: an import would put every file of the
 // app into the spec type program (tsconfig.spec.json), which then reports the

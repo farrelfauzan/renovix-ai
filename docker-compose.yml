@@ -52,6 +52,36 @@ services:
         exit 0;
       "
 
+  # ─── OpenAPI documentation (RX-170) ───
+  # The two documents are generated from the code (`bun run openapi:generate`) and committed under
+  # docs/openapi/; these services only serve them read-only. "Try it out" is disabled for every
+  # method (SUPPORTED_SUBMIT_METHODS=[]): the docs point at production, not at this compose
+  # network. Bound to 127.0.0.1 so nothing outside the dev machine can reach them.
+  # NOTE: swagger-ui's configurator reads UNPREFIXED env names (URL, SUPPORTED_SUBMIT_METHODS —
+  # see /usr/share/nginx/configurator/variables.js in the image); the SWAGGER_UI_* spellings are
+  # ignored and the UI would fall back to the petstore example.
+  docs-backoffice:
+    image: swaggerapi/swagger-ui:v5.17.14
+    restart: unless-stopped
+    environment:
+      - URL=/backoffice.openapi.json
+      - SUPPORTED_SUBMIT_METHODS=[]
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./docs/openapi/backoffice.openapi.json:/usr/share/nginx/html/backoffice.openapi.json:ro
+
+  docs-portal:
+    image: swaggerapi/swagger-ui:v5.17.14
+    restart: unless-stopped
+    environment:
+      - URL=/portal.openapi.json
+      - SUPPORTED_SUBMIT_METHODS=[]
+    ports:
+      - "127.0.0.1:8082:8080"
+    volumes:
+      - ./docs/openapi/portal.openapi.json:/usr/share/nginx/html/portal.openapi.json:ro
+
   # ─── Redis (for future caching / rate limiting) ───
   # redis:
   #   image: redis:7-alpine

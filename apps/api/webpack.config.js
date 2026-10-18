@@ -20,7 +20,7 @@ module.exports = {
       compiler: 'tsc',
       main: './src/main.ts',
       tsConfig: './tsconfig.app.json',
-      assets: ["./src/assets"],
+      // RX-170: no assets folder anymore (the static openapi.yaml was removed with the Swagger UI).
       optimization: false,
       outputHashing: 'none',
       generatePackageJson: false,

@@ -26,24 +26,24 @@ import { ProviderRouter } from "../../providers/provider-router";
 import { z } from "zod";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 
-const CreateChannelSchema = z.object({
+export const CreateChannelSchema = z.object({
   name: z.string().min(1).max(100),
   icon: z.string().max(500).optional(),
   color: z.string().max(7).optional(),
 });
 
-const UpdateChannelSchema = z.object({
+export const UpdateChannelSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   icon: z.string().max(500).optional(),
   color: z.string().max(7).optional(),
 });
 
-const AddAgentSchema = z.object({
+export const AddAgentSchema = z.object({
   agentId: z.string().uuid(),
   role: z.enum(["primary", "sub"]).optional().default("primary"),
 });
 
-const ChatMessageSchema = z.object({
+export const ChatMessageSchema = z.object({
   message: z.string().min(1).max(32000),
   output_format: z.enum(["pdf", "docx", "xlsx"]).optional(),
 });

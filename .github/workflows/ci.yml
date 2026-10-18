@@ -79,3 +79,27 @@ jobs:
             -f apps/landing/Dockerfile \
             -t renovix/landing:test \
             .
+
+  # RX-170: the committed OpenAPI documents must match the code. Runs the generator spec in drift
+  # mode (no UPDATE_OPENAPI); the generator needs no database, only the generated Prisma client.
+  openapi-drift:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: bun
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Generate Prisma client
+        run: bun run prisma:generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      - name: OpenAPI drift check (docs/openapi vs the code)
+        run: npx nx run api:test --testPathPatterns=openapi-document --skip-nx-cache
