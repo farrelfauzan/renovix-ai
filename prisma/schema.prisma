@@ -63,6 +63,7 @@ model User {
   guardrailViolations GuardrailViolation[]
   reminders       Reminder[]
   purchaseSnapshots PurchaseSnapshot[]
+  creditAccounts  CreditAccount[]
 
   @@map("users")
 }
@@ -1217,6 +1218,130 @@ model PurchaseSnapshot {
   @@index([packageVersionId])
   @@index([topUpPackVersionId])
   @@map("purchase_snapshots")
+}
+
+// RX-20: the credit ledger (docs/credits.md section 2). Fresh start: no balance, Transaction row or token counter
+// is carried over (section 8). Every amount is Decimal(18, 6), whole micro-credits (section 2.3). The CHECK
+// constraints, the partial unique index on call_id and the append-only trigger are written by hand in migration
+// 20261019120000_credit_ledger (Prisma does not model them).
+
+/// One balance of an account (docs/credits.md Terms): a user has `paid` and `weekly_free`, a company only `paid`.
+enum CreditWallet {
+  paid
+  weekly_free
+}
+
+/// What caused a ledger entry (docs/credits.md section 2.1).
+enum CreditEntryType {
+  plan_grant
+  top_up
+  bonus
+  weekly_reset
+  usage
+  refund
+  adjustment
+}
+
+/// How a model call ended; on `usage` entries only.
+enum CreditCallOutcome {
+  completed
+  provider_error
+  client_cancel
+}
+
+/// The state of a reservation (docs/credits.md section 3.1).
+enum CreditReservationStatus {
+  open
+  settled
+  released
+  expired
+}
+
+/// One wallet of one account; the balance is read from this row, never by summing entries (I1, I2).
+/// Exactly one of userId and companyId is set (CHECK). companyId has no foreign key: there is no company
+/// table yet (see CompanyContract). balance >= 0, held >= 0 and held <= balance (CHECK, I5). frozen is
+/// used on a company pool only (D23).
+model CreditAccount {
+  id           String              @id @default(uuid())
+  userId       String?             @map("user_id")
+  user         User?               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  companyId    String?             @map("company_id")
+  wallet       CreditWallet
+  balance      Decimal             @default(0) @db.Decimal(18, 6)
+  held         Decimal             @default(0) @db.Decimal(18, 6)
+  frozen       Boolean             @default(false)
+  lastSeq      Int                 @default(0) @map("last_seq")
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
+  entries      CreditLedgerEntry[]
+  reservations CreditReservation[]
+
+  @@unique([userId, wallet])
+  @@unique([companyId, wallet])
+  @@map("credit_accounts")
+}
+
+/// One ledger entry. Append-only: a trigger refuses every UPDATE and DELETE (I7). seq is 1, 2, 3, ... per
+/// account with no gaps; balanceAfter is the account's balance right after this entry (I2). The usage fields
+/// are set on `usage` entries only, and requestId, callId, the model, rates, tokens and outcome are required
+/// there (CHECK); callId is unique among `usage` entries (partial unique index, I3). reference is required
+/// on every type except `usage` and `weekly_reset` (CHECK). memberUserId has no foreign key: on an
+/// adjustment it is the admin's id. modelId is the model's slug, with no foreign key.
+model CreditLedgerEntry {
+  id             String             @id @default(uuid())
+  accountId      String             @map("account_id")
+  account        CreditAccount      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  wallet         CreditWallet
+  seq            Int
+  type           CreditEntryType
+  amount         Decimal            @db.Decimal(18, 6)
+  balanceAfter   Decimal            @map("balance_after") @db.Decimal(18, 6)
+  uncharged      Decimal            @default(0) @db.Decimal(18, 6)
+  memberUserId   String             @map("member_user_id")
+  requestId      String?            @map("request_id")
+  callId         String?            @map("call_id")
+  runId          String?            @map("run_id")
+  agentId        String?            @map("agent_id")
+  parentCallId   String?            @map("parent_call_id")
+  modelId        String?            @map("model_id")
+  tier           String?
+  rateNew        Decimal?           @map("rate_new") @db.Decimal(18, 12)
+  rateCached     Decimal?           @map("rate_cached") @db.Decimal(18, 12)
+  rateOut        Decimal?           @map("rate_out") @db.Decimal(18, 12)
+  tokensNew      Int?               @map("tokens_new")
+  tokensCached   Int?               @map("tokens_cached")
+  tokensOut      Int?               @map("tokens_out")
+  outcome        CreditCallOutcome?
+  reference      String?
+  idempotencyKey String             @map("idempotency_key")
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([accountId, seq])
+  @@unique([accountId, idempotencyKey])
+  /// I3: a call_id appears on at most one usage entry (partial unique index, created by the migration).
+  @@unique([callId], map: "credit_ledger_entries_usage_call_id_key", where: raw("type = 'usage'"))
+  @@map("credit_ledger_entries")
+}
+
+/// A hold on an account for one request or run (docs/credits.md section 3; not a ledger entry). The sweep reads
+/// expired open reservations through the (status, expiresAt) index. 0 <= consumed <= amountHeld (CHECK, I4).
+/// Table only: reserve, settle, release and the sweep are RX-22.
+model CreditReservation {
+  id         String                  @id @default(uuid())
+  accountId  String                  @map("account_id")
+  account    CreditAccount           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  wallet     CreditWallet
+  requestId  String                  @map("request_id")
+  runId      String?                 @map("run_id")
+  amountHeld Decimal                 @map("amount_held") @db.Decimal(18, 6)
+  consumed   Decimal                 @default(0) @db.Decimal(18, 6)
+  status     CreditReservationStatus @default(open)
+  expiresAt  DateTime                @map("expires_at") @db.Timestamptz()
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime                @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@index([status, expiresAt])
+  @@map("credit_reservations")
 }
 
 /// One platform setting. name is a key of the registry in apps/api/src/app/offers/config/platform-settings.ts,
