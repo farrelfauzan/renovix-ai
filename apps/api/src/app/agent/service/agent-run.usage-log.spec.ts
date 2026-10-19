@@ -39,6 +39,7 @@ describe("RX-21: AgentRunService.streamExecution usage log", () => {
       usage as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     const context = {
       agentId: "agent-1",

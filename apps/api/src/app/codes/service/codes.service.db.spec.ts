@@ -500,6 +500,26 @@ describe("CodesService.redeemCode (test database)", () => {
     });
   });
 
+  it("RX-22 review NIT 6: rolls back everything when the redemption row itself cannot be written (no ledger entry, no plan)", async () => {
+    const user = await createUser(prisma);
+    const plan = await createPlan(prisma, { slug: "pro" });
+    const code = await prisma.invitationCode.create({
+      data: { code: "PERF-BOTH-0002", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30 },
+    });
+    jest
+      .spyOn(moduleRef.get(CodeRedemptionRepository), "createRedemption")
+      .mockRejectedValueOnce(new Error("the redemption row cannot be written"));
+
+    await expect(service.redeemCode(user.id, code.code)).rejects.toThrow("the redemption row cannot be written");
+
+    expect(await paidBalanceOf(user.id)).toBe(0);
+    expect(await ledgerEntryCount(user.id)).toBe(0);
+    expect(await prisma.creditAccount.count()).toBe(0);
+    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
+    expect(await prisma.codeRedemption.count()).toBe(0);
+    expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({ timesRedeemed: 0 });
+  });
+
   it("leaves an existing subscription as it was when a later step of the redemption fails", async () => {
     const user = await createUser(prisma);
     const basic = await createPlan(prisma, { slug: "basic" });

@@ -126,11 +126,14 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       planTokens?: bigint;
       tokensUsed?: bigint;
       balance?: Decimal;
+      /** Credits on the ledger's paid wallet (RX-22 review: the overage gate reads the ledger, not User.balance). */
+      credits?: string;
     } = {}) => {
       const plan = await createPlan(prisma, {
         maxTokensPerMonth: overrides.planTokens ?? 1_000_000n,
       });
       const user = await createUser(prisma, { balance: overrides.balance ?? new Decimal(0) });
+      if (overrides.credits) await fundPaidWallet(prisma, user.id, overrides.credits);
       await createSubscription(prisma, {
         userId: user.id,
         planId: plan.id,
@@ -153,11 +156,13 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(0);
     });
 
-    it("at the token limit with a positive balance: allowed (overage), messagesUsed +1, balance untouched by the quota check", async () => {
+    // RX-22 review (D208): the overage allowance reads the ledger's paid wallet (balance - held); was User.balance 1.0.
+    it("at the token limit with ledger credits: allowed (overage), messagesUsed +1, balance untouched by the quota check", async () => {
       const { user, agent } = await subscribedUser({
         planTokens: 1000n,
         tokensUsed: 1000n,
         balance: new Decimal("1.0"),
+        credits: "1.0",
       });
       fake.enqueue({ content: "Hello", usage: { prompt_tokens: 10, completion_tokens: 5 } });
 
@@ -187,6 +192,22 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
 
       const sub = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
       expect(sub.messagesUsed).toBe(0);
+      expect(fake.requests).toHaveLength(0);
+    });
+
+    it("RX-22 review: at the token limit with User.balance 1.0 but no ledger credits: refused (User.balance is not read)", async () => {
+      const { user, agent } = await subscribedUser({
+        planTokens: 1000n,
+        tokensUsed: 1000n,
+        balance: new Decimal("1.0"),
+      });
+
+      await expect(agentRun.chat(user.id, agent.id, "Hi")).rejects.toThrow(
+        new BadRequestException(
+          "Monthly token limit reached and insufficient credit balance for overage. Please upgrade or top up.",
+        ),
+      );
+
       expect(fake.requests).toHaveLength(0);
     });
 

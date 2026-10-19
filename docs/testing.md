@@ -120,7 +120,7 @@ A race-fix PR shows D83 evidence:
 
 `apps/api/test/factories.ts`: `createUser`, `createPlan`, `createSubscription({ userId, planId })`, `createAgent({ userId })`, `createWorkspace({ ownerId })`, `createProvider({ createdByAdminId })` (RX-177: an `openai_compatible` provider record of the fake provider, its obviously fake key sealed with the test `LLM_KEY_ENCRYPTION_KEY`; `apiKey` sets the plaintext), `createModel({ providerRecordId })` (RX-177: an active standard-tier model on that provider). Each fills the required fields with unique values; pass any field to override it. The migrations and the seed write no provider or model (RX-177): create them with these factories.
 
-Credits (RX-22): the chat, portal and grant paths read and write only the credit ledger, never `User.balance`. Fund a user with `fundPaidWallet(prisma, userId, amount)` (`apps/api/test/credit-funding.ts`, one `bonus` entry through the real `CreditLedgerService`), and check I1/I2 with `assertCreditLedgerInvariants(prisma)` (`apps/api/test/credit-ledger-invariants.ts`) after a test that writes.
+Credits (RX-22): the chat, portal and grant paths read and write only the credit ledger, never `User.balance`. Fund a user with `fundPaidWallet(prisma, userId, amount)` (`apps/api/test/credit-funding.ts`, one `bonus` entry through the real `CreditLedgerService`), and check I1/I2 with `assertCreditLedgerInvariants(prisma)` (`apps/api/test/credit-ledger-invariants.ts`) after a test that writes. `realPromptTuning()` (`apps/api/test/real-prompt-tuning.ts`) gives the real PromptTuningService and the knowledge services it calls (dummy S3 and embedding settings), so a test can spy on `EmbeddingService.embedSingle` (RX-22 review B1).
 
 ## Fake LLM provider
 

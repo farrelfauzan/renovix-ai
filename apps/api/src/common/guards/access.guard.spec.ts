@@ -296,7 +296,8 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       expect(userLookups).toHaveBeenCalledTimes(0);
     });
 
-    it("X-Portal-Session and a valid login JWT: 200, the user, one database lookup", async () => {
+    // RX-22: the guard also reads the user's paid credit account (credit_accounts); the count is of user lookups.
+    it("X-Portal-Session and a valid login JWT: 200, the user, one user lookup", async () => {
       const res = await get("/probe/portal", { "x-portal-session": SESSION, authorization: loginJwt() });
 
       expect(res.statusCode).toBe(200);

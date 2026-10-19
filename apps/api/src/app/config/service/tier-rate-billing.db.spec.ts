@@ -74,6 +74,8 @@ describe("RX-21 AC1: a changed tier rate changes the credits charged (test datab
     await registry.refresh();
   });
 
+  afterEach(() => jest.restoreAllMocks());
+
   afterAll(() => moduleRef?.close());
 
   const complete = (userId: string) =>
@@ -160,6 +162,5 @@ describe("RX-21 AC1: a changed tier rate changes the credits charged (test datab
       "0.040504", "settled", "0.005200",
     ]);
     expect(fake.requests[0].messages).toEqual(tuned);
-    jest.restoreAllMocks();
   });
 });

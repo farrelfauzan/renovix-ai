@@ -1,3 +1,4 @@
+import { ConflictException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { Prisma } from "@generated/prisma/client.js";
 import { CreditService } from "./credit.service";
@@ -132,6 +133,18 @@ describe("CreditService (RX-22, test database)", () => {
     });
   });
 
+  describe("assertAvailable (RX-22 review B1: the pre-check before any paid work)", () => {
+    it("402 when available (balance - held) is below the amount, or the user has no account; writes nothing", async () => {
+      await expect(service.assertAvailable(userId, credits("0.000001"))).rejects.toBeInstanceOf(CreditsExhaustedException);
+      await fundPaidWallet(prisma, userId, "1");
+      await reserve("0.6");
+
+      await expect(service.assertAvailable(userId, credits("0.400001"))).rejects.toBeInstanceOf(CreditsExhaustedException);
+      await expect(service.assertAvailable(userId, credits("0.4"))).resolves.toBeUndefined();
+      expect(await paid()).toEqual({ balance: "1.000000", held: "0.600000", available: "0.400000" });
+    });
+  });
+
   describe("recordUsage, settle and release", () => {
     it("example (a): usage from the hold, then settle releases the rest; balance and entry agree", async () => {
       await fundPaidWallet(prisma, userId, "23.187430");
@@ -181,6 +194,43 @@ describe("CreditService (RX-22, test database)", () => {
       expect(replay.id).toBe(first.id);
       expect(await prisma.creditLedgerEntry.count({ where: { type: "usage" } })).toBe(1);
       expect(await paid()).toEqual({ balance: "0.600000", held: "0.100000", available: "0.500000" });
+    });
+
+    it("RX-22 review NIT 5: a replayed callId with other tokens, rates or outcome is a 409 and writes nothing; an identical replay still returns the first", async () => {
+      await fundPaidWallet(prisma, userId, "1");
+      const reservation = await reserve("0.5");
+      const first = await service.recordUsage(usage(reservation.id, "call-1"));
+      const before = await paid();
+
+      const otherTokens = service.recordUsage(usage(reservation.id, "call-1", { tokens: { tokensNew: 1, tokensCached: 0, tokensOut: 0 } }));
+      await expect(otherTokens).rejects.toBeInstanceOf(ConflictException);
+      await expect(otherTokens).rejects.toThrow("This call already has another usage entry");
+      await expect(service.recordUsage(usage(reservation.id, "call-1", { outcome: "provider_error" }))).rejects.toBeInstanceOf(ConflictException);
+      await expect(
+        service.recordUsage(usage(reservation.id, "call-1", { rates: { rateNew: credits("2"), rateCached: credits("1"), rateOut: credits("1") } })),
+      ).rejects.toBeInstanceOf(ConflictException);
+      const identical = await service.recordUsage(usage(reservation.id, "call-1"));
+
+      expect(identical.id).toBe(first.id);
+      expect(await prisma.creditLedgerEntry.count({ where: { type: "usage" } })).toBe(1);
+      expect(await paid()).toEqual(before);
+    });
+
+    it("RX-22 review NIT 6: two calls under two reservations recorded at the same moment: seq gap-free, the balanceAfter chain holds", async () => {
+      await fundPaidWallet(prisma, userId, "2");
+      const first = await reserve("0.5", "req-a");
+      const second = await reserve("0.5", "req-b");
+      holdCallersBeforeTransaction(2);
+
+      await Promise.all([service.recordUsage(usage(first.id, "call-a")), service.recordUsage(usage(second.id, "call-b"))]);
+
+      const entries = await prisma.creditLedgerEntry.findMany({ orderBy: { seq: "asc" } });
+      expect(entries.map((e) => [e.seq, e.type, e.balanceAfter.toFixed(6)])).toEqual([
+        [1, "bonus", "2.000000"],
+        [2, "usage", "1.600000"],
+        [3, "usage", "1.200000"],
+      ]);
+      expect(await paid()).toEqual({ balance: "1.200000", held: "0.200000", available: "1.000000" });
     });
 
     it("AC: a provider error writes a usage entry of 0 with outcome provider_error and uncharged set, then release: balance unchanged", async () => {
@@ -270,6 +320,18 @@ describe("CreditService (RX-22, test database)", () => {
       expect(results.sort()).toEqual([0, 1]);
       expect(await paid()).toEqual({ balance: "1.000000", held: "0.000000", available: "1.000000" });
       expect((await prisma.creditReservation.findUniqueOrThrow({ where: { id: reservation.id } })).status).toBe("expired");
+    });
+
+    it("RX-22 review NIT 6: more than one batch (105 expired reservations, batches of 100): all released once", async () => {
+      await fundPaidWallet(prisma, userId, "1");
+      for (let i = 0; i < 105; i++) await reserve("0.001", `req-${i}`);
+      await prisma.creditReservation.updateMany({ data: { expiresAt: new Date(Date.now() - 1_000) } });
+
+      const expired = await service.expireOverdueReservations();
+
+      expect(expired).toBe(105);
+      expect(await prisma.creditReservation.count({ where: { status: "expired" } })).toBe(105);
+      expect(await paid()).toEqual({ balance: "1.000000", held: "0.000000", available: "1.000000" });
     });
 
     it("a call that ends after the sweep expired its reservation is charged from available, not from the released hold", async () => {

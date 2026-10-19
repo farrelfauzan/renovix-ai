@@ -61,16 +61,22 @@ export class ChatService {
     }
     const rates = callRatesOf(tierRates);
 
-    // 3. Apply prompt tuning (inject system prompt) first: the estimate counts the prompt actually sent (RX-22).
-    const { tunedMessages, matchedTemplate } =
-      await this.promptTuning.applyTuning(body.messages, user.id);
-
-    // 4. Reserve the estimate on the paid wallet (docs/credits.md section 3.1): 402 CREDITS_EXHAUSTED when it
-    // cannot cover it. M is the max_tokens the adapter will send.
+    // 3. M is the max_tokens the adapter will send. RX-22 review B1: refuse with 402 before any paid work (tuning
+    // embeds the query for the knowledge searches) when the paid wallet cannot cover the estimate of the untuned
+    // prompt, a lower bound (tuning only adds content).
     const maxTokens = this.providerRouter.resolveMaxTokens(modelConfig.provider, {
       providerId: modelConfig.providerId,
       max_tokens: body.max_tokens,
     });
+    await this.credits.assertAvailable(
+      user.id,
+      estimateCallCredits(countPromptTokens(body.messages), maxTokens, rates),
+    );
+
+    // 4. Apply prompt tuning (inject system prompt), then reserve the estimate of the prompt actually sent
+    // (docs/credits.md section 3.1): 402 CREDITS_EXHAUSTED when the paid wallet cannot cover it.
+    const { tunedMessages, matchedTemplate } =
+      await this.promptTuning.applyTuning(body.messages, user.id);
     const requestId = randomUUID();
     const reservation = await this.credits.reserve({
       userId: user.id,

@@ -25,4 +25,14 @@ describe("computeCallCredits", () => {
     expect(actual.toFixed(6)).toBe(expected);
     expect(actual.decimalPlaces()).toBeLessThanOrEqual(6);
   });
+
+  it.each([
+    ["NaN tokens", { tokensNew: NaN, tokensCached: 0, tokensOut: 0 }, rates("1", "1", "1")],
+    ["negative tokens", { tokensNew: 0, tokensCached: -1, tokensOut: 0 }, rates("1", "1", "1")],
+    ["fractional tokens", { tokensNew: 0, tokensCached: 0, tokensOut: 1.5 }, rates("1", "1", "1")],
+    ["NaN rate", { tokensNew: 1, tokensCached: 0, tokensOut: 0 }, rates("NaN", "1", "1")],
+    ["negative rate", { tokensNew: 1, tokensCached: 0, tokensOut: 0 }, rates("1", "1", "-1")],
+  ])("refuses %s (never a NaN or negative charge)", (_case, tokens, callRates) => {
+    expect(() => computeCallCredits(tokens, callRates)).toThrow(/non-negative/);
+  });
 });

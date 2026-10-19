@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
+import { Decimal } from "@prisma/client/runtime/client";
 import type { CreditLedgerEntry, CreditReservation, CreditReservationStatus } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
@@ -10,6 +11,7 @@ import type { ReserveRequest } from "../types/reserve-request";
 import type { UsageRecord } from "../types/usage-record";
 import { assertCreditAmount } from "../utils/assert-credit-amount";
 import { chargeCall } from "../utils/charge-call";
+import { isSameUsage } from "../utils/is-same-usage";
 
 /**
  * How long a request's hold lives before the sweep may release it (docs/credits.md section 3.1 rule 8): the adapter's
@@ -57,10 +59,22 @@ export class CreditService {
   }
 
   /**
+   * Refuses with CreditsExhaustedException (402), writing nothing, when the user's paid wallet has fewer available
+   * credits (balance - held, one account row read) than `amount`. A pre-check before any paid work (RX-22 review B1):
+   * callers pass a lower bound of the estimate, then `reserve` the real one.
+   */
+  async assertAvailable(userId: string, amount: Decimal): Promise<void> {
+    const account = await this.accounts.findAccount({ userId }, "paid");
+    const available = account ? account.balance.minus(account.held) : new Decimal(0);
+    if (available.lessThan(amount)) throw new CreditsExhaustedException();
+  }
+
+  /**
    * Writes the one usage entry of a model call (docs/credits.md section 3.1 rules 4, 6 and 7) in one transaction on
    * the locked account row: the call's credits, rounded once, come from the reservation's remaining hold, an overrun
    * from the available balance, and the rest is `uncharged` (the balance never goes below 0, I5). A provider error is
-   * charged 0 with its credits in `uncharged`. The callId is the idempotency key: a replay returns the first entry.
+   * charged 0 with its credits in `uncharged`. The callId is the idempotency key: a replay of the same call returns
+   * the first entry; another call under that callId (other tokens, rates, model or outcome) is a 409, nothing written.
    */
   async recordUsage(record: UsageRecord): Promise<CreditLedgerEntry> {
     const { accountId } = await this.reservations.findReservation(record.reservationId);
@@ -112,6 +126,9 @@ export class CreditService {
   private async appendUsageToLockedAccount(accountId: string, record: UsageRecord, tx: DbTransaction): Promise<CreditLedgerEntry> {
     const account = await this.accounts.lockAccount(accountId, tx);
     const replayed = await this.entries.findEntryByIdempotencyKey(accountId, record.callId, tx);
+    if (replayed && !isSameUsage(replayed, record)) {
+      throw new ConflictException("This call already has another usage entry");
+    }
     if (replayed) return replayed;
     const reservation = await this.reservations.findReservation(record.reservationId, tx);
     const charge = chargeCall(record, reservation, account);

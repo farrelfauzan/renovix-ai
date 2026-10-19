@@ -1,19 +1,24 @@
 import { readStreamError } from "./read-stream-error";
+import { ProviderStreamError } from "../errors/provider-stream-error";
 
 // RX-22: OpenRouter's mid-stream error (HTTP 200): a top-level `error` and finish_reason "error".
 describe("readStreamError", () => {
-  it("a chunk with a top-level error is a provider error with its code as the status", () => {
+  it("a chunk with a top-level error is a provider stream error with only its code; the provider text is not kept", () => {
     const chunk = {
       id: "gen-1",
-      error: { code: 429, message: "Rate limit exceeded" },
+      error: { code: 429, message: "RX22-MARKER Rate limit exceeded" },
       choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }],
     };
 
-    expect(readStreamError(chunk)).toMatchObject({ status: 429, bodyText: '{"code":429,"message":"Rate limit exceeded"}' });
+    const actual = readStreamError(chunk);
+
+    expect(actual).toBeInstanceOf(ProviderStreamError);
+    expect(actual?.status).toBe(429);
+    expect(JSON.stringify({ ...actual, message: actual?.message, stack: actual?.stack })).not.toContain("RX22-MARKER");
   });
 
-  it("a non-numeric code (server_error) becomes 502", () => {
-    expect(readStreamError({ error: { code: "server_error", message: "Provider disconnected" } })?.status).toBe(502);
+  it.each([["server_error"], [200], [700], [undefined]])("a code that is not an HTTP error status (%p) becomes 502", (code) => {
+    expect(readStreamError({ error: { code, message: "x" } })?.status).toBe(502);
   });
 
   it("finish_reason error alone is a provider error too", () => {

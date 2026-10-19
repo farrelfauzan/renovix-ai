@@ -36,6 +36,12 @@ import { ProviderRouter } from "../../providers/provider-router";
 import type { ChatUsage } from "../../providers/provider.interface";
 import { readStreamError } from "../../providers/utils/read-stream-error";
 import { readUsage } from "../../providers/utils/read-usage";
+import { ProviderHttpError } from "../../providers/errors/provider-http-error";
+import { ProviderStreamError } from "../../providers/errors/provider-stream-error";
+import { toProviderErrorText } from "../../../common/utils/to-provider-error-text";
+import { streamedCallOutcome } from "../utils/streamed-call-outcome";
+import type { CreditCallOutcome } from "@generated/prisma/client.js";
+import type { UsageRecord } from "../../billing/types/usage-record";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { ConversationService } from "../../chat/service/conversation.service";
@@ -631,6 +637,21 @@ export class PortalController {
     }
     const rates = callRatesOf(tierRates);
 
+    // RX-22 review B1: refuse with 402 before any paid work (tuning embeds the query for the knowledge searches)
+    // when the paid wallet cannot cover the estimate of the untuned prompt, a lower bound (tuning only adds content,
+    // and a document format only raises M).
+    await this.credits.assertAvailable(
+      user.id,
+      estimateCallCredits(
+        countPromptTokens(body.messages),
+        this.providerRouter.resolveMaxTokens(modelConfig.provider, {
+          providerId: modelConfig.providerId,
+          max_tokens: resolveMaxTokens(body.max_tokens, modelConfig.maxOutputTokens, body.output_format || null),
+        }),
+        rates,
+      ),
+    );
+
     // Prompt tuning (with user KB context) comes before the reservation (RX-22): the estimate counts the prompt
     // actually sent, and a 402 is answered before the stream opens.
     const userKbs = await this.knowledge.listKnowledgeBases(user.id);
@@ -686,6 +707,7 @@ export class PortalController {
     let fullContent = "";
     let reportedUsage: ChatUsage | undefined;
     let isBilled = false;
+    let streamOpened = false;
 
     try {
       // Emit status: understanding
@@ -717,6 +739,7 @@ export class PortalController {
       });
 
       for await (const chunk of stream) {
+        streamOpened = true;
         let parsed: any;
         try {
           parsed = JSON.parse(chunk);
@@ -740,11 +763,11 @@ export class PortalController {
 
       // One usage entry for the call, then settle (docs/credits.md section 3.1 rules 4, 5 and 7): the provider's
       // reported tokens; without a usage chunk (client gone, or none sent) the local chars/4 count (D202-5, D205).
-      const entry = await this.credits.finishCall({
-        ...call,
-        tokens: streamedCallTokens(reportedUsage, sentPrompt, fullContent),
-        outcome: disconnected.signal.aborted ? "client_cancel" : "completed",
-      });
+      const entry = await this.finishStreamedCall(
+        call,
+        streamedCallOutcome({ providerFailed: false, aborted: disconnected.signal.aborted, streamOpened }),
+        { reportedUsage, sentPrompt, fullContent },
+      );
       isBilled = true;
 
       // Generate document if format was detected
@@ -838,22 +861,27 @@ export class PortalController {
       res.raw.write("data: [DONE]\n\n");
       res.raw.end();
     } catch (error: any) {
-      // Not billed yet: a provider error is charged 0 and releases the hold (rule 6); a client that went away is
-      // charged what it received (rule 7). A failed write stays for the expiry sweep.
+      // Not billed yet: a provider error is charged 0 and releases the hold (rule 6), also after the client went
+      // away; a client that went away once the stream opened is charged what it received (rule 7). A failed write
+      // stays for the expiry sweep.
       if (!isBilled) {
-        await this.credits
-          .finishCall({
-            ...call,
-            tokens: disconnected.signal.aborted
-              ? streamedCallTokens(reportedUsage, sentPrompt, fullContent)
-              : streamedCallTokens(reportedUsage, "", ""),
-            outcome: disconnected.signal.aborted ? "client_cancel" : "provider_error",
-          })
-          .catch((err) => this.logger.error("Failed to record the failed call's usage", err));
+        const providerFailed =
+          error instanceof ProviderHttpError || error instanceof ProviderStreamError || !disconnected.signal.aborted;
+        await this.finishStreamedCall(
+          call,
+          streamedCallOutcome({ providerFailed, aborted: disconnected.signal.aborted, streamOpened }),
+          { reportedUsage, sentPrompt, fullContent },
+        ).catch((err) => this.logger.error("Failed to record the failed call's usage", err));
       }
-      const providerError = extractProviderError(error);
+      // D197/D208: a mid-stream provider error is reported by fixed texts only (status, never the provider's text).
+      const fixedText = error instanceof ProviderStreamError ? toProviderErrorText(error.status) : undefined;
+      const providerError = fixedText
+        ? { clientMessage: fixedText.clientMessage, logLine: `Stream error: ${fixedText.logText}` }
+        : extractProviderError(error);
       this.logger.error(
-        `Stream error${providerError.status ? ` (status ${providerError.status})` : ""}: ${providerError.message}`,
+        "logLine" in providerError
+          ? providerError.logLine
+          : `Stream error${providerError.status ? ` (status ${providerError.status})` : ""}: ${providerError.message}`,
         error.stack,
       );
 
@@ -877,5 +905,23 @@ export class PortalController {
       );
       res.raw.end();
     }
+  }
+
+  /**
+   * Writes the one usage entry of a paid stream's call and ends its reservation (`CreditService.finishCall`): a
+   * provider error records only the tokens the provider reported (0 if none, charged 0); a completed or cancelled
+   * call is charged the reported tokens, or without a report the local chars/4 count of the prompt sent and the
+   * output received (D205).
+   */
+  private finishStreamedCall(
+    call: Omit<UsageRecord, "tokens" | "outcome">,
+    outcome: CreditCallOutcome,
+    stream: { reportedUsage: ChatUsage | undefined; sentPrompt: string; fullContent: string },
+  ) {
+    const tokens =
+      outcome === "provider_error"
+        ? streamedCallTokens(stream.reportedUsage, "", "")
+        : streamedCallTokens(stream.reportedUsage, stream.sentPrompt, stream.fullContent);
+    return this.credits.finishCall({ ...call, tokens, outcome });
   }
 }

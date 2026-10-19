@@ -12,6 +12,7 @@ import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProvidersModule } from "../../providers/providers.module";
+import { ProviderRouter } from "../../providers/provider-router";
 import { OpenRouterAdapter } from "../../providers/openrouter.adapter";
 import { HealthController } from "../../health/controller/health.controller";
 import { CreditService } from "../../billing/service/credit.service";
@@ -337,21 +338,31 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       expect(await paidAccount()).toEqual(["0.000001", "0.000000"]);
     });
 
-    it("a mid-stream error chunk (HTTP 200, top-level error, finish_reason error) is a provider error: SSE error naming its code, not forwarded, nothing charged", async () => {
+    it("D197/D208: a mid-stream error chunk is a provider error reported by fixed texts: its message (a marker) is in no SSE line and no log line", async () => {
+      const lines: string[] = [];
+      const capture = (...args: unknown[]) =>
+        void lines.push(args.map((a) => (typeof a === "string" ? a : a instanceof Error ? `${a.message} ${a.stack}` : JSON.stringify(a))).join(" "));
+      for (const m of ["log", "warn", "error", "debug", "verbose", "fatal"] as const) {
+        jest.spyOn(Logger.prototype, m).mockImplementation(capture);
+      }
+      for (const m of ["log", "warn", "error", "info", "debug"] as const) jest.spyOn(console, m).mockImplementation(capture);
       primary.respond((_r, res) => {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
         res.write('data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n');
         res.write(
-          'data: {"id":"gen-1","error":{"code":502,"message":"RX22 provider disconnected"},"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}\n\n',
+          'data: {"id":"gen-1","error":{"code":502,"message":"RX22-PROVIDER-MARKER disconnected","metadata":{"raw":"RX22-PROVIDER-MARKER"}},"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}\n\n',
         );
         res.end();
       });
 
       const res = await paidChat();
 
-      expect(sseErrorMessage(res.body)).toMatch(/502.*RX22 provider disconnected.*No credits were charged\.$/);
+      expect(sseErrorMessage(res.body)).toBe("Provider request failed (502). No credits were charged.");
+      expect(res.body).not.toContain("RX22-PROVIDER-MARKER");
       expect(res.body).not.toContain('"finish_reason":"error"');
       expect(res.body).not.toContain("data: [DONE]");
+      expect(lines.some((l) => l.includes("Provider error (status 502)"))).toBe(true);
+      expect(lines.filter((l) => l.includes("RX22-PROVIDER-MARKER"))).toEqual([]);
       await expectProviderErrorReleased();
       await expectHealthy();
     });
@@ -490,6 +501,102 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       expect(await paidAccount()).toEqual(["4.999995", "0.000000"]);
       await assertCreditLedgerInvariants(prisma);
     });
+  });
+
+  describe("RX-22 review NIT 3, 4 and 6: what a client that went away is charged", () => {
+    /**
+     * A paid chat whose provider stream is `stream` (ProviderRouter.chatStream replaced; it gets the request's abort
+     * signal). The client waits for an SSE line containing `waitFor`, then goes away; returns once the reservation
+     * is closed.
+     */
+    const goAwayDuring = async (
+      stream: (signal: AbortSignal) => AsyncGenerator<string, void, unknown>,
+      waitFor: string,
+    ) => {
+      Object.assign(moduleRef.get(UsageService), { logUsage: jest.fn(async () => undefined) });
+      Object.assign(moduleRef.get(ConversationService), {
+        getOrCreateConversation: jest.fn(async () => "conversation-id"),
+        saveMessages: jest.fn(async () => undefined),
+      });
+      jest
+        .spyOn(moduleRef.get(ProviderRouter), "chatStream")
+        .mockImplementation((_provider, params) => stream(params.signal!));
+      const user = await createUser(prisma);
+      await fundPaidWallet(prisma, user.id, 5);
+      const token = moduleRef.get(JwtService).sign({ userId: user.id, email: user.email });
+      if (!app.getHttpServer().listening) await app.listen(0, "127.0.0.1");
+      const { port } = app.getHttpServer().address() as AddressInfo;
+      const client = httpRequest({
+        host: "127.0.0.1",
+        port,
+        method: "POST",
+        path: "/chat/portal/completions",
+        headers: { "content-type": "application/json", "x-portal-session": SESSION_NIT, authorization: `Bearer ${token}` },
+      });
+      client.on("error", () => undefined); // destroyed below on purpose
+      client.end(JSON.stringify({ model: "standard-cheap", messages: [{ role: "user", content: "Hi" }] }));
+      const response = await new Promise<import("node:http").IncomingMessage>((r) => client.on("response", r));
+      await new Promise<void>((received) => response.on("data", (chunk: Buffer) => chunk.toString().includes(waitFor) && received()));
+      client.destroy();
+      for (let i = 0; i < 100 && (await prisma.creditReservation.count({ where: { status: "open" } })) > 0; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      const [entry] = await prisma.creditLedgerEntry.findMany({ where: { type: "usage" } });
+      const [reservation] = await prisma.creditReservation.findMany();
+      const [account] = await prisma.creditAccount.findMany();
+      await assertCreditLedgerInvariants(prisma);
+      return {
+        entry: [entry.outcome, entry.tokensNew, entry.tokensCached, entry.tokensOut, entry.amount.toFixed(6), entry.uncharged.toFixed(6)],
+        reservation: reservation.status,
+        account: [account.balance.toFixed(6), account.held.toFixed(6)],
+      };
+    };
+    const SESSION_NIT = "88888888-8888-4888-8888-888888888888";
+    const aborted = (signal: AbortSignal) => new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+
+    it("NIT 3: the client goes away before the stream opened (during a Retry-After wait or the connect): provider_error, charged 0, released", async () => {
+      const actual = await goAwayDuring(async function* (signal) {
+        await aborted(signal);
+        throw signal.reason; // as retryOnceAfter and an aborted fetch reject
+      }, '"generating"');
+
+      expect(actual).toEqual({
+        entry: ["provider_error", 0, 0, 0, "0.000000", "0.000000"],
+        reservation: "released",
+        account: ["5.000000", "0.000000"],
+      });
+    }, 10000);
+
+    it("NIT 4: a provider error that arrives after the client went away is a provider_error, not a client_cancel", async () => {
+      const actual = await goAwayDuring(async function* (signal) {
+        yield JSON.stringify({ choices: [{ delta: { content: "Hello" } }] });
+        await aborted(signal);
+        yield JSON.stringify({ error: { code: 502, message: "late" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] });
+      }, "Hello");
+
+      expect(actual).toEqual({
+        entry: ["provider_error", 0, 0, 0, "0.000000", "0.000000"],
+        reservation: "released",
+        account: ["5.000000", "0.000000"],
+      });
+    }, 10000);
+
+    it("NIT 6: the client goes away after the usage chunk arrived: the reported tokens are charged as client_cancel", async () => {
+      const actual = await goAwayDuring(async function* (signal) {
+        yield JSON.stringify({ choices: [{ delta: { content: "Hello" } }] });
+        yield JSON.stringify({
+          choices: [{ delta: { content: "" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 30, completion_tokens: 7, total_tokens: 37, prompt_tokens_details: { cached_tokens: 10 } },
+        });
+        await aborted(signal);
+      }, '"usage"');
+
+      expect(actual).toEqual({
+        entry: ["client_cancel", 20, 10, 7, "-0.000037", "0.000000"],
+        reservation: "settled",
+        account: ["4.999963", "0.000000"],
+      });
+    }, 10000);
   });
 
   describe("AC4: the error the adapter rethrows can be read by extractProviderError", () => {
