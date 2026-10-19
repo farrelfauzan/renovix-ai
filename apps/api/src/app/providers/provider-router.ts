@@ -7,6 +7,8 @@ import type {
 } from "./provider.interface";
 import { OpenRouterAdapter } from "./openrouter.adapter";
 import { resolveLlmProvider } from "./llm-provider";
+import type { ProviderTestResult } from "./types/provider-test-result";
+import type { ProviderTestTarget } from "./types/provider-test-target";
 
 @Injectable()
 export class ProviderRouter {
@@ -76,5 +78,18 @@ export class ProviderRouter {
     const adapter = this.fakeAdapter ?? this.adapters[provider];
     if (!adapter?.listModels) return undefined;
     return adapter.listModels();
+  }
+
+  /**
+   * RX-177: tests a provider record's connection with one minimal request through the OpenAI-compatible
+   * adapter (the fake in LLM_PROVIDER=fake mode, so nothing leaves the machine). Outside the credit path:
+   * no usage is metered here.
+   */
+  async testConnection(target: ProviderTestTarget): Promise<ProviderTestResult> {
+    const adapter = this.fakeAdapter ?? this.openRouterAdapter;
+    if (!adapter.testConnection) throw new Error("The provider adapter cannot test a connection");
+    const result = await adapter.testConnection(target);
+    this.logger.log(`[testConnection] host=${new URL(target.baseUrl).host} model=${target.slug} isSuccessful=${result.isSuccessful}`);
+    return result;
   }
 }

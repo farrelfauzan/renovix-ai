@@ -12,9 +12,10 @@ const productionEnv = (): NodeJS.ProcessEnv => ({
   IP_HASH_SECRET: randomBytes(48).toString("base64"),
   MCP_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
   MCP_OAUTH_STATE_SECRET: randomBytes(48).toString("base64"),
+  LLM_KEY_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
 });
 
-const SECRETS = ["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_ENCRYPTION_KEY", "MCP_OAUTH_STATE_SECRET"];
+const SECRETS = ["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_ENCRYPTION_KEY", "MCP_OAUTH_STATE_SECRET", "LLM_KEY_ENCRYPTION_KEY"];
 
 describe("assertRequiredSecrets", () => {
   it("control: starts in production with real values", () => {
@@ -54,6 +55,12 @@ describe("assertRequiredSecrets", () => {
     expect(() => assertRequiredSecrets(env)).toThrow("MCP_ENCRYPTION_KEY must decode to exactly 32 bytes");
   });
 
+  // RX-177 (AC10): the provider key encryption key is required and must be 32 bytes.
+  it("refuses to start in production when LLM_KEY_ENCRYPTION_KEY is not 32 bytes", () => {
+    const env = { ...productionEnv(), LLM_KEY_ENCRYPTION_KEY: randomBytes(31).toString("hex") };
+    expect(() => assertRequiredSecrets(env)).toThrow("LLM_KEY_ENCRYPTION_KEY must decode to exactly 32 bytes");
+  });
+
   describe("the explicit dev values of .env.example", () => {
     const example = parse(readFileSync(join(__dirname, "../../../../../.env.example")));
 
@@ -63,6 +70,11 @@ describe("assertRequiredSecrets", () => {
 
     it("refuse to start it in production", () => {
       expect(() => assertRequiredSecrets({ ...example, NODE_ENV: "production" })).toThrow("placeholder value");
+    });
+
+    it("RX-177: its LLM_KEY_ENCRYPTION_KEY is refused in production", () => {
+      const env = { ...productionEnv(), LLM_KEY_ENCRYPTION_KEY: example.LLM_KEY_ENCRYPTION_KEY };
+      expect(() => assertRequiredSecrets(env)).toThrow("LLM_KEY_ENCRYPTION_KEY is a placeholder value");
     });
   });
 });

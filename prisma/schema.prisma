@@ -1,7 +1,7 @@
 generator client {
   provider        = "prisma-client"
   output          = "../apps/api/src/generated/prisma"
-  previewFeatures = ["postgresqlExtensions"]
+  previewFeatures = ["postgresqlExtensions", "partialIndexes"]
   moduleFormat    = "cjs"
 }
 
@@ -101,12 +101,58 @@ model Transaction {
   @@map("transactions")
 }
 
+/// RX-177 (D148, D149): an upstream LLM connection, managed through /admin/providers (no seed). The key is
+/// stored only encrypted (AES-256-GCM, LLM_KEY_ENCRYPTION_KEY, version in credentialKeyVersion) and never
+/// returned; apiKeyHint is its last 4 characters. type cannot change after creation. A new provider is
+/// inactive; activation needs a successful test since the last change of the key or the base URL (a change
+/// clears lastTestedAt and lastTestResult). Soft-deleted with deletedAt; name is unique among live rows.
+enum ProviderType {
+  nine_router       @map("9router")
+  openai_compatible
+}
+
+enum ProviderStatus {
+  inactive
+  active
+}
+
+model Provider {
+  id                   String         @id @default(uuid())
+  type                 ProviderType
+  name                 String
+  baseUrl              String         @map("base_url")
+  apiKeyCiphertext     String         @map("api_key_ciphertext")
+  apiKeyHint           String         @map("api_key_hint")
+  credentialKeyVersion Int            @map("credential_key_version")
+  status               ProviderStatus @default(inactive)
+  lastTestedAt         DateTime?      @map("last_tested_at") @db.Timestamptz()
+  /// "success", or the readable reason of the last failed test.
+  lastTestResult       String?        @map("last_test_result")
+  createdByAdminId     String         @map("created_by_admin_id")
+  createdBy            AdminUser      @relation("ProviderCreatedBy", fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  updatedByAdminId     String         @map("updated_by_admin_id")
+  updatedBy            AdminUser      @relation("ProviderUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: Restrict)
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  deletedAt            DateTime?      @map("deleted_at") @db.Timestamptz()
+  models               AiModel[]
+
+  @@unique([name], where: raw("deleted_at IS NULL"))
+  @@index([createdByAdminId])
+  @@index([updatedByAdminId])
+  @@map("providers")
+}
+
 model AiModel {
   id               String   @id @default(uuid())
   slug             String   @unique
   modelName        String   @map("model_name")
   provider         String   @default("openrouter")
-  providerId       String   @map("provider_id")
+  /// RX-177: new models do not write provider_id (D149 option B, the slug is the provider's id); request-time resolution is RX-178.
+  providerId       String   @default("") @map("provider_id")
+  /// RX-177: the provider record this model belongs to; null on rows created before RX-177.
+  providerRecordId String?  @map("provider_record_id")
+  providerRecord   Provider? @relation(fields: [providerRecordId], references: [id], onDelete: Restrict)
   inputPrice       Decimal  @db.Decimal(18, 12) @map("input_price")
   outputPrice      Decimal  @db.Decimal(18, 12) @map("output_price")
   /// RX-21: the provider's cached-input price; null when the provider reports none yet.
@@ -117,13 +163,13 @@ model AiModel {
   maxOutputTokens  Int?     @map("max_output_tokens")
   tier             String   @default("standard")
   creditMultiplier Decimal  @default(1.0) @db.Decimal(6, 2) @map("credit_multiplier")
-  planRequired     String   @default("free") @map("plan_required")
   active           Boolean  @default(true)
   createdAt        DateTime @default(now()) @db.Timestamptz()
   updatedAt        DateTime @updatedAt @db.Timestamptz()
 
   @@index([tier])
   @@index([active, tier])
+  @@index([providerRecordId])
   @@map("ai_models")
 }
 
@@ -908,6 +954,8 @@ model AdminUser {
   piiGrants          AdminPiiGrant[]     @relation("PiiGrantHolder")
   piiGrantsGiven     AdminPiiGrant[]     @relation("PiiGrantGranter")
   auditLog           AdminAuditLog[]
+  providersCreated   Provider[]          @relation("ProviderCreatedBy")
+  providersUpdated   Provider[]          @relation("ProviderUpdatedBy")
 
   @@index([role])
   @@map("admin_users")

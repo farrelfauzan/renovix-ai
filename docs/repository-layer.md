@@ -182,7 +182,7 @@ Decision 26: the soft delete filter lives in `prisma.service.ts`. RX-132 puts th
 
 - `PrismaService` (`apps/api/src/app/prisma/prisma.service.ts`) is an abstract class: the injection token and the type, never constructed. `PrismaModule` provides the client that `PrismaService.create()` builds: a `PrismaClient` with the query extension that adds the default condition, and with the connect and disconnect hooks added as a client extension.
 - Nothing that injects it changed: the 40 files that still import it, the 10 `$transaction` uses in 8 files, the test factories and `resetDatabase`.
-- The map of models is empty (`VISIBLE_ONLY`). `create()` takes the map as a parameter only so the database test can put a model on it.
+- The map of models holds `Provider` (`deletedAt: null`, RX-177); RX-124 adds the others (`VISIBLE_ONLY`). `create()` takes the map as a parameter only so the database test can put a model on it.
 - Why this form (measured): a class that extends `PrismaClient` and calls `$extends` inside itself is injected without the extension; a factory alone gives the extension but Nest then calls no lifecycle hook and connections stay open; a constructor that returns the extended client works but rests on Prisma internals.
 - A direct form would get a client without the filter, so it does not compile: `new PrismaService()` (TS2511), `providers: [PrismaService]` and `useClass: PrismaService` (TS2322).
 

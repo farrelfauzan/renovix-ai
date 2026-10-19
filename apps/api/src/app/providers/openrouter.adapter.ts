@@ -12,6 +12,9 @@ import { ProviderHttpError } from "./errors/provider-http-error";
 import { isOpenRouterUrl } from "./utils/is-open-router-url";
 import { parseModelIdMap } from "./utils/parse-model-id-map";
 import { parseRetryAfterMs } from "./utils/parse-retry-after-ms";
+import { describeTestFailure } from "./utils/describe-test-failure";
+import { ProviderTestResult } from "./types/provider-test-result";
+import { ProviderTestTarget } from "./types/provider-test-target";
 import { readPositiveInteger } from "../../common/utils/read-positive-integer";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -23,6 +26,10 @@ const CHAT_TIMEOUT_MS = 300000;
 const STREAM_CONNECT_TIMEOUT_MS = 120000;
 /** RX-161: reasoning models spend max_tokens on hidden reasoning; below this they answer empty. */
 const REASONING_MIN_MAX_TOKENS = 2000;
+/** RX-177: a provider test is one attempt that gives up after this long. */
+const TEST_TIMEOUT_MS = 15000;
+/** RX-177: the test request asks for this few output tokens. */
+const TEST_MAX_TOKENS = 16;
 
 /** A 502/503 that names a Retry-After (RX-161): no back-off loop against the same provider. */
 const isRetryAfterOutage = (err: unknown): err is ProviderHttpError & { retryAfterMs: number } =>
@@ -458,6 +465,24 @@ export class OpenRouterAdapter implements ProviderAdapter {
       throw err;
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  /**
+   * RX-177: one minimal chat request to a provider record's base URL with its key: a single attempt,
+   * TEST_TIMEOUT_MS, no retries, no fallback endpoint, no LLM_MODEL_ID_MAP (the slug is the provider's
+   * id, D149). A 2xx answer with a `choices` list is a success; anything else resolves with a readable
+   * reason in which the key never appears. Never rejects.
+   */
+  async testConnection({ baseUrl, apiKey, slug }: ProviderTestTarget): Promise<ProviderTestResult> {
+    const body = { model: slug, messages: [{ role: "user", content: "ping" }], max_tokens: TEST_MAX_TOKENS };
+    try {
+      const response = await this.post({ label: "primary", baseUrl, apiKey }, body, AbortSignal.timeout(TEST_TIMEOUT_MS));
+      const answer = (await response.json()) as { choices?: unknown };
+      if (Array.isArray(answer.choices)) return { isSuccessful: true, reason: null };
+      return { isSuccessful: false, reason: "The provider answered without a chat completion (no choices)" };
+    } catch (err) {
+      return { isSuccessful: false, reason: describeTestFailure(err, apiKey, TEST_TIMEOUT_MS) };
     }
   }
 }

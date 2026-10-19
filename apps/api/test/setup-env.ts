@@ -22,4 +22,6 @@ process.env.MCP_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("hex");
 process.env.ADMIN_ORIGIN = "http://admin.renovix.test";
 // MCP OAuth state signing (RX-151): required, no fallback; an obviously fake test value.
 process.env.MCP_OAUTH_STATE_SECRET = "test-mcp-oauth-state-secret-not-a-real-secret";
+// Provider key encryption (RX-177): required, no fallback; an obviously fake 32-byte test key.
+process.env.LLM_KEY_ENCRYPTION_KEY = Buffer.alloc(32, 11).toString("hex");
 jest.mock("../src/lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));

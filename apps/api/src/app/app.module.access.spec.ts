@@ -179,10 +179,20 @@ describe("RX-114: every route of AppModule declares its access", () => {
   // Back-office routes (RX-94): `staff` only, full sessions unless a scope is declared.
   const STAFF_ROUTES = [
     "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
+    "DELETE /admin/providers/:id (AdminProvidersController.remove)",
     "GET /admin/audit-log (AdminAuditLogController.list)",
     "GET /admin/audit-log/export (AdminAuditLogController.export)",
     "GET /admin/auth/sessions (AdminAuthController.listSessions)",
+    "GET /admin/providers (AdminProvidersController.list)",
+    "GET /admin/providers/:id (AdminProvidersController.get)",
+    "GET /admin/providers/:providerId/models (AdminProviderModelsController.list)",
+    "PATCH /admin/providers/:id (AdminProvidersController.update)",
+    "PATCH /admin/providers/:providerId/models/:modelId (AdminProviderModelsController.update)",
     "POST /admin/auth/reauth (AdminAuthController.reauth)",
+    "POST /admin/providers (AdminProvidersController.create)",
+    "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
+    "POST /admin/providers/:id/test (AdminProvidersController.test)",
+    "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)",
   ];
   const STAFF_ENROLMENT_ROUTES = [
     "POST /admin/auth/totp/confirm (AdminAuthController.confirm)",
@@ -195,6 +205,17 @@ describe("RX-114: every route of AppModule declares its access", () => {
   const STAFF_PERMISSION_ROUTES: Record<string, string[]> = {
     "GET /admin/audit-log (AdminAuditLogController.list)": ["audit:read"],
     "GET /admin/audit-log/export (AdminAuditLogController.export)": ["audit:read"],
+    // RX-177: provider records (providers:*) and their models (models:*).
+    "DELETE /admin/providers/:id (AdminProvidersController.remove)": ["providers:write"],
+    "GET /admin/providers (AdminProvidersController.list)": ["providers:read"],
+    "GET /admin/providers/:id (AdminProvidersController.get)": ["providers:read"],
+    "GET /admin/providers/:providerId/models (AdminProviderModelsController.list)": ["models:read"],
+    "PATCH /admin/providers/:id (AdminProvidersController.update)": ["providers:write"],
+    "PATCH /admin/providers/:providerId/models/:modelId (AdminProviderModelsController.update)": ["models:write"],
+    "POST /admin/providers (AdminProvidersController.create)": ["providers:write"],
+    "POST /admin/providers/:id/activate (AdminProvidersController.activate)": ["providers:write"],
+    "POST /admin/providers/:id/test (AdminProvidersController.test)": ["providers:write"],
+    "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)": ["models:write"],
   };
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
@@ -250,14 +271,23 @@ describe("RX-114: every route of AppModule declares its access", () => {
   // RX-97 criterion 3: every state-changing /admin route is hooked or exempt; the lists below are the PR's.
   const AUDITED_ROUTES = [
     "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
+    "DELETE /admin/providers/:id (AdminProvidersController.remove)",
+    "PATCH /admin/providers/:id (AdminProvidersController.update)",
+    "PATCH /admin/providers/:providerId/models/:modelId (AdminProviderModelsController.update)",
     "POST /admin/auth/reauth (AdminAuthController.reauth)",
     "POST /admin/auth/sign-out (AdminAuthController.signOut)",
     "POST /admin/auth/totp/confirm (AdminAuthController.confirm)",
     "POST /admin/auth/totp/enrol (AdminAuthController.enrol)",
+    "POST /admin/providers (AdminProvidersController.create)",
+    "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
+    "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)",
   ];
   const AUDIT_EXEMPT_ROUTES = [
     "POST /admin/auth/refresh (AdminAuthController.refresh)",
     "POST /admin/auth/sign-in (AdminAuthController.signIn)",
+    // RX-177: the provider call must run outside a transaction; the handler writes its own audit row in a
+    // short transaction after the call (admin-providers.controller.spec.ts checks the row).
+    "POST /admin/providers/:id/test (AdminProvidersController.test)",
   ];
 
   it("RX-97: every state-changing /admin route writes the audit row or is exempt with a reason", () => {

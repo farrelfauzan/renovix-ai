@@ -13,7 +13,6 @@ const prisma = new PrismaClient({ adapter });
  */
 
 const SYSTEM_USER_EMAIL = "system@renovix.ai";
-const DEFAULT_AGENT_MODEL = "deepseek-v4-pro";
 
 const publicAgents = [
   {
@@ -30,7 +29,6 @@ const publicAgents = [
 - Schedule meetings when needed
 
 Always be organized, concise, and action-oriented. Ask clarifying questions before creating tickets.`,
-    model: DEFAULT_AGENT_MODEL,
     temperature: 0.4,
     agentType: "standalone",
     tools: [
@@ -55,7 +53,6 @@ Always be organized, concise, and action-oriented. Ask clarifying questions befo
 - Provide constructive, specific feedback
 
 Be thorough but respectful. Prioritize critical issues over style preferences.`,
-    model: DEFAULT_AGENT_MODEL,
     temperature: 0.3,
     agentType: "standalone",
     tools: ["github_create_issue", "web_search"],
@@ -74,7 +71,6 @@ Be thorough but respectful. Prioritize critical issues over style preferences.`,
 - Cite sources and highlight key data points
 
 Be thorough and objective. Present multiple perspectives when relevant.`,
-    model: DEFAULT_AGENT_MODEL,
     temperature: 0.5,
     agentType: "standalone",
     tools: [
@@ -98,7 +94,6 @@ Be thorough and objective. Present multiple perspectives when relevant.`,
 - Handle rescheduling and cancellation requests
 
 Be efficient and respect people's time. Always confirm details before scheduling.`,
-    model: DEFAULT_AGENT_MODEL,
     temperature: 0.3,
     agentType: "standalone",
     tools: [
@@ -121,7 +116,6 @@ Be efficient and respect people's time. Always confirm details before scheduling
 - Escalate urgent issues appropriately
 
 Be friendly, patient, and solution-oriented. Never guess — if unsure, say so and offer to escalate.`,
-    model: DEFAULT_AGENT_MODEL,
     temperature: 0.4,
     agentType: "standalone",
     tools: [
@@ -145,7 +139,6 @@ Be friendly, patient, and solution-oriented. Never guess — if unsure, say so a
 - Publish finished content to Notion
 
 Write clearly and engagingly. Use active voice. Break content into scannable sections.`,
-    model: DEFAULT_AGENT_MODEL,
     temperature: 0.7,
     agentType: "standalone",
     tools: ["web_search", "notion_create_page", "knowledge_retrieval"],
@@ -164,7 +157,6 @@ Write clearly and engagingly. Use active voice. Break content into scannable sec
 - Create GitHub issues for persistent bugs
 
 Be precise and technical. Include relevant metrics and timestamps in alerts.`,
-    model: DEFAULT_AGENT_MODEL,
     temperature: 0.2,
     agentType: "standalone",
     tools: [
@@ -187,15 +179,36 @@ Be precise and technical. Include relevant metrics and timestamps in alerts.`,
 - Track overall progress and report status
 
 Think step-by-step about which sub-agent is best suited for each task. Combine results coherently.`,
-    model: DEFAULT_AGENT_MODEL,
     temperature: 0.4,
     agentType: "parent",
     tools: ["delegate_to_subagent", "memory_store", "slack_send_message"],
   },
 ];
 
+/**
+ * RX-177 (D148): models are created by an admin, never seeded. The agents use the model slug given as
+ * the first argument (`npx tsx prisma/seed-agents.ts <slug>`), or else the cheapest active standard
+ * model; the seed stops when there is none.
+ */
+async function resolveAgentModel(): Promise<string> {
+  const slug = process.argv[2];
+  const model = await prisma.aiModel.findFirst({
+    where: slug ? { slug, active: true } : { tier: "standard", active: true },
+    orderBy: [{ inputPrice: "asc" }, { outputPrice: "asc" }, { slug: "asc" }],
+    select: { slug: true },
+  });
+  if (model) return model.slug;
+  throw new Error(
+    slug
+      ? `No active model with slug "${slug}". Create it through /admin/providers/:id/models first.`
+      : "No active standard model. Create one through /admin/providers/:id/models, or pass a model slug: npx tsx prisma/seed-agents.ts <slug>",
+  );
+}
+
 async function main() {
   console.log("🤖 Seeding public AI agents...\n");
+  const model = await resolveAgentModel();
+  console.log(`  Model: ${model}`);
 
   // Ensure system user exists
   let systemUser = await prisma.user.findUnique({
@@ -224,10 +237,10 @@ async function main() {
     if (existing) {
       await prisma.agent.update({
         where: { id: existing.id },
-        data: { model: agentData.model },
+        data: { model },
       });
       console.log(
-        `  ↻ Synced model for agent "${agentData.name}" -> ${agentData.model}`,
+        `  ↻ Synced model for agent "${agentData.name}" -> ${model}`,
       );
       continue;
     }
@@ -240,7 +253,7 @@ async function main() {
         description: agentData.description,
         avatar: agentData.avatar,
         systemPrompt: agentData.systemPrompt,
-        model: agentData.model,
+        model,
         temperature: agentData.temperature,
         status: "active",
         isPublic: true,

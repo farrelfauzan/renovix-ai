@@ -46,7 +46,7 @@ bun run build:landing
 bun run prisma:generate  # Outputs to apps/api/src/generated/prisma (gitignored)
 bun run prisma:migrate   # Dev migrations
 bun run prisma:reset     # Reset + re-seed
-bun run prisma:seed      # Seed models, configs, prompts, plans, codes
+bun run prisma:seed      # Seed configs, prompts, plans, codes (no providers or models: RX-177, created through /admin/providers)
 SEED_OPERATOR=<name> bun run seed:offers  # Offer catalog + platform settings from prisma/offers.seed.json (RX-86)
 SEED_OPERATOR=<name> bun run seed:tier-rates  # Tier credit rates from prisma/tier-rates.seed.json (RX-21); run after prisma:reset
 # RX-90: prisma/migrations is one baseline (20261014200000_baseline); migrations insert no plans,
@@ -82,6 +82,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - OpenAPI docs: two generated, committed documents under `docs/openapi/` (`backoffice.openapi.json`, `portal.openapi.json`), generated from the code by `bun run openapi:generate` (a Jest spec that scans `AppModule` in preview mode). A drift check fails the API tests when a route is in neither document nor on the exclusion list (`/webhooks/*`, health, root). Served by `docker compose up docs-backoffice docs-portal` on 127.0.0.1:8081 (back office) and 127.0.0.1:8082 (portal) — not by the API (no Swagger UI at `/api-docs` anymore)
 - Rate limiting: global 60 req/60s via `ThrottlerGuard`
 - AI provider routing: `ProviderRouter` -> adapters (currently only `OpenRouterAdapter`, provider key `openrouter`; chat models and embeddings go through OpenRouter)
+- Provider records (RX-177, D148, D149): `apps/api/src/app/admin-providers/`, API only (screen RX-102). `/admin/providers` (`providers:read` / `providers:write`) and `/admin/providers/:providerId/models` (`models:read` / `models:write`); every write is audited. A provider (`9router` or `openai_compatible`) is created inactive, tested (`POST /:id/test` with `{ slug }`: one minimal request through `ProviderRouter.testConnection`, outside the credit path, the fake in `LLM_PROVIDER=fake`), then activated; a new key or base URL clears the test. The key is stored only encrypted (`LLM_KEY_ENCRYPTION_KEY`) and never returned. A model's slug is the provider's own model id, unique across providers and never changed. Request-time use of the records is RX-178; until then the chat path still reads `ai_models.provider` / `provider_id` (empty on models created here)
 - Prompt tuning: keyword-based intent matching on `PromptTemplate` injects specialized system prompts
 - Document generation: detects output format from prompt templates, converts markdown to PDF/DOCX/XLSX, uploads to S3
 
@@ -107,7 +108,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - New code reaches the database only through a repository: `<module>/repository/<table>.repository.ts`, an injectable class that takes `PrismaService` (unless every method needs `tx`). Only repositories and the Prisma module (`apps/api/src/app/prisma/`) import `PrismaService` or the generated Prisma client; `import type` from the generated client is allowed everywhere. Controllers, guards and schedulers use services, never repositories.
 - A repository holds queries only. Its methods are named for the operation (`findRedemption(codeId, userId)`), take the user or workspace as a required argument and return Prisma's generated types. A service never builds a query condition; who may do what stays in the service. Raw SQL lives only in repositories.
 - Every repository method takes the transaction (`DbTransaction`) as its last argument: optional, and required on a method that changes a balance or writes a ledger or redemption row. A service runs several repository calls in one transaction with `TransactionService.run(work, options?, tx?)`; given `tx` it joins that transaction. Both come from the Prisma module. Never keep a transaction open across a model call or a stream.
-- `PrismaService` carries the default filter for soft-deleted rows (no model on it yet). It covers top-level reads only: a relation in `include` or `select`, `_count`, a relation filter, raw SQL and every write need the condition written in the repository.
+- `PrismaService` carries the default filter for soft-deleted rows (today: `Provider`, RX-177). It covers top-level reads only: a relation in `include` or `select`, `_count`, a relation filter, raw SQL and every write need the condition written in the repository.
 - `bun run check` enforces the import rule (step "prisma imports", `scripts/check-prisma-imports.ts`). `scripts/prisma-import-exceptions.ts` lists the files not moved yet; it may only shrink, never add a file to it.
 - Four rules (RX-148), examples in `docs/repository-layer.md`, section "Where repositories live":
   1. One repository per table, not per module (D100). The codes module uses six: `InvitationCodeRepository`, `CodeRedemptionRepository`, `UserSubscriptionRepository`, `SubscriptionPlanRepository`, `TransactionRepository`, `UserRepository`. A method that also reads a second table through `include` goes to the repository of the table it is called on (`InvitationCodeRepository.findCodeWithPlan`).
@@ -122,7 +123,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - Prisma adapter: `@prisma/adapter-pg` (pg driver-based, not default Prisma engine)
 - Schema at `prisma/schema.prisma` (41 models)
 - Model naming: PascalCase in schema, snake_case tables via `@@map`
-- MCP credentials encrypted with AES-256-GCM (`MCP_ENCRYPTION_KEY` env var)
+- MCP credentials encrypted with AES-256-GCM (`MCP_ENCRYPTION_KEY` env var); provider keys too (`LLM_KEY_ENCRYPTION_KEY`, RX-177)
 - Dev DB: `postgres://performa:performa_dev@localhost:5432/performa_ai` (from docker-compose)
 
 ## Offer catalog and platform settings (RX-86)
@@ -167,7 +168,7 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 Copy `.env.example` to `.env`. Key variables:
 
-`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY` and `MCP_OAUTH_STATE_SECRET` are required in every mode (RX-110, RX-151, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` that is not 32 bytes.
+`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY`, `MCP_OAUTH_STATE_SECRET` and `LLM_KEY_ENCRYPTION_KEY` are required in every mode (RX-110, RX-151, RX-177, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` or `LLM_KEY_ENCRYPTION_KEY` that is not 32 bytes.
 
 | Variable | Required | Notes |
 |----------|----------|-------|
@@ -188,6 +189,8 @@ Copy `.env.example` to `.env`. Key variables:
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | -- | Embedding provider (RX-160); defaults OpenRouter's URL, `OPENROUTER_API_KEY`, `intfloat/multilingual-e5-large-instruct`, 1024 (sent as `dimensions`). A vector that is not 1024 long (`knowledge_chunks.embedding vector(1024)`) is refused before anything is written. After changing `EMBEDDING_MODEL` in a local database, clear `knowledge_chunks`; the re-embed job is RX-27 |
 | `S3_*` | Yes | S3/MinIO config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_CDN_DOMAIN` required; `S3_ENDPOINT` optional (MinIO) |
 | `MCP_ENCRYPTION_KEY` | Yes | AES-256-GCM key for stored MCP credentials: exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback, no padding (RX-110) |
+| `LLM_KEY_ENCRYPTION_KEY` | Yes | AES-256-GCM key for the provider keys stored through `/admin/providers` (RX-177): exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback. Changing it makes every stored provider key unreadable (enter them again) |
+| `LLM_KEY_VERSION` | -- | Version stamped on each sealed provider key (`credential_key_version`), a positive integer; default 1 |
 | `MCP_OAUTH_STATE_SECRET` | Yes | HMAC key that signs the state of the MCP OAuth flows (RX-151); no fallback, no flow starts without it. At least 32 characters; generate with `openssl rand -base64 48` |
 | `MCP_OAUTH_STATE_TTL_SECONDS` | -- | How long a started MCP OAuth flow stays valid (default 600); its one-time value is in `mcp_oauth_states` |
 | `CORS_ORIGIN` | Prod | Comma-separated allowed origins (not in `.env.example`) |
