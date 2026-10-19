@@ -80,6 +80,21 @@ describe("OpenRouterAdapter.testConnection (RX-177)", () => {
     expect(actual).toEqual({ isSuccessful: false, reason: "The provider answered without a chat completion (no choices)" });
   });
 
+  // D197 (review B2): the JSON parse error quotes the body's first characters, so a non-JSON 2xx gives a fixed text.
+  it("a 2xx answer that is not JSON gives a fixed reason that quotes nothing of the body", async () => {
+    const plantedMarker = "Received API Key = sk-...Kk55, Key Hash (Token) = 0f1e2d3c4b5a";
+    record.respond((_r, res) => {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`${plantedMarker}<html>not json</html>`);
+    });
+
+    const actual = await adapter.testConnection({ baseUrl: record.baseUrl, apiKey: RECORD_KEY, slug: "x/y" });
+
+    expect(actual).toEqual({ isSuccessful: false, reason: "The provider answered with something other than JSON" });
+    expect(JSON.stringify(actual)).not.toContain("Kk55");
+    expect(JSON.stringify(actual)).not.toContain("Received");
+  });
+
   it("gives up after 15 seconds with a readable reason", async () => {
     const timeout = jest.spyOn(AbortSignal, "timeout");
     record.respond(() => undefined);

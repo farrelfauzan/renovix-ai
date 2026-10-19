@@ -2,16 +2,13 @@ import type { AdminAuditChange } from "../../admin-auth/types/admin-audit-change
 import type { AuditChangeInput } from "../types/audit-change-input";
 
 /**
- * The audit change of an admin-providers write (RX-177): only the fields that changed, with their old and
- * new non-secret values, and `changedFields` naming every changed field; a secret field (the key) is named
- * there and nowhere else, never with a value.
+ * The audit change of an admin-providers write (RX-177): the subject's id and `changedFields` naming every
+ * changed field, secret or not. No field value is recorded, old or new (D197).
  */
 export function buildAuditChange({ subject, before, after, changedSecrets = [] }: AuditChangeInput): AdminAuditChange {
   const changed = Object.keys(after).filter((key) => before[key] !== after[key]);
-  const valuesBefore = Object.fromEntries(changed.filter((key) => key in before).map((key) => [key, before[key]]));
-  const valuesAfter = Object.fromEntries(changed.map((key) => [key, after[key]]));
   return {
-    before: { ...subject, ...valuesBefore },
-    after: { ...subject, ...valuesAfter, changedFields: [...changed, ...changedSecrets].join(",") },
+    before: { ...subject },
+    after: { ...subject, changedFields: [...changed, ...changedSecrets].join(",") },
   };
 }

@@ -147,24 +147,23 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
       expect(output.filter((line) => line.includes(MARKER_KEY) || line.includes(row.apiKeyCiphertext))).toEqual([]);
     });
 
-    it("the audit names the changed fields only (negative: no unchanged field, no key value)", async () => {
+    it("the audit names the changed fields only, with no value, secret or not (D197)", async () => {
       const { cookie } = await signedIn("owner");
       const created = await createVia(cookie, { name: "before-name" });
 
       await call("PATCH", `/admin/providers/${created.id}`, cookie, { name: "after-name" });
+      await call("PATCH", `/admin/providers/${created.id}`, cookie, { baseUrl: "http://moved-router.invalid/v1", apiKey: SECOND_KEY });
 
-      const [create, update] = await auditRows();
+      const [create, rename, move] = await auditRows();
       expect(create.before).toEqual({ providerId: created.id });
-      expect(create.after).toEqual({
-        providerId: created.id,
-        type: "9router",
-        name: "before-name",
-        baseUrl: "http://fake-router.invalid/v1",
-        status: "inactive",
-        changedFields: "type,name,baseUrl,status,apiKey",
-      });
-      expect(update.before).toEqual({ providerId: created.id, name: "before-name" });
-      expect(update.after).toEqual({ providerId: created.id, name: "after-name", changedFields: "name" });
+      expect(create.after).toEqual({ providerId: created.id, changedFields: "type,name,baseUrl,status,apiKey" });
+      expect(rename.before).toEqual({ providerId: created.id });
+      expect(rename.after).toEqual({ providerId: created.id, changedFields: "name" });
+      expect(move.after).toEqual({ providerId: created.id, changedFields: "baseUrl,apiKey" });
+      const audited = JSON.stringify(await auditRows());
+      for (const value of ["before-name", "after-name", "fake-router.invalid", "moved-router.invalid", MARKER_KEY, SECOND_KEY]) {
+        expect(audited).not.toContain(value);
+      }
     });
   });
 
@@ -256,16 +255,24 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
       expect(row.lastTestResult).toBe("No answer within 15 seconds");
       expect(row.lastTestedAt).toBeInstanceOf(Date);
       const [testRow] = await auditRows("test");
-      expect(testRow.after).toEqual({
-        providerId: created.id,
-        slug: "cc/claude-sonnet-5",
-        isSuccessful: false,
-        changedFields: "lastTestedAt,lastTestResult",
-      });
+      expect(testRow.after).toEqual({ providerId: created.id, changedFields: "lastTestedAt,lastTestResult" });
+    });
+
+    // D197 (review B1): a new base URL needs the key again, or the stored key would go to the new URL on the next test.
+    it("a PATCH with a base URL but no key is a 400: nothing changes and nothing is audited", async () => {
+      const { cookie } = await signedIn("owner");
+      const created = await createVia(cookie);
+      const auditBefore = (await auditRows()).length;
+
+      const refused = await call("PATCH", `/admin/providers/${created.id}`, cookie, { baseUrl: "https://attacker.invalid/v1" });
+
+      expect(refused.statusCode).toBe(400);
+      expect((await storedProvider(created.id)).baseUrl).toBe("http://fake-router.invalid/v1");
+      expect(await auditRows()).toHaveLength(auditBefore);
     });
 
     it.each([
-      ["a base URL change", { baseUrl: "http://other-router.invalid/v1" }],
+      ["a base URL change (with its key, D197)", { baseUrl: "http://other-router.invalid/v1", apiKey: SECOND_KEY }],
       ["a key change", { apiKey: SECOND_KEY }],
     ])("a successful test followed by %s makes activate answer 409 again", async (_label, change) => {
       const { cookie } = await signedIn("owner");
@@ -283,7 +290,7 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
     // D195: a design decision the ticket does not state. A key or base URL change on an ACTIVE provider sets it
     // inactive (as well as clearing the test), so it must be tested and activated again.
     it.each([
-      ["a base URL change", { baseUrl: "http://other-router.invalid/v1" }, "inactive"],
+      ["a base URL change (with its key, D197)", { baseUrl: "http://other-router.invalid/v1", apiKey: SECOND_KEY }, "inactive"],
       ["a key change", { apiKey: SECOND_KEY }, "inactive"],
       ["a name-only change (control)", { name: "Renamed router" }, "active"],
     ])("an active provider after %s is %s", async (_label, change, expectedStatus) => {
@@ -399,9 +406,10 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
 
       const rows = await prisma.adminAuditLog.findMany({ where: { resource: "ai_model" }, orderBy: { createdAt: "asc" } });
       expect(rows.map((row) => row.action)).toEqual(["create", "update"]);
-      expect(rows[0].after).toEqual(expect.objectContaining({ providerId: provider.id, modelId: m.id, slug: "cc/audited", active: true }));
-      expect(rows[1].before).toEqual({ providerId: provider.id, modelId: m.id, active: true });
-      expect(rows[1].after).toEqual({ providerId: provider.id, modelId: m.id, active: false, changedFields: "active" });
+      expect(rows[0].after).toEqual(expect.objectContaining({ providerId: provider.id, modelId: m.id, changedFields: expect.stringContaining("slug") }));
+      expect(JSON.stringify(rows)).not.toContain("cc/audited");
+      expect(rows[1].before).toEqual({ providerId: provider.id, modelId: m.id });
+      expect(rows[1].after).toEqual({ providerId: provider.id, modelId: m.id, changedFields: "active" });
     });
   });
 
@@ -547,7 +555,7 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
       expect(list.json()).toEqual([]);
       expect(one.statusCode).toBe(404);
       expect(again.statusCode).toBe(404);
-      expect((await auditRows("delete")).map((row) => row.after)).toEqual([{ providerId: created.id, deleted: true, changedFields: "deleted" }]);
+      expect((await auditRows("delete")).map((row) => row.after)).toEqual([{ providerId: created.id, changedFields: "deleted" }]);
     });
 
     it("a name is unique among live providers only: a duplicate live name is a 409, a deleted one's name is free", async () => {

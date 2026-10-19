@@ -90,7 +90,7 @@ export class AdminProvidersService {
     return this.transactions.run(async (tx) => {
       const stored = await this.providers.recordTest(id, { testedVersion: connection.updatedAt, testedAt, result }, tx);
       if (stored === 0) throw new ConflictException("The provider changed or was deleted during the test; test it again");
-      const after = { providerId: id, slug, isSuccessful, changedFields: "lastTestedAt,lastTestResult" };
+      const after = { providerId: id, changedFields: "lastTestedAt,lastTestResult" };
       await this.auditLog.create(
         { adminId, resource: "provider", action: "test", before: { providerId: id }, after, reason: "", requestId, effectiveAt: testedAt },
         tx,

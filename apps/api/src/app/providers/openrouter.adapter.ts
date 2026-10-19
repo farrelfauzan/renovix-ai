@@ -478,11 +478,13 @@ export class OpenRouterAdapter implements ProviderAdapter {
     const body = { model: slug, messages: [{ role: "user", content: "ping" }], max_tokens: TEST_MAX_TOKENS };
     try {
       const response = await this.post({ label: "primary", baseUrl, apiKey }, body, AbortSignal.timeout(TEST_TIMEOUT_MS));
-      const answer = (await response.json()) as { choices?: unknown };
+      // A non-JSON answer must not reach the reason: the parse error quotes the body's first characters (D197).
+      const answer = (await response.json().catch(() => undefined)) as { choices?: unknown } | undefined;
+      if (answer === undefined) return { isSuccessful: false, reason: "The provider answered with something other than JSON" };
       if (Array.isArray(answer.choices)) return { isSuccessful: true, reason: null };
       return { isSuccessful: false, reason: "The provider answered without a chat completion (no choices)" };
     } catch (err) {
-      return { isSuccessful: false, reason: describeTestFailure(err, apiKey, TEST_TIMEOUT_MS) };
+      return { isSuccessful: false, reason: describeTestFailure(err, TEST_TIMEOUT_MS) };
     }
   }
 }
