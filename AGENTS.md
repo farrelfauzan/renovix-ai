@@ -48,6 +48,7 @@ bun run prisma:migrate   # Dev migrations
 bun run prisma:reset     # Reset + re-seed
 bun run prisma:seed      # Seed models, configs, prompts, plans, codes
 SEED_OPERATOR=<name> bun run seed:offers  # Offer catalog + platform settings from prisma/offers.seed.json (RX-86)
+SEED_OPERATOR=<name> bun run seed:tier-rates  # Tier credit rates from prisma/tier-rates.seed.json (RX-21); run after prisma:reset
 # RX-90: prisma/migrations is one baseline (20261014200000_baseline); migrations insert no plans,
 # prices or limits (those come from the catalog seed, RX-86). A local database created before
 # RX-90 must be recreated: `bun run prisma:reset` (drops all its data, then migrates and seeds).
@@ -131,6 +132,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 - Platform settings (`platform_settings`) are typed: each name has a Zod schema in `offers/config/platform-settings.ts`, checked on every write; an unknown name or an invalid value is refused and nothing is written. A setting without a row is not set.
 - Every write to a catalog row, a contract or a setting writes a `catalog_changes` row in the same transaction: who (admin id, or `seed:<operator>`), why, when it takes effect, values before and after.
 - Values come only from `prisma/offers.seed.json`, which the Tech Lead edits; no price, credit amount or limit is written in code. `SEED_OPERATOR=<name> bun run seed:offers [file]` validates the file and applies it in one transaction to the database `DATABASE_URL` names; running it again with the same file writes nothing, changed terms create a new version. null or a missing entry means not decided yet and writes nothing.
+- Tier credit rates (RX-21) come only from `prisma/tier-rates.seed.json`: `SEED_OPERATOR=<name> bun run seed:tier-rates`. Deploy: run it right after `prisma migrate deploy`, before traffic reaches the new build; until then every chat/portal completion returns 400 ("No credit rates found for tier"). Local devs run it after `prisma:reset`. The API caches tier rates for 60 seconds per process, so a changed rate reaches the next request within 60 seconds.
 - `SubscriptionPlan`, `UserSubscription` and `InvitationCode` are unchanged and still read by the live code (`agent.service.ts` and `codes.service.ts`, through `SubscriptionPlanRepository`, `UserSubscriptionRepository` and, in codes, `InvitationCodeRepository`); `prisma/seed.ts` still seeds the old plans. Retiring them is later work.
 
 ## Frontend Patterns

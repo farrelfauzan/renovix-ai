@@ -8,6 +8,7 @@ import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { Decimal } from "@prisma/client/runtime/client";
+import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { Prisma } from "@generated/prisma/client.js";
 
 const MAX_TOOL_ITERATIONS = 15;
@@ -308,13 +309,12 @@ export class ReminderScheduler {
       )
       .then((model) => {
         const cost = model?.rates
-          ? new Decimal(inputTokens)
-              .mul(model.rates.inputCreditsPerToken)
-              .add(
-                new Decimal(outputTokens).mul(
-                  model.rates.outputCreditsPerToken,
-                ),
-              )
+          ? calculateActualCost(
+              inputTokens,
+              outputTokens,
+              model.rates.inputCreditsPerToken.toNumber(),
+              model.rates.outputCreditsPerToken.toNumber(),
+            )
           : new Decimal(0);
 
         this.usage

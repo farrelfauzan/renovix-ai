@@ -236,7 +236,8 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
     // section 1.3), the tier rate seeded above as standard 1/1/1. The old D106 story (price x
     // markup x creditMultiplier with three divergent roundings) is gone: the estimate is the
     // estimated token count x 1 / 1,000,000, the actual is (input + output) x 1 / 1,000,000, and
-    // the ledger's pending and success rows now agree with the balance to the micro-credit.
+    // with an INTEGER rate the success row agrees with the balance to the micro-credit. With a
+    // decimal rate the D106 divergence is still there (last test below: open, RX-22).
     // estimateTokens("Hi") = ceil(2/4) = 1 token -> 0.000001 credit; usage 2 + 115 = 117 tokens
     // -> 0.000117 credits.
     const userWith = async (balance: string) => createUser(prisma, { balance: new Decimal(balance) });
@@ -274,16 +275,18 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       expect(ledger[1].amount.toFixed(6)).toBe("-0.000117");
 
       // balance: 1.0 - 0.000001 (reserve) - 0.000116 (extra) = 0.999883 — and sum(ledger)
-      // (-0.000117) now equals the balance delta to the micro-credit: the 1-ulp D106 drift is gone.
+      // (-0.000117) now equals the balance delta to the micro-credit: at this integer rate there is
+      // no 1-ulp D106 drift (a decimal rate still drifts, see the last test).
       expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999883");
     });
 
     it("the D106 scenario after RX-21: the same deepseek-v4-flash request charges by tokens and tier rate, and the ledger agrees with the balance", async () => {
       // The same model row the D106 finding used (deepseek-v4-flash prices) — under RX-21 the
       // provider prices no longer enter the charge at all: credits = tokens x tier rate / 1,000,000
-      // with the standard 1/1/1 rate seeded above. The 1-ulp divergence (pending 0, success
-      // -0.000046, balance -0.000045) is gone: estimate 1 token -> 0.000001; actual 2 + 115 = 117
-      // tokens -> 0.000117; the balance delta and sum(ledger) both say 0.000117.
+      // with the standard 1/1/1 rate seeded above. At this integer rate the 1-ulp divergence
+      // (pending 0, success -0.000046, balance -0.000045) does not occur: estimate 1 token ->
+      // 0.000001; actual 2 + 115 = 117 tokens -> 0.000117; the balance delta and the success row
+      // both say 0.000117. It is gone only for integer rates (decimal rate: the last test).
       await prisma.aiModel.create({
         data: {
           slug: "d106-model",
@@ -322,8 +325,8 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       expect(ledger[1].status).toBe("success");
       expect(ledger[1].amount.toFixed(6)).toBe("-0.000117");
 
-      // balance: 1.0 - 0.000001 - 0.000116 = 0.999883; delta = 0.000117. The D106 ROUNDING
-      // divergence is gone (every amount is now an exact micro-credit multiple). What remains is
+      // balance: 1.0 - 0.000001 - 0.000116 = 0.999883; delta = 0.000117. At an integer rate the
+      // D106 ROUNDING divergence is gone (every amount is an exact micro-credit multiple). What remains is
       // the RX-14 finding #1 behaviour, still true by design: the pending row is never settled,
       // so sum(ledger) (-0.000001 + -0.000117 = -0.000118) double-counts the reservation next to
       // the success row. The BALANCE and the success row agree to the micro-credit (0.000117).
@@ -331,6 +334,38 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       const ledgerSum = ledger.reduce((sum, row) => sum.add(row.amount), new Decimal(0));
       expect(ledgerSum.toFixed(6)).toBe("-0.000118");
       expect(new Decimal("1.0").sub(await balanceOf(user.id)).toFixed(6)).toBe("0.000117");
+    });
+
+    // OPEN: D106 / RX-22 (D115 item 3) target, NOT fixed. A decimal tier rate (TierRateSeedDto
+    // accepts one; docs/credits.md section 2.3) gives sub-micro-credit amounts, and
+    // reserveCredits / adjustBalance still round the balance UPDATEs and the ledger rows
+    // separately in numeric(12,6). Pinned today (measured on the test database): standard rate
+    // 0.5/0.5/0.5, estimate 1 token -> 0.0000005 (balance 1.0 - 0.0000005 rounds back to
+    // 1.000000, pending row -0.000001), actual 2 + 1 = 3 tokens -> 0.0000015 (balance - 0.000001
+    // -> 0.999999, success row -0.000002). The balance loses 0.000001 while the success row says
+    // -0.000002. When RX-22 rounds once per call, this test goes red and its numbers change.
+    // The 1/1/1 rate is re-seeded for every test by beforeEach (resetDatabase + refresh).
+    it("OPEN D106 (RX-22 target): with a decimal rate 0.5 the balance delta (0.000001) and the success row (-0.000002) differ by 1 micro-credit", async () => {
+      await prisma.tierRate.update({
+        where: { tier: "standard" },
+        data: { inputCreditsPerToken: 0.5, cachedCreditsPerToken: 0.5, outputCreditsPerToken: 0.5 },
+      });
+      await registry.refresh();
+      const user = await userWith("1.0");
+      fake.enqueue({ content: "Hello world", usage: { prompt_tokens: 2, completion_tokens: 1 } });
+
+      await complete(user.id);
+
+      const ledger = await prisma.transaction.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(ledger.map((row) => [row.status, row.amount.toFixed(6)])).toEqual([
+        ["pending", "-0.000001"],
+        ["success", "-0.000002"],
+      ]);
+      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999999");
+      expect(new Decimal("1.0").sub(await balanceOf(user.id)).toFixed(6)).toBe("0.000001");
     });
   });
 });
