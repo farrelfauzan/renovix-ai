@@ -133,9 +133,12 @@ model AiModel {
 /// Premium 10/11/20, Frontier 17/25/17 for input/cached/output) come only from
 /// prisma/tier-rates.seed.json (`bun run seed:tier-rates`); no rate is written in code.
 model TierRate {
-  tier                   String   @unique
+  tier                   String   @id @unique
+  /// Credits per 1,000,000 tokens (not per token; the name keeps the short form, rename with RX-22).
   inputCreditsPerToken  Decimal  @map("input_credits_per_token") @db.Decimal(18, 12)
+  /// Credits per 1,000,000 tokens (not per token; the name keeps the short form, rename with RX-22).
   cachedCreditsPerToken Decimal  @map("cached_credits_per_token") @db.Decimal(18, 12)
+  /// Credits per 1,000,000 tokens (not per token; the name keeps the short form, rename with RX-22).
   outputCreditsPerToken  Decimal  @map("output_credits_per_token") @db.Decimal(18, 12)
   updatedAt             DateTime @updatedAt @db.Timestamptz()
 

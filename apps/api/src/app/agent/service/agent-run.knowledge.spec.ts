@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { TestingModule } from "@nestjs/testing";
+import { Decimal } from "@prisma/client/runtime/client";
 import { AgentRunService } from "./agent-run.service";
 import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
@@ -47,6 +48,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
   let runs: AgentRunService;
   const fake = new FakeProviderAdapter();
   const embedSingle = jest.fn(async () => ({ embedding: unit(), tokenCount: 1 }));
+  const logUsage = jest.fn(async (_entry: { cost: Decimal }) => undefined);
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule(
@@ -64,7 +66,11 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
               getUserPrice: async () => null,
               // RX-21: the usage log reads the model's tier and the tier's credit rates.
               getModel: async () => ({ tier: "standard" }),
-              getTierRates: async () => ({ inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 }),
+              getTierRates: async () => ({
+                inputCreditsPerToken: new Decimal(1),
+                cachedCreditsPerToken: new Decimal(1),
+                outputCreditsPerToken: new Decimal(1),
+              }),
             },
           },
           {
@@ -75,7 +81,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
             provide: AgentMemoryService,
             useValue: { getMemoryContext: async () => "", extractAndStore: async () => undefined },
           },
-          { provide: UsageService, useValue: { logUsage: async () => undefined } },
+          { provide: UsageService, useValue: { logUsage } },
           {
             provide: GuardrailService,
             useValue: {
@@ -93,6 +99,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
   beforeEach(async () => {
     await resetDatabase(prisma);
     embedSingle.mockClear();
+    logUsage.mockClear();
   });
 
   afterAll(() => moduleRef?.close());
@@ -157,5 +164,20 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     expect(res.message.content).toBe("ok");
     expect(JSON.stringify(fake.requests.at(-1)?.messages)).not.toContain("workspace base text");
     expect(embedSingle).not.toHaveBeenCalled();
+  });
+
+  // RX-21 review B2: the usage log prices tokens per 1,000,000 at the tier rate (1/1/1 here).
+  it("a sync run logs 1,000 input + 500 output tokens at rate 1 as 0.0015 credits", async () => {
+    const user = await createUser(prisma);
+    const plan = await createPlan(prisma);
+    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    const agent = await createAgent(prisma, { userId: user.id });
+    fake.enqueue({ content: "ok", usage: { prompt_tokens: 1000, completion_tokens: 500 } });
+
+    await runs.chat(user.id, agent.id, "hello");
+
+    expect(logUsage).toHaveBeenCalledTimes(1);
+    expect(logUsage.mock.calls[0][0]).toMatchObject({ inputTokens: 1000, outputTokens: 500 });
+    expect(logUsage.mock.calls[0][0].cost.toString()).toBe("0.0015");
   });
 });

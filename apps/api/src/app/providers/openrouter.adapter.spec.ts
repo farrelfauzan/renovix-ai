@@ -659,3 +659,28 @@ describe("RX-161: provider transport", () => {
     ]);
   });
 });
+
+// RX-21 review B1: OpenRouter's /models pricing is already USD per token
+// (its documented openai/gpt-4 sample); listModels returns it unchanged.
+describe("RX-21: listModels reads OpenRouter's per-token prices", () => {
+  it("the documented gpt-4 sample comes back as \"0.00003\" / \"0.00006\", not divided again", async () => {
+    primary.respond((_r, res) =>
+      sendJson(res, 200, {
+        data: [
+          {
+            id: "openai/gpt-4",
+            pricing: { prompt: "0.00003", completion: "0.00006", input_cache_read: "0.000015" },
+          },
+        ],
+      }),
+    );
+    const adapter = makeAdapter({ LLM_BASE_URL: primary.baseUrl, LLM_API_KEY: PRIMARY_KEY });
+
+    const models = await adapter.listModels();
+
+    expect(primary.requests[0].url).toBe("/v1/models");
+    expect(models).toEqual([
+      { providerId: "openai/gpt-4", inputPrice: "0.00003", outputPrice: "0.00006", cachedInputPrice: "0.000015" },
+    ]);
+  });
+});

@@ -51,7 +51,7 @@ const emptyAnswerError = (providerId: string, maxTokens: unknown): Error =>
 /** A provider price field as a decimal string per token; null when the provider reports none. */
 const readPrice = (value: unknown): string | null => {
   if (typeof value !== "string" && typeof value !== "number") return null;
-  const price = new Decimal(value as string).div(1_000_000);
+  const price = new Decimal(value as string);
   return price.isFinite() && price.greaterThanOrEqualTo(0) ? price.toFixed() : null;
 };
 

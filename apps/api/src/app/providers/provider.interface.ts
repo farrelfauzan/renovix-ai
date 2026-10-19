@@ -58,7 +58,7 @@ export interface ChatResponse {
   usage: ChatUsage;
 }
 
-/** One model of the provider's GET /models list (RX-21). Prices are per million tokens in USD. */
+/** One model of the provider's GET /models list (RX-21). Prices are USD per token. */
 export interface ProviderModelPrice {
   /** The provider's model id (OpenRouter: "vendor/model"). */
   providerId: string;

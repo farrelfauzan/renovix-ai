@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/client";
+import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -397,13 +398,12 @@ export class ChannelChatService {
       )
       .then((model) => {
         const cost = model?.rates
-          ? new Decimal(inputTokens)
-              .mul(model.rates.inputCreditsPerToken)
-              .add(
-                new Decimal(outputTokens).mul(
-                  model.rates.outputCreditsPerToken,
-                ),
-              )
+          ? calculateActualCost(
+              inputTokens,
+              outputTokens,
+              model.rates.inputCreditsPerToken.toNumber(),
+              model.rates.outputCreditsPerToken.toNumber(),
+            )
           : new Decimal(0);
 
         this.usage

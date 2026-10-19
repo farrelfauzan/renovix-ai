@@ -14,6 +14,7 @@ import { KnowledgeService } from "../../knowledge/service/knowledge.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { Decimal } from "@prisma/client/runtime/client";
+import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { ownSubAgents } from "../utils/own-sub-agents";
 import { AgentRepository } from "../repository/agent.repository";
 
@@ -187,13 +188,12 @@ export class AgentRunService {
       ? await this.registry.getTierRates(modelConfig.tier)
       : undefined;
     const cost = tierRates
-      ? new Decimal(result.totalInputTokens)
-          .mul(tierRates.inputCreditsPerToken)
-          .add(
-            new Decimal(result.totalOutputTokens).mul(
-              tierRates.outputCreditsPerToken,
-            ),
-          )
+      ? calculateActualCost(
+          result.totalInputTokens,
+          result.totalOutputTokens,
+          tierRates.inputCreditsPerToken.toNumber(),
+          tierRates.outputCreditsPerToken.toNumber(),
+        )
       : new Decimal(0);
 
     this.usage
@@ -706,13 +706,12 @@ export class AgentRunService {
       )
       .then((model) => {
         const cost = model?.rates
-          ? new Decimal(estimatedInput)
-              .mul(model.rates.inputCreditsPerToken)
-              .add(
-                new Decimal(estimatedOutput).mul(
-                  model.rates.outputCreditsPerToken,
-                ),
-              )
+          ? calculateActualCost(
+              estimatedInput,
+              estimatedOutput,
+              model.rates.inputCreditsPerToken.toNumber(),
+              model.rates.outputCreditsPerToken.toNumber(),
+            )
           : new Decimal(0);
 
         this.usage
