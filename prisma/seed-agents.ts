@@ -188,20 +188,22 @@ Think step-by-step about which sub-agent is best suited for each task. Combine r
 /**
  * RX-177 (D148): models are created by an admin, never seeded. The agents use the model slug given as
  * the first argument (`npx tsx prisma/seed-agents.ts <slug>`), or else the cheapest active standard
- * model; the seed stops when there is none.
+ * model; either way only an active model on an active, live provider record (never a legacy row with no
+ * record). The seed stops when there is none.
  */
 async function resolveAgentModel(): Promise<string> {
   const slug = process.argv[2];
+  const usable = { active: true, providerRecord: { status: "active" as const, deletedAt: null } };
   const model = await prisma.aiModel.findFirst({
-    where: slug ? { slug, active: true } : { tier: "standard", active: true },
+    where: slug ? { slug, ...usable } : { tier: "standard", ...usable },
     orderBy: [{ inputPrice: "asc" }, { outputPrice: "asc" }, { slug: "asc" }],
     select: { slug: true },
   });
   if (model) return model.slug;
   throw new Error(
     slug
-      ? `No active model with slug "${slug}". Create it through /admin/providers/:id/models first.`
-      : "No active standard model. Create one through /admin/providers/:id/models, or pass a model slug: npx tsx prisma/seed-agents.ts <slug>",
+      ? `No active model with slug "${slug}" on an active provider. Create it through /admin/providers/:id/models and activate its provider first.`
+      : "No active standard model on an active provider. Create one through /admin/providers/:id/models and activate its provider, or pass a model slug: npx tsx prisma/seed-agents.ts <slug>",
   );
 }
 

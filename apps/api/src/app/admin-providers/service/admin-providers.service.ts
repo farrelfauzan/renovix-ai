@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { AdminAuditLogRepository } from "../../admin-auth/repository/admin-audit-log.repository";
+import type { AdminAuditValues } from "../../admin-auth/types/admin-audit-values";
 import { AiModelRepository } from "../../config/repository/ai-model.repository";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
@@ -79,7 +80,8 @@ export class AdminProvidersService {
    * Sends one minimal request to the provider (no transaction is open during the call, no usage is metered,
    * no credit is reserved), then stores the result and writes the audit row itself in one short transaction
    * (the route is exempt from the audit hook, whose transaction would span the call). 409 when the provider
-   * changed or was deleted while the request ran: the result is not stored.
+   * changed or was deleted while the request ran: the result is not stored, but the attempt is still audited
+   * (`conflict: true`, no field changed), since the key was sent. A stored key that does not open is a 409 too.
    */
   async test(adminId: string, id: string, slug: string, requestId: string): Promise<ProviderTestOutcome> {
     const connection = await this.providers.findConnection(id);
@@ -87,16 +89,18 @@ export class AdminProvidersService {
     const { isSuccessful, reason } = await this.router.testConnection({ baseUrl: connection.baseUrl, apiKey: connection.apiKey, slug });
     const testedAt = new Date();
     const result = isSuccessful ? TEST_SUCCESS : (reason ?? "The test failed");
-    return this.transactions.run(async (tx) => {
+    const isStored = await this.transactions.run(async (tx) => {
       const stored = await this.providers.recordTest(id, { testedVersion: connection.updatedAt, testedAt, result }, tx);
-      if (stored === 0) throw new ConflictException("The provider changed or was deleted during the test; test it again");
-      const after = { providerId: id, changedFields: "lastTestedAt,lastTestResult" };
+      const after: AdminAuditValues =
+        stored === 0 ? { providerId: id, changedFields: "", conflict: true } : { providerId: id, changedFields: "lastTestedAt,lastTestResult" };
       await this.auditLog.create(
         { adminId, resource: "provider", action: "test", before: { providerId: id }, after, reason: "", requestId, effectiveAt: testedAt },
         tx,
       );
-      return { isSuccessful, reason: isSuccessful ? null : result, testedAt };
+      return stored > 0;
     });
+    if (!isStored) throw new ConflictException("The provider changed or was deleted during the test; test it again");
+    return { isSuccessful, reason: isSuccessful ? null : result, testedAt };
   }
 
   /** Activates a live provider; 409 unless its last test, run since the last key or base URL change, succeeded. */

@@ -24,6 +24,7 @@ const PROVIDER_FIELDS = {
   _count: { select: { models: true } },
 } as const;
 const NAME_TAKEN = "A provider with this name already exists";
+const KEY_UNREADABLE = "the stored key can't be decrypted with the current LLM_KEY_ENCRYPTION_KEY; re-enter the key";
 /** What a successful test stores in last_test_result. */
 const TEST_SUCCESS = "success";
 
@@ -49,11 +50,15 @@ export class ProviderRepository {
     return (tx ?? this.prisma).provider.findFirst({ where: { id }, select: PROVIDER_FIELDS });
   }
 
-  /** A live provider's base URL and decrypted key, for one test request; null when there is none. */
+  /**
+   * A live provider's base URL and decrypted key, for one test request; null when there is none. A key that does not
+   * open (LLM_KEY_ENCRYPTION_KEY changed since it was sealed) is a 409: the stored key is in conflict with the
+   * current encryption key, and re-entering it resolves that. Neither the ciphertext nor the error is passed on.
+   */
   async findConnection(id: string, tx?: DbTransaction): Promise<ProviderConnection | null> {
     const row = await (tx ?? this.prisma).provider.findFirst({ where: { id }, select: { baseUrl: true, apiKeyCiphertext: true, updatedAt: true } });
     if (!row) return null;
-    return { baseUrl: row.baseUrl, apiKey: this.crypto.reveal(row.apiKeyCiphertext), updatedAt: row.updatedAt };
+    return { baseUrl: row.baseUrl, apiKey: this.revealStoredKey(row.apiKeyCiphertext), updatedAt: row.updatedAt };
   }
 
   /** Creates an inactive provider with its key sealed; a live provider of the same name is a 409. */
@@ -120,6 +125,15 @@ export class ProviderRepository {
       data: { deletedAt: new Date(), status: "inactive", updatedByAdminId: adminId },
     });
     return count;
+  }
+
+  /** Opens a stored key; one that does not open under the current encryption key becomes a 409. */
+  private revealStoredKey(ciphertext: string): string {
+    try {
+      return this.crypto.reveal(ciphertext);
+    } catch {
+      throw new ConflictException(KEY_UNREADABLE);
+    }
   }
 
   /** Runs a write; the partial unique index on live names (P2002) becomes a 409. */

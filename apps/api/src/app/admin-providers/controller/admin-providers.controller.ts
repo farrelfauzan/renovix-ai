@@ -58,7 +58,7 @@ export class AdminProvidersController {
     return result;
   }
 
-  /** Sends one minimal request with `slug`; always 200, a failure with `isSuccessful: false` and its reason (stored). */
+  /** Sends one minimal request with `slug`; 200 with `isSuccessful` and a stored reason, or 400/404/409 (bad body, unknown provider, changed during the test or unreadable stored key). */
   @Post(":id/test")
   @HttpCode(200)
   @Access({ auth: ["staff"], permissions: ["providers:write"] })

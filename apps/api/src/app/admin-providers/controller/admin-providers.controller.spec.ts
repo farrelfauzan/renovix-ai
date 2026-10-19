@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { Logger } from "@nestjs/common";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { TestingModule } from "@nestjs/testing";
@@ -107,6 +107,16 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
   const deletedAtOf = async (id: string) =>
     (await prisma.$queryRaw<{ deleted_at: Date | null }[]>`SELECT deleted_at FROM providers WHERE id = ${id}`)[0].deleted_at;
   const reveal = (ciphertext: string) => moduleRef.get(ProviderKeyCryptoService, { strict: false }).reveal(ciphertext);
+  /** A key sealed under another LLM_KEY_ENCRYPTION_KEY, as if the encryption key changed after it was stored. */
+  const sealUnderAnotherKey = (apiKey: string) => {
+    const current = process.env.LLM_KEY_ENCRYPTION_KEY;
+    process.env.LLM_KEY_ENCRYPTION_KEY = randomBytes(32).toString("hex");
+    try {
+      return new ProviderKeyCryptoService().seal(apiKey).ciphertext;
+    } finally {
+      process.env.LLM_KEY_ENCRYPTION_KEY = current;
+    }
+  };
   const auditRows = (action?: string) =>
     prisma.adminAuditLog.findMany({ where: { resource: "provider", ...(action && { action }) }, orderBy: { createdAt: "asc" } });
 
@@ -335,6 +345,69 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
 
       expect([unknown.statusCode, gone.statusCode, badSlug.statusCode]).toEqual([404, 404, 400]);
       expect(fake.testRequests).toEqual([]);
+    });
+
+    // Review NIT 1: the key was sent, so the attempt is audited even when its result is not stored.
+    it("a provider changed during its test is a 409, nothing is stored, and the attempt is audited as a conflict", async () => {
+      const { cookie } = await signedIn("owner");
+      const created = await createVia(cookie);
+      jest.spyOn(fake, "testConnection").mockImplementation(async (target) => {
+        fake.testRequests.push(target);
+        await prisma.provider.update({ where: { id: created.id }, data: { name: "renamed-during-test" } });
+        return { isSuccessful: true, reason: null };
+      });
+
+      const res = await call("POST", `/admin/providers/${created.id}/test`, cookie, { slug: "cc/claude-sonnet-5" });
+
+      expect(res.statusCode).toBe(409);
+      expect(fake.testRequests).toHaveLength(1);
+      const row = await storedProvider(created.id);
+      expect([row.lastTestedAt, row.lastTestResult]).toEqual([null, null]);
+      const tests = await auditRows("test");
+      expect(tests.map((entry) => [entry.before, entry.after])).toEqual([
+        [{ providerId: created.id }, { providerId: created.id, changedFields: "", conflict: true }],
+      ]);
+    });
+
+    // Review NIT 7: 409, not 500. The request is valid; the stored key conflicts with the current encryption key.
+    it("a stored key sealed under another LLM_KEY_ENCRYPTION_KEY is a 409 on test: nothing sent, nothing changed, nothing leaked", async () => {
+      captureOutput();
+      const { cookie } = await signedIn("owner");
+      const created = await createVia(cookie);
+      const foreign = sealUnderAnotherKey(MARKER_KEY);
+      await prisma.provider.update({ where: { id: created.id }, data: { apiKeyCiphertext: foreign } });
+      const before = await storedProvider(created.id);
+
+      const res = await call("POST", `/admin/providers/${created.id}/test`, cookie, { slug: "cc/claude-sonnet-5" });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json().message).toBe("the stored key can't be decrypted with the current LLM_KEY_ENCRYPTION_KEY; re-enter the key");
+      expect(await storedProvider(created.id)).toEqual(before);
+      expect(fake.testRequests).toEqual([]);
+      expect(await auditRows("test")).toEqual([]);
+      for (const text of [res.body, ...output]) {
+        expect(text).not.toContain(foreign);
+        expect(text).not.toContain(MARKER_KEY);
+      }
+    });
+  });
+
+  // Review NIT 6.
+  describe("unknown or deleted provider on PATCH and activate", () => {
+    it("PATCH /:id and POST /:id/activate answer 404 and write nothing", async () => {
+      const { cookie, adminId } = await signedIn("owner");
+      const deleted = await createProvider(prisma, { createdByAdminId: adminId, deletedAt: new Date(), lastTestResult: "success" });
+
+      const statuses = [];
+      for (const id of [randomUUID(), deleted.id]) {
+        statuses.push((await call("PATCH", `/admin/providers/${id}`, cookie, { name: "revived" })).statusCode);
+        statuses.push((await call("POST", `/admin/providers/${id}/activate`, cookie)).statusCode);
+      }
+
+      expect(statuses).toEqual([404, 404, 404, 404]);
+      const [row] = await prisma.$queryRaw<{ name: string; status: string }[]>`SELECT name, status::text FROM providers WHERE id = ${deleted.id}`;
+      expect(row).toEqual({ name: deleted.name, status: "inactive" });
+      expect(await prisma.adminAuditLog.count()).toBe(0);
     });
   });
 

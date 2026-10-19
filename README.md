@@ -166,7 +166,7 @@ Staff only (back-office session, `providers:*` or `models:*`). The key is write-
 | `GET /api/v1/admin/providers/:id` | One provider |
 | `POST /api/v1/admin/providers` | Create a provider (inactive): `type` (`9router` or `openai_compatible`), `name`, `baseUrl`, `apiKey` |
 | `PATCH /api/v1/admin/providers/:id` | Change name, base URL, key (rotation) or set `status: "inactive"` |
-| `POST /api/v1/admin/providers/:id/test` | One minimal request with `{ slug }`; always 200 with `isSuccessful` and a reason |
+| `POST /api/v1/admin/providers/:id/test` | One minimal request with `{ slug }`; 200 with `isSuccessful` and a reason, whether the test passed or failed. 400 on a bad slug or body, 404 on an unknown provider, 409 when the provider changed during the test (result not stored) or its stored key cannot be decrypted with the current `LLM_KEY_ENCRYPTION_KEY` |
 | `POST /api/v1/admin/providers/:id/activate` | Activate after a successful test (409 otherwise) |
 | `DELETE /api/v1/admin/providers/:id` | Soft delete (409 while it has active models) |
 | `GET /api/v1/admin/providers/:id/models` | The provider's models |
