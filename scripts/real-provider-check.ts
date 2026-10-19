@@ -46,11 +46,16 @@ const secretValues = Object.entries(process.env)
   .map(([, value]) => value as string)
   .sort((a, b) => b.length - a.length);
 
-/** Replaces every secret env value and any bearer credential with [redacted]. */
+/**
+ * Replaces every secret env value, any bearer credential, a provider's echo of the key ("Received API Key = …",
+ * which can carry its last characters) and any 64-hex hash (a key's SHA-256) with [redacted].
+ */
 const redact = (text: string): string =>
   secretValues
     .reduce((acc, value) => acc.split(value).join("[redacted]"), text)
-    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]");
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/Received API Key\s*=\s*[^\s,]+/gi, "Received API Key = [redacted]")
+    .replace(/\b[0-9a-f]{64}\b/gi, "[redacted-hash]");
 
 /** The only way this script prints. */
 const say = (line: string): void => console.log(redact(line));
