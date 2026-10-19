@@ -1278,6 +1278,8 @@ model CreditAccount {
 
   @@unique([userId, wallet])
   @@unique([companyId, wallet])
+  /// The target of the entries' and reservations' (accountId, wallet) foreign keys: a row's wallet is its account's wallet.
+  @@unique([id, wallet])
   @@map("credit_accounts")
 }
 
@@ -1290,7 +1292,7 @@ model CreditAccount {
 model CreditLedgerEntry {
   id             String             @id @default(uuid())
   accountId      String             @map("account_id")
-  account        CreditAccount      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account        CreditAccount      @relation(fields: [accountId, wallet], references: [id, wallet], onDelete: Restrict)
   wallet         CreditWallet
   seq            Int
   type           CreditEntryType
@@ -1329,7 +1331,7 @@ model CreditLedgerEntry {
 model CreditReservation {
   id         String                  @id @default(uuid())
   accountId  String                  @map("account_id")
-  account    CreditAccount           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account    CreditAccount           @relation(fields: [accountId, wallet], references: [id, wallet], onDelete: Restrict)
   wallet     CreditWallet
   requestId  String                  @map("request_id")
   runId      String?                 @map("run_id")
