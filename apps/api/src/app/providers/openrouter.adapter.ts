@@ -15,6 +15,7 @@ import { parseRetryAfterMs } from "./utils/parse-retry-after-ms";
 import { describeTestFailure } from "./utils/describe-test-failure";
 import { ProviderTestResult } from "./types/provider-test-result";
 import { ProviderTestTarget } from "./types/provider-test-target";
+import { readUsage } from "./utils/read-usage";
 import { readPositiveInteger } from "../../common/utils/read-positive-integer";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -126,7 +127,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
   }
 
   /** The caller's max_tokens (or the default), raised to the floor for reasoning models (RX-161). */
-  private resolveMaxTokens(params: ChatRequest): number {
+  resolveMaxTokens(params: Pick<ChatRequest, "providerId" | "max_tokens">): number {
     const maxTokens = params.max_tokens ?? this.defaultMaxTokens;
     if (!this.supportsReasoning(params.providerId)) return maxTokens;
     return Math.max(maxTokens, REASONING_MIN_MAX_TOKENS);
@@ -285,6 +286,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
     if (!first?.message?.content && !first?.message?.tool_calls && first?.finish_reason === "length") {
       throw emptyAnswerError(params.providerId, body.max_tokens);
     }
+    const usage = readUsage(data.usage);
+    if (!usage) throw new Error(`Model ${params.providerId} returned no usage`);
 
     return {
       id: data.id,
@@ -298,11 +301,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
         },
         finish_reason: c.finish_reason,
       })),
-      usage: {
-        prompt_tokens: data.usage.prompt_tokens,
-        completion_tokens: data.usage.completion_tokens,
-        total_tokens: data.usage.total_tokens,
-      },
+      usage,
     };
   }
 

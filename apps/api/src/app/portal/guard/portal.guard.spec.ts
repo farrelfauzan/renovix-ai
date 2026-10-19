@@ -2,11 +2,14 @@ import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import * as jwt from "jsonwebtoken";
+import { Prisma } from "@generated/prisma/client.js";
 import { PortalGuard, PortalIdentity } from "./portal.guard";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
+import { fundPaidWallet } from "../../../../test/credit-funding";
+import { CreditService } from "../../billing/service/credit.service";
 
 // RX-15 characterization: PortalGuard as it behaves today (test database for
 // the user lookup). better-auth is ESM-only; its session lookup is a mock.
@@ -28,7 +31,7 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
 
   beforeAll(async () => {
     // PortalGuard and its JwtService come with the test module (AccessModule)
-    ({ moduleRef, prisma } = await createTestModule({}));
+    ({ moduleRef, prisma } = await createTestModule({ providers: [CreditService] }));
     guard = moduleRef.get(PortalGuard);
   });
 
@@ -65,8 +68,10 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
     });
   });
 
-  it("valid JWT, user with balance: paid tier with the user from the database", async () => {
-    const user = await createUser(prisma, { balance: 5 });
+  // RX-22 (D202-2): the tier follows the ledger's paid wallet (available = balance - held), not User.balance.
+  it("valid JWT, user with ledger credits: paid tier with the user from the database and the available credits", async () => {
+    const user = await createUser(prisma);
+    await fundPaidWallet(prisma, user.id, 5);
 
     expect(
       await identityFor({ "x-portal-session": SESSION, authorization: `Bearer ${token(user.id)}` }),
@@ -75,6 +80,24 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
       tier: "paid",
       user: { id: user.id, email: user.email, balance: 5 },
     });
+  });
+
+  it("RX-22: valid JWT, User.balance 5 but no ledger credits: free tier (User.balance is not read)", async () => {
+    const user = await createUser(prisma, { balance: 5 });
+
+    const identity = await identityFor({ "x-portal-session": SESSION, authorization: `Bearer ${token(user.id)}` });
+    expect(identity.tier).toBe("free");
+    expect(identity.user).toEqual({ id: user.id, email: user.email, balance: 0 });
+  });
+
+  it("RX-22: valid JWT, ledger credits all held by an open reservation: free tier (available is 0)", async () => {
+    const user = await createUser(prisma);
+    await fundPaidWallet(prisma, user.id, 2);
+    await moduleRef.get(CreditService).reserve({ userId: user.id, requestId: "req-held", amount: new Prisma.Decimal(2) });
+
+    const identity = await identityFor({ "x-portal-session": SESSION, authorization: `Bearer ${token(user.id)}` });
+    expect(identity.tier).toBe("free");
+    expect(identity.user?.balance).toBe(0);
   });
 
   it("valid JWT, user with zero balance: free tier but signed in", async () => {
@@ -119,8 +142,9 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
   });
 
   describe("Better Auth cookie session", () => {
-    it("a session whose user exists: signed in (paid with balance)", async () => {
-      const user = await createUser(prisma, { balance: 2 });
+    it("a session whose user exists: signed in (paid with ledger credits)", async () => {
+      const user = await createUser(prisma);
+      await fundPaidWallet(prisma, user.id, 2);
       mockGetSession.mockResolvedValue({ user: { id: user.id, email: user.email }, session: { id: "s" } });
 
       const identity = await identityFor({ "x-portal-session": SESSION, cookie: "better-auth.session_token=abc" });

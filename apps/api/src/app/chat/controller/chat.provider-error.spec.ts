@@ -1,12 +1,11 @@
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import { Decimal } from "@prisma/client/runtime/client";
 import { ChatController } from "./chat.controller";
 import { ChatService } from "../service/chat.service";
 import { PromptTuningService } from "../service/prompt-tuning.service";
 import { ConversationService } from "../service/conversation.service";
-import { BillingService } from "../../billing/service/billing.service";
+import { CreditService } from "../../billing/service/credit.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { DocumentService } from "../../document/service/document.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -16,6 +15,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
+import { fundPaidWallet } from "../../../../test/credit-funding";
+import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import {
   blockOutbound,
   OutboundBlocker,
@@ -28,11 +29,10 @@ import {
 // RX-169: the API-key route POST /chat/completions never streams (its request
 // schema has no `stream` field; ChatService calls ProviderRouter.chat). A
 // provider 400 must reach the client in this route's format (HTTP 500 JSON,
-// balance refunded) with the process running: Jest fails the test on any
+// nothing charged: RX-22 writes a provider_error usage entry of 0 and releases the hold) with the process running: Jest fails the test on any
 // uncaught exception or unhandled rejection. Real ChatController, ChatService
 // and OpenRouterAdapter against a local stub; these collaborators load
 // ESM-only packages.
-jest.mock("../../billing/service/billing.service", () => ({ BillingService: class {} }));
 jest.mock("../../usage/service/usage.service", () => ({ UsageService: class {} }));
 jest.mock("../service/prompt-tuning.service", () => ({ PromptTuningService: class {} }));
 jest.mock("../service/conversation.service", () => ({ ConversationService: class {} }));
@@ -48,10 +48,6 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let app: NestFastifyApplication;
-  const billing = {
-    reserveCredits: jest.fn(async () => new Decimal(1)),
-    refundReservation: jest.fn(async () => undefined),
-  };
 
   beforeAll(async () => {
     primary = await startStubHttpServer();
@@ -61,6 +57,7 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
       controllers: [ChatController, HealthController],
       providers: [
         ChatService,
+        CreditService,
         ModelRegistryService,
         {
           provide: PromptTuningService,
@@ -68,7 +65,6 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
             applyTuning: async (messages: unknown) => ({ tunedMessages: messages, matchedTemplate: null }),
           },
         },
-        { provide: BillingService, useValue: billing },
         { provide: UsageService, useValue: {} },
         { provide: ConversationService, useValue: {} },
         { provide: DocumentService, useValue: {} },
@@ -107,9 +103,12 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
     restoreEnv?.();
   });
 
-  it("AC7: provider answers 400 → HTTP 500 JSON with the refund message, balance refunded, health answers", async () => {
+  // RX-22: was "Your balance has been refunded." and a refundReservation call (old BillingService). Now the hold is
+  // released and the call has one provider_error usage entry of amount 0; the balance is unchanged.
+  it("AC7: provider answers 400 → HTTP 500 JSON, a provider_error entry of 0, the hold released, balance unchanged, health answers", async () => {
     primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));
-    await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma, { apiKey: API_KEY });
+    await fundPaidWallet(prisma, user.id, 1);
 
     const res = await app.inject({
       method: "POST",
@@ -121,12 +120,40 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
     expect(res.statusCode).toBe(500);
     expect(res.json()).toMatchObject({
       statusCode: 500,
-      message: "Failed to get response from model provider. Your balance has been refunded.",
+      message: "Failed to get response from model provider. No credits were charged.",
     });
-    expect(billing.refundReservation).toHaveBeenCalledTimes(1);
+    const usage = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id, type: "usage" } });
+    expect(usage.map((e) => [e.outcome, e.amount.toFixed(6), e.uncharged.toFixed(6), e.tokensNew, e.tokensOut])).toEqual([
+      ["provider_error", "0.000000", "0.000000", 0, 0],
+    ]);
+    expect((await prisma.creditReservation.findMany()).map((r) => [r.status, r.consumed.toFixed(6)])).toEqual([
+      ["released", "0.000000"],
+    ]);
+    const account = await prisma.creditAccount.findUniqueOrThrow({ where: { userId_wallet: { userId: user.id, wallet: "paid" } } });
+    expect([account.balance.toFixed(6), account.held.toFixed(6)]).toEqual(["1.000000", "0.000000"]);
+    await assertCreditLedgerInvariants(prisma);
     expect(primary.requests).toHaveLength(1);
     expect(primary.requests[0].body.stream).toBeUndefined();
     const health = await app.inject({ method: "GET", url: "/health" });
     expect(health.statusCode).toBe(200);
+  });
+
+  it("RX-22: an unaffordable estimate → HTTP 402 CREDITS_EXHAUSTED (was 400 Insufficient balance), no provider call, nothing written", async () => {
+    const user = await createUser(prisma, { apiKey: API_KEY, balance: 5 });
+    await fundPaidWallet(prisma, user.id, "0.000001");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/chat/completions",
+      headers: { authorization: `Bearer ${API_KEY}` },
+      payload: { model: "test-model", messages: [{ role: "user", content: "Hi" }] },
+    });
+
+    expect(res.statusCode).toBe(402);
+    expect(res.json()).toMatchObject({ code: "CREDITS_EXHAUSTED" });
+    expect(primary.requests).toHaveLength(0);
+    expect(await prisma.creditReservation.count()).toBe(0);
+    expect(await prisma.creditLedgerEntry.count({ where: { type: "usage" } })).toBe(0);
+    await assertCreditLedgerInvariants(prisma);
   });
 });

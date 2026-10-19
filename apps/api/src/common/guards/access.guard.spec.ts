@@ -8,6 +8,7 @@ import { PrismaService } from "../../app/prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import { createUser } from "../../../test/factories";
+import { fundPaidWallet } from "../../../test/credit-funding";
 
 // RX-114: the global AccessGuard through real HTTP (Fastify `inject`), with
 // the real checks behind its methods and the test database. The routes are
@@ -155,6 +156,8 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
   beforeEach(async () => {
     await resetDatabase(prisma);
     user = await createUser(prisma, { apiKey: API_KEY, balance: 5 });
+    // RX-22 (D202-2): the portal tier reads the ledger's paid wallet, so the portal user is funded there too.
+    await fundPaidWallet(prisma, user.id, 5);
     mockGetSession.mockReset();
     mockGetSession.mockResolvedValue(null);
     userLookups = jest.spyOn(prisma.user, "findUnique");
@@ -293,7 +296,8 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       expect(userLookups).toHaveBeenCalledTimes(0);
     });
 
-    it("X-Portal-Session and a valid login JWT: 200, the user, one database lookup", async () => {
+    // RX-22: the guard also reads the user's paid credit account (credit_accounts); the count is of user lookups.
+    it("X-Portal-Session and a valid login JWT: 200, the user, one user lookup", async () => {
       const res = await get("/probe/portal", { "x-portal-session": SESSION, authorization: loginJwt() });
 
       expect(res.statusCode).toBe(200);

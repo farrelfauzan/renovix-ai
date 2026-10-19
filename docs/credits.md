@@ -247,7 +247,7 @@ Three kinds of rows. Field names are proposals for RX-20; the column types are R
 | `amountHeld` | Credits set aside at the start. |
 | `consumed` | Credits of the usage entries charged against the hold so far. |
 | `status` | `open`, `settled`, `released` (nothing charged) or `expired` (released by the sweep). |
-| `expiresAt` | Start + the request's timeout (per-call 60 s, per-run 5 minutes, PRD 10 Q5) + a margin. |
+| `expiresAt` | Start + 10 minutes: above the provider call timeout (300 s, CHAT_TIMEOUT_MS) and the per-run limit (5 minutes, D77 Q5), plus a margin. The 60 s per call of D77 Q5 is a peer-run limit, not the hold's expiry. |
 
 Cost: every model call writes one ledger entry and one usage row (PRD 10 R7) and updates one account row; the rates and token counts on the entry add a few columns per row, and in return any entry can be recomputed later without knowing the rates of that day.
 

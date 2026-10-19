@@ -46,6 +46,8 @@ export interface ChatUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  /** Input tokens served from the provider's prompt cache (`prompt_tokens_details.cached_tokens`), part of prompt_tokens (RX-22). */
+  cachedTokens?: number;
 }
 
 export interface ChatChoice {
@@ -75,6 +77,8 @@ export interface ProviderModelPrice {
 export interface ProviderAdapter {
   chat(params: ChatRequest): Promise<ChatResponse>;
   chatStream?(params: ChatRequest): AsyncGenerator<string, void, unknown>;
+  /** The max_tokens this adapter sends for these params (RX-22: the estimate uses the same value). */
+  resolveMaxTokens(params: Pick<ChatRequest, "providerId" | "max_tokens">): number;
   /** Lists the provider's models with their current prices (GET /models); optional (RX-21). */
   listModels?(): Promise<ProviderModelPrice[]>;
 

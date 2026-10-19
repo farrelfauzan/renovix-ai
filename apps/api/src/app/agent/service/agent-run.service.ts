@@ -17,6 +17,7 @@ import { Decimal } from "@prisma/client/runtime/client";
 import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { ownSubAgents } from "../utils/own-sub-agents";
 import { AgentRepository } from "../repository/agent.repository";
+import { CreditAccountRepository } from "../../billing/repository/credit-account.repository";
 
 const MAX_TOOL_ITERATIONS = 15;
 
@@ -63,6 +64,7 @@ export class AgentRunService {
     private readonly usage: UsageService,
     private readonly guardrail: GuardrailService,
     private readonly agents: AgentRepository,
+    private readonly creditAccounts: CreditAccountRepository,
   ) {}
 
   async chat(
@@ -1246,13 +1248,11 @@ export class AgentRunService {
       const maxTokens = BigInt(subscription.plan.maxTokensPerMonth);
 
       if (BigInt(subscription.tokensUsed) >= maxTokens) {
-        // Check if user has credit balance for overage
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-          select: { balance: true },
-        });
+        // Check if user has credit balance for overage: the ledger's paid wallet available credits (balance - held),
+        // RX-22 review (D208): grants no longer write User.balance.
+        const account = await this.creditAccounts.findAccount({ userId }, "paid", tx);
 
-        if (!user || Number(user.balance) <= 0) {
+        if (!account || !account.balance.minus(account.held).greaterThan(0)) {
           throw new BadRequestException(
             "Monthly token limit reached and insufficient credit balance for overage. Please upgrade or top up.",
           );

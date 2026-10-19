@@ -15,6 +15,7 @@ export interface PortalIdentity {
   user?: {
     id: string;
     email: string;
+    /** The ledger's paid wallet available credits, balance - held (RX-22, D202-2); not User.balance. */
     balance: number;
   };
 }
@@ -54,7 +55,7 @@ export class PortalGuard implements CanActivate {
             user = {
               id: dbUser.id,
               email: dbUser.email,
-              balance: Number(dbUser.balance),
+              balance: await this.portalUsers.findPaidAvailable(dbUser.id),
             };
           }
         } catch (e) {
@@ -85,7 +86,7 @@ export class PortalGuard implements CanActivate {
             user = {
               id: dbUser.id,
               email: dbUser.email,
-              balance: Number(dbUser.balance),
+              balance: await this.portalUsers.findPaidAvailable(dbUser.id),
             };
           } else {
             this.logger.warn(
@@ -105,7 +106,7 @@ export class PortalGuard implements CanActivate {
       }
     }
 
-    // 3. Determine tier
+    // 3. Determine tier: paid when the ledger's paid wallet has credits available (RX-22, D202-2)
     const tier: "free" | "paid" = user && user.balance > 0 ? "paid" : "free";
 
     // 4. Attach portal identity to request

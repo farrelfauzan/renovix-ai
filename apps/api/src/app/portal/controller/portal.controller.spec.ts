@@ -9,7 +9,7 @@ import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProvidersModule } from "../../providers/providers.module";
-import { BillingService } from "../../billing/service/billing.service";
+import { CreditService } from "../../billing/service/credit.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { ConversationService } from "../../chat/service/conversation.service";
@@ -29,7 +29,6 @@ jest.mock("../../../lib/auth", () => ({
 }));
 // Services the free path does not use (or that are stubbed below) load ESM-only
 // packages (marked, ...); replace their modules with empty classes.
-jest.mock("../../billing/service/billing.service", () => ({ BillingService: class {} }));
 jest.mock("../../usage/service/usage.service", () => ({ UsageService: class {} }));
 jest.mock("../../chat/service/prompt-tuning.service", () => ({
   PromptTuningService: class {},
@@ -84,7 +83,7 @@ describe("RX-10: POST /chat/portal/completions free tier (Fastify, test database
             provide: GuardrailService,
             useValue: { checkInput: async () => ({ blocked: false }) },
           },
-          { provide: BillingService, useValue: {} },
+          { provide: CreditService, useValue: {} },
           { provide: UsageService, useValue: {} },
           { provide: ConversationService, useValue: {} },
           { provide: KnowledgeService, useValue: {} },

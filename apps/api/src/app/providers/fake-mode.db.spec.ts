@@ -8,7 +8,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { ModelRegistryService } from "../config/model-registry.service";
 import { PortalController } from "../portal/controller/portal.controller";
 import { PortalTierService } from "../portal/service/portal-tier.service";
-import { BillingService } from "../billing/service/billing.service";
+import { CreditService } from "../billing/service/credit.service";
 import { UsageService } from "../usage/service/usage.service";
 import { PromptTuningService } from "../chat/service/prompt-tuning.service";
 import { ConversationService } from "../chat/service/conversation.service";
@@ -36,7 +36,6 @@ import {
 jest.mock("../../lib/auth", () => ({
   auth: { api: { getSession: async () => null } },
 }));
-jest.mock("../billing/service/billing.service", () => ({ BillingService: class {} }));
 jest.mock("../usage/service/usage.service", () => ({ UsageService: class {} }));
 jest.mock("../chat/service/prompt-tuning.service", () => ({ PromptTuningService: class {} }));
 jest.mock("../chat/service/conversation.service", () => ({ ConversationService: class {} }));
@@ -124,7 +123,7 @@ describe("RX-88: POST /chat/portal/completions with LLM_PROVIDER=fake", () => {
           },
         },
         { provide: GuardrailService, useValue: { checkInput: async () => ({ blocked: false }) } },
-        { provide: BillingService, useValue: {} },
+        { provide: CreditService, useValue: {} },
         { provide: UsageService, useValue: {} },
         { provide: ConversationService, useValue: {} },
         { provide: KnowledgeService, useValue: {} },

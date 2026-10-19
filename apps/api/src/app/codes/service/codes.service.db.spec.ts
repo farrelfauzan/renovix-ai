@@ -7,6 +7,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
+import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -16,7 +18,7 @@ describe("CodesService.redeemCode (test database)", () => {
   let service: CodesService;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ providers: [CodesService] }));
+    ({ moduleRef, prisma } = await createTestModule({ providers: [CodesService, CreditLedgerService] }));
     service = moduleRef.get(CodesService);
   });
 
@@ -117,31 +119,74 @@ describe("CodesService.redeemCode (test database)", () => {
       .mockImplementation(heldCreateSubscription as typeof createSubscription);
   };
 
+  /** The user's paid wallet balance on the credit ledger (RX-22), 0 when the user has no account yet. */
+  const paidBalanceOf = async (userId: string) =>
+    (await prisma.creditAccount.findUnique({ where: { userId_wallet: { userId, wallet: "paid" } } }))?.balance.toNumber() ?? 0;
+
+  /** The number of credit ledger entries for this user (RX-22: grants are ledger entries, no Transaction rows). */
+  const ledgerEntryCount = (userId: string) => prisma.creditLedgerEntry.count({ where: { memberUserId: userId } });
+
   /** What a redemption of this code could have given this user, read back from the database. */
   const grantsOf = async (userId: string, codeId: string) => {
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      include: { transactions: true, subscription: true },
+      include: { subscription: true },
     });
     const code = await prisma.invitationCode.findUniqueOrThrow({ where: { id: codeId } });
     return {
-      balance: user.balance.toNumber(),
-      ledgerRows: user.transactions.length,
+      balance: await paidBalanceOf(userId),
+      ledgerRows: await ledgerEntryCount(userId),
       subscription: user.subscription,
       redemptions: await prisma.codeRedemption.count({ where: { codeId, userId } }),
       timesRedeemed: code.timesRedeemed,
     };
   };
 
-  /** The user's balance and the sum of the user's successful top-up rows. */
+  /** The user's paid wallet balance and the sum of the user's ledger entries (RX-22: was User.balance and top-up rows). */
   const balanceAndLedger = async (userId: string) => {
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const ledger = await prisma.transaction.aggregate({
-      where: { userId, type: "topup", status: "success" },
-      _sum: { amount: true },
-    });
-    return { balance: user.balance.toNumber(), ledgerSum: ledger._sum.amount?.toNumber() ?? 0 };
+    const ledger = await prisma.creditLedgerEntry.aggregate({ where: { memberUserId: userId }, _sum: { amount: true } });
+    return { balance: await paidBalanceOf(userId), ledgerSum: ledger._sum.amount?.toNumber() ?? 0 };
   };
+
+  it("RX-22: a redeemed code grants into the credit ledger (credits-only code: bonus; package code: plan_grant), User.balance and transactions untouched", async () => {
+    const user = await createUser(prisma);
+    const plan = await createPlan(prisma, { slug: "pro" });
+    const topup = await topupCode(1);
+    const both = await prisma.invitationCode.create({
+      data: { code: "PERF-BOTH-0009", type: "both", creditAmount: 10, planId: plan.id, durationDays: 30 },
+    });
+
+    await service.redeemCode(user.id, topup.code);
+    await service.redeemCode(user.id, both.code);
+
+    const redemptions = await prisma.codeRedemption.findMany({ where: { userId: user.id } });
+    const redemptionOf = (codeId: string) => redemptions.find((r) => r.codeId === codeId)!.id;
+    const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id }, orderBy: { seq: "asc" } });
+    expect(entries.map((e) => [e.seq, e.type, e.amount.toFixed(6), e.balanceAfter.toFixed(6), e.reference, e.wallet])).toEqual([
+      [1, "bonus", "25.000000", "25.000000", redemptionOf(topup.id), "paid"],
+      [2, "plan_grant", "10.000000", "35.000000", redemptionOf(both.id), "paid"],
+    ]);
+    expect(await paidBalanceOf(user.id)).toBe(35);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).balance.toNumber()).toBe(0);
+    expect(await prisma.transaction.count()).toBe(0);
+    await assertCreditLedgerInvariants(prisma);
+  });
+
+  // D186: a code that grants 0 credits (e.g. a package code that only unlocks) writes no ledger entry; the
+  // redemption itself still succeeds.
+  it("RX-22: a code with 0 credits is redeemed but writes no ledger entry", async () => {
+    const user = await createUser(prisma);
+    const plan = await createPlan(prisma, { slug: "pro" });
+    const zero = await prisma.invitationCode.create({
+      data: { code: "PERF-BOTH-0010", type: "both", creditAmount: 0, planId: plan.id, durationDays: 30 },
+    });
+
+    await service.redeemCode(user.id, zero.code);
+
+    expect(await prisma.codeRedemption.count({ where: { userId: user.id } })).toBe(1);
+    expect(await prisma.creditLedgerEntry.count({ where: { memberUserId: user.id } })).toBe(0);
+    expect(await prisma.creditAccount.count({ where: { userId: user.id } })).toBe(0);
+  });
 
   it("RX-147: lets two users redeem a multi-use credit code, one ledger row each", async () => {
     const [userA, userB] = [await createUser(prisma), await createUser(prisma)];
@@ -156,7 +201,7 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(resB).toMatchObject({ success: true, creditsGranted: 25, planGranted: "pro" });
     for (const user of [userA, userB]) {
       expect(await balanceAndLedger(user.id)).toEqual({ balance: 25, ledgerSum: 25 });
-      expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
+      expect(await ledgerEntryCount(user.id)).toBe(1);
     }
   });
 
@@ -168,7 +213,7 @@ describe("CodesService.redeemCode (test database)", () => {
     await expect(service.redeemCode(user.id, code.code)).rejects.toBeInstanceOf(ConflictException);
 
     expect(await balanceAndLedger(user.id)).toEqual({ balance: 25, ledgerSum: 25 });
-    expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
+    expect(await ledgerEntryCount(user.id)).toBe(1);
     expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
       timesRedeemed: 1,
     });
@@ -212,7 +257,7 @@ describe("CodesService.redeemCode (test database)", () => {
       timesRedeemed: 2,
     });
     expect(await prisma.codeRedemption.count()).toBe(2);
-    expect(await prisma.transaction.count()).toBe(2);
+    expect(await prisma.creditLedgerEntry.count()).toBe(2);
     const balances = await Promise.all(users.map((u) => balanceAndLedger(u.id)));
     expect(balances.map((b) => b.balance).sort()).toEqual([0, 25, 25]);
     balances.forEach((b) => expect(b.balance).toBe(b.ledgerSum));
@@ -233,7 +278,7 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(refused).toHaveLength(1);
     expect((refused[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
     expect(await prisma.codeRedemption.count({ where: { userId: user.id } })).toBe(1);
-    expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(1);
+    expect(await ledgerEntryCount(user.id)).toBe(1);
     expect(await balanceAndLedger(user.id)).toEqual({ balance: 25, ledgerSum: 25 });
     expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
       timesRedeemed: 1,
@@ -428,6 +473,7 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(await prisma.codeRedemption.count()).toBe(1);
   });
 
+  // RX-22: the ledger grant is now the last step (it needs the redemption id), so it is the one that fails here.
   it("rolls back every earlier step of a redemption when a later step fails", async () => {
     const user = await createUser(prisma);
     const plan = await createPlan(prisma, { slug: "pro" });
@@ -435,23 +481,43 @@ describe("CodesService.redeemCode (test database)", () => {
       data: { code: "PERF-BOTH-0001", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30 },
     });
     jest
-      .spyOn(moduleRef.get(CodeRedemptionRepository), "createRedemption")
-      .mockRejectedValueOnce(new Error("the redemption row cannot be written"));
+      .spyOn(moduleRef.get(CreditLedgerService), "appendEntry")
+      .mockRejectedValueOnce(new Error("the ledger entry cannot be written"));
 
     const redeem = service.redeemCode(user.id, code.code);
 
-    await expect(redeem).rejects.toThrow("the redemption row cannot be written");
+    await expect(redeem).rejects.toThrow("the ledger entry cannot be written");
     const after = await prisma.user.findUniqueOrThrow({
       where: { id: user.id },
-      include: { transactions: true, subscription: true, codeRedemptions: true },
+      include: { subscription: true, codeRedemptions: true },
     });
-    expect(after.balance.toNumber()).toBe(0);
-    expect(after.transactions).toEqual([]);
+    expect(await paidBalanceOf(user.id)).toBe(0);
+    expect(await ledgerEntryCount(user.id)).toBe(0);
     expect(after.subscription).toBeNull();
     expect(after.codeRedemptions).toEqual([]);
     expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
       timesRedeemed: 0,
     });
+  });
+
+  it("RX-22 review NIT 6: rolls back everything when the redemption row itself cannot be written (no ledger entry, no plan)", async () => {
+    const user = await createUser(prisma);
+    const plan = await createPlan(prisma, { slug: "pro" });
+    const code = await prisma.invitationCode.create({
+      data: { code: "PERF-BOTH-0002", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30 },
+    });
+    jest
+      .spyOn(moduleRef.get(CodeRedemptionRepository), "createRedemption")
+      .mockRejectedValueOnce(new Error("the redemption row cannot be written"));
+
+    await expect(service.redeemCode(user.id, code.code)).rejects.toThrow("the redemption row cannot be written");
+
+    expect(await paidBalanceOf(user.id)).toBe(0);
+    expect(await ledgerEntryCount(user.id)).toBe(0);
+    expect(await prisma.creditAccount.count()).toBe(0);
+    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
+    expect(await prisma.codeRedemption.count()).toBe(0);
+    expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({ timesRedeemed: 0 });
   });
 
   it("leaves an existing subscription as it was when a later step of the redemption fails", async () => {

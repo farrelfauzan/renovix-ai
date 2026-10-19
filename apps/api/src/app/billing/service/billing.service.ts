@@ -2,12 +2,16 @@ import { Injectable, Logger, BadRequestException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/client";
 import { Prisma } from "@generated/prisma/client.js";
 import { PrismaService } from "../../prisma/prisma.service";
+import { CreditLedgerService } from "./credit-ledger.service";
 
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly creditLedger: CreditLedgerService,
+  ) {}
 
   /**
    * Atomically reserve credits for a request. Returns the reserved amount.
@@ -100,25 +104,24 @@ export class BillingService {
   }
 
   /**
-   * Add balance (for top-ups).
+   * Add balance (for top-ups): one `top_up` ledger entry on the user's paid wallet (RX-22, docs/credits.md section
+   * 2.1), with the payment's reference; the same reference again writes nothing (I8). A zero amount writes no entry
+   * (D186: grants are > 0). User.balance and the Transaction table are no longer written (D190).
    */
   async addBalance(
     userId: string,
     amount: Decimal,
-    reference?: string,
+    reference: string,
   ): Promise<void> {
-    await this.prisma.$executeRaw(
-      Prisma.sql`UPDATE "users" SET balance = balance + ${amount} WHERE id = ${userId}`,
-    );
-
-    await this.prisma.transaction.create({
-      data: {
-        userId,
-        amount,
-        type: "topup",
-        status: "success",
-        reference: reference ?? null,
-      },
+    if (amount.isZero()) return;
+    await this.creditLedger.appendEntry({
+      owner: { userId },
+      wallet: "paid",
+      type: "top_up",
+      amount,
+      memberUserId: userId,
+      reference,
+      idempotencyKey: `top_up:${reference}`,
     });
   }
 

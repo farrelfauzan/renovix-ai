@@ -4,12 +4,14 @@ import {
   BadRequestException,
   InternalServerErrorException,
 } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type { Decimal } from "@prisma/client/runtime/client";
 import { ModelRegistryService } from "../../config/model-registry.service";
-import { BillingService } from "../../billing/service/billing.service";
-import { estimateTokens } from "../../billing/utils/estimate-tokens";
-import { estimateCost } from "../../billing/utils/estimate-cost";
-import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
+import { CreditService } from "../../billing/service/credit.service";
+import { callRatesOf } from "../../billing/utils/call-rates-of";
+import { countPromptTokens } from "../../billing/utils/count-prompt-tokens";
+import { estimateCallCredits } from "../../billing/utils/estimate-call-credits";
+import { tokensFromUsage } from "../../billing/utils/tokens-from-usage";
 import { ProviderRouter } from "../../providers/provider-router";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "./prompt-tuning.service";
@@ -29,7 +31,7 @@ export class ChatService {
   private readonly logger = new Logger(ChatService.name);
 
   constructor(
-    private readonly billing: BillingService,
+    private readonly credits: CreditService,
     private readonly providerRouter: ProviderRouter,
     private readonly usage: UsageService,
     private readonly registry: ModelRegistryService,
@@ -50,35 +52,46 @@ export class ChatService {
       );
     }
 
-    // 2. Estimate cost — the tier's per-token credit rate (RX-21), not price x multiplier.
+    // 2. The tier's credit rates (RX-21), not price x multiplier.
     const tierRates = await this.registry.getTierRates(modelConfig.tier);
     if (!tierRates) {
       throw new BadRequestException(
         `No credit rates found for tier "${modelConfig.tier}"`,
       );
     }
-    const estimatedTokens = estimateTokens(body.messages);
-    const estimatedCost = estimateCost(
-      estimatedTokens,
-      tierRates.inputCreditsPerToken.toNumber(),
+    const rates = callRatesOf(tierRates);
+
+    // 3. M is the max_tokens the adapter will send. RX-22 review B1: refuse with 402 before any paid work (tuning
+    // embeds the query for the knowledge searches) when the paid wallet cannot cover the estimate of the untuned
+    // prompt, a lower bound (tuning only adds content).
+    const maxTokens = this.providerRouter.resolveMaxTokens(modelConfig.provider, {
+      providerId: modelConfig.providerId,
+      max_tokens: body.max_tokens,
+    });
+    await this.credits.assertAvailable(
+      user.id,
+      estimateCallCredits(countPromptTokens(body.messages), maxTokens, rates),
     );
 
-    // 3. Reserve credits (atomic balance check + deduction)
-    let reservedAmount: Decimal;
-    try {
-      reservedAmount = await this.billing.reserveCredits(
-        user.id,
-        estimatedCost,
-      );
-    } catch {
-      throw new BadRequestException(
-        "Insufficient balance. Please top up your account.",
-      );
-    }
-
-    // 4. Apply prompt tuning (inject system prompt)
+    // 4. Apply prompt tuning (inject system prompt), then reserve the estimate of the prompt actually sent
+    // (docs/credits.md section 3.1): 402 CREDITS_EXHAUSTED when the paid wallet cannot cover it.
     const { tunedMessages, matchedTemplate } =
       await this.promptTuning.applyTuning(body.messages, user.id);
+    const requestId = randomUUID();
+    const reservation = await this.credits.reserve({
+      userId: user.id,
+      requestId,
+      amount: estimateCallCredits(countPromptTokens(tunedMessages), maxTokens, rates),
+    });
+    const call = {
+      reservationId: reservation.id,
+      memberUserId: user.id,
+      requestId,
+      callId: randomUUID(),
+      modelId: modelConfig.slug,
+      tier: modelConfig.tier,
+      rates,
+    };
 
     // 5. Call provider
     let providerResponse;
@@ -91,28 +104,24 @@ export class ChatService {
         max_tokens: body.max_tokens,
       });
     } catch (error: any) {
-      // Refund on provider failure
-      await this.billing.refundReservation(user.id, reservedAmount);
+      // A provider error is charged 0 and releases the hold (docs/credits.md section 3.1 rule 6).
+      await this.credits.finishCall({ ...call, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" });
       this.logger.error(`Provider call failed: ${error.message}`, error.stack);
       throw new InternalServerErrorException(
-        "Failed to get response from model provider. Your balance has been refunded.",
+        "Failed to get response from model provider. No credits were charged.",
       );
     }
 
     const latencyMs = Date.now() - startTime;
 
-    // 6. Calculate actual cost — tier credit rates (RX-21). The adapter's usage shape does not
-    // surface the provider's cached-token count today, so cached input is priced as input; when
-    // the adapter reports cachedTokens, they are priced at the tier's cached rate.
-    const actualCost = calculateActualCost(
-      providerResponse.usage.prompt_tokens,
-      providerResponse.usage.completion_tokens,
-      tierRates.inputCreditsPerToken.toNumber(),
-      tierRates.outputCreditsPerToken.toNumber(),
-    );
-
-    // 7. Adjust balance (refund difference)
-    await this.billing.adjustBalance(user.id, reservedAmount, actualCost);
+    // 6. One usage entry from the provider's reported tokens (cached input at the cached rate), then settle.
+    const { usage } = providerResponse;
+    const entry = await this.credits.finishCall({
+      ...call,
+      tokens: tokensFromUsage(usage.prompt_tokens, usage.cachedTokens ?? 0, usage.completion_tokens),
+      outcome: "completed",
+    });
+    const actualCost = entry.amount.negated();
 
     // 8. Log usage (async — don't block response)
     this.usage

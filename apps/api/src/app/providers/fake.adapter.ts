@@ -1,13 +1,24 @@
 import { ChatRequest, ChatResponse, ProviderAdapter } from "./provider.interface";
 import { ProviderTestResult } from "./types/provider-test-result";
 import { ProviderTestTarget } from "./types/provider-test-target";
+import { ProviderHttpError } from "./errors/provider-http-error";
+import { readUsage } from "./utils/read-usage";
 
-/** One scripted model reply: text, tool calls, or both. */
+/**
+ * One scripted model reply: text, tool calls, or both. `usage.cached_tokens` is reported as
+ * `prompt_tokens_details.cached_tokens` (part of prompt_tokens). `error` makes the turn fail as a provider does
+ * (RX-22): `chat` throws a ProviderHttpError with its code; `chatStream` streams the content, then OpenRouter's
+ * mid-stream error chunk (top-level `error`, `finish_reason: "error"`) and ends without a usage chunk.
+ */
 export interface FakeTurn {
   content?: string;
   toolCalls?: { id?: string; name: string; arguments: object | string }[];
-  usage?: { prompt_tokens: number; completion_tokens: number };
+  usage?: { prompt_tokens: number; completion_tokens: number; cached_tokens?: number };
+  error?: { code: number; message: string };
 }
+
+/** max_tokens the fake reports sending when the caller sets none (the real adapter's default). */
+const FAKE_DEFAULT_MAX_TOKENS = 4096;
 
 /** Text of every canned reply (LLM_PROVIDER=fake). */
 export const FAKE_REPLY =
@@ -33,6 +44,7 @@ export class FakeProviderAdapter implements ProviderAdapter {
   readonly testRequests: ProviderTestTarget[] = [];
   private readonly turns: FakeTurn[];
   private testResult: ProviderTestResult = { isSuccessful: true, reason: null };
+  private readonly defaultMaxTokens = FAKE_DEFAULT_MAX_TOKENS;
 
   constructor(
     turns: FakeTurn[] = [],
@@ -46,8 +58,19 @@ export class FakeProviderAdapter implements ProviderAdapter {
     return this;
   }
 
+  resolveMaxTokens(params: Pick<ChatRequest, "providerId" | "max_tokens">): number {
+    return params.max_tokens ?? this.defaultMaxTokens;
+  }
+
   async chat(params: ChatRequest): Promise<ChatResponse> {
     const turn = this.next(params);
+    if (turn.error) {
+      throw new ProviderHttpError({
+        message: `Request failed with status code ${turn.error.code}`,
+        status: turn.error.code,
+        bodyText: JSON.stringify({ error: turn.error }),
+      });
+    }
     const toolCalls = toolCallsOf(turn);
     const message = {
       role: "assistant" as const,
@@ -58,7 +81,7 @@ export class FakeProviderAdapter implements ProviderAdapter {
       id: `gen-fake-${this.requests.length}`,
       model: params.model,
       choices: [{ index: 0, message, finish_reason: finishReason(turn) }],
-      usage: usageOf(turn),
+      usage: readUsage(usageOf(turn))!,
     };
   }
 
@@ -77,6 +100,10 @@ export class FakeProviderAdapter implements ProviderAdapter {
 
     for (const piece of (turn.content ?? "").split(/(?<=\s)/).filter(Boolean)) {
       yield chunk({ delta: { role: "assistant", content: piece } });
+    }
+    if (turn.error) {
+      yield chunk({ delta: { content: "" }, finish_reason: "error" }, { error: turn.error });
+      return;
     }
     for (const [index, call] of toolCallsOf(turn).entries()) {
       const { name, arguments: args } = call.function;
@@ -181,9 +208,14 @@ function finishReason(turn: FakeTurn) {
 }
 
 function usageOf(turn: FakeTurn) {
-  const { prompt_tokens, completion_tokens } = turn.usage ?? {
+  const { prompt_tokens, completion_tokens, cached_tokens } = turn.usage ?? {
     prompt_tokens: 10,
     completion_tokens: 5,
   };
-  return { prompt_tokens, completion_tokens, total_tokens: prompt_tokens + completion_tokens };
+  return {
+    prompt_tokens,
+    completion_tokens,
+    total_tokens: prompt_tokens + completion_tokens,
+    ...(cached_tokens !== undefined && { prompt_tokens_details: { cached_tokens } }),
+  };
 }
