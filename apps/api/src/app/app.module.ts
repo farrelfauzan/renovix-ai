@@ -30,6 +30,7 @@ import { CodesModule } from "./codes/codes.module";
 import { AdminAuthModule } from "./admin-auth/admin-auth.module";
 import { OffersModule } from "./offers/offers.module";
 import { AdminAuditModule } from "./admin-auth/admin-audit.module";
+import { AdminProvidersModule } from "./admin-providers/admin-providers.module";
 import { AdminAuditInterceptor } from "./admin-auth/interceptor/admin-audit.interceptor";
 import { AccessModule } from "../common/access.module";
 import { AccessGuard } from "../common/guards/access.guard";
@@ -74,6 +75,7 @@ import { clientIp } from "../common/utils/client-ip";
     AdminAuthModule,
     OffersModule,
     AdminAuditModule,
+    AdminProvidersModule,
     AccessModule,
   ],
   controllers: [AppController],

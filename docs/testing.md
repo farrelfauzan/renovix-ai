@@ -67,7 +67,7 @@ afterAll(() => moduleRef?.close());
 - `createFastifyApp(moduleRef)` starts it as a Fastify app for `app.inject(...)`; close it with `app.close()`.
 - `resetDatabase(prisma)` truncates every table except `_prisma_migrations`. The migrations insert no plans (RX-90); create the plans a test needs with `createPlan`. The truncate also removes the five built-in back-office roles (RX-96): `seedAdminRoles(prisma)` in `apps/api/test/admin-auth.ts` runs the baseline migration's own INSERT again (`createAdmin` there calls it).
 - Files run one at a time (`maxWorkers: 1`) because they share one database.
-- The guards load better-auth, which is ESM-only; `apps/api/test/setup-env.ts` mocks it for every spec (no session) and sets `JWT_SECRET` and a fake 32-byte `MCP_ENCRYPTION_KEY` (both required, no fallback: RX-110; `NODE_ENV` is `test`, so test values need not be 32 characters). A spec that needs a session mocks it itself: `jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: (...args) => mockGetSession(...args) } } }))` (the path is relative to the spec's folder; this one is for a spec in a module's layer folder). JWTs signed with `process.env.JWT_SECRET` still go through the real guard.
+- The guards load better-auth, which is ESM-only; `apps/api/test/setup-env.ts` mocks it for every spec (no session) and sets `JWT_SECRET`, a fake 32-byte `MCP_ENCRYPTION_KEY` and a fake 32-byte `LLM_KEY_ENCRYPTION_KEY` (all three required, no fallback: RX-110, RX-177; `NODE_ENV` is `test`, so test values need not be 32 characters). A spec that needs a session mocks it itself: `jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: (...args) => mockGetSession(...args) } } }))` (the path is relative to the spec's folder; this one is for a spec in a module's layer folder). JWTs signed with `process.env.JWT_SECRET` still go through the real guard.
 
 Examples: `codes/service/codes.service.db.spec.ts` (service), `guards/api-key.guard.spec.ts` (guard), `codes/controller/codes.controller.spec.ts` (controller via Fastify `inject`).
 
@@ -118,7 +118,7 @@ A race-fix PR shows D83 evidence:
 
 ## Factories
 
-`apps/api/test/factories.ts`: `createUser`, `createPlan`, `createSubscription({ userId, planId })`, `createAgent({ userId })`, `createWorkspace({ ownerId })`. Each fills the required fields with unique values; pass any field to override it.
+`apps/api/test/factories.ts`: `createUser`, `createPlan`, `createSubscription({ userId, planId })`, `createAgent({ userId })`, `createWorkspace({ ownerId })`, `createProvider({ createdByAdminId })` (RX-177: an `openai_compatible` provider record of the fake provider, its obviously fake key sealed with the test `LLM_KEY_ENCRYPTION_KEY`; `apiKey` sets the plaintext), `createModel({ providerRecordId })` (RX-177: an active standard-tier model on that provider). Each fills the required fields with unique values; pass any field to override it. The migrations and the seed write no provider or model (RX-177): create them with these factories.
 
 ## Fake LLM provider
 
@@ -132,7 +132,7 @@ const fake = new FakeProviderAdapter([
 const { moduleRef } = await createTestModule({ imports: [ProvidersModule] }, (b) => withFakeProvider(b, fake));
 ```
 
-`withFakeProvider` replaces `OpenRouterAdapter`, so `ProviderRouter`'s `"openrouter"` adapter is the fake and no real adapter (or API key) is created. Its output has the same shape as the real adapter: `chat` returns tool calls on `choices[0].message.tool_calls`; `chatStream` yields the JSON payload of each SSE `data:` line (no `[DONE]`): content deltas, tool-call deltas (`id` and name first, then argument fragments), a `finish_reason` chunk, and OpenRouter's final usage chunk. Running out of turns throws. Example: `providers/provider-router.fake.spec.ts`.
+`withFakeProvider` replaces `OpenRouterAdapter`, so `ProviderRouter`'s `"openrouter"` adapter is the fake and no real adapter (or API key) is created. Its output has the same shape as the real adapter: `chat` returns tool calls on `choices[0].message.tool_calls`; `chatStream` yields the JSON payload of each SSE `data:` line (no `[DONE]`): content deltas, tool-call deltas (`id` and name first, then argument fragments), a `finish_reason` chunk, and OpenRouter's final usage chunk. Running out of turns throws. Example: `providers/provider-router.fake.spec.ts`. A provider test (RX-177, `testConnection`) is answered with success unless the test calls `fake.setTestResult({ isSuccessful: false, reason })`; each call is recorded in `fake.testRequests`.
 
 ## Running the API with the fake LLM provider
 

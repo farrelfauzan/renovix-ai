@@ -1,4 +1,6 @@
 import { ChatRequest, ChatResponse, ProviderAdapter } from "./provider.interface";
+import { ProviderTestResult } from "./types/provider-test-result";
+import { ProviderTestTarget } from "./types/provider-test-target";
 
 /** One scripted model reply: text, tool calls, or both. */
 export interface FakeTurn {
@@ -27,7 +29,10 @@ export const FAKE_TOOL_KEYWORD = "[[fake:tool]]";
  */
 export class FakeProviderAdapter implements ProviderAdapter {
   readonly requests: ChatRequest[] = [];
+  /** RX-177: every `testConnection` call, in order. */
+  readonly testRequests: ProviderTestTarget[] = [];
   private readonly turns: FakeTurn[];
+  private testResult: ProviderTestResult = { isSuccessful: true, reason: null };
 
   constructor(
     turns: FakeTurn[] = [],
@@ -92,6 +97,21 @@ export class FakeProviderAdapter implements ProviderAdapter {
       { delta: { role: "assistant", content: "" }, finish_reason },
       { usage: usageOf(turn) },
     );
+  }
+
+  /**
+   * RX-177: answers every provider test with `testResult` (success unless a test set a failure); no network.
+   * Recorded in `testRequests`, except in the runtime `{ canned: true }` mode (which keeps no key in memory).
+   */
+  async testConnection(target: ProviderTestTarget): Promise<ProviderTestResult> {
+    if (!this.options.canned) this.testRequests.push(target);
+    return this.testResult;
+  }
+
+  /** RX-177: the outcome the next `testConnection` calls give, e.g. a failure with its reason. */
+  setTestResult(result: ProviderTestResult) {
+    this.testResult = result;
+    return this;
   }
 
   private next(params: ChatRequest): FakeTurn {

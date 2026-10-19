@@ -65,6 +65,7 @@ const SETUP_ENV_VALUES = [
   "http://admin.renovix.test",
   Buffer.alloc(32, 7).toString("base64"),
   Buffer.alloc(32, 9).toString("hex"),
+  Buffer.alloc(32, 11).toString("hex"),
 ];
 
 /** The operation keys of a document's paths (sorted): `METHOD /path` for every route it documents. */

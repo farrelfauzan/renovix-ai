@@ -441,6 +441,568 @@
           "admin"
         ]
       }
+    },
+    "/api/v1/admin/providers": {
+      "get": {
+        "description": "Back-office route (staff permissions: providers:read)",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions providers:read"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Back-office route (staff permissions: providers:write)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "9router",
+                      "openai_compatible"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "baseUrl": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "format": "uri"
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 1000,
+                    "pattern": "^\\S+$"
+                  }
+                },
+                "required": [
+                  "type",
+                  "name",
+                  "baseUrl",
+                  "apiKey"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions providers:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/:id": {
+      "get": {
+        "description": "Back-office route (staff permissions: providers:read)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions providers:read"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "Back-office route (staff permissions: providers:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "baseUrl": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "format": "uri"
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 1000,
+                    "pattern": "^\\S+$"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "inactive"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions providers:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      },
+      "delete": {
+        "description": "Back-office route (staff permissions: providers:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success (no content)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions providers:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/:id/activate": {
+      "post": {
+        "description": "Back-office route (staff permissions: providers:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions providers:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/:id/test": {
+      "post": {
+        "description": "Back-office route (staff permissions: providers:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$"
+                  }
+                },
+                "required": [
+                  "slug"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions providers:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/:providerId/models": {
+      "get": {
+        "description": "Back-office route (staff permissions: models:read)",
+        "parameters": [
+          {
+            "name": "providerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions models:read"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Back-office route (staff permissions: models:write)",
+        "parameters": [
+          {
+            "name": "providerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$"
+                  },
+                  "modelName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "tier": {
+                    "type": "string",
+                    "enum": [
+                      "standard",
+                      "advanced",
+                      "premium",
+                      "frontier"
+                    ]
+                  },
+                  "inputPrice": {
+                    "type": "string",
+                    "pattern": "^\\d{1,6}(\\.\\d{1,12})?$"
+                  },
+                  "outputPrice": {
+                    "type": "string",
+                    "pattern": "^\\d{1,6}(\\.\\d{1,12})?$"
+                  },
+                  "cachedInputPrice": {
+                    "type": "string",
+                    "pattern": "^\\d{1,6}(\\.\\d{1,12})?$",
+                    "nullable": true
+                  },
+                  "maxTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "nullable": true
+                  },
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "slug",
+                  "modelName",
+                  "tier",
+                  "inputPrice",
+                  "outputPrice",
+                  "maxTokens",
+                  "active"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions models:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/:providerId/models/:modelId": {
+      "patch": {
+        "description": "Back-office route (staff permissions: models:write)",
+        "parameters": [
+          {
+            "name": "modelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "providerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "modelName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "tier": {
+                    "type": "string",
+                    "enum": [
+                      "standard",
+                      "advanced",
+                      "premium",
+                      "frontier"
+                    ]
+                  },
+                  "inputPrice": {
+                    "type": "string",
+                    "pattern": "^\\d{1,6}(\\.\\d{1,12})?$"
+                  },
+                  "outputPrice": {
+                    "type": "string",
+                    "pattern": "^\\d{1,6}(\\.\\d{1,12})?$"
+                  },
+                  "cachedInputPrice": {
+                    "type": "string",
+                    "pattern": "^\\d{1,6}(\\.\\d{1,12})?$",
+                    "nullable": true
+                  },
+                  "maxTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxOutputTokens": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "nullable": true
+                  },
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions models:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
     }
   },
   "components": {

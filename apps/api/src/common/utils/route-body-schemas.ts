@@ -13,6 +13,11 @@ import { ReauthDto } from "../../app/admin-auth/dto/reauth.dto";
 import { TotpCodeDto } from "../../app/admin-auth/dto/totp-code.dto";
 import { AuditLogQueryDto } from "../../app/admin-auth/dto/audit-log-query.dto";
 import { AuditLogExportQueryDto } from "../../app/admin-auth/dto/audit-log-export-query.dto";
+import { CreateProviderDto } from "../../app/admin-providers/dto/create-provider.dto";
+import { UpdateProviderDto } from "../../app/admin-providers/dto/update-provider.dto";
+import { TestProviderDto } from "../../app/admin-providers/dto/test-provider.dto";
+import { CreateProviderModelDto } from "../../app/admin-providers/dto/create-provider-model.dto";
+import { UpdateProviderModelDto } from "../../app/admin-providers/dto/update-provider-model.dto";
 import { AgentChatSchema, AttachToolSchema, AttachIntegrationSchema, DeployChannelSchema, AttachKnowledgeBaseSchema } from "../../app/agent/dto/agent-chat.dto";
 import { CreateAgentSchema } from "../../app/agent/dto/create-agent.dto";
 import { UpdateAgentSchema } from "../../app/agent/dto/update-agent.dto";
@@ -41,6 +46,11 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /admin/auth/sign-in", SignInDto],
   ["POST /admin/auth/totp/confirm", TotpCodeDto],
   ["POST /admin/auth/reauth", ReauthDto],
+  ["POST /admin/providers", CreateProviderDto],
+  ["PATCH /admin/providers/:id", UpdateProviderDto],
+  ["POST /admin/providers/:id/test", TestProviderDto],
+  ["POST /admin/providers/:providerId/models", CreateProviderModelDto],
+  ["PATCH /admin/providers/:providerId/models/:modelId", UpdateProviderModelDto],
   // ─── chat and agents ───
   ["POST /chat/completions", ChatCompletionRequestSchema],
   ["POST /agents", CreateAgentSchema],

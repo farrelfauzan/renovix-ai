@@ -6,6 +6,8 @@ import { AdminRecoveryCodeRepository } from "../admin-auth/repository/admin-reco
 import { AdminRoleRepository } from "../admin-auth/repository/admin-role.repository";
 import { AdminSessionRepository } from "../admin-auth/repository/admin-session.repository";
 import { AdminUserRepository } from "../admin-auth/repository/admin-user.repository";
+import { ProviderRepository } from "../admin-providers/repository/provider.repository";
+import { ProviderKeyCryptoService } from "../admin-providers/service/provider-key-crypto.service";
 import { AgentChannelRepository } from "../agent/repository/agent-channel.repository";
 import { AgentIntegrationRepository } from "../agent/repository/agent-integration.repository";
 import { AgentKnowledgeBaseRepository } from "../agent/repository/agent-knowledge-base.repository";
@@ -55,6 +57,7 @@ const REPOSITORIES = [
   AdminRoleRepository,
   AdminSessionRepository,
   AdminUserRepository,
+  ProviderRepository,
   AgentChannelRepository,
   AgentIntegrationRepository,
   AgentKnowledgeBaseRepository,
@@ -104,7 +107,8 @@ const REPOSITORIES = [
  */
 @Global()
 @Module({
-  providers: REPOSITORIES,
+  // RX-177: ProviderRepository seals and opens provider keys; the crypto service is provided for it only (not exported).
+  providers: [...REPOSITORIES, ProviderKeyCryptoService],
   exports: REPOSITORIES,
 })
 export class RepositoriesModule {}

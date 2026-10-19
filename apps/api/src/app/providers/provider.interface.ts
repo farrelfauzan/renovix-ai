@@ -1,3 +1,6 @@
+import type { ProviderTestResult } from "./types/provider-test-result";
+import type { ProviderTestTarget } from "./types/provider-test-target";
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -74,4 +77,10 @@ export interface ProviderAdapter {
   chatStream?(params: ChatRequest): AsyncGenerator<string, void, unknown>;
   /** Lists the provider's models with their current prices (GET /models); optional (RX-21). */
   listModels?(): Promise<ProviderModelPrice[]>;
+
+  /**
+   * RX-177: one minimal chat request to a provider record's own base URL and key (not the env endpoints),
+   * a single attempt with a short timeout; resolves with the outcome and never rejects. Optional.
+   */
+  testConnection?(target: ProviderTestTarget): Promise<ProviderTestResult>;
 }
