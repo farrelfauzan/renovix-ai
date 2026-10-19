@@ -67,6 +67,28 @@ describe("RX-21 AC2: the price refresh alerts on a provider price rise (test dat
     }
   });
 
+  it("alerts on a price move alone, when the price stays under the tier's planning cost", async () => {
+    // 0.00000005 -> 0.0000001 per token is a 100% move (above the 0.2 default ratio). At 0.0000001
+    // the standard tier's cost per credit is 0.0000001 x 1,000,000 / 1 = 0.10, under its 0.12
+    // planning cost, so only the price-moved alert can fire here.
+    const model = await createModel("0.00000005");
+    const errorSpy = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    refresh.setListModeler(async () => [
+      { providerId: "vendor/rise-model", inputPrice: "0.0000001", outputPrice: "0.0000002", cachedInputPrice: null },
+    ]);
+
+    try {
+      const result = await refresh.checkProviderPrices("openrouter");
+
+      expect(result).toEqual({ checked: 1, updated: 1, alerted: 1 });
+      const changes = await prisma.catalogChange.findMany({ where: { entity: "ai_model", entityId: model.id } });
+      expect(changes).toHaveLength(1);
+      expect(changes[0].reason).toContain("price moved more than");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("writes nothing when the provider's prices are unchanged", async () => {
     await createModel("0.0000001");
     refresh.setListModeler(async () => [
