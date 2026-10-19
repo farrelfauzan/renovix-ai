@@ -1,7 +1,7 @@
 generator client {
   provider        = "prisma-client"
   output          = "../apps/api/src/generated/prisma"
-  previewFeatures = ["postgresqlExtensions"]
+  previewFeatures = ["postgresqlExtensions", "partialIndexes"]
   moduleFormat    = "cjs"
 }
 
@@ -1270,6 +1270,8 @@ model CreditLedgerEntry {
 
   @@unique([accountId, seq])
   @@unique([accountId, idempotencyKey])
+  /// I3: a call_id appears on at most one usage entry (partial unique index, created by the migration).
+  @@unique([callId], map: "credit_ledger_entries_usage_call_id_key", where: raw("type = 'usage'"))
   @@map("credit_ledger_entries")
 }
 
