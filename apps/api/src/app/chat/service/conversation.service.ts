@@ -120,9 +120,10 @@ export class ConversationService {
 
       for (const model of models) {
         try {
-          const response = await this.providerRouter.chat(model.provider, {
+          const connection = await this.registry.resolveConnection(model.slug);
+          const response = await this.providerRouter.chat({
             model: model.slug,
-            providerId: model.providerId,
+            connection,
             messages: [
               {
                 role: "system",

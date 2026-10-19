@@ -17,6 +17,7 @@ import { KnowledgeService } from "../../knowledge/service/knowledge.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { DocumentService } from "../../document/service/document.service";
 import { createTestModule } from "../../../../test/test-module";
+import { createResolvableModel } from "../../../../test/provider-model";
 import { resetDatabase } from "../../../../test/test-database";
 import {
   FakeProviderAdapter,
@@ -106,19 +107,15 @@ describe("RX-10: POST /chat/portal/completions free tier (Fastify, test database
     const model = (slug: string, tier: string, price: string) => ({
       slug,
       modelName: slug,
-      providerId: `vendor/${slug}`,
       inputPrice: price,
       outputPrice: price,
       maxTokens: 8192,
       tier,
     });
-    await prisma.aiModel.createMany({
-      data: [
-        model("cheap-premium", "premium", "0.0000001"),
-        model("standard-cheap", "standard", "0.000001"),
-        model("standard-dear", "standard", "0.00001"),
-      ],
-    });
+    // RX-178: on provider records, so a chat call can resolve them.
+    await createResolvableModel(prisma, model("cheap-premium", "premium", "0.0000001"));
+    await createResolvableModel(prisma, model("standard-cheap", "standard", "0.000001"));
+    await createResolvableModel(prisma, model("standard-dear", "standard", "0.00001"));
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
@@ -210,6 +207,26 @@ describe("RX-10: POST /chat/portal/completions free tier (Fastify, test database
       (await prisma.portalSession.findUniqueOrThrow({ where: { sessionToken: session } })).requestCount,
     ).toBe(20);
     expect(await prisma.anonymousUsageCounter.count()).toBe(0);
+  });
+
+  it("RX-178: a cheaper standard model without a provider record is never the free tier's model (listed or called)", async () => {
+    await prisma.aiModel.create({
+      data: { slug: "standard-orphan", modelName: "standard-orphan", inputPrice: "0.0000001", outputPrice: "0.0000001", maxTokens: 8192 },
+    });
+    await moduleRef.get(ModelRegistryService).refresh();
+    fake.enqueue({ content: "Hello" });
+
+    const listed = await app.inject({
+      method: "GET",
+      url: "/chat/portal/models",
+      headers: { "x-portal-session": "66666666-6666-4666-8666-666666666666" },
+    });
+    const callsBefore = fake.requests.length;
+    const res = await complete("77777777-7777-4777-8777-777777777777");
+
+    expect(listed.json()).toEqual({ models: [{ slug: "standard-cheap", name: "standard-cheap" }] });
+    expect(res.statusCode).toBe(200);
+    expect(fake.requests.slice(callsBefore).map((r) => r.connection.slug)).toEqual(["standard-cheap"]);
   });
 
   it("GET /chat/portal/models offers the free tier only the cheapest standard model", async () => {

@@ -25,6 +25,7 @@ import {
   startStubHttpServer,
   StubHttpServer,
 } from "../../../../test/llm-stub";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-169: the API-key route POST /chat/completions never streams (its request
 // schema has no `stream` field; ChatService calls ProviderRouter.chat). A
@@ -77,15 +78,13 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
     blocker = blockOutbound();
     primary.requests.length = 0;
     await resetDatabase(prisma);
-    await prisma.aiModel.create({
-      data: {
-        slug: "test-model",
-        modelName: "test-model",
-        providerId: "vendor/test-model",
-        inputPrice: 0.000001,
-        outputPrice: 0.000001,
-        maxTokens: 8192,
-      },
+    await createResolvableModel(prisma, {
+      slug: "test-model",
+      modelName: "test-model",
+      inputPrice: 0.000001,
+      outputPrice: 0.000001,
+      maxTokens: 8192,
+      provider: { baseUrl: primary.baseUrl, apiKey: PRIMARY_KEY },
     });
     // RX-21: charging reads the tier rate table (credits per 1,000,000 tokens); resetDatabase
     // wipes it, so seed the standard 1/1/1 rate with the model row.

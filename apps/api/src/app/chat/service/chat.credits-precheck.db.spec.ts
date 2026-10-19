@@ -17,6 +17,7 @@ import { createUser } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { realPromptTuning } from "../../../../test/real-prompt-tuning";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-22 review B1: prompt tuning embeds the query for the system and user knowledge searches (paid /embeddings
 // calls), so a user who cannot pay is refused with 402 BEFORE tuning. The REAL PromptTuningService and knowledge
@@ -56,8 +57,8 @@ describe("RX-22 review B1: the API-key chat refuses an unaffordable request befo
     await prisma.tierRate.create({
       data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
     });
-    await prisma.aiModel.create({
-      data: { slug: "b1-model", modelName: "b1-model", providerId: "vendor/b1-model", inputPrice: 0.000001, outputPrice: 0.000001, maxTokens: 8192 },
+    await createResolvableModel(prisma, {
+      slug: "b1-model", modelName: "b1-model", inputPrice: 0.000001, outputPrice: 0.000001, maxTokens: 8192,
     });
     // An active system knowledge base: tuning would embed the query for it as well as for the user's bases.
     await prisma.knowledgeBase.create({ data: { name: "system", isSystem: true, active: true } });

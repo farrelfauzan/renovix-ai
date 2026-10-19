@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { AdminAuditLogRepository } from "../../admin-auth/repository/admin-audit-log.repository";
 import type { AdminAuditValues } from "../../admin-auth/types/admin-audit-values";
+import { ModelRegistryService } from "../../config/model-registry.service";
 import { AiModelRepository } from "../../config/repository/ai-model.repository";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
@@ -25,7 +26,9 @@ const TEST_SUCCESS = "success";
  * tested with one minimal request, then activated; a new key or base URL clears the test, so activation
  * always follows a test of the current key and base URL. The key is write-only: sealed and opened only by
  * ProviderRepository. Each write returns the change its audit row records: changed fields only, the key
- * named (`apiKey`) and never valued.
+ * named (`apiKey`) and never valued. RX-178 (D199-2): a write that takes a provider out of service (deactivate,
+ * new key or base URL, delete) drops its models from this process's ModelRegistryService cache at once, and an
+ * activation makes the registry reload on its next lookup.
  */
 @Injectable()
 export class AdminProvidersService {
@@ -35,6 +38,7 @@ export class AdminProvidersService {
     private readonly router: ProviderRouter,
     private readonly transactions: TransactionService,
     private readonly auditLog: AdminAuditLogRepository,
+    private readonly registry: ModelRegistryService,
   ) {}
 
   /** Every live provider with its model count. */
@@ -67,6 +71,7 @@ export class AdminProvidersService {
     const before = await this.providers.findLiveById(id, tx);
     if (!before) throw new NotFoundException(NOT_FOUND);
     const after = await this.providers.update(id, { ...dto, adminId }, tx);
+    if (dto.status === "inactive" || dto.apiKey !== undefined || dto.baseUrl !== undefined) this.registry.forgetProvider(id);
     const change = buildAuditChange({
       subject: { providerId: id },
       before: toAuditedProviderValues(before),
@@ -111,6 +116,7 @@ export class AdminProvidersService {
       throw new ConflictException("The provider has no successful test since its key or base URL last changed; test it first");
     }
     const after = await this.get(id, tx);
+    this.registry.expireCache();
     const change = buildAuditChange({ subject: { providerId: id }, before: { status: before.status }, after: { status: after.status } });
     return { result: after, change };
   }
@@ -121,6 +127,7 @@ export class AdminProvidersService {
     const activeModels = await this.models.countActiveOnProviderRecord(id, tx);
     if (activeModels > 0) throw new ConflictException(`The provider has ${activeModels} active models; deactivate them first`);
     await this.providers.softDelete(id, adminId, tx);
+    this.registry.forgetProvider(id);
     const change = buildAuditChange({ subject: { providerId: id }, before: { deleted: false }, after: { deleted: true } });
     return { result: undefined, change };
   }

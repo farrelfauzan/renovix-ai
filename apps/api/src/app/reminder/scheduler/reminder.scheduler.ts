@@ -102,6 +102,7 @@ export class ReminderScheduler {
     if (!modelEntry) {
       throw new Error(`Model "${agent.model}" is not available`);
     }
+    const connection = await this.registry.resolveConnection(modelEntry.slug);
 
     // Get the chat room
     const chatRoom = await this.prisma.channelChatRoom.findFirst({
@@ -160,7 +161,7 @@ export class ReminderScheduler {
     while (iterations < MAX_TOOL_ITERATIONS) {
       const callParams: any = {
         model: modelEntry.slug,
-        providerId: modelEntry.providerId,
+        connection,
         messages,
         temperature: agent.temperature,
         max_tokens: agent.maxTokens ?? 4096,
@@ -171,10 +172,7 @@ export class ReminderScheduler {
         callParams.tool_choice = "auto";
       }
 
-      const response: any = await this.providerRouter.chat(
-        modelEntry.provider,
-        callParams,
-      );
+      const response: any = await this.providerRouter.chat(callParams);
 
       const choice = response.choices?.[0];
       totalTokens += response.usage?.total_tokens || 0;
@@ -257,7 +255,7 @@ export class ReminderScheduler {
         // Log usage
         this.logUsage(
           reminder.userId,
-          modelEntry,
+          { ...modelEntry, provider: connection.providerName },
           totalInputTokens,
           totalOutputTokens,
           loopStart,

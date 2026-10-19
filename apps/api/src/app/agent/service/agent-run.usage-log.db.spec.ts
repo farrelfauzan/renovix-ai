@@ -12,6 +12,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import type { PrismaService } from "../../prisma/prisma.service";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-21 review B2 (test database, real UsageService and ModelRegistryService, fake provider): an agent
 // run writes usage_logs.cost = tokens x tier rate / 1,000,000 (docs/credits.md section 1.3). Without
@@ -80,16 +81,13 @@ describe("RX-21: usage_logs.cost of an agent run (test database)", () => {
         outputCreditsPerToken: input.rate,
       },
     });
-    await prisma.aiModel.create({
-      data: {
-        slug: "test-model",
-        modelName: "test-model",
-        providerId: "vendor/test-model",
-        inputPrice: 0.000001,
-        outputPrice: 0.000002,
-        maxTokens: 8192,
-        tier: input.tier,
-      },
+    await createResolvableModel(prisma, {
+      slug: "test-model",
+      modelName: "test-model",
+      inputPrice: 0.000001,
+      outputPrice: 0.000002,
+      maxTokens: 8192,
+      tier: input.tier,
     });
     await registry.refresh();
     const plan = await createPlan(prisma, { maxTokensPerMonth: 1_000_000_000n });

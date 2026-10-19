@@ -107,6 +107,7 @@ export class ChannelChatService {
     if (!modelEntry) {
       throw new BadRequestException(`Model "${agent.model}" is not available`);
     }
+    const connection = await this.registry.resolveConnection(modelEntry.slug);
 
     // Get recent history for this agent in the channel room
     const chatRoom = await this.channelService.getOrCreateChatRoom(
@@ -177,7 +178,7 @@ export class ChannelChatService {
     );
 
     console.log(
-      `Initial chat setup complete. model=${modelEntry.providerId} tools=${toolSchemas.length} messages=${currentMessages.length}`,
+      `Initial chat setup complete. model=${modelEntry.slug} tools=${toolSchemas.length} messages=${currentMessages.length}`,
     ); // Debug log
 
     // Tool execution loop
@@ -191,7 +192,7 @@ export class ChannelChatService {
     while (iterations < MAX_TOOL_ITERATIONS) {
       const callParams: any = {
         model: modelEntry.slug,
-        providerId: modelEntry.providerId,
+        connection,
         messages: currentMessages,
         temperature: agent.temperature,
         max_tokens: options?.documentFormat
@@ -206,14 +207,11 @@ export class ChannelChatService {
 
       const payloadSize = (JSON.stringify(callParams).length / 1024).toFixed(1);
       this.logger.log(
-        `[chat] iteration=${iterations} | model=${modelEntry.providerId} messages=${currentMessages.length} tools=${toolSchemas.length} payload=${payloadSize}KB`,
+        `[chat] iteration=${iterations} | model=${modelEntry.slug} messages=${currentMessages.length} tools=${toolSchemas.length} payload=${payloadSize}KB`,
       );
 
       const startTime = Date.now();
-      const response: any = await this.providerRouter.chat(
-        modelEntry.provider,
-        callParams,
-      );
+      const response: any = await this.providerRouter.chat(callParams);
       const elapsed = Date.now() - startTime;
 
       const choice = response.choices?.[0];
@@ -330,7 +328,7 @@ export class ChannelChatService {
         // Log usage
         this.logUsage(
           userId,
-          modelEntry,
+          { ...modelEntry, provider: connection.providerName },
           totalInputTokens,
           totalOutputTokens,
           loopStart,
@@ -361,7 +359,7 @@ export class ChannelChatService {
     // Log usage
     this.logUsage(
       userId,
-      modelEntry,
+      { ...modelEntry, provider: connection.providerName },
       totalInputTokens,
       totalOutputTokens,
       loopStart,
@@ -463,7 +461,7 @@ export class ChannelChatService {
       return `Error: Sub-agent model "${subAgent.model}" unavailable.`;
 
     this.logger.log(
-      `[executeSubAgent] Running: ${subAgent.name} (${subAgent.id}) | model=${modelEntry.providerId} | task="${task.slice(0, 80)}"`,
+      `[executeSubAgent] Running: ${subAgent.name} (${subAgent.id}) | model=${modelEntry.slug} | task="${task.slice(0, 80)}"`,
     );
 
     const subMessages: any[] = [
@@ -479,9 +477,10 @@ export class ChannelChatService {
 
     // Don't pass tools to sub-agent during delegation — it should respond with text only
     const startTime = Date.now();
-    const response: any = await this.providerRouter.chat(modelEntry.provider, {
+    const connection = await this.registry.resolveConnection(modelEntry.slug);
+    const response: any = await this.providerRouter.chat({
       model: modelEntry.slug,
-      providerId: modelEntry.providerId,
+      connection,
       messages: subMessages,
       temperature: subAgent.temperature,
       max_tokens: subAgent.maxTokens ?? 4096,

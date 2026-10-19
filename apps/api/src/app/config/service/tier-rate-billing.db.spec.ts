@@ -15,6 +15,7 @@ import { createUser } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-21 AC1 (test database — needs TEST_DATABASE_URL): a changed tier rate row takes effect on the
 // credit path without a deploy. Two runs of the same chat completion against two different
@@ -60,16 +61,13 @@ describe("RX-21 AC1: a changed tier rate changes the credits charged (test datab
       // docs/credits.md section 1.4 Advanced: new 5, cached 6, output 4 (prisma/tier-rates.seed.json)
       data: { tier: "advanced", inputCreditsPerToken: 5, cachedCreditsPerToken: 6, outputCreditsPerToken: 4 },
     });
-    await prisma.aiModel.create({
-      data: {
-        slug: "ac1-model",
-        modelName: "ac1-model",
-        providerId: "vendor/ac1-model",
-        inputPrice: 0.000001,
-        outputPrice: 0.000002,
-        maxTokens: 8192,
-        tier: "advanced",
-      },
+    await createResolvableModel(prisma, {
+      slug: "ac1-model",
+      modelName: "ac1-model",
+      inputPrice: 0.000001,
+      outputPrice: 0.000002,
+      maxTokens: 8192,
+      tier: "advanced",
     });
     await registry.refresh();
   });

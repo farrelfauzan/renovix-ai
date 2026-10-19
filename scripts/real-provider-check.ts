@@ -1,4 +1,7 @@
 // RX-174: real-provider check for RX-160 (request shape, model ids, the statuses that fire the fallback).
+// RX-178: the adapter no longer reads LLM_FALLBACK_* or LLM_MODEL_ID_MAP; its chat calls take a connection
+// (base URL, key, slug). Sections d and e now send to the configured primary as a connection and show that no
+// fallback request follows; the map is read here only, for the ids section c sends directly.
 // Run by hand from the repo root, never in CI; Bun loads the provider keys from .env:
 //   bun scripts/real-provider-check.ts [all|embeddings|models|wrong-key|proxy]
 // It sends real, billed requests (a few dozen tokens each) and prints statuses, provider hosts and
@@ -16,7 +19,6 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../apps/api/src/generated/prisma/client.js";
 import { OpenRouterAdapter } from "../apps/api/src/app/providers/openrouter.adapter";
 import { ProviderHttpError } from "../apps/api/src/app/providers/errors/provider-http-error";
-import { parseModelIdMap } from "../apps/api/src/app/providers/utils/parse-model-id-map";
 import type { ChatResponse } from "../apps/api/src/app/providers/provider.interface";
 import { EmbeddingService } from "../apps/api/src/app/knowledge/service/embedding.service";
 import { KnowledgeService } from "../apps/api/src/app/knowledge/service/knowledge.service";
@@ -130,7 +132,7 @@ const fallbackEndpoint = (): Endpoint | undefined => {
   return baseUrl && apiKey ? { label: "fallback", baseUrl, apiKey } : undefined;
 };
 
-const modelIdMap = parseModelIdMap(process.env.LLM_MODEL_ID_MAP);
+const modelIdMap = new Map<string, string>(Object.entries(JSON.parse(process.env.LLM_MODEL_ID_MAP || "{}")));
 /** Our model id used for the adapter checks: CHECK_MODEL_ID, else the first LLM_MODEL_ID_MAP key. */
 const adapterModelId = process.env.CHECK_MODEL_ID || [...modelIdMap.keys()][0];
 
@@ -292,7 +294,9 @@ async function checkWrongKey(): Promise<void> {
   const fallbackBefore = countFor(fallbackHost);
   logLines.length = 0;
   try {
-    await adapter.chat({ model: adapterModelId, providerId: adapterModelId, messages: [{ role: "user", content: PROMPT }], max_tokens: MAX_TOKENS });
+    const slug = modelIdMap.get(adapterModelId) ?? adapterModelId;
+    const connection = { slug, baseUrl: primary.baseUrl, apiKey: WRONG_KEY, providerName: "primary" };
+    await adapter.chat({ model: adapterModelId, connection, messages: [{ role: "user", content: PROMPT }], max_tokens: MAX_TOKENS });
     say("  adapter: unexpected success");
   } catch (err) {
     say(`  adapter, primary ${hostOf(primary.baseUrl)}: ${describeError(err)}`);
@@ -344,7 +348,9 @@ async function runAgainstPrimary(label: string, baseUrl: string, stub?: Stub): P
   if (stub) stub.calls = 0;
   let outcome: string;
   try {
-    const response: ChatResponse = await adapter.chat({ model: adapterModelId, providerId: adapterModelId, messages: [{ role: "user", content: PROMPT }], max_tokens: MAX_TOKENS });
+    const slug = modelIdMap.get(adapterModelId) ?? adapterModelId;
+    const connection = { slug, baseUrl, apiKey: STUB_KEY, providerName: "stub primary" };
+    const response: ChatResponse = await adapter.chat({ model: adapterModelId, connection, messages: [{ role: "user", content: PROMPT }], max_tokens: MAX_TOKENS });
     addUsage(fallbackHost, response.usage.prompt_tokens, response.usage.completion_tokens);
     outcome = `answer reached the caller: "${excerpt(response.choices[0]?.message?.content ?? "")}" (usage ${response.usage.prompt_tokens}/${response.usage.completion_tokens})`;
   } catch (err) {

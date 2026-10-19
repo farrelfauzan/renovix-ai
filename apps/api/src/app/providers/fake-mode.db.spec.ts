@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ProvidersModule } from "./providers.module";
+import { ProviderRouter } from "./provider-router";
 import { FAKE_REPLY, FAKE_TOOL_KEYWORD } from "./fake.adapter";
 import { PrismaService } from "../prisma/prisma.service";
 import { ModelRegistryService } from "../config/model-registry.service";
@@ -281,6 +282,33 @@ describe("RX-88: agent runs (chat, streaming, tool call) with LLM_PROVIDER=fake"
     expect(executeTool).toHaveBeenCalledTimes(1);
     expect(events[events.length - 1]).toMatchObject({ type: "done", content: FAKE_REPLY });
     expect(events.filter((e) => e.type === "chunk")).toHaveLength(FAKE_REPLY.split(" ").length);
+  });
+});
+
+describe("RX-178 (D199-5): LLM_PROVIDER=fake needs no provider or model rows", () => {
+  let moduleRef: TestingModule;
+  let prisma: PrismaService;
+
+  beforeAll(async () => {
+    ({ moduleRef, prisma } = await createTestModule({
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
+      providers: [ModelRegistryService],
+    }));
+  });
+
+  beforeEach(() => resetDatabase(prisma));
+  afterAll(() => moduleRef?.close());
+
+  it("resolveConnection answers any slug without a lookup, and a chat through it gets the canned reply with no outbound call", async () => {
+    const registry = moduleRef.get(ModelRegistryService);
+    await registry.refresh();
+
+    const connection = await registry.resolveConnection("fake/no-such-row");
+    const res = await moduleRef.get(ProviderRouter).chat({ model: "m", connection, messages: [{ role: "user", content: "Hi" }] });
+
+    expect([await prisma.provider.count(), await prisma.aiModel.count()]).toEqual([0, 0]);
+    expect(connection).toMatchObject({ slug: "fake/no-such-row", apiKey: "" });
+    expect(res.choices[0].message.content).toBe(FAKE_REPLY);
   });
 });
 

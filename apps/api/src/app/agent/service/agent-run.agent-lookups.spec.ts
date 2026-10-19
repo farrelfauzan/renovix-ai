@@ -18,6 +18,7 @@ import {
   createUser,
 } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-134: each condition of the agent lookups of a run (the run's agent, the
 // sub-agent of a delegation, the agent of the run history routes) decides a
@@ -89,15 +90,12 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
     await resetDatabase(prisma);
     fake.requests.length = 0;
     toolsOffered.length = 0;
-    await prisma.aiModel.create({
-      data: {
-        slug: "test-model",
-        modelName: "test-model",
-        providerId: "vendor/test-model",
-        inputPrice: 0.000001,
-        outputPrice: 0.000001,
-        maxTokens: 8192,
-      },
+    await createResolvableModel(prisma, {
+      slug: "test-model",
+      modelName: "test-model",
+      inputPrice: 0.000001,
+      outputPrice: 0.000001,
+      maxTokens: 8192,
     });
     await moduleRef.get(ModelRegistryService).refresh();
   });

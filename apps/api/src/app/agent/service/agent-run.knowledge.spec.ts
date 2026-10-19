@@ -15,6 +15,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
+import { testConnection } from "../../../../test/provider-model";
 import {
   createAgent,
   createPlan,
@@ -62,7 +63,8 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
           {
             provide: ModelRegistryService,
             useValue: {
-              resolveModel: async () => ({ providerId: "vendor/test-model", provider: "openrouter" }),
+              resolveModel: async () => ({ slug: "test-model" }),
+              resolveConnection: async () => testConnection(),
               getUserPrice: async () => null,
               // RX-21: the usage log reads the model's tier and the tier's credit rates.
               getModel: async () => ({ tier: "standard" }),

@@ -28,6 +28,7 @@ import {
   startStubHttpServer,
   StubHttpServer,
 } from "../../../../test/llm-stub";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-169: POST /channels/:id/agents/:agentId/chat answers the client over SSE,
 // but calls the provider without streaming (ProviderRouter.chat). A provider
@@ -113,15 +114,13 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     blocker = blockOutbound();
     primary.requests.length = 0;
     await resetDatabase(prisma);
-    await prisma.aiModel.create({
-      data: {
-        slug: "test-model",
-        modelName: "test-model",
-        providerId: "vendor/test-model",
-        inputPrice: 0.000001,
-        outputPrice: 0.000001,
-        maxTokens: 8192,
-      },
+    await createResolvableModel(prisma, {
+      slug: "test-model",
+      modelName: "test-model",
+      inputPrice: 0.000001,
+      outputPrice: 0.000001,
+      maxTokens: 8192,
+      provider: { baseUrl: primary.baseUrl, apiKey: PRIMARY_KEY },
     });
     await moduleRef.get(ModelRegistryService).refresh();
   });

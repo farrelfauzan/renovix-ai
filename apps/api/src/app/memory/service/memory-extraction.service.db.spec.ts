@@ -12,6 +12,7 @@ import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 describe("RX-5: memory extraction through ProviderRouter (test database)", () => {
   const fake = new FakeProviderAdapter();
@@ -36,16 +37,13 @@ describe("RX-5: memory extraction through ProviderRouter (test database)", () =>
   afterAll(() => moduleRef?.close());
 
   const model = (slug: string, tier: string, price: number) =>
-    prisma.aiModel.create({
-      data: {
-        slug,
-        modelName: slug,
-        providerId: `vendor/${slug}`,
-        inputPrice: price,
-        outputPrice: price,
-        maxTokens: 8000,
-        tier,
-      },
+    createResolvableModel(prisma, {
+      slug,
+      modelName: slug,
+      inputPrice: price,
+      outputPrice: price,
+      maxTokens: 8000,
+      tier,
     });
 
   /** A topped-up user with a conversation of two user messages. */
@@ -85,7 +83,7 @@ describe("RX-5: memory extraction through ProviderRouter (test database)", () =>
     await service.extract(userId, conversationId);
 
     expect(fake.requests).toHaveLength(1);
-    expect(fake.requests[0].providerId).toBe("vendor/standard-cheap");
+    expect(fake.requests[0].connection.slug).toBe("standard-cheap");
     expect(fake.requests[0].model).toBe("standard-cheap");
     const rows = await memories(userId);
     expect(rows.map((r) => r.content).sort()).toEqual([

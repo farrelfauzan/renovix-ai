@@ -8,6 +8,7 @@ import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { ProviderRouter } from "../../providers/provider-router";
+import { ModelRegistryService } from "../../config/model-registry.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -39,7 +40,7 @@ describe("Channels: ownership (RX-15, Fastify, test database)", () => {
         { provide: S3Service, useValue: {} },
         { provide: DocumentService, useValue: {} },
         { provide: AgentToolService, useValue: {} },
-        { provide: ProviderRouter, useValue: {} },
+        { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} },
       ],
     }));
     app = await createFastifyApp(moduleRef);

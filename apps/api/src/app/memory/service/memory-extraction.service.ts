@@ -158,9 +158,10 @@ export class MemoryExtractionService {
       return [];
     }
 
-    const response = await this.providerRouter.chat("openrouter", {
+    const connection = await this.modelRegistry.resolveConnection(model.slug);
+    const response = await this.providerRouter.chat({
       model: model.slug,
-      providerId: model.providerId,
+      connection,
       messages: [
         { role: "system", content: EXTRACTION_PROMPT },
         {

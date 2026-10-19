@@ -11,6 +11,7 @@ import { extractProviderError } from "../utils/extract-provider-error";
 import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { MODEL_UNAVAILABLE_MESSAGE } from "../../config/errors/model-unavailable.exception";
 import { ProvidersModule } from "../../providers/providers.module";
 import { ProviderRouter } from "../../providers/provider-router";
 import { OpenRouterAdapter } from "../../providers/openrouter.adapter";
@@ -36,6 +37,7 @@ import {
   startStubHttpServer,
   StubHttpServer,
 } from "../../../../test/llm-stub";
+import { createResolvableModel, testConnection } from "../../../../test/provider-model";
 
 // RX-169: a provider that answers a streamed portal chat with an error status
 // must give the client an SSE error event and leave the process running. The
@@ -93,15 +95,13 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
     primary.requests.length = 0;
     fallback.requests.length = 0;
     await resetDatabase(prisma);
-    await prisma.aiModel.create({
-      data: {
-        slug: "standard-cheap",
-        modelName: "standard-cheap",
-        providerId: "vendor/standard-cheap",
-        inputPrice: 0.000001,
-        outputPrice: 0.000001,
-        maxTokens: 8192,
-      },
+    await createResolvableModel(prisma, {
+      slug: "standard-cheap",
+      modelName: "standard-cheap",
+      inputPrice: 0.000001,
+      outputPrice: 0.000001,
+      maxTokens: 8192,
+      provider: { baseUrl: primary.baseUrl, apiKey: PRIMARY_KEY },
     });
     // RX-21: charging reads the tier rate table (credits per 1,000,000 tokens); resetDatabase
     // wipes it, so seed the standard 1/1/1 rate with the model row.
@@ -183,15 +183,16 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
     await expectHealthy();
   });
 
-  it("AC2: primary and fallback both answer 503 → SSE error event naming 503, health answers", async () => {
-    primary.respond((_r, res) => sendJson(res, 503, { error: { message: "primary down" } }));
-    fallback.respond((_r, res) => sendJson(res, 503, { error: { message: "fallback down" } }));
+  // RX-178 (D199-4): the env fallback (LLM_FALLBACK_*, still set by pointLlmAtStubs here) is never tried any more.
+  it.each([502, 503])("AC2: the provider answers %i → SSE error event naming it, the env fallback receives 0, health answers", async (status) => {
+    primary.respond((_r, res) => sendJson(res, status, { error: { message: "provider down" } }));
+    fallback.respond((_r, res) => sendSse(res, ['{"choices":[{"delta":{"content":"from fallback"}}]}']));
 
     const res = await freeChat();
 
-    expect(sseErrorMessage(res.body)).toMatch(/503/);
+    expect(sseErrorMessage(res.body)).toMatch(new RegExp(String(status)));
     expect(primary.requests).toHaveLength(1);
-    expect(fallback.requests).toHaveLength(1);
+    expect(fallback.requests).toHaveLength(0);
     await expectHealthy();
   });
 
@@ -256,7 +257,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       expect(res.body).not.toContain("data: [DONE]");
       expect(conversation.saveMessages).not.toHaveBeenCalled();
       await expectProviderErrorReleased();
-      expect(lines.some((l) => /vendor\/standard-cheap returned an empty answer: max_tokens \(\d+\)/.test(l))).toBe(true);
+      expect(lines.some((l) => /Model standard-cheap returned an empty answer: max_tokens \(\d+\)/.test(l))).toBe(true);
       await expectHealthy();
     });
   });
@@ -292,6 +293,25 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       expect(primary.requests).toHaveLength(1);
       await expectHealthy();
     }, 10000);
+  });
+
+  describe("RX-178: the paid stream resolves the model to its provider record before anything is reserved", () => {
+    it.each([
+      ["an inactive provider", { status: "inactive" as const }],
+      ["a soft-deleted provider", { deletedAt: new Date() }],
+    ])("%s → 400 with the fixed text before the stream opens; no reservation, no provider call", async (_name, change) => {
+      await prisma.provider.updateMany({ data: change });
+      await moduleRef.get(ModelRegistryService).refresh();
+
+      const res = await paidChat();
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().message).toBe(MODEL_UNAVAILABLE_MESSAGE);
+      expect(primary.requests).toHaveLength(0);
+      expect(fallback.requests).toHaveLength(0);
+      expect(await prisma.creditReservation.count()).toBe(0);
+      await assertCreditLedgerInvariants(prisma);
+    });
   });
 
   describe("RX-22: the paid stream on the credit ledger", () => {
@@ -520,7 +540,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       });
       jest
         .spyOn(moduleRef.get(ProviderRouter), "chatStream")
-        .mockImplementation((_provider, params) => stream(params.signal!));
+        .mockImplementation((params) => stream(params.signal!));
       const user = await createUser(prisma);
       await fundPaidWallet(prisma, user.id, 5);
       const token = moduleRef.get(JwtService).sign({ userId: user.id, email: user.email });
@@ -622,7 +642,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       primary.respond((_r, res) => sendJson(res, 429, { error: { message: "RX169 slow down" } }));
       const adapter = moduleRef.get(OpenRouterAdapter);
       const thrown = await (async () => {
-        for await (const _payload of adapter.chatStream({ model: "m", providerId: "vendor/m", messages: [] })) {
+        for await (const _payload of adapter.chatStream({ model: "m", connection: testConnection({ baseUrl: primary.baseUrl }), messages: [] })) {
           // no payload is expected
         }
       })().catch((err) => err);

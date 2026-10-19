@@ -13,6 +13,7 @@ import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-112: in a channel chat, a sub-agent row of another user under the parent
 // agent (written straight to the database) is never listed, offered or
@@ -79,15 +80,12 @@ describe("RX-112: channel chat only uses the parent owner's sub-agents (test dat
   beforeEach(async () => {
     await resetDatabase(prisma);
     fake.requests.length = 0;
-    await prisma.aiModel.create({
-      data: {
-        slug: "test-model",
-        modelName: "test-model",
-        providerId: "vendor/test-model",
-        inputPrice: 0.000001,
-        outputPrice: 0.000001,
-        maxTokens: 8192,
-      },
+    await createResolvableModel(prisma, {
+      slug: "test-model",
+      modelName: "test-model",
+      inputPrice: 0.000001,
+      outputPrice: 0.000001,
+      maxTokens: 8192,
     });
     await moduleRef.get(ModelRegistryService).refresh();
   });

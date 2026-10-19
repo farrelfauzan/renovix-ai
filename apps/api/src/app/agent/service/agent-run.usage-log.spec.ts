@@ -1,5 +1,6 @@
 import { Decimal } from "@prisma/client/runtime/client";
 import { AgentRunService } from "./agent-run.service";
+import { testConnection } from "../../../../test/provider-model";
 
 // RX-21 review B2: the streamed agent run logs its usage cost per 1,000,000 tokens
 // at the tier rate. Test doubles only, no database; these collaborators load
@@ -46,8 +47,7 @@ describe("RX-21: AgentRunService.streamExecution usage log", () => {
       userId: "user-1",
       systemPrompt: "",
       model: "test-model",
-      providerId: "vendor/test-model",
-      provider: "openrouter",
+      connection: testConnection(),
       temperature: 0.7,
       tools: [],
       knowledgeBaseIds: [],

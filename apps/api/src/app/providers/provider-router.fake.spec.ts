@@ -5,9 +5,10 @@ import { ProviderRouter } from "./provider-router";
 import { FAKE_REPLY } from "./fake.adapter";
 import { EmbeddingService } from "../knowledge/service/embedding.service";
 import { FakeProviderAdapter, withFakeProvider } from "../../../test/fake-provider";
+import { testConnection } from "../../../test/provider-model";
 
 describe("RX-8: fake provider through ProviderRouter", () => {
-  const request = { model: "test-model", providerId: "vendor/test-model", messages: [] };
+  const request = { model: "test-model", connection: testConnection(), messages: [] };
   const turn = {
     content: "Let me check. ",
     toolCalls: [{ id: "call_1", name: "calculator", arguments: { expression: "2+2" } }],
@@ -28,7 +29,7 @@ describe("RX-8: fake provider through ProviderRouter", () => {
   it("chat returns the scripted text, tool call and usage", async () => {
     fake.enqueue(turn);
 
-    const res = await router.chat("openrouter", request);
+    const res = await router.chat(request);
 
     expect(res.choices[0]).toMatchObject({
       finish_reason: "tool_calls",
@@ -56,7 +57,7 @@ describe("RX-8: fake provider through ProviderRouter", () => {
     let content = "";
     let usage: unknown;
     const toolCalls: { id: string; name: string; arguments: string }[] = [];
-    for await (const raw of router.chatStream("openrouter", request)) {
+    for await (const raw of router.chatStream(request)) {
       const parsed = JSON.parse(raw);
       const delta = parsed.choices?.[0]?.delta;
       if (delta?.content) content += delta.content;
@@ -78,9 +79,9 @@ describe("RX-8: fake provider through ProviderRouter", () => {
     const cachedTurn = { content: "Hi", usage: { prompt_tokens: 100, completion_tokens: 5, cached_tokens: 60 } };
     fake.enqueue(cachedTurn, cachedTurn);
 
-    const res = await router.chat("openrouter", request);
+    const res = await router.chat(request);
     const payloads: string[] = [];
-    for await (const raw of router.chatStream("openrouter", request)) payloads.push(raw);
+    for await (const raw of router.chatStream(request)) payloads.push(raw);
 
     expect(res.usage).toEqual({ prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, cachedTokens: 60 });
     expect(JSON.parse(payloads[payloads.length - 1]).usage).toEqual({
@@ -96,17 +97,17 @@ describe("RX-8: fake provider through ProviderRouter", () => {
     fake.enqueue(errorTurn, errorTurn);
 
     const payloads: string[] = [];
-    for await (const raw of router.chatStream("openrouter", request)) payloads.push(raw);
+    for await (const raw of router.chatStream(request)) payloads.push(raw);
 
     const last = JSON.parse(payloads[payloads.length - 1]);
     expect(last).toMatchObject({ error: { code: 502, message: "provider disconnected" }, choices: [{ finish_reason: "error" }] });
     expect(payloads.some((p) => JSON.parse(p).usage)).toBe(false);
-    await expect(router.chat("openrouter", request)).rejects.toMatchObject({ status: 502 });
+    await expect(router.chat(request)).rejects.toMatchObject({ status: 502 });
   });
 
   it("RX-22: resolveMaxTokens is the caller's max_tokens, else the default 4096", () => {
-    expect(router.resolveMaxTokens("openrouter", { providerId: "vendor/test-model", max_tokens: 123 })).toBe(123);
-    expect(router.resolveMaxTokens("openrouter", { providerId: "vendor/test-model" })).toBe(4096);
+    expect(router.resolveMaxTokens({ connection: testConnection(), max_tokens: 123 })).toBe(123);
+    expect(router.resolveMaxTokens({ connection: testConnection() })).toBe(4096);
   });
 
   it("fails loudly when the script runs out", async () => {
@@ -137,11 +138,11 @@ describe("RX-161 AC-g: LLM_PROVIDER=fake makes no outbound fetch", () => {
       providers: [EmbeddingService],
     }).compile();
     const router = moduleRef.get(ProviderRouter);
-    const request = { model: "test-model", providerId: "vendor/test-model", messages: [] };
+    const request = { model: "test-model", connection: testConnection(), messages: [] };
 
-    const chat = await router.chat("openrouter", request);
+    const chat = await router.chat(request);
     const payloads: string[] = [];
-    for await (const p of router.chatStream("openrouter", request)) payloads.push(p);
+    for await (const p of router.chatStream(request)) payloads.push(p);
     const [embedding] = await moduleRef.get(EmbeddingService).embed(["a"]);
 
     expect(chat.choices[0].message.content).toBe(FAKE_REPLY);

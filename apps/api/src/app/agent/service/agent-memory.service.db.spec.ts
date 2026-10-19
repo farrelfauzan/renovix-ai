@@ -6,6 +6,7 @@ import { AgentMemoryService } from "./agent-memory.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
+import { testConnection } from "../../../../test/provider-model";
 
 // RX-141: the conditions of every query of AgentMemoryService (the memory read into an agent's prompt, the
 // extraction after a chat turn and the explicit "remember this" tool), written against the code before the
@@ -18,7 +19,10 @@ describe("RX-141: agent memory queries (test database)", () => {
   let service: AgentMemoryService;
   let reply = "[]";
   const router = { chat: jest.fn(async () => ({ choices: [{ message: { content: reply } }] })) };
-  const registry = { getCheapestModel: jest.fn(async () => ({ provider: "openrouter", slug: "cheap", providerId: "vendor/cheap" })) };
+  const registry = {
+    getCheapestModel: jest.fn(async () => ({ slug: "cheap" })),
+    resolveConnection: jest.fn(async (slug: string) => testConnection({ slug })),
+  };
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({

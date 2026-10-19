@@ -10,7 +10,7 @@ import {
 import { LlmEndpoint } from "./types/llm-endpoint";
 import { ProviderHttpError } from "./errors/provider-http-error";
 import { isOpenRouterUrl } from "./utils/is-open-router-url";
-import { parseModelIdMap } from "./utils/parse-model-id-map";
+import { normalizeModelId } from "./utils/normalize-model-id";
 import { parseRetryAfterMs } from "./utils/parse-retry-after-ms";
 import { describeTestFailure } from "./utils/describe-test-failure";
 import { ProviderTestResult } from "./types/provider-test-result";
@@ -20,8 +20,8 @@ import { readPositiveInteger } from "../../common/utils/read-positive-integer";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MAX_TOKENS = 4096;
-/** Statuses after which a request goes once to LLM_FALLBACK_BASE_URL (RX-160). */
-const FALLBACK_STATUSES = [502, 503];
+/** Outage statuses whose Retry-After the adapter honours once (RX-161). No other endpoint is tried (RX-178, D199-4). */
+const OUTAGE_STATUSES = [502, 503];
 const CHAT_TIMEOUT_MS = 300000;
 /** Time allowed until the stream's response headers arrive; the body itself is not cut off. */
 const STREAM_CONNECT_TIMEOUT_MS = 120000;
@@ -35,11 +35,8 @@ const TEST_MAX_TOKENS = 16;
 /** A 502/503 that names a Retry-After (RX-161): no back-off loop against the same provider. */
 const isRetryAfterOutage = (err: unknown): err is ProviderHttpError & { retryAfterMs: number } =>
   err instanceof ProviderHttpError &&
-  FALLBACK_STATUSES.includes(err.status) &&
+  OUTAGE_STATUSES.includes(err.status) &&
   err.retryAfterMs !== undefined;
-
-/** D156 (RX-161 AC-c, option B'): any 502 counts as an outage, with or without Retry-After. */
-const isBadGateway = (err: unknown): boolean => err instanceof ProviderHttpError && err.status === 502;
 
 /** The first choice of an SSE payload; undefined when the payload is not JSON. */
 const readFirstChoice = (payload: string): any => {
@@ -68,12 +65,11 @@ export class OpenRouterAdapter implements ProviderAdapter {
   private readonly logger = new Logger(OpenRouterAdapter.name);
   private readonly appTitle: string;
   private readonly appUrl: string;
-  private readonly primary: LlmEndpoint;
-  private readonly fallback?: LlmEndpoint;
+  /** GET /models for the price refresh only (RX-21); chat calls go to the request's connection (RX-178). */
+  private readonly modelListEndpoint: LlmEndpoint;
   private readonly defaultMaxTokens: number;
-  private readonly modelIdMap: ReadonlyMap<string, string>;
 
-  // Models that support reasoning_effort parameter
+  // Models that support reasoning_effort parameter (matched in the dashed form, normalizeModelId)
   private readonly modelsWithReasoningSupport = [
     "deepseek/deepseek-v4-pro",
     "qwen/qwen3.7-max",
@@ -86,28 +82,18 @@ export class OpenRouterAdapter implements ProviderAdapter {
   ];
 
   constructor(private readonly configService: ConfigService) {
-    // RX-160: LLM_API_KEY falls back to OPENROUTER_API_KEY; with neither, getOrThrow fails as before.
-    this.primary = {
-      label: "primary",
+    // RX-160: LLM_API_KEY falls back to OPENROUTER_API_KEY; with neither, getOrThrow fails as before (D200: kept).
+    this.modelListEndpoint = {
       baseUrl: this.configService.get<string>("LLM_BASE_URL") || OPENROUTER_BASE_URL,
       apiKey:
         this.configService.get<string>("LLM_API_KEY") ||
         this.configService.getOrThrow<string>("OPENROUTER_API_KEY"),
     };
-    const fallbackBaseUrl = this.configService.get<string>("LLM_FALLBACK_BASE_URL");
-    this.fallback = fallbackBaseUrl
-      ? {
-          label: "fallback",
-          baseUrl: fallbackBaseUrl,
-          apiKey: this.configService.getOrThrow<string>("LLM_FALLBACK_API_KEY"),
-        }
-      : undefined;
     this.defaultMaxTokens = readPositiveInteger({
       name: "LLM_DEFAULT_MAX_TOKENS",
       value: this.configService.get<string>("LLM_DEFAULT_MAX_TOKENS"),
       fallback: DEFAULT_MAX_TOKENS,
     });
-    this.modelIdMap = parseModelIdMap(this.configService.get<string>("LLM_MODEL_ID_MAP"));
     this.appTitle =
       this.configService.get<string>("OPENROUTER_APP_TITLE") || "Renovix AI";
     this.appUrl =
@@ -115,21 +101,18 @@ export class OpenRouterAdapter implements ProviderAdapter {
       "https://chat.renovix.id";
   }
 
+  /** RX-178: compared in the dashed form, so "x/model-5-5" and "model-5.5" are the same model. */
   private supportsReasoning(modelId: string): boolean {
+    const id = normalizeModelId(modelId);
     return this.modelsWithReasoningSupport.some((model) =>
-      modelId.includes(model.split("/")[1] || model),
+      id.includes(normalizeModelId(model.split("/")[1] || model)),
     );
   }
 
-  /** The id the provider expects (LLM_MODEL_ID_MAP); only the outgoing body uses it. */
-  private toProviderModelId(providerId: string): string {
-    return this.modelIdMap.get(providerId) ?? providerId;
-  }
-
   /** The caller's max_tokens (or the default), raised to the floor for reasoning models (RX-161). */
-  resolveMaxTokens(params: Pick<ChatRequest, "providerId" | "max_tokens">): number {
+  resolveMaxTokens(params: Pick<ChatRequest, "connection" | "max_tokens">): number {
     const maxTokens = params.max_tokens ?? this.defaultMaxTokens;
-    if (!this.supportsReasoning(params.providerId)) return maxTokens;
+    if (!this.supportsReasoning(params.connection.slug)) return maxTokens;
     return Math.max(maxTokens, REASONING_MIN_MAX_TOKENS);
   }
 
@@ -145,36 +128,21 @@ export class OpenRouterAdapter implements ProviderAdapter {
   }
 
   /**
-   * After the primary answered 502 or 503 (chat: once its retries are used up), the request
-   * goes once to the fallback, if one is configured. Any other error is rethrown as is.
-   */
-  private sendToFallback<T>(
-    err: unknown,
-    send: (endpoint: LlmEndpoint) => Promise<T>,
-  ): Promise<T> {
-    const status = err instanceof ProviderHttpError ? err.status : undefined;
-    if (!this.fallback || !status || !FALLBACK_STATUSES.includes(status)) throw err;
-    this.logger.warn(
-      `[LLM] primary (${new URL(this.primary.baseUrl).host}) answered ${status}; sending the request once to the fallback (${new URL(this.fallback.baseUrl).host})`,
-    );
-    return send(this.fallback);
-  }
-
-  /**
-   * RX-161: a 502/503 with Retry-After goes straight on to the fallback when one is
-   * configured (rethrown here); without one, the primary is retried once after the stated wait.
+   * RX-161: a 502/503 with Retry-After is retried once against the same connection after the stated
+   * wait; there is no other endpoint (RX-178, D199-4: the env fallback is gone, RX-179 rebuilds it).
    * RX-183: when `signal` fires during the wait, the timer is cleared, the wait rejects with the
-   * signal's reason (as an aborted fetch does) and the primary is not called again; chat passes no
+   * signal's reason (as an aborted fetch does) and the provider is not called again; chat passes no
    * signal and waits the full time exactly as before.
    */
   private async retryOnceAfter<T>(
     err: unknown,
+    connection: LlmEndpoint,
     send: (endpoint: LlmEndpoint) => Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
-    if (!isRetryAfterOutage(err) || this.fallback) throw err;
+    if (!isRetryAfterOutage(err)) throw err;
     this.logger.warn(
-      `[LLM] primary (${new URL(this.primary.baseUrl).host}) answered ${err.status} with Retry-After; retrying once in ${err.retryAfterMs}ms`,
+      `[LLM] provider (${new URL(connection.baseUrl).host}) answered ${err.status} with Retry-After; retrying once in ${err.retryAfterMs}ms`,
     );
     await new Promise<void>((resolve, reject) => {
       const onAbort = (): void => {
@@ -188,7 +156,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
       if (signal?.aborted) return onAbort();
       signal?.addEventListener("abort", onAbort, { once: true });
     });
-    return send(this.primary);
+    return send(connection);
   }
 
   /** POST /chat/completions with Node's fetch; a non-2xx answer becomes a ProviderHttpError. */
@@ -218,13 +186,13 @@ export class OpenRouterAdapter implements ProviderAdapter {
   }
 
   /**
-   * Lists the provider's models with their current prices (RX-21): GET /models on the primary
-   * endpoint, the OpenAI-compatible shape the adapter already speaks
+   * Lists the provider's models with their current prices (RX-21): GET /models on the env endpoint
+   * (LLM_BASE_URL, LLM_API_KEY or OPENROUTER_API_KEY; RX-178 leaves it there), the OpenAI-compatible shape the adapter already speaks
    * ({ data: [{ id, pricing: { prompt, completion, input_cache_read? } }] }).
    */
   async listModels(): Promise<ProviderModelPrice[]> {
-    const response = await fetch(`${this.primary.baseUrl}/models`, {
-      headers: this.buildHeaders(this.primary),
+    const response = await fetch(`${this.modelListEndpoint.baseUrl}/models`, {
+      headers: this.buildHeaders(this.modelListEndpoint),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });
     if (!response.ok) {
@@ -251,14 +219,15 @@ export class OpenRouterAdapter implements ProviderAdapter {
   }
 
   async chat(params: ChatRequest): Promise<ChatResponse> {
+    const { connection } = params;
     const body: Record<string, unknown> = {
-      model: this.toProviderModelId(params.providerId),
+      model: connection.slug,
       messages: params.messages,
       temperature: params.temperature ?? 0.7,
       max_tokens: this.resolveMaxTokens(params),
     };
 
-    if (this.supportsReasoning(params.providerId) && params.reasoning_effort) {
+    if (this.supportsReasoning(connection.slug) && params.reasoning_effort) {
       body.reasoning_effort = params.reasoning_effort;
     }
 
@@ -272,9 +241,9 @@ export class OpenRouterAdapter implements ProviderAdapter {
     }
 
     const send = (endpoint: LlmEndpoint) => this.postChat(endpoint, body);
-    const data = await this.postChatWithRetries(body)
-      .catch((err) => this.retryOnceAfter(err, send))
-      .catch((err) => this.sendToFallback(err, send));
+    const data = await this.postChatWithRetries(connection, body).catch((err) =>
+      this.retryOnceAfter(err, connection, send),
+    );
 
     if (params.max_tokens && params.max_tokens <= 50) {
       this.logger.log(
@@ -284,10 +253,10 @@ export class OpenRouterAdapter implements ProviderAdapter {
 
     const first = data.choices?.[0];
     if (!first?.message?.content && !first?.message?.tool_calls && first?.finish_reason === "length") {
-      throw emptyAnswerError(params.providerId, body.max_tokens);
+      throw emptyAnswerError(connection.slug, body.max_tokens);
     }
     const usage = readUsage(data.usage);
-    if (!usage) throw new Error(`Model ${params.providerId} returned no usage`);
+    if (!usage) throw new Error(`Model ${connection.slug} returned no usage`);
 
     return {
       id: data.id,
@@ -306,21 +275,20 @@ export class OpenRouterAdapter implements ProviderAdapter {
   }
 
   /**
-   * Today's retries (6 attempts on timeout, 500, 502, 503, 429), against the primary.
-   * A 502/503 with Retry-After leaves the loop at once (RX-161, see retryOnceAfter), and so
-   * does any 502 when a fallback is configured (D156); without one, a 502 lacking Retry-After
-   * keeps this back-off.
+   * Today's retries (6 attempts on timeout, 500, 502, 503, 429), against the request's connection.
+   * A 502/503 with Retry-After leaves the loop at once (RX-161, see retryOnceAfter); a 502 or 503
+   * without one keeps this back-off (RX-178: no fallback to leave for).
    */
-  private async postChatWithRetries(body: Record<string, unknown>): Promise<any> {
+  private async postChatWithRetries(connection: LlmEndpoint, body: Record<string, unknown>): Promise<any> {
     const maxRetries = 6;
     let lastError: any;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        return await this.postChat(this.primary, body);
+        return await this.postChat(connection, body);
       } catch (err: any) {
         lastError = err;
-        if (isRetryAfterOutage(err) || (this.fallback && isBadGateway(err))) throw err;
+        if (isRetryAfterOutage(err)) throw err;
         const status = err instanceof ProviderHttpError ? err.status : undefined;
         const isTimeout = err?.name === "TimeoutError";
 
@@ -346,15 +314,18 @@ export class OpenRouterAdapter implements ProviderAdapter {
   async *chatStream(
     params: ChatRequest,
   ): AsyncGenerator<string, void, unknown> {
+    const { connection } = params;
     const body: Record<string, unknown> = {
-      model: this.toProviderModelId(params.providerId),
+      model: connection.slug,
       messages: params.messages,
       temperature: params.temperature ?? 0.7,
       max_tokens: this.resolveMaxTokens(params),
       stream: true,
+      // RX-178 (D205 b): any OpenAI-compatible provider then ends the stream with the usage chunk billing reads.
+      stream_options: { include_usage: true },
     };
 
-    if (this.supportsReasoning(params.providerId) && params.reasoning_effort) {
+    if (this.supportsReasoning(connection.slug) && params.reasoning_effort) {
       body.reasoning_effort = params.reasoning_effort;
     }
 
@@ -368,17 +339,17 @@ export class OpenRouterAdapter implements ProviderAdapter {
     }
 
     this.logger.log(
-      `[OpenRouter chatStream] model=${params.providerId} tool_choice=${JSON.stringify(body.tool_choice)} tools=${(params.tools || []).length}`,
+      `[OpenRouter chatStream] model=${connection.slug} tool_choice=${JSON.stringify(body.tool_choice)} tools=${(params.tools || []).length}`,
     );
 
     // RX-161: the upstream request is aborted when the caller's signal fires (client gone).
     // RX-183: a consumer that stops iterating closes the upstream by leaving the for await.
     const { signal } = params;
     const send = (endpoint: LlmEndpoint) => this.openStream(endpoint, body, signal);
-    // No retries on a stream (today's behaviour); a 502/503 goes once to the fallback.
-    const response = await this.openStream(this.primary, body, signal)
-      .catch((err) => this.retryOnceAfter(err, send, signal))
-      .catch((err) => this.sendToFallback(err, send));
+    // No retries on a stream (today's behaviour) beyond one Retry-After wait; no fallback (RX-178).
+    const response = await this.openStream(connection, body, signal).catch((err) =>
+      this.retryOnceAfter(err, connection, send, signal),
+    );
 
     const decoder = new TextDecoder();
     let buffer = "";
@@ -433,7 +404,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
     }
 
     if (!hasAnswer && finishReason === "length") {
-      throw emptyAnswerError(params.providerId, body.max_tokens);
+      throw emptyAnswerError(connection.slug, body.max_tokens);
     }
     yield* held;
     this.logger.log(
@@ -459,7 +430,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
     } catch (err: any) {
       // RX-169: callers get the status and the body text (ProviderHttpError), never a stream.
       this.logger.error(
-        `OpenRouter stream error (${endpoint.label}, ${err.status}): ${err.bodyText ?? err.message}`,
+        `OpenRouter stream error (${new URL(endpoint.baseUrl).host}, ${err.status}): ${err.bodyText ?? err.message}`,
       );
       throw err;
     } finally {
@@ -469,14 +440,13 @@ export class OpenRouterAdapter implements ProviderAdapter {
 
   /**
    * RX-177: one minimal chat request to a provider record's base URL with its key: a single attempt,
-   * TEST_TIMEOUT_MS, no retries, no fallback endpoint, no LLM_MODEL_ID_MAP (the slug is the provider's
-   * id, D149). A 2xx answer with a `choices` list is a success; anything else resolves with a readable
+   * TEST_TIMEOUT_MS, no retries (the slug is the provider's id, D149). A 2xx answer with a `choices` list is a success; anything else resolves with a readable
    * reason in which the key never appears. Never rejects.
    */
   async testConnection({ baseUrl, apiKey, slug }: ProviderTestTarget): Promise<ProviderTestResult> {
     const body = { model: slug, messages: [{ role: "user", content: "ping" }], max_tokens: TEST_MAX_TOKENS };
     try {
-      const response = await this.post({ label: "primary", baseUrl, apiKey }, body, AbortSignal.timeout(TEST_TIMEOUT_MS));
+      const response = await this.post({ baseUrl, apiKey }, body, AbortSignal.timeout(TEST_TIMEOUT_MS));
       // A non-JSON answer must not reach the reason: the parse error quotes the body's first characters (D197).
       const answer = (await response.json().catch(() => undefined)) as { choices?: unknown } | undefined;
       if (answer === undefined) return { isSuccessful: false, reason: "The provider answered with something other than JSON" };
