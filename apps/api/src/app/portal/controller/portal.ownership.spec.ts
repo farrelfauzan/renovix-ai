@@ -6,7 +6,7 @@ import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProviderRouter } from "../../providers/provider-router";
-import { BillingService } from "../../billing/service/billing.service";
+import { CreditService } from "../../billing/service/credit.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { ConversationService } from "../../chat/service/conversation.service";
@@ -18,6 +18,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-15 characterization: conversation and knowledge ownership on the chat
 // portal routes (PortalGuard, JWT path) through the real PortalController,
@@ -25,7 +26,6 @@ import { createUser } from "../../../../test/factories";
 // calls a model; the collaborators they do not use are empty stubs, and their
 // modules are replaced because they load ESM-only packages.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-jest.mock("../../billing/service/billing.service", () => ({ BillingService: class {} }));
 jest.mock("../../usage/service/usage.service", () => ({ UsageService: class {} }));
 jest.mock("../../chat/service/prompt-tuning.service", () => ({ PromptTuningService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
@@ -49,7 +49,7 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
         { provide: PortalTierService, useValue: {} },
         { provide: ModelRegistryService, useValue: {} },
         { provide: ProviderRouter, useValue: {} },
-        { provide: BillingService, useValue: {} },
+        { provide: CreditService, useValue: {} },
         { provide: UsageService, useValue: {} },
         { provide: PromptTuningService, useValue: {} },
         { provide: GuardrailService, useValue: {} },
@@ -70,9 +70,16 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
     authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: "x@test.local" })}`,
   });
 
+  /** A user whose paid wallet holds 5 credits on the ledger (RX-22: the portal reads the ledger, not User.balance). */
+  const fundedUser = async (data: Parameters<typeof createUser>[1] = {}) => {
+    const user = await createUser(prisma, data);
+    await fundPaidWallet(prisma, user.id, 5);
+    return user;
+  };
+
   const setup = async () => {
-    const alice = await createUser(prisma, { balance: 5 });
-    const bob = await createUser(prisma, { balance: 5 });
+    const alice = await fundedUser();
+    const bob = await fundedUser();
     const conversation = await prisma.conversation.create({
       data: {
         userId: alice.id,
@@ -111,7 +118,7 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
     ],
     ["an expired Better Auth session cookie (getSession returns null)", () => ({ cookie: "better-auth.session_token=expired" })],
   ])("RX-138: %s with a portal session: portal conversation list is 400 (treated as anonymous)", async (_case, credential: (user: { id: string }) => Record<string, string>) => {
-    const user = await createUser(prisma, { balance: 5 });
+    const user = await fundedUser();
 
     const res = await app.inject({
       method: "GET",

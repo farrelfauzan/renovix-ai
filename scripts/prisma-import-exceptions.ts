@@ -21,7 +21,6 @@ export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   "apps/api/src/app/reminder/scheduler/reminder.scheduler.ts",
   "apps/api/src/app/reminder/service/reminder.service.ts",
   "apps/api/src/app/usage/service/usage.service.ts",
-  "apps/api/src/app/webhooks/controller/webhook.controller.ts",
   "apps/api/src/app/workspace/controller/workspace-channel.controller.ts",
   "apps/api/src/app/workspace/service/workspace-invite.service.ts",
   "apps/api/src/app/workspace/service/workspace-knowledge.service.ts",

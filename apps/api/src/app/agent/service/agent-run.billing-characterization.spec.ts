@@ -11,7 +11,7 @@ import { ChatService } from "../../chat/service/chat.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { ConversationService } from "../../chat/service/conversation.service";
 import { DocumentService } from "../../document/service/document.service";
-import { BillingService } from "../../billing/service/billing.service";
+import { CreditService } from "../../billing/service/credit.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -22,13 +22,15 @@ import {
   createUser,
 } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
+import { fundPaidWallet } from "../../../../test/credit-funding";
+import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import type { PrismaService } from "../../prisma/prisma.service";
 
 // RX-14: characterization tests for the agent quota path
 // (checkAndDeductQuota / deductTokenQuota via AgentRunService.chat) and the
-// chat-completion billing path (D106: the pending-amount-0 + rounded success
-// row vs the balance's own rounding). They pin TODAY's numbers so the billing
-// rewrite (RX-19/20/22) shows as a diff. These collaborators load ESM-only
+// chat-completion billing path (D106; since RX-22 on the credit ledger: one
+// usage entry per call, rounded once). The agent quota cases pin TODAY's
+// numbers (they change with RX-22b). These collaborators load ESM-only
 // packages and are stubbed (the pattern of agent-run.agent-lookups.spec.ts).
 jest.mock("./agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
@@ -53,7 +55,7 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
         providers: [
           AgentRunService,
           ChatService,
-          BillingService,
+          CreditService,
           ModelRegistryService,
           {
             provide: AgentToolService,
@@ -231,62 +233,70 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
     });
   });
 
-  describe("D106: the numbers one chat completion writes (ChatService.createCompletion, real BillingService, fake provider)", () => {
-    // RX-21 rewrote the charging path: credits = tokens x tier rate / 1,000,000 (docs/credits.md
-    // section 1.3), the tier rate seeded above as standard 1/1/1. The old D106 story (price x
-    // markup x creditMultiplier with three divergent roundings) is gone: the estimate is the
-    // estimated token count x 1 / 1,000,000, the actual is (input + output) x 1 / 1,000,000, and
-    // with an INTEGER rate the success row agrees with the balance to the micro-credit. With a
-    // decimal rate the D106 divergence is still there (last test below: open, RX-22).
-    // estimateTokens("Hi") = ceil(2/4) = 1 token -> 0.000001 credit; usage 2 + 115 = 117 tokens
-    // -> 0.000117 credits.
-    const userWith = async (balance: string) => createUser(prisma, { balance: new Decimal(balance) });
+  describe("D106: the numbers one chat completion writes (ChatService.createCompletion, real CreditService, fake provider)", () => {
+    // RX-22 (D190) rewrote these cases from Transaction rows and User.balance to the credit ledger. Before: a pending
+    // reservation row with the estimate, a success row with the actual cost, User.balance moved by two separately
+    // rounded UPDATEs (and, at a decimal rate, a 1 micro-credit D106 drift). Now: the user is funded with a plan_grant
+    // entry, the reservation is a hold on the account row (no entry), the call writes ONE usage entry whose amount is
+    // rounded once, up, to a micro-credit (docs/credits.md section 2.3), and the account balance moves by exactly
+    // that amount. No Transaction row is written and User.balance stays 0.
+    // Usage 2 + 115 = 117 tokens at the standard rate 1/1/1 -> 0.000117 credits.
+    const fundedUser = async (credits: string) => {
+      const user = await createUser(prisma);
+      await fundPaidWallet(prisma, user.id, credits);
+      return user;
+    };
 
-    const complete = (userId: string) =>
+    const complete = (userId: string, model = "test-model") =>
       chat.createCompletion(
         {
-          model: "test-model",
+          model,
           messages: [{ role: "user", content: "Hi" }],
           store: false,
         },
         { id: userId, email: "u@test.local", balance: new Decimal(0) },
       );
 
-    it("one completion: pending row with the ROUNDED estimate, success row with the actual cost, balance = 1 - round6(est) - round6(est - actual)", async () => {
-      const user = await userWith("1.0");
+    /** The user's ledger entries (type, amount, balanceAfter), the paid account (balance, held) and the reservations. */
+    const ledgerOf = async (userId: string) => {
+      const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: userId }, orderBy: { seq: "asc" } });
+      const account = await prisma.creditAccount.findUniqueOrThrow({ where: { userId_wallet: { userId, wallet: "paid" } } });
+      const reservations = await prisma.creditReservation.findMany({ where: { accountId: account.id } });
+      return {
+        entries: entries.map((e) => [e.type, e.amount.toFixed(6), e.balanceAfter.toFixed(6)]),
+        account: [account.balance.toFixed(6), account.held.toFixed(6)],
+        reservations: reservations.map((r) => [r.status, r.consumed.toFixed(6)]),
+      };
+    };
+
+    /** Nothing of the old path is written: no Transaction row, User.balance unchanged at 0. */
+    const expectOldPathUntouched = async (userId: string) => {
+      expect(await prisma.transaction.count({ where: { userId } })).toBe(0);
+      expect((await balanceOf(userId)).toFixed(6)).toBe("0.000000");
+    };
+
+    it("one completion: one usage entry with the actual cost, the account balance moves by exactly that, the hold is settled", async () => {
+      const user = await fundedUser("1.0");
       fake.enqueue({ content: "Hello world", usage: { prompt_tokens: 2, completion_tokens: 115 } });
 
       await complete(user.id);
 
-      const ledger = await prisma.transaction.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: "asc" },
+      expect(await ledgerOf(user.id)).toEqual({
+        entries: [
+          ["bonus", "1.000000", "1.000000"],
+          ["usage", "-0.000117", "0.999883"],
+        ],
+        account: ["0.999883", "0.000000"],
+        reservations: [["settled", "0.000117"]],
       });
-      expect(ledger).toHaveLength(2);
-
-      // estimatedCost = 1 token x rate 1 / 1,000,000 = 0.000001
-      expect(ledger[0].type).toBe("deduction");
-      expect(ledger[0].status).toBe("pending");
-      expect(ledger[0].amount.toFixed(6)).toBe("-0.000001");
-
-      // actualCost = (2 input + 115 output) x rate 1 / 1,000,000 = 0.000117
-      expect(ledger[1].type).toBe("deduction");
-      expect(ledger[1].status).toBe("success");
-      expect(ledger[1].amount.toFixed(6)).toBe("-0.000117");
-
-      // balance: 1.0 - 0.000001 (reserve) - 0.000116 (extra) = 0.999883 — and sum(ledger)
-      // (-0.000117) now equals the balance delta to the micro-credit: at this integer rate there is
-      // no 1-ulp D106 drift (a decimal rate still drifts, see the last test).
-      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999883");
+      await expectOldPathUntouched(user.id);
+      await assertCreditLedgerInvariants(prisma);
     });
 
-    it("the D106 scenario after RX-21: the same deepseek-v4-flash request charges by tokens and tier rate, and the ledger agrees with the balance", async () => {
-      // The same model row the D106 finding used (deepseek-v4-flash prices) — under RX-21 the
-      // provider prices no longer enter the charge at all: credits = tokens x tier rate / 1,000,000
-      // with the standard 1/1/1 rate seeded above. At this integer rate the 1-ulp divergence
-      // (pending 0, success -0.000046, balance -0.000045) does not occur: estimate 1 token ->
-      // 0.000001; actual 2 + 115 = 117 tokens -> 0.000117; the balance delta and the success row
-      // both say 0.000117. It is gone only for integer rates (decimal rate: the last test).
+    it("the D106 scenario after RX-22: the deepseek-v4-flash request charges by tokens and tier rate; entry and balance agree; nothing double-counted", async () => {
+      // The model row the D106 finding used (deepseek-v4-flash prices): provider prices do not enter the charge.
+      // Before RX-22 the never-settled pending row double-counted the reservation (sum -0.000118 vs delta 0.000117);
+      // a hold is not an entry, so the sum of entries now equals the balance.
       await prisma.aiModel.create({
         data: {
           slug: "d106-model",
@@ -298,74 +308,45 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
         },
       });
       await registry.refresh();
-
-      const user = await userWith("1.0");
+      const user = await fundedUser("1.0");
       fake.enqueue({ content: "Hello world", usage: { prompt_tokens: 2, completion_tokens: 115 } });
 
-      await chat.createCompletion(
-        {
-          model: "d106-model",
-          messages: [{ role: "user", content: "Hi" }],
-          store: false,
-        },
-        { id: user.id, email: "u@test.local", balance: new Decimal(0) },
-      );
+      await complete(user.id, "d106-model");
 
-      const ledger = await prisma.transaction.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: "asc" },
-      });
-      expect(ledger).toHaveLength(2);
-
-      // estimate: 1 token x 1 / 1,000,000 = 0.000001 (no longer rounds to 0)
-      expect(ledger[0].status).toBe("pending");
-      expect(ledger[0].amount.toFixed(6)).toBe("-0.000001");
-
-      // actual: 117 tokens x 1 / 1,000,000 = 0.000117
-      expect(ledger[1].status).toBe("success");
-      expect(ledger[1].amount.toFixed(6)).toBe("-0.000117");
-
-      // balance: 1.0 - 0.000001 - 0.000116 = 0.999883; delta = 0.000117. At an integer rate the
-      // D106 ROUNDING divergence is gone (every amount is an exact micro-credit multiple). What remains is
-      // the RX-14 finding #1 behaviour, still true by design: the pending row is never settled,
-      // so sum(ledger) (-0.000001 + -0.000117 = -0.000118) double-counts the reservation next to
-      // the success row. The BALANCE and the success row agree to the micro-credit (0.000117).
-      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999883");
-      const ledgerSum = ledger.reduce((sum, row) => sum.add(row.amount), new Decimal(0));
-      expect(ledgerSum.toFixed(6)).toBe("-0.000118");
-      expect(new Decimal("1.0").sub(await balanceOf(user.id)).toFixed(6)).toBe("0.000117");
+      const ledger = await ledgerOf(user.id);
+      expect(ledger.entries).toEqual([
+        ["bonus", "1.000000", "1.000000"],
+        ["usage", "-0.000117", "0.999883"],
+      ]);
+      expect(ledger.account).toEqual(["0.999883", "0.000000"]);
+      await expectOldPathUntouched(user.id);
+      await assertCreditLedgerInvariants(prisma);
     });
 
-    // OPEN: D106 / RX-22 (D115 item 3) target, NOT fixed. A decimal tier rate (TierRateSeedDto
-    // accepts one; docs/credits.md section 2.3) gives sub-micro-credit amounts, and
-    // reserveCredits / adjustBalance still round the balance UPDATEs and the ledger rows
-    // separately in numeric(12,6). Pinned today (measured on the test database): standard rate
-    // 0.5/0.5/0.5, estimate 1 token -> 0.0000005 (balance 1.0 - 0.0000005 rounds back to
-    // 1.000000, pending row -0.000001), actual 2 + 1 = 3 tokens -> 0.0000015 (balance - 0.000001
-    // -> 0.999999, success row -0.000002). The balance loses 0.000001 while the success row says
-    // -0.000002. When RX-22 rounds once per call, this test goes red and its numbers change.
-    // The 1/1/1 rate is re-seeded for every test by beforeEach (resetDatabase + refresh).
-    it("OPEN D106 (RX-22 target): with a decimal rate 0.5 the balance delta (0.000001) and the success row (-0.000002) differ by 1 micro-credit", async () => {
+    // Was "OPEN D106 (RX-22 target)": at the decimal rate 0.5 the old path wrote a success row of -0.000002 while the
+    // balance lost 0.000001. RX-22 rounds once per call, up, on the exact sum: (2 + 1) x 0.5 = 1.5 micro-credits ->
+    // 2 micro-credits; the entry and the balance agree.
+    it("D106 fixed (RX-22): with a decimal rate 0.5, 3 tokens cost 1.5 micro-credits, charged as 2 once; entry and balance agree", async () => {
       await prisma.tierRate.update({
         where: { tier: "standard" },
         data: { inputCreditsPerToken: 0.5, cachedCreditsPerToken: 0.5, outputCreditsPerToken: 0.5 },
       });
       await registry.refresh();
-      const user = await userWith("1.0");
+      const user = await fundedUser("1.0");
       fake.enqueue({ content: "Hello world", usage: { prompt_tokens: 2, completion_tokens: 1 } });
 
       await complete(user.id);
 
-      const ledger = await prisma.transaction.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: "asc" },
+      expect(await ledgerOf(user.id)).toEqual({
+        entries: [
+          ["bonus", "1.000000", "1.000000"],
+          ["usage", "-0.000002", "0.999998"],
+        ],
+        account: ["0.999998", "0.000000"],
+        reservations: [["settled", "0.000002"]],
       });
-      expect(ledger.map((row) => [row.status, row.amount.toFixed(6)])).toEqual([
-        ["pending", "-0.000001"],
-        ["success", "-0.000002"],
-      ]);
-      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.999999");
-      expect(new Decimal("1.0").sub(await balanceOf(user.id)).toFixed(6)).toBe("0.000001");
+      await expectOldPathUntouched(user.id);
+      await assertCreditLedgerInvariants(prisma);
     });
   });
 });

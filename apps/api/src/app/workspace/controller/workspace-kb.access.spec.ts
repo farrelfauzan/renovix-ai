@@ -20,7 +20,7 @@ import { PortalTierService } from "../../portal/service/portal-tier.service";
 import { ConversationService } from "../../chat/service/conversation.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ProviderRouter } from "../../providers/provider-router";
-import { BillingService } from "../../billing/service/billing.service";
+import { CreditService } from "../../billing/service/credit.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
@@ -36,6 +36,7 @@ import {
   createUser,
   createWorkspace,
 } from "../../../../test/factories";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-113 (D63): a workspace knowledge base belongs to the workspace and access
 // follows CURRENT membership. Only the owner adds a base; the personal routes
@@ -45,7 +46,6 @@ import {
 // test database; embeddings are a fixed unit vector (no provider call), S3 and
 // email are never reached.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-jest.mock("../../billing/service/billing.service", () => ({ BillingService: class {} }));
 jest.mock("../../usage/service/usage.service", () => ({ UsageService: class {} }));
 jest.mock("../../chat/service/prompt-tuning.service", () => ({ PromptTuningService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
@@ -92,7 +92,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
         { provide: ProviderRouter, useValue: {} },
         { provide: PortalTierService, useValue: {} },
         { provide: ModelRegistryService, useValue: {} },
-        { provide: BillingService, useValue: {} },
+        { provide: CreditService, useValue: {} },
         { provide: UsageService, useValue: {} },
         { provide: PromptTuningService, useValue: {} },
         { provide: GuardrailService, useValue: {} },
@@ -132,12 +132,19 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
 
   // An Enterprise owner's workspace (so only membership decides), with a base
   // created by a former admin whose member row has since been deleted.
+  /** A user whose paid wallet holds 5 credits on the ledger (RX-22: the portal reads the ledger, not User.balance). */
+  const fundedUser = async (data: Parameters<typeof createUser>[1] = {}) => {
+    const user = await createUser(prisma, data);
+    await fundPaidWallet(prisma, user.id, 5);
+    return user;
+  };
+
   const setup = async () => {
     const enterprise = await createPlan(prisma, { slug: "enterprise", maxWorkspaceUsers: 100 });
-    const owner = await createUser(prisma, { apiKey: `sk_live_${randomUUID()}`, balance: 5 });
-    const admin = await createUser(prisma, { apiKey: `sk_live_${randomUUID()}`, balance: 5 });
-    const member = await createUser(prisma, { apiKey: `sk_live_${randomUUID()}`, balance: 5 });
-    const former = await createUser(prisma, { apiKey: `sk_live_${randomUUID()}`, balance: 5 });
+    const owner = await fundedUser({ apiKey: `sk_live_${randomUUID()}` });
+    const admin = await fundedUser({ apiKey: `sk_live_${randomUUID()}` });
+    const member = await fundedUser({ apiKey: `sk_live_${randomUUID()}` });
+    const former = await fundedUser({ apiKey: `sk_live_${randomUUID()}` });
     await createSubscription(prisma, { userId: owner.id, planId: enterprise.id });
     const channel = await prisma.channel.create({ data: { userId: owner.id, name: "Team" } });
     const workspace = await createWorkspace(prisma, { ownerId: owner.id, channelId: channel.id });

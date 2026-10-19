@@ -44,7 +44,8 @@ describe("RX-8: fake provider through ProviderRouter", () => {
         ],
       },
     });
-    expect(res.usage).toEqual({ prompt_tokens: 12, completion_tokens: 7, total_tokens: 19 });
+    // RX-22: ChatUsage carries the cached input tokens (0 when none are reported), as the real adapter maps them.
+    expect(res.usage).toEqual({ prompt_tokens: 12, completion_tokens: 7, total_tokens: 19, cachedTokens: 0 });
     expect(fake.requests).toEqual([request]);
   });
 
@@ -71,6 +72,41 @@ describe("RX-8: fake provider through ProviderRouter", () => {
       { id: "call_1", name: "calculator", arguments: '{"expression":"2+2"}' },
     ]);
     expect(usage).toEqual({ prompt_tokens: 12, completion_tokens: 7, total_tokens: 19 });
+  });
+
+  it("RX-22: cached tokens are reported as prompt_tokens_details.cached_tokens (stream) and cachedTokens (chat)", async () => {
+    const cachedTurn = { content: "Hi", usage: { prompt_tokens: 100, completion_tokens: 5, cached_tokens: 60 } };
+    fake.enqueue(cachedTurn, cachedTurn);
+
+    const res = await router.chat("openrouter", request);
+    const payloads: string[] = [];
+    for await (const raw of router.chatStream("openrouter", request)) payloads.push(raw);
+
+    expect(res.usage).toEqual({ prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, cachedTokens: 60 });
+    expect(JSON.parse(payloads[payloads.length - 1]).usage).toEqual({
+      prompt_tokens: 100,
+      completion_tokens: 5,
+      total_tokens: 105,
+      prompt_tokens_details: { cached_tokens: 60 },
+    });
+  });
+
+  it("RX-22: an error turn streams its content, then OpenRouter's mid-stream error chunk and no usage chunk; chat throws its status", async () => {
+    const errorTurn = { content: "Hel", error: { code: 502, message: "provider disconnected" } };
+    fake.enqueue(errorTurn, errorTurn);
+
+    const payloads: string[] = [];
+    for await (const raw of router.chatStream("openrouter", request)) payloads.push(raw);
+
+    const last = JSON.parse(payloads[payloads.length - 1]);
+    expect(last).toMatchObject({ error: { code: 502, message: "provider disconnected" }, choices: [{ finish_reason: "error" }] });
+    expect(payloads.some((p) => JSON.parse(p).usage)).toBe(false);
+    await expect(router.chat("openrouter", request)).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("RX-22: resolveMaxTokens is the caller's max_tokens, else the default 4096", () => {
+    expect(router.resolveMaxTokens("openrouter", { providerId: "vendor/test-model", max_tokens: 123 })).toBe(123);
+    expect(router.resolveMaxTokens("openrouter", { providerId: "vendor/test-model" })).toBe(4096);
   });
 
   it("fails loudly when the script runs out", async () => {

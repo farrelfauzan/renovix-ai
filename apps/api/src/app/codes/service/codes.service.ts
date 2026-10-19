@@ -12,8 +12,7 @@ import { InvitationCodeRepository } from "../repository/invitation-code.reposito
 import { CodeRedemptionRepository } from "../repository/code-redemption.repository";
 import { SubscriptionPlanRepository } from "../../billing/repository/subscription-plan.repository";
 import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
-import { TransactionRepository } from "../../billing/repository/transaction.repository";
-import { UserRepository } from "../../auth/repository/user.repository";
+import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
 
 const CODE_DEACTIVATED = "This code has been deactivated";
 const CODE_EXPIRED = "This code has expired";
@@ -28,8 +27,7 @@ export class CodesService {
     private readonly redemptions: CodeRedemptionRepository,
     private readonly plans: SubscriptionPlanRepository,
     private readonly subscriptions: UserSubscriptionRepository,
-    private readonly ledger: TransactionRepository,
-    private readonly users: UserRepository,
+    private readonly creditLedger: CreditLedgerService,
     private readonly transactions: TransactionService,
   ) {}
 
@@ -96,21 +94,12 @@ export class CodesService {
       let planGranted: string | null = null;
       let daysGranted: number | null = null;
 
-      // Grant credits if applicable
+      // Credits to grant, if applicable: written to the ledger below, once the redemption row exists (RX-22)
       if (
         (code.type === "topup" || code.type === "both") &&
-        code.creditAmount
+        code.creditAmount?.greaterThan(0)
       ) {
         creditsGranted = code.creditAmount;
-        await this.users.incrementUserBalance(userId, code.creditAmount, tx);
-
-        // Create transaction record
-        await this.ledger.createTopupTransaction(
-          userId,
-          code.creditAmount,
-          `code:${code.code}:${userId}`,
-          tx,
-        );
       }
 
       // Grant subscription if applicable
@@ -169,12 +158,30 @@ export class CodesService {
       }
 
       // Create redemption record
-      await this.redemptions.createRedemption(
+      const redemption = await this.redemptions.createRedemption(
         code.id,
         userId,
         { creditsGranted, planGranted, daysGranted },
         tx,
       );
+
+      // RX-22: the credits go to the user's paid wallet as one ledger entry (docs/credits.md section 2.1): a code
+      // that also grants a package is a package code (plan_grant), a credits-only code is a bonus. Nothing writes
+      // User.balance or a Transaction row any more (D190).
+      if (creditsGranted) {
+        await this.creditLedger.appendEntry(
+          {
+            owner: { userId },
+            wallet: "paid",
+            type: code.type === "both" ? "plan_grant" : "bonus",
+            amount: creditsGranted,
+            memberUserId: userId,
+            reference: redemption.id,
+            idempotencyKey: `code_redemption:${redemption.id}`,
+          },
+          tx,
+        );
+      }
 
       return { creditsGranted, planGranted, daysGranted };
     });

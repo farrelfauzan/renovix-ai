@@ -517,6 +517,40 @@ describe("RX-161: provider transport", () => {
     });
   });
 
+  describe("RX-22: resolveMaxTokens is exactly the max_tokens the body carries (the credit estimate's M)", () => {
+    it("reasoning floor, caller value and default, each equal to what the stub receives", async () => {
+      const adapter = makeAdapter({ ...stubOnly(), LLM_DEFAULT_MAX_TOKENS: "16000" });
+      const cases = [
+        request({ providerId: "deepseek/deepseek-v4-pro", max_tokens: 100 }),
+        request({ max_tokens: 100 }),
+        request(),
+      ];
+
+      for (const params of cases) await adapter.chat(params);
+
+      expect(cases.map((params) => adapter.resolveMaxTokens(params))).toEqual([2000, 100, 16000]);
+      expect(primary.requests.map((r) => r.body.max_tokens)).toEqual([2000, 100, 16000]);
+    });
+  });
+
+  describe("RX-22: usage with cached input", () => {
+    it("chat maps prompt_tokens_details.cached_tokens into cachedTokens (0 when absent)", async () => {
+      const adapter = makeAdapter(stubOnly());
+      primary.respond((_r, res) =>
+        sendJson(res, 200, {
+          ...chatCompletion("ok"),
+          usage: { prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, prompt_tokens_details: { cached_tokens: 60 } },
+        }),
+      );
+      const cached = await adapter.chat(request());
+      primary.respond((_r, res) => sendJson(res, 200, chatCompletion("ok")));
+      const uncached = await adapter.chat(request());
+
+      expect(cached.usage).toEqual({ prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, cachedTokens: 60 });
+      expect(uncached.usage).toEqual({ prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, cachedTokens: 0 });
+    });
+  });
+
   describe("AC-e: empty content with finish_reason length", () => {
     const EMPTY_ANSWER = /Model deepseek\/deepseek-v4-flash returned an empty answer: max_tokens \(100\)/;
 

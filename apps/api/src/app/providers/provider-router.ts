@@ -71,6 +71,15 @@ export class ProviderRouter {
     yield* adapter.chatStream(params);
   }
 
+  /** The max_tokens the provider's adapter sends for these params (RX-22: the credit estimate's M). */
+  resolveMaxTokens(provider: string, params: Pick<ChatRequest, "providerId" | "max_tokens">): number {
+    const adapter = this.fakeAdapter ?? this.adapters[provider];
+    if (!adapter) {
+      throw new Error(`No adapter found for provider: ${provider}`);
+    }
+    return adapter.resolveMaxTokens(params);
+  }
+
   /** Lists the provider's models with their current prices (RX-21); undefined when the adapter cannot. */
   async listModels(
     provider: string,

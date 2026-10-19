@@ -3,6 +3,8 @@ import { Decimal } from "@prisma/client/runtime/client";
 import { Prisma } from "@generated/prisma/client.js";
 import type { TestingModule } from "@nestjs/testing";
 import { BillingService } from "./billing.service";
+import { CreditLedgerService } from "./credit-ledger.service";
+import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
@@ -22,7 +24,7 @@ describe("RX-14: BillingService credit reservation and ledger (test database)", 
   let service: BillingService;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ providers: [BillingService] }));
+    ({ moduleRef, prisma } = await createTestModule({ providers: [BillingService, CreditLedgerService] }));
     service = moduleRef.get(BillingService);
   });
   beforeEach(() => resetDatabase(prisma));
@@ -144,18 +146,33 @@ describe("RX-14: BillingService credit reservation and ledger (test database)", 
       expect(ledger[0].amount.toFixed(6)).toBe("0.250000");
     });
 
-    it("addBalance raises the balance and writes a topup/success row (reference stored when given)", async () => {
+    // RX-22 (D190, D202-1): a top-up is one top_up entry on the credit ledger; User.balance and the Transaction
+    // table are no longer written. Was: balance 2.000000 and one topup/success Transaction row with the reference.
+    it("addBalance writes one top_up ledger entry with the reference; User.balance and transactions untouched; a replay writes nothing", async () => {
       const user = await userWithBalance("0");
 
       await service.addBalance(user.id, new Decimal("2.0"), "ref-1");
+      await service.addBalance(user.id, new Decimal("2.0"), "ref-1");
 
-      expect((await balanceOf(user.id)).toFixed(6)).toBe("2.000000");
-      const ledger = await rows(user.id);
-      expect(ledger).toHaveLength(1);
-      expect(ledger[0].type).toBe("topup");
-      expect(ledger[0].status).toBe("success");
-      expect(ledger[0].amount.toFixed(6)).toBe("2.000000");
-      expect(ledger[0].reference).toBe("ref-1");
+      expect((await balanceOf(user.id)).toFixed(6)).toBe("0.000000");
+      expect(await rows(user.id)).toHaveLength(0);
+      const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id } });
+      expect(entries.map((e) => [e.type, e.amount.toFixed(6), e.reference, e.idempotencyKey])).toEqual([
+        ["top_up", "2.000000", "ref-1", "top_up:ref-1"],
+      ]);
+      const account = await prisma.creditAccount.findUniqueOrThrow({ where: { userId_wallet: { userId: user.id, wallet: "paid" } } });
+      expect(account.balance.toFixed(6)).toBe("2.000000");
+      await assertCreditLedgerInvariants(prisma);
+    });
+
+    // D186: a grant of 0 credits writes no ledger entry (the sign CHECK refuses amount 0 for top_up).
+    it("addBalance with 0 credits writes no entry and no account", async () => {
+      const user = await userWithBalance("0");
+
+      await service.addBalance(user.id, new Decimal("0"), "ref-zero");
+
+      expect(await prisma.creditLedgerEntry.count({ where: { memberUserId: user.id } })).toBe(0);
+      expect(await prisma.creditAccount.count({ where: { userId: user.id } })).toBe(0);
     });
   });
 
@@ -205,7 +222,7 @@ describe("RX-14: BillingService credit reservation and ledger (test database)", 
     // stays in the committed spec and needs no production change to run.
     class GuardlessBillingService extends BillingService {
       constructor(private readonly db: PrismaService) {
-        super(db);
+        super(db, {} as CreditLedgerService);
       }
 
       override async reserveCredits(userId: string, estimatedCost: Decimal): Promise<Decimal> {

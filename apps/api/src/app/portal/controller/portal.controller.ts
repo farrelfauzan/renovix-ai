@@ -26,11 +26,16 @@ import {
 } from "../service/portal-tier.service";
 import { clientIp } from "../../../common/utils/client-ip";
 import { ModelRegistryService } from "../../config/model-registry.service";
-import { BillingService } from "../../billing/service/billing.service";
-import { estimateTokens } from "../../billing/utils/estimate-tokens";
-import { estimateCost } from "../../billing/utils/estimate-cost";
-import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
+import { CreditService } from "../../billing/service/credit.service";
+import { callRatesOf } from "../../billing/utils/call-rates-of";
+import { countPromptTokens } from "../../billing/utils/count-prompt-tokens";
+import { estimateCallCredits } from "../../billing/utils/estimate-call-credits";
+import { promptText } from "../../billing/utils/prompt-text";
+import { streamedCallTokens } from "../../billing/utils/streamed-call-tokens";
 import { ProviderRouter } from "../../providers/provider-router";
+import type { ChatUsage } from "../../providers/provider.interface";
+import { readStreamError } from "../../providers/utils/read-stream-error";
+import { readUsage } from "../../providers/utils/read-usage";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { ConversationService } from "../../chat/service/conversation.service";
@@ -41,7 +46,7 @@ import {
   ChatCompletionRequest,
   ChatCompletionRequestSchema,
 } from "../../chat/dto/chat-completion.dto";
-import type { Decimal } from "@prisma/client/runtime/client";
+import { randomUUID } from "node:crypto";
 import { Access } from "../../../common/decorators/access.decorator";
 import { resolveMaxTokens } from "../utils/resolve-max-tokens";
 import { extractProviderError } from "../utils/extract-provider-error";
@@ -64,7 +69,7 @@ export class PortalController {
   constructor(
     private readonly tierService: PortalTierService,
     private readonly registry: ModelRegistryService,
-    private readonly billing: BillingService,
+    private readonly credits: CreditService,
     private readonly providerRouter: ProviderRouter,
     private readonly usage: UsageService,
     private readonly promptTuning: PromptTuningService,
@@ -617,30 +622,54 @@ export class PortalController {
       );
     }
 
-    // Estimate + reserve credits — the tier's per-token credit rate (RX-21), not price x multiplier.
+    // The tier's credit rates (RX-21), not price x multiplier.
     const tierRates = await this.registry.getTierRates(modelConfig.tier);
     if (!tierRates) {
       throw new BadRequestException(
         `No credit rates found for tier "${modelConfig.tier}"`,
       );
     }
-    const estimatedTokens = estimateTokens(body.messages);
-    const estimatedCost = estimateCost(
-      estimatedTokens,
-      tierRates.inputCreditsPerToken.toNumber(),
+    const rates = callRatesOf(tierRates);
+
+    // Prompt tuning (with user KB context) comes before the reservation (RX-22): the estimate counts the prompt
+    // actually sent, and a 402 is answered before the stream opens.
+    const userKbs = await this.knowledge.listKnowledgeBases(user.id);
+    const { tunedMessages, matchedTemplate } =
+      await this.promptTuning.applyTuning(body.messages, user.id);
+    const outputFormat =
+      body.output_format || matchedTemplate?.outputFormat || null;
+    const maxTokens = resolveMaxTokens(
+      body.max_tokens,
+      modelConfig.maxOutputTokens,
+      outputFormat,
     );
 
-    let reservedAmount: Decimal;
-    try {
-      reservedAmount = await this.billing.reserveCredits(
-        user.id,
-        estimatedCost,
-      );
-    } catch {
-      throw new BadRequestException(
-        "Insufficient balance. Please top up your account.",
-      );
-    }
+    // Reserve the estimate on the paid wallet (docs/credits.md section 3.1): 402 CREDITS_EXHAUSTED when it cannot
+    // cover it. M is the max_tokens the adapter will send.
+    const promptTokens = countPromptTokens(tunedMessages);
+    const sentPrompt = promptText(tunedMessages);
+    const requestId = randomUUID();
+    const reservation = await this.credits.reserve({
+      userId: user.id,
+      requestId,
+      amount: estimateCallCredits(
+        promptTokens,
+        this.providerRouter.resolveMaxTokens(modelConfig.provider, {
+          providerId: modelConfig.providerId,
+          max_tokens: maxTokens,
+        }),
+        rates,
+      ),
+    });
+    const call = {
+      reservationId: reservation.id,
+      memberUserId: user.id,
+      requestId,
+      callId: randomUUID(),
+      modelId: modelConfig.slug,
+      tier: modelConfig.tier,
+      rates,
+    };
 
     // Stream response + accumulate for billing
     res.raw.writeHead(200, {
@@ -651,32 +680,23 @@ export class PortalController {
       "Access-Control-Allow-Credentials": "true",
     });
 
+    // RX-161: a client that disconnects aborts the upstream request.
+    const disconnected = new AbortController();
+    res.raw.on("close", () => disconnected.abort());
     let fullContent = "";
-    let totalUsage = {
-      prompt_tokens: 0,
-      completion_tokens: 0,
-      total_tokens: 0,
-    };
+    let reportedUsage: ChatUsage | undefined;
+    let isBilled = false;
 
     try {
       // Emit status: understanding
       res.raw.write(`data: ${JSON.stringify({ status: "understanding" })}\n\n`);
 
-      // Check if user has knowledge bases for status indicator
-      const userKbs = await this.knowledge.listKnowledgeBases(user.id);
+      // Status indicator when the user has knowledge bases
       if (userKbs.length > 0) {
         res.raw.write(
           `data: ${JSON.stringify({ status: "searching_knowledge" })}\n\n`,
         );
       }
-
-      // Apply prompt tuning (with user KB context)
-      const { tunedMessages, matchedTemplate } =
-        await this.promptTuning.applyTuning(body.messages, user.id);
-
-      // Determine if document generation is needed
-      const outputFormat =
-        body.output_format || matchedTemplate?.outputFormat || null;
 
       if (outputFormat) {
         res.raw.write(
@@ -687,38 +707,45 @@ export class PortalController {
         res.raw.write(`data: ${JSON.stringify({ status: "generating" })}\n\n`);
       }
 
-      // RX-161: a client that disconnects aborts the upstream request.
-      const disconnected = new AbortController();
-      res.raw.on("close", () => disconnected.abort());
       const stream = this.providerRouter.chatStream(modelConfig.provider, {
         signal: disconnected.signal,
         model: body.model,
         providerId: modelConfig.providerId,
         messages: tunedMessages,
         temperature: body.temperature,
-        max_tokens: resolveMaxTokens(
-          body.max_tokens,
-          modelConfig.maxOutputTokens,
-          outputFormat,
-        ),
+        max_tokens: maxTokens,
       });
 
       for await (const chunk of stream) {
+        let parsed: any;
+        try {
+          parsed = JSON.parse(chunk);
+        } catch {
+          // ignore parse errors on individual chunks
+        }
+        // RX-22: a mid-stream error chunk (HTTP 200, top-level error) is a provider error, never part of the answer.
+        const streamError = parsed && readStreamError(parsed);
+        if (streamError) throw streamError;
+
         // When generating a document, don't stream raw content to frontend
         if (!outputFormat) {
           res.raw.write(`data: ${chunk}\n\n`);
         }
 
-        // Accumulate content for conversation saving
-        try {
-          const parsed = JSON.parse(chunk);
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (delta) fullContent += delta;
-          if (parsed.usage) totalUsage = parsed.usage;
-        } catch {
-          // ignore parse errors on individual chunks
-        }
+        // Accumulate content for conversation saving, and the usage chunk (before [DONE]) for billing
+        const delta = parsed?.choices?.[0]?.delta?.content;
+        if (delta) fullContent += delta;
+        reportedUsage = readUsage(parsed?.usage) ?? reportedUsage;
       }
+
+      // One usage entry for the call, then settle (docs/credits.md section 3.1 rules 4, 5 and 7): the provider's
+      // reported tokens; without a usage chunk (client gone, or none sent) the local chars/4 count (D202-5, D205).
+      const entry = await this.credits.finishCall({
+        ...call,
+        tokens: streamedCallTokens(reportedUsage, sentPrompt, fullContent),
+        outcome: disconnected.signal.aborted ? "client_cancel" : "completed",
+      });
+      isBilled = true;
 
       // Generate document if format was detected
       if (outputFormat && fullContent) {
@@ -762,36 +789,14 @@ export class PortalController {
 
       const latencyMs = Date.now() - startTime;
 
-      // Calculate actual cost (use estimated if no usage data from stream)
-      const actualTokens =
-        totalUsage.total_tokens > 0
-          ? totalUsage
-          : {
-              prompt_tokens: estimatedTokens,
-              completion_tokens: Math.ceil(fullContent.length / 4),
-              total_tokens: estimatedTokens + Math.ceil(fullContent.length / 4),
-            };
-
-      // Actual cost — tier credit rates (RX-21). The streamed usage shape does not surface
-      // cached tokens today, so cached input is priced as input.
-      const actualCost = calculateActualCost(
-        actualTokens.prompt_tokens,
-        actualTokens.completion_tokens,
-        tierRates.inputCreditsPerToken.toNumber(),
-        tierRates.outputCreditsPerToken.toNumber(),
-      );
-
-      // Adjust balance
-      await this.billing.adjustBalance(user.id, reservedAmount, actualCost);
-
       // Log usage async
       this.usage
         .logUsage({
           userId: user.id,
           model: body.model,
-          inputTokens: actualTokens.prompt_tokens,
-          outputTokens: actualTokens.completion_tokens,
-          cost: actualCost,
+          inputTokens: (entry.tokensNew ?? 0) + (entry.tokensCached ?? 0),
+          outputTokens: entry.tokensOut ?? 0,
+          cost: entry.amount.negated(),
           latencyMs,
           provider: modelConfig.provider,
         })
@@ -833,8 +838,19 @@ export class PortalController {
       res.raw.write("data: [DONE]\n\n");
       res.raw.end();
     } catch (error: any) {
-      // Refund on failure
-      await this.billing.refundReservation(user.id, reservedAmount);
+      // Not billed yet: a provider error is charged 0 and releases the hold (rule 6); a client that went away is
+      // charged what it received (rule 7). A failed write stays for the expiry sweep.
+      if (!isBilled) {
+        await this.credits
+          .finishCall({
+            ...call,
+            tokens: disconnected.signal.aborted
+              ? streamedCallTokens(reportedUsage, sentPrompt, fullContent)
+              : streamedCallTokens(reportedUsage, "", ""),
+            outcome: disconnected.signal.aborted ? "client_cancel" : "provider_error",
+          })
+          .catch((err) => this.logger.error("Failed to record the failed call's usage", err));
+      }
       const providerError = extractProviderError(error);
       this.logger.error(
         `Stream error${providerError.status ? ` (status ${providerError.status})` : ""}: ${providerError.message}`,
@@ -857,7 +873,7 @@ export class PortalController {
       }
 
       res.raw.write(
-        `data: ${JSON.stringify({ error: { message: `${providerError.clientMessage}. Balance refunded.` } })}\n\n`,
+        `data: ${JSON.stringify({ error: { message: isBilled ? providerError.clientMessage : `${providerError.clientMessage}. No credits were charged.` } })}\n\n`,
       );
       res.raw.end();
     }

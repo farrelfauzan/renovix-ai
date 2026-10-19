@@ -10,7 +10,6 @@ import { ConfigService } from "@nestjs/config";
 import type Stripe from "stripe";
 import { Decimal } from "@prisma/client/runtime/client";
 import { BillingService } from "../../billing/service/billing.service";
-import { PrismaService } from "../../prisma/prisma.service";
 import { Access } from "../../../common/decorators/access.decorator";
 
 @Controller("webhooks")
@@ -22,7 +21,6 @@ export class WebhookController {
   constructor(
     private readonly configService: ConfigService,
     private readonly billing: BillingService,
-    private readonly prisma: PrismaService,
   ) {
     const stripeKey = this.configService.get<string>("STRIPE_SECRET_KEY");
     if (stripeKey) {
@@ -107,29 +105,12 @@ export class WebhookController {
 
     const amountInDollars = (session.amount_total ?? 0) / 100;
 
-    try {
-      await this.prisma.transaction.create({
-        data: {
-          userId,
-          amount: new Decimal(amountInDollars),
-          type: "topup",
-          status: "success",
-          reference: session.id,
-        },
-      });
-      await this.billing.addBalance(
-        userId,
-        new Decimal(amountInDollars),
-        session.id,
-      );
-    } catch (e: any) {
-      if (e.code === "P2002") {
-        // Already processed — idempotent return
-        this.logger.log(`Session ${session.id} already processed, skipping`);
-        return;
-      }
-      throw e;
-    }
+    // RX-22: one top_up ledger entry; a session already processed writes nothing (its reference is the idempotency key).
+    await this.billing.addBalance(
+      userId,
+      new Decimal(amountInDollars),
+      session.id,
+    );
 
     this.logger.log(
       `Added $${amountInDollars} to user ${userId} (session: ${session.id})`,

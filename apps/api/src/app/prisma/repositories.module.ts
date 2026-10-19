@@ -18,6 +18,7 @@ import { AppConfigRepository } from "../config/repository/app-config.repository"
 import { UserRepository } from "../auth/repository/user.repository";
 import { CreditAccountRepository } from "../billing/repository/credit-account.repository";
 import { CreditLedgerEntryRepository } from "../billing/repository/credit-ledger-entry.repository";
+import { CreditReservationRepository } from "../billing/repository/credit-reservation.repository";
 import { SubscriptionPlanRepository } from "../billing/repository/subscription-plan.repository";
 import { TransactionRepository } from "../billing/repository/transaction.repository";
 import { UserSubscriptionRepository } from "../billing/repository/user-subscription.repository";
@@ -68,6 +69,7 @@ const REPOSITORIES = [
   UserRepository,
   CreditAccountRepository,
   CreditLedgerEntryRepository,
+  CreditReservationRepository,
   SubscriptionPlanRepository,
   TransactionRepository,
   UserSubscriptionRepository,
