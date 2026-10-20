@@ -3,6 +3,8 @@ import { createAdminsApi } from "@/lib/admins/admins-api";
 import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 import type { AdminRole } from "@/lib/admins/admin-role";
 import type { ApiClient } from "@/lib/api/api-client";
+import { createApiClient } from "@/lib/api/create-api-client";
+import { createPublicApiClient } from "@/lib/api/create-public-api-client";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
 import { AdminsAndRolesScreen } from "./admins-and-roles-screen";
@@ -49,7 +51,7 @@ function createFakeApi(initial: Partial<FakeState> = {}) {
     if (area === "admins" && !id) return reply(200, { admins: state.admins });
     if (area === "roles" && !id && method === "GET") return reply(200, { roles: state.roles });
     if (area === "auth") {
-      if (body.password !== "pw" || body.totp !== "123456") return reply(401, { message: "Invalid code" });
+      if (body.password !== "pw" || body.totp !== "123456") return reply(401, { statusCode: 401, message: "Invalid credentials", error: "Unauthorized" });
       state.isReauthed = true;
       return reply(204);
     }
@@ -112,7 +114,7 @@ function createFakeApi(initial: Partial<FakeState> = {}) {
     return handle(method, path, init?.body ? JSON.parse(String(init.body)) : {});
   });
   const client: ApiClient = { request };
-  return { state, calls, api: createAdminsApi(client), count: (call: string) => calls.filter((entry) => entry === call).length };
+  return { state, calls, api: createAdminsApi(client, client), count: (call: string) => calls.filter((entry) => entry === call).length };
 }
 
 const sessionOf = (me: AdminProfile): SessionApi => ({ me: async () => me, changePassword: async () => undefined, signOut: async () => undefined });
@@ -274,12 +276,45 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
 
       await confirmIdentity("pw", "000000");
 
-      expect((await screen.findByRole("alert")).textContent).toBe("Invalid code");
+      expect((await screen.findByRole("alert")).textContent).toBe("Invalid credentials");
       expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("active");
       expect(fake.count("POST /admins/ops/suspend")).toBe(1);
       expect(fake.state.admins.find((entry) => entry.id === "ops")?.status).toBe("active");
       await confirmIdentity();
       await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("suspended"));
+    });
+
+    it("with the real clients, a wrong code shows the API's 401: no refresh, no second reauth, no sign-out, nothing changes", async () => {
+      const BASE = "http://api.test";
+      const calls: string[] = [];
+      const onSignedOut = jest.fn();
+      const reply = (status: number, body?: unknown): Response => ({ ok: status < 400, status, json: async () => body }) as Response;
+      const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const call = `${init?.method ?? "GET"} ${String(input).replace(`${BASE}/api/v1`, "")}`;
+        calls.push(call);
+        if (call === "GET /admin/admins") return reply(200, { admins: [admin("owner", { role: "owner" }), admin("ops")] });
+        if (call === "GET /admin/roles") return reply(200, { roles: [role("owner", true, OWNER_PERMISSIONS), role("support", true)] });
+        if (call === "POST /admin/admins/ops/suspend") return reply(403, { statusCode: 403, message: "Re-authentication required", error: "Forbidden" });
+        if (call === "POST /admin/auth/reauth") return reply(401, { statusCode: 401, message: "Invalid credentials", error: "Unauthorized" });
+        if (call === "POST /admin/auth/refresh") return reply(200, { scope: "full" });
+        return reply(404, { message: "Not found" });
+      });
+      const api = createAdminsApi(
+        createApiClient({ baseUrl: BASE, fetch: fetchMock, onSignedOut, runExclusive: (task) => task() }),
+        createPublicApiClient({ baseUrl: BASE, fetch: fetchMock }),
+      );
+      render(<AdminsAndRolesScreen api={api} sessionApi={sessionOf(profile(OWNER_PERMISSIONS))} />);
+      await screen.findByRole("table", { name: "Admins" });
+      click("Suspend ops@example.com");
+
+      await confirmIdentity("pw", "000000");
+
+      expect((await screen.findByRole("alert")).textContent).toBe("Invalid credentials");
+      expect(screen.getByRole("dialog", { name: "Confirm it is you" })).toBeTruthy();
+      expect(calls.filter((call) => call === "POST /admin/auth/reauth")).toHaveLength(1);
+      expect(calls).not.toContain("POST /admin/auth/refresh");
+      expect(onSignedOut).not.toHaveBeenCalled();
+      expect(calls.filter((call) => call === "POST /admin/admins/ops/suspend")).toHaveLength(1);
     });
 
     it("cancelling the prompt leaves everything unchanged", async () => {

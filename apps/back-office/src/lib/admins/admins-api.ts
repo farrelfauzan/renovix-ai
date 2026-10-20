@@ -37,11 +37,15 @@ export type AdminsApi = {
   readonly reauth: (credentials: ReauthCredentials) => Promise<void>;
 };
 
-/** The admin routes on the session client (cookies, shared refresh). */
-export function createAdminsApi(client: ApiClient): AdminsApi {
-  const send = async (path: string, method = "GET", body?: unknown): Promise<Response> => {
+/**
+ * The admin routes on the session client (cookies, shared refresh). The re-authentication goes through
+ * `reauthClient`, a client without the shared refresh: the API answers a wrong password or code with 401, which
+ * the session client would take for an expired session (refresh, send it again, sign out) instead of showing it.
+ */
+export function createAdminsApi(client: ApiClient, reauthClient: ApiClient): AdminsApi {
+  const send = async (path: string, method = "GET", body?: unknown, target: ApiClient = client): Promise<Response> => {
     const init: RequestInit = body === undefined ? { method } : { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
-    const res = await client.request(`${ADMIN_PATH}${path}`, init);
+    const res = await target.request(`${ADMIN_PATH}${path}`, init);
     if (res.ok) return res;
     const refusal = await readRefusal(res);
     throw res.status === FORBIDDEN && refusal.message === REAUTH_MESSAGE ? new ReauthRequiredError(refusal.message, res.status) : refusal;
@@ -65,6 +69,8 @@ export function createAdminsApi(client: ApiClient): AdminsApi {
     createRole: (input) => act("/roles", "POST", input),
     updateRole: (name, changes) => act(rolePath(name), "PATCH", changes),
     deleteRole: (name) => act(rolePath(name), "DELETE"),
-    reauth: (credentials) => act("/auth/reauth", "POST", credentials),
+    reauth: async (credentials) => {
+      await send("/auth/reauth", "POST", credentials, reauthClient);
+    },
   };
 }
