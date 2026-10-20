@@ -408,7 +408,8 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
     });
 
     it("an API refusal without a text message (e.g. a 400 with field errors) shows the status", async () => {
-      const api = createAdminsApi({ request: async () => ({ ok: false, status: 400, json: async () => ({ permissions: ["bad"] }) }) as Response });
+      const refusing: ApiClient = { request: async () => ({ ok: false, status: 400, json: async () => ({ permissions: ["bad"] }) }) as Response };
+      const api = createAdminsApi(refusing, refusing);
 
       await expect(api.createRole({ name: "x", permissions: ["bad"] })).rejects.toThrow("The request was refused (400).");
     });
