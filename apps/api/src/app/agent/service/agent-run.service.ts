@@ -443,7 +443,7 @@ export class AgentRunService {
 
     const subAgent = await this.agents.findDelegateSubAgent(
       agent.id,
-      agent.userId,
+      agent.workspaceId,
       rawIdentifier,
     );
 

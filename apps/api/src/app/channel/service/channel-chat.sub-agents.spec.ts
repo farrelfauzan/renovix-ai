@@ -14,7 +14,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createUser } from "../../../../test/factories";
+import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -219,5 +219,48 @@ describe("RX-112: channel chat only uses the parent owner's sub-agents (test dat
     expect(res.content).toBe("Parent final");
     expect(sent()).not.toContain("ALICE INJECTED PROMPT");
     expect(sent()).not.toContain(foreignSub.name);
+  });
+
+  // RNX-203: the sub-agents match the parent by workspace; a sub-agent of the parent's own creator in another
+  // workspace (written straight to the database) is neither listed nor run.
+  describe("a sub-agent of the parent's creator in another workspace (RNX-203)", () => {
+    const seedOtherWorkspaceSub = async () => {
+      const seeded = await seed({ channelOwnedBy: "bob" });
+      const otherWorkspace = await createWorkspace(prisma, { ownerId: seeded.bob.id });
+      const otherWorkspaceSub = await createAgent(prisma, {
+        userId: seeded.bob.id,
+        name: "Bob other workspace helper",
+        systemPrompt: "OTHER WORKSPACE SUB PROMPT",
+        agentType: "sub_agent",
+        status: "active",
+        parentAgentId: seeded.parent.id,
+        workspaceId: otherWorkspace.id,
+      });
+      return { ...seeded, otherWorkspaceSub };
+    };
+
+    it("is not listed next to the sub-agent in the parent's workspace", async () => {
+      const { caller, parent, ownSub, otherWorkspaceSub, channel } = await seedOtherWorkspaceSub();
+      fake.enqueue({ content: "Hello" });
+
+      await service.chat(caller.id, channel.id, parent.id, "Hi");
+
+      expect(fake.requests[0].messages[0].content).toContain(`${ownSub.name} (id: ${ownSub.id})`);
+      expect(sent()).not.toContain(otherWorkspaceSub.id);
+    });
+
+    it("delegating to it is refused and it never runs", async () => {
+      const { caller, parent, otherWorkspaceSub, channel } = await seedOtherWorkspaceSub();
+      fake.enqueue(
+        { toolCalls: [{ name: "delegate_to_subagent", arguments: { subAgentId: otherWorkspaceSub.id, task: "do it" } }] },
+        { content: "Done" },
+      );
+
+      await service.chat(caller.id, channel.id, parent.id, "Hi");
+
+      expect(fake.requests).toHaveLength(2);
+      expect(lastToolResult()).toEqual(["Error: Sub-agent not found."]);
+      expect(sent()).not.toContain("OTHER WORKSPACE SUB PROMPT");
+    });
   });
 });

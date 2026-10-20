@@ -268,7 +268,8 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     const workspaceKb = await prisma.knowledgeBase.findFirstOrThrow({ where: { workspaceId: workspace.id } });
     const personalKb = await prisma.knowledgeBase.create({ data: { userId: runner.id, name: "My KB" } });
     await insertChunk(personalKb.id, "personal base text");
-    const agent = await createAgent(prisma, { userId: runner.id, workspaceId: workspace.id });
+    // RNX-203: the runner does not own the workspace, so they can run its agent only as a public active one
+    const agent = await createAgent(prisma, { userId: runner.id, workspaceId: workspace.id, isPublic: true, status: "active" });
     await prisma.agentKnowledgeBase.create({ data: { agentId: agent.id, knowledgeBaseId: workspaceKb.id } });
     await prisma.agentKnowledgeBase.create({ data: { agentId: agent.id, knowledgeBaseId: personalKb.id } });
     fake.enqueue({ content: "ok", usage: { prompt_tokens: 10, completion_tokens: 1 } });

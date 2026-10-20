@@ -101,6 +101,7 @@ export class ChannelChatService {
                 status: true,
                 model: true,
                 userId: true,
+                workspaceId: true,
                 systemPrompt: true,
                 maxTokens: true,
               },
@@ -432,7 +433,7 @@ export class ChannelChatService {
     const subAgent = await this.prisma.agent.findFirst({
       where: {
         parentAgentId: parentAgent.id,
-        userId: parentAgent.userId,
+        workspaceId: parentAgent.workspaceId,
         agentType: "sub_agent",
         OR: [
           { id: rawIdentifier },

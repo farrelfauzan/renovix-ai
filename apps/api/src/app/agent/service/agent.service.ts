@@ -14,6 +14,7 @@ import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
 import type { CreateAgentDto } from "../dto/create-agent.dto";
 import type { UpdateAgentDto } from "../dto/update-agent.dto";
+import type { CloneAgentDto } from "../dto/clone-agent.dto";
 import {
   WHATSAPP_WEBHOOK_SECRET_REQUIRED,
   WhatsappChannelConfigSchema,
@@ -68,8 +69,12 @@ export class AgentService {
     // Check agent limit
     await this.checkAgentLimit(userId);
 
+    // The workspace must be the caller's own (403); without one the agent goes into the caller's default
+    // workspace (RNX-117), created here for an account without one (RNX-203).
+    const workspaceId = await this.resolveTargetWorkspace(userId, dto.workspaceId);
+
     // A parentAgentId is only allowed on a sub-agent and must be one of the
-    // caller's own parent agents (RX-112)
+    // caller's own parent agents (RX-112), in the new sub-agent's workspace (RNX-203)
     if (dto.parentAgentId) {
       if (dto.agentType !== "sub_agent") {
         throw new BadRequestException(
@@ -77,7 +82,7 @@ export class AgentService {
         );
       }
       const parent = await this.agents.findUserAgent(dto.parentAgentId, userId);
-      if (!parent) {
+      if (!parent || parent.workspaceId !== workspaceId) {
         throw new BadRequestException("Parent agent not found");
       }
       if (parent.agentType !== "parent") {
@@ -88,11 +93,9 @@ export class AgentService {
     }
 
     const slug = await this.generateUniqueSlug(userId, dto.name);
-    // Every agent lives in its owner's default workspace (RNX-117), created here for an account without one.
-    const workspace = await this.workspaces.ensureDefaultWorkspace(userId);
 
     return this.agents.createAgent(userId, {
-      workspaceId: workspace.id,
+      workspaceId,
       name: dto.name,
       slug,
       description: dto.description,
@@ -157,7 +160,8 @@ export class AgentService {
         userId,
       );
 
-      if (!parent) {
+      // RNX-203: the parent must be in this agent's workspace
+      if (!parent || parent.workspaceId !== agent.workspaceId) {
         throw new BadRequestException("Parent agent not found");
       }
       if (parent.agentType !== "parent") {
@@ -168,7 +172,8 @@ export class AgentService {
     }
     if (dto.name !== undefined) {
       data.name = dto.name;
-      data.slug = await this.generateUniqueSlug(userId, dto.name);
+      // The slug is unique per creator (RNX-203: the caller may own the workspace without being the creator)
+      data.slug = await this.generateUniqueSlug(agent.userId, dto.name);
     }
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.avatar !== undefined) data.avatar = dto.avatar;
@@ -222,7 +227,11 @@ export class AgentService {
     return this.agents.listPublicAgents();
   }
 
-  async cloneFromTemplate(userId: string, templateId: string) {
+  async cloneFromTemplate(
+    userId: string,
+    templateId: string,
+    dto: CloneAgentDto = {},
+  ) {
     const template = await this.agents.findPublicTemplate(templateId);
 
     if (!template) {
@@ -232,11 +241,11 @@ export class AgentService {
     await this.checkSubscription(userId);
     await this.checkAgentLimit(userId);
 
+    const workspaceId = await this.resolveTargetWorkspace(userId, dto.workspaceId);
     const slug = await this.generateUniqueSlug(userId, template.name);
-    const workspace = await this.workspaces.ensureDefaultWorkspace(userId);
 
     const agent = await this.agents.createAgent(userId, {
-      workspaceId: workspace.id,
+      workspaceId,
       name: template.name,
       slug,
       description: template.description,
@@ -345,6 +354,9 @@ export class AgentService {
     if (kb.workspaceId) {
       // A workspace base: only to an agent in the same workspace, by a
       // current owner or admin of that workspace (RX-113)
+      // RNX-203: verifyOwnership already requires the workspace owner, so the
+      // admin case cannot be reached through the agent routes today; kept for
+      // RX-119 (collaborators managing agents), which owns that branch.
       if (agent.workspaceId !== kb.workspaceId) {
         throw new NotFoundException("Knowledge base not found");
       }
@@ -555,6 +567,22 @@ export class AgentService {
     const agent = await this.agents.findUserAgent(agentId, userId);
     if (!agent) throw new NotFoundException("Agent not found");
     return agent;
+  }
+
+  /**
+   * The workspace a new agent goes into (RNX-203): the given one if the caller owns it (else 403, nothing
+   * stored), otherwise the caller's default workspace (RNX-117).
+   */
+  private async resolveTargetWorkspace(
+    userId: string,
+    workspaceId?: string,
+  ): Promise<string> {
+    if (!workspaceId) {
+      return (await this.workspaces.ensureDefaultWorkspace(userId)).id;
+    }
+    const owned = await this.workspaces.findOwnedWorkspace(workspaceId, userId);
+    if (!owned) throw new ForbiddenException("You do not own this workspace");
+    return owned.id;
   }
 
   private async checkSubscription(userId: string) {
