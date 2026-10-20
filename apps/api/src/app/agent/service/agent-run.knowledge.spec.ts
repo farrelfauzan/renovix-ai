@@ -152,6 +152,26 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     expect(embedSingle).toHaveBeenCalledTimes(1);
   });
 
+  it("RNX-116 review: another user's personal base attached to the agent: no chunk in the prompt and no embedding call", async () => {
+    const runner = await createUser(prisma);
+    const other = await createUser(prisma);
+    const plan = await createPlan(prisma);
+    await createSubscription(prisma, { userId: runner.id, planId: plan.id });
+    await fundPaidWallet(prisma, runner.id, "1");
+    const othersKb = await prisma.knowledgeBase.create({ data: { userId: other.id, name: "Not yours" } });
+    await insertChunk(othersKb.id, "another user's private text");
+    const agent = await createAgent(prisma, { userId: runner.id });
+    // Attached directly: the attach route would refuse it, so this is the state a bypass or a stale row leaves.
+    await prisma.agentKnowledgeBase.create({ data: { agentId: agent.id, knowledgeBaseId: othersKb.id } });
+    fake.enqueue({ content: "ok", usage: { prompt_tokens: 10, completion_tokens: 1 } });
+
+    const res = await runs.chat(runner.id, agent.id, "what do I know?");
+
+    expect(res.message.content).toBe("ok");
+    expect(JSON.stringify(fake.requests.at(-1)?.messages)).not.toContain("another user's private text");
+    expect(embedSingle).not.toHaveBeenCalled();
+  });
+
   /**
    * RX-116: a workspace of `owner` on a plan with this slug, a workspace base with one chunk, and a public agent of
    * the owner in that workspace with the base attached (as the owner attaches it). The owner has an active member

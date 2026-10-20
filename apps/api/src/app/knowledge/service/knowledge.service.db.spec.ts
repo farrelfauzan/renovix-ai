@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { KnowledgeService } from "./knowledge.service";
 import { EmbeddingService } from "./embedding.service";
@@ -139,7 +139,7 @@ describe("KnowledgeService: search results and chunk storage (RX-137, test datab
     await seedChunk({ id: "off-s99", knowledgeBaseId: kbInactive.id, similarity: 0.99 });
     await seedChunk({ id: "team-s98", knowledgeBaseId: kbWorkspace.id, similarity: 0.98 });
     await seedChunk({ id: "bob-s97", knowledgeBaseId: kbBob.id, similarity: 0.97 });
-    return { alice, bob, kbA, kbB, kbInactive };
+    return { alice, bob, kbA, kbB, kbInactive, kbBob };
   };
 
   describe("searchChunks", () => {
@@ -207,6 +207,15 @@ describe("KnowledgeService: search results and chunk storage (RX-137, test datab
       const actual = await service.searchChunks(alice.id, QUERY, { topK: 2 });
 
       expect(actual).toEqual([expectedResult("a-s90", kbA.id, 0.9, 9), expectedResult("b-s80", kbB.id, 0.8)]);
+    });
+
+    it("RNX-116 review: in one base of another user, by id: refused (403) before any embedding call", async () => {
+      const { alice, kbBob } = await seedSearchFixture();
+
+      const searching = service.searchChunks(alice.id, QUERY, { knowledgeBaseId: kbBob.id });
+
+      await expect(searching).rejects.toBeInstanceOf(ForbiddenException);
+      expect(embedding.embedSingle).not.toHaveBeenCalled();
     });
 
     it("across the bases of another user: only that user's chunks", async () => {
