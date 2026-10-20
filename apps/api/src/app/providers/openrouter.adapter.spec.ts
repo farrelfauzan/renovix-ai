@@ -158,8 +158,11 @@ describe("RX-178: a chat call goes to the request's connection", () => {
     expect(provider.requests.map((r) => r.body.model)).toEqual([SLUG, SLUG]);
   });
 
-  it("neither env key set → construction fails as today (the env endpoint still serves GET /models, D200)", () => {
-    expect(() => makeAdapter({ LLM_BASE_URL: envStub.baseUrl })).toThrow(/OPENROUTER_API_KEY/);
+  it("neither env key set → construction succeeds (RNX-192: chat uses provider records); GET /models is skipped", async () => {
+    const adapter = makeAdapter({ LLM_BASE_URL: envStub.baseUrl });
+
+    expect(await adapter.listModels()).toBeUndefined();
+    expect(envStub.requests).toHaveLength(0);
   });
 });
 

@@ -82,12 +82,14 @@ export class OpenRouterAdapter implements ProviderAdapter {
   ];
 
   constructor(private readonly configService: ConfigService) {
-    // RX-160: LLM_API_KEY falls back to OPENROUTER_API_KEY; with neither, getOrThrow fails as before (D200: kept).
+    // RX-160: LLM_API_KEY falls back to OPENROUTER_API_KEY; with neither the key is empty and the price refresh
+    // skips (RNX-192): chat uses provider records, so boot needs no env chat key.
     this.modelListEndpoint = {
       baseUrl: this.configService.get<string>("LLM_BASE_URL") || OPENROUTER_BASE_URL,
       apiKey:
         this.configService.get<string>("LLM_API_KEY") ||
-        this.configService.getOrThrow<string>("OPENROUTER_API_KEY"),
+        this.configService.get<string>("OPENROUTER_API_KEY") ||
+        "",
     };
     this.defaultMaxTokens = readPositiveInteger({
       name: "LLM_DEFAULT_MAX_TOKENS",
@@ -189,8 +191,10 @@ export class OpenRouterAdapter implements ProviderAdapter {
    * Lists the provider's models with their current prices (RX-21): GET /models on the env endpoint
    * (LLM_BASE_URL, LLM_API_KEY or OPENROUTER_API_KEY; RX-178 leaves it there), the OpenAI-compatible shape the adapter already speaks
    * ({ data: [{ id, pricing: { prompt, completion, input_cache_read? } }] }).
+   * Undefined when no env key is configured (RNX-192): the price refresh then skips.
    */
-  async listModels(): Promise<ProviderModelPrice[]> {
+  async listModels(): Promise<ProviderModelPrice[] | undefined> {
+    if (!this.modelListEndpoint.apiKey) return undefined;
     const response = await fetch(`${this.modelListEndpoint.baseUrl}/models`, {
       headers: this.buildHeaders(this.modelListEndpoint),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),

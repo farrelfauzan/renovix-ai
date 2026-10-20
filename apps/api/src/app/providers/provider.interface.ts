@@ -82,7 +82,7 @@ export interface ProviderAdapter {
   /** The max_tokens this adapter sends for these params (RX-22: the estimate uses the same value). */
   resolveMaxTokens(params: Pick<ChatRequest, "connection" | "max_tokens">): number;
   /** Lists the provider's models with their current prices (GET /models on the env endpoint, not a provider record); optional (RX-21). */
-  listModels?(): Promise<ProviderModelPrice[]>;
+  listModels?(): Promise<ProviderModelPrice[] | undefined>;
 
   /**
    * RX-177: one minimal chat request to a provider record's own base URL and key (not the env endpoints),

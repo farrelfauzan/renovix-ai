@@ -203,9 +203,13 @@ export class ModelRegistryService implements OnModuleInit {
     return this.getModelByProviderId(identifier);
   }
 
+  /**
+   * The models a chat call can resolve (RNX-192): active, on an active non-deleted provider record (the
+   * connections map, as getCheapestModel); in LLM_PROVIDER=fake mode every active model. Every chat-facing list uses it.
+   */
   async getAllModels(): Promise<ModelConfig[]> {
     await this.ensureFresh();
-    return [...this.models.values()];
+    return [...this.models.values()].filter((m) => this.isFakeMode || this.connections.has(m.slug));
   }
 
   /** The per-token credit rates of `tier` (RX-21). Undefined when the tier has no rate row. */
