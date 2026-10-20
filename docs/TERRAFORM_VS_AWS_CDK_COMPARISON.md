@@ -316,7 +316,7 @@ const waf = new wafv2.CfnWebACL(this, 'WAF', {
 - **Choose AWS + CDK** if: TypeScript DX matters most, you want maximum abstraction, you plan to scale globally, and you're okay paying for always-on containers.
 - **Hybrid option:** Use **CDKTF** (Terraform CDK) to get TypeScript + GCP. Best of both worlds, but less mature ecosystem.
 
-### Recommended Stack for Performa AI (Indonesia, 1–100 users)
+### Recommended Stack for Renovix AI (Indonesia, 1–100 users)
 
 ```
 GCP + Terraform (or CDKTF for TypeScript)

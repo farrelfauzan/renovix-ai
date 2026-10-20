@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Renovix AI (formerly Performa AI). Read AGENTS.md for the stack and commands, but check it against the code: parts are out of date (ticket RX-7). If you are one of the team agents (Orchestrator, Product Manager, Engineer, Reviewer, QA, Researcher), read `.claude/team/PROTOCOL.md` first (a local folder that is not committed); the plan and tickets live in the Renovix AI project in Notion.
+Renovix AI (formerly Renovix AI). Read AGENTS.md for the stack and commands, but check it against the code: parts are out of date (ticket RX-7). If you are one of the team agents (Orchestrator, Product Manager, Engineer, Reviewer, QA, Researcher), read `.claude/team/PROTOCOL.md` first (a local folder that is not committed); the plan and tickets live in the Renovix AI project in Notion.
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 

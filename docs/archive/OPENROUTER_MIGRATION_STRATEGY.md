@@ -167,7 +167,7 @@ Replace `apps/api/src/app/providers/together.adapter.ts` with `openrouter.adapte
 // OpenRouter uses OpenAI-compatible API format (same as Together AI)
 // Base URL: https://openrouter.ai/api/v1/chat/completions
 // Auth: Bearer <OPENROUTER_API_KEY>
-// Extra Headers: X-Title: "Performa AI", HTTP-Referer: "https://performa.ai"
+// Extra Headers: X-Title: "Renovix AI", HTTP-Referer: "https://performa.ai"
 ```
 
 Migration from Together is straightforward since both use OpenAI-compatible format:
@@ -262,7 +262,7 @@ async validateAgentAccess(userId: string, model: ModelConfig) {
 
 # New (replaces Together AI)
 OPENROUTER_API_KEY=xxx
-OPENROUTER_APP_TITLE=Performa AI
+OPENROUTER_APP_TITLE=Renovix AI
 OPENROUTER_APP_URL=https://performa.ai
 ```
 
@@ -677,7 +677,7 @@ env {
 
 env {
   name  = "OPENROUTER_APP_TITLE"
-  value = "Performa AI"
+  value = "Renovix AI"
 }
 
 env {

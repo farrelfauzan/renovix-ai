@@ -2,7 +2,7 @@
 
 ## 🏷️ Product Name (Working)
 
-**"Performa AI"**
+**"Renovix AI"**
 
 ---
 

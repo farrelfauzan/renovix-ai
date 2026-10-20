@@ -23,7 +23,7 @@ export class EmailTemplateService {
     html: string;
     text: string;
   } {
-    const subject = `You've been invited to join ${data.workspaceName} on Performa AI`;
+    const subject = `You've been invited to join ${data.workspaceName} on Renovix AI`;
 
     const expiryDate = new Date(data.expiresAt).toLocaleDateString("en-US", {
       year: "numeric",
@@ -50,7 +50,7 @@ export class EmailTemplateService {
               <h1 style="margin: 0 0 4px; font-size: 20px; font-weight: 600; color: #18181b;">
                 Join Workspace
               </h1>
-              <p style="margin: 0; font-size: 13px; color: #71717a;">Performa AI</p>
+              <p style="margin: 0; font-size: 13px; color: #71717a;">Renovix AI</p>
             </td>
           </tr>
 
@@ -58,7 +58,7 @@ export class EmailTemplateService {
           <tr>
             <td style="padding: 24px 32px;">
               <p style="margin: 0 0 16px; font-size: 15px; line-height: 1.5; color: #27272a;">
-                <strong>${data.inviterEmail}</strong> invited you to join <strong>${data.workspaceName}</strong> on Performa AI.
+                <strong>${data.inviterEmail}</strong> invited you to join <strong>${data.workspaceName}</strong> on Renovix AI.
               </p>
 
               <!-- Info card -->
@@ -114,7 +114,7 @@ export class EmailTemplateService {
 
     const text = `Join Workspace
 
-${data.inviterEmail} invited you to join ${data.workspaceName} on Performa AI.
+${data.inviterEmail} invited you to join ${data.workspaceName} on Renovix AI.
 Role: ${data.role}
 Expires: ${expiryDate}
 

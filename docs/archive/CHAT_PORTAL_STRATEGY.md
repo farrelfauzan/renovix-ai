@@ -2,7 +2,7 @@
 
 ## Overview
 
-Build a public-facing chat portal (`apps/chat`) — a ChatGPT/Claude-like interface where users interact with Performa AI models directly in the browser. **No login required.** Everyone gets 20 free requests on the cheapest model. Users who register and top up credits unlock all models and pay per request using the existing billing system.
+Build a public-facing chat portal (`apps/chat`) — a ChatGPT/Claude-like interface where users interact with Renovix AI models directly in the browser. **No login required.** Everyone gets 20 free requests on the cheapest model. Users who register and top up credits unlock all models and pay per request using the existing billing system.
 
 ---
 

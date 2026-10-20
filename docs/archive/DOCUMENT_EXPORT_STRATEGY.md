@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add a **document generation** feature to Performa AI. When a user prompts the AI to create a document (e.g. *"Create me a PDF for my product PRD"*, *"Generate a DOCX report on market analysis"*), the system:
+Add a **document generation** feature to Renovix AI. When a user prompts the AI to create a document (e.g. *"Create me a PDF for my product PRD"*, *"Generate a DOCX report on market analysis"*), the system:
 
 1. Sends the prompt to Together AI as usual
 2. Receives the AI's Markdown response

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Before returning a response to the end-user, Performa AI injects a **system-level prompt** that tunes the model's behavior to align with our product goals. This ensures every response passes through our own prompt layer, giving us control over tone, safety, formatting, and domain-specific behaviorâ€”regardless of which upstream model the customer selects.
+Before returning a response to the end-user, Renovix AI injects a **system-level prompt** that tunes the model's behavior to align with our product goals. This ensures every response passes through our own prompt layer, giving us control over tone, safety, formatting, and domain-specific behaviorâ€”regardless of which upstream model the customer selects.
 
 ## How It Works
 
@@ -50,7 +50,7 @@ The system prompt is stored in the `app_configs` table:
 
 | Key             | Value (example)                                                                 |
 |-----------------|---------------------------------------------------------------------------------|
-| `system_prompt` | `You are a helpful AI assistant powered by Performa AI. Be concise, accurate...`|
+| `system_prompt` | `You are a helpful AI assistant powered by Renovix AI. Be concise, accurate...`|
 
 This can be updated at any time via a database update or future admin endpointâ€”no redeployment needed.
 
@@ -84,7 +84,7 @@ This can be updated at any time via a database update or future admin endpointâ€
 [
   {
     "role": "system",
-    "content": "You are a helpful AI assistant powered by Performa AI. Provide clear, concise, and accurate responses. Always be professional and helpful."
+    "content": "You are a helpful AI assistant powered by Renovix AI. Provide clear, concise, and accurate responses. Always be professional and helpful."
   },
   { "role": "user", "content": "What is machine learning?" }
 ]
@@ -103,7 +103,7 @@ This can be updated at any time via a database update or future admin endpointâ€
 [
   {
     "role": "system",
-    "content": "You are a helpful AI assistant powered by Performa AI. Provide clear, concise, and accurate responses. Always be professional and helpful.\n\nYou are a coding tutor."
+    "content": "You are a helpful AI assistant powered by Renovix AI. Provide clear, concise, and accurate responses. Always be professional and helpful.\n\nYou are a coding tutor."
   },
   { "role": "user", "content": "Explain recursion." }
 ]

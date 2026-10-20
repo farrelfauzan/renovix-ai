@@ -1,8 +1,8 @@
-# 🏗️ Build Strategy — Performa AI
+# 🏗️ Build Strategy — Renovix AI
 
 ## Overview
 
-A phased execution plan for building Performa AI — a unified AI API platform with pay-per-use billing. This strategy prioritizes **revenue-generating features first**, keeps infrastructure lean, and avoids premature optimization.
+A phased execution plan for building Renovix AI — a unified AI API platform with pay-per-use billing. This strategy prioritizes **revenue-generating features first**, keeps infrastructure lean, and avoids premature optimization.
 
 ---
 
