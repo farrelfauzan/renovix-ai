@@ -28,6 +28,8 @@ import {
   useFakeDate,
 } from "../../../../test/admin-auth";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/; // RX-166: request ids are random UUIDs
+
 // RX-97 (D57, D61): the back-office audit log through real HTTP (Fastify `inject`) on the test database.
 // The probe routes below exist only in this spec: main has no personal-data route yet (RX-95 and later).
 
@@ -157,7 +159,7 @@ describe("Back-office audit log (RX-97, Fastify, test database)", () => {
           before: { sessionId: sessionB.id, revoked: false },
           after: { sessionId: sessionB.id, revoked: true },
           reason: "",
-          requestId: expect.stringMatching(/^req-/),
+          requestId: expect.stringMatching(UUID_PATTERN),
           effectiveAt: new Date(Date.now()),
           createdAt: expect.any(Date),
         },
@@ -349,7 +351,7 @@ describe("Back-office audit log (RX-97, Fastify, test database)", () => {
           before: { userId: user.id, revealed: false },
           after: { userId: user.id, revealed: true },
           reason: REVEAL_REASON,
-          requestId: expect.stringMatching(/^req-/),
+          requestId: expect.stringMatching(UUID_PATTERN),
           effectiveAt: new Date(Date.now()),
           createdAt: expect.any(Date),
         },

@@ -1,12 +1,10 @@
 import "dotenv/config";
 import { NestFactory } from "@nestjs/core";
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from "@nestjs/platform-fastify";
+import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import helmet from "@fastify/helmet";
 import { AppModule } from "./app/app.module";
 import { resolveLlmProvider } from "./app/providers/llm-provider";
+import { createFastifyAdapter } from "./common/utils/create-fastify-adapter";
 import { assertRequiredSecrets } from "./common/utils/assert-required-secrets";
 import { resolveCorsOrigins } from "./common/utils/resolve-cors-origins";
 import { ConfigService } from "@nestjs/config";
@@ -22,7 +20,7 @@ async function bootstrap(): Promise<NestFastifyApplication> {
 
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({
+    createFastifyAdapter({
       bodyLimit: isDev ? 50 * 1024 * 1024 : 1024 * 1024,
     }),
     {

@@ -1,10 +1,7 @@
 import { ModuleMetadata } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { Test, TestingModule, TestingModuleBuilder } from "@nestjs/testing";
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from "@nestjs/platform-fastify";
+import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AdminAuditModule } from "../src/app/admin-auth/admin-audit.module";
 import { AdminAuditInterceptor } from "../src/app/admin-auth/interceptor/admin-audit.interceptor";
 import { PrismaModule } from "../src/app/prisma/prisma.module";
@@ -13,6 +10,7 @@ import { RepositoriesModule } from "../src/app/prisma/repositories.module";
 import { AccessModule } from "../src/common/access.module";
 import { AccessGuard } from "../src/common/guards/access.guard";
 import { AdminOriginGuard } from "../src/common/guards/admin-origin.guard";
+import { createFastifyAdapter } from "../src/common/utils/create-fastify-adapter";
 import { testDatabaseUrl } from "./test-database";
 
 /**
@@ -48,7 +46,7 @@ export async function createTestModule(
 /** Starts the module as a Fastify app for `app.inject(...)`. Close with `app.close()`. */
 export async function createFastifyApp(moduleRef: TestingModule) {
   const app = moduleRef.createNestApplication<NestFastifyApplication>(
-    new FastifyAdapter(),
+    createFastifyAdapter(),
   );
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
