@@ -271,6 +271,10 @@ export class ChannelController {
     const userId = req.user.userId;
     const origin = req.headers.origin || req.headers.Origin || "*";
 
+    // RX-178 (review B1): the room access check, then the fixed 400 for an unusable model, before the SSE headers and
+    // the classifier call.
+    await this.chatService.resolveAgentConnection(userId, id, agentId);
+
     // Setup SSE streaming
     res.raw.writeHead(200, {
       "Content-Type": "text/event-stream",

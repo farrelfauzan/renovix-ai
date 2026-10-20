@@ -1,8 +1,10 @@
-import { Injectable, Logger, BadRequestException } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/client";
 import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { ModelUnavailableException } from "../../config/errors/model-unavailable.exception";
+import type { ModelConnection } from "../../providers/types/model-connection";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
@@ -27,6 +29,18 @@ export class ChannelChatService {
     private readonly usage: UsageService,
     private readonly guardrail: GuardrailService,
   ) {}
+
+  /**
+   * RX-178 (review B1): the connection of the room agent's model, checked before any work on the chat route (the SSE
+   * headers, the classifier call, the message). The room access check (403/404) comes first, then the fixed 400
+   * (ModelUnavailableException) for a model that cannot be resolved.
+   */
+  async resolveAgentConnection(userId: string, channelId: string, agentId: string): Promise<ModelConnection> {
+    const channelAgent = await this.channelService.resolveChannelAgent(userId, channelId, agentId);
+    const modelEntry = await this.registry.resolveModel(channelAgent.agent.model);
+    if (!modelEntry) throw new ModelUnavailableException();
+    return this.registry.resolveConnection(modelEntry.slug);
+  }
 
   async chat(
     userId: string,
@@ -104,9 +118,7 @@ export class ChannelChatService {
 
     // Build context
     const modelEntry = await this.registry.resolveModel(agent.model);
-    if (!modelEntry) {
-      throw new BadRequestException(`Model "${agent.model}" is not available`);
-    }
+    if (!modelEntry) throw new ModelUnavailableException();
     const connection = await this.registry.resolveConnection(modelEntry.slug);
 
     // Get recent history for this agent in the channel room

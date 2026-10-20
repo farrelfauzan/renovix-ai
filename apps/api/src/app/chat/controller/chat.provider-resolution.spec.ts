@@ -178,6 +178,14 @@ describe("RX-178: chat calls resolved from the slug to the provider record (Fast
         "a soft-deleted provider (status still active: the nested read is filtered on deletedAt itself)",
         async () => void (await resolvable({ provider: { status: "active", deletedAt: new Date() } })),
       ],
+      [
+        "review N1: a stored key that does not open (not a 409 naming our config)",
+        async () => {
+          const { provider } = await resolvable();
+          await prisma.provider.update({ where: { id: provider.id }, data: { apiKeyCiphertext: "not-a-sealed-key" } });
+          await registry.refresh();
+        },
+      ],
     ];
 
     it.each(cases)("%s", async (_name, arrange) => {

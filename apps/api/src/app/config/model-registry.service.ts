@@ -141,12 +141,17 @@ export class ModelRegistryService implements OnModuleInit {
     await this.ensureFresh();
     const cached = this.connections.get(slug);
     if (!cached) throw new ModelUnavailableException();
-    return {
-      slug,
-      baseUrl: cached.baseUrl,
-      apiKey: this.providers.revealStoredKey(cached.apiKeyCiphertext),
-      providerName: cached.providerName,
-    };
+    return { slug, baseUrl: cached.baseUrl, apiKey: this.openKey(cached, slug), providerName: cached.providerName };
+  }
+
+  /** RX-178 review N1: a stored key that does not open makes the provider unusable for chat: the fixed 400, the reason logged. */
+  private openKey(cached: CachedConnection, slug: string): string {
+    try {
+      return this.providers.revealStoredKey(cached.apiKeyCiphertext);
+    } catch {
+      this.logger.warn(`[resolveConnection] provider ${cached.providerName}: the stored key does not open; refusing ${slug}`);
+      throw new ModelUnavailableException();
+    }
   }
 
   /** RX-178: the connection of the cheapest resolvable model of `tier`, for internal calls that name no model; 400 when there is none. */

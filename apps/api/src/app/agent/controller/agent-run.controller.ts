@@ -59,6 +59,9 @@ export class AgentRunController {
     const { message, sessionId, output_format } = parsed.data;
     const userId = req.user.userId;
 
+    // RX-178 (review B1): 404 or the fixed 400 for an unusable model, before the classifier call and the SSE headers.
+    await this.runService.resolveAgentConnection(userId, id);
+
     // Classify document intent via LLM
     const detectedFormat =
       output_format || (await this.classifyDocumentIntent(message));

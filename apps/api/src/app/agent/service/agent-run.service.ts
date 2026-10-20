@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { ModelUnavailableException } from "../../config/errors/model-unavailable.exception";
 import { ProviderRouter } from "../../providers/provider-router";
 import type { ModelConnection } from "../../providers/types/model-connection";
 import { AgentToolService } from "./agent-tool.service";
@@ -1003,14 +1004,25 @@ export class AgentRunService {
     return subResult;
   }
 
+  /**
+   * RX-178 (review B1): the connection of the agent's model, checked before any work on the chat route (the classifier
+   * call, the SSE headers, the quota, the run and the message). 404 for an agent the user cannot run comes first, then
+   * the fixed 400 (ModelUnavailableException) for a model that cannot be resolved.
+   */
+  async resolveAgentConnection(userId: string, agentId: string): Promise<ModelConnection> {
+    const agent = await this.agents.findRunnableAgent(agentId, userId);
+    if (!agent) throw new NotFoundException("Agent not found");
+    const modelConfig = await this.registry.resolveModel(agent.model);
+    if (!modelConfig) throw new ModelUnavailableException();
+    return this.registry.resolveConnection(modelConfig.slug);
+  }
+
   private async buildContext(
     agent: any,
     userId: string,
   ): Promise<AgentContext> {
     const modelConfig = await this.registry.resolveModel(agent.model);
-    if (!modelConfig) {
-      throw new BadRequestException(`Model "${agent.model}" not available`);
-    }
+    if (!modelConfig) throw new ModelUnavailableException();
 
     return {
       agentId: agent.id,
