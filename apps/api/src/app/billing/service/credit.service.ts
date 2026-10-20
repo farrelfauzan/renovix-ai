@@ -8,6 +8,7 @@ import { CreditAccountRepository } from "../repository/credit-account.repository
 import { CreditLedgerEntryRepository } from "../repository/credit-ledger-entry.repository";
 import { CreditReservationRepository } from "../repository/credit-reservation.repository";
 import type { ReserveRequest } from "../types/reserve-request";
+import type { RunReserveRequest } from "../types/run-reserve-request";
 import type { UsageRecord } from "../types/usage-record";
 import { assertCreditAmount } from "../utils/assert-credit-amount";
 import { chargeCall } from "../utils/charge-call";
@@ -51,6 +52,39 @@ export class CreditService {
           wallet: "paid",
           requestId: request.requestId,
           amountHeld: request.amount,
+          expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
+        },
+        tx,
+      );
+    });
+  }
+
+  /**
+   * The one hold of an agent run (docs/credits.md section 13.3), in one transaction on the locked paid-wallet row:
+   * H = min(cap, available), placed only when the wallet is not frozen and available >= `minimum`, and the open
+   * reservation row with the run's id (as its request id and run id). CreditsExhaustedException (402), writing nothing,
+   * when the wallet cannot cover the minimum or does not exist.
+   */
+  async reserveRun(request: RunReserveRequest): Promise<CreditReservation> {
+    assertCreditAmount(request.cap);
+    assertCreditAmount(request.minimum);
+    const owner = { userId: request.userId };
+    return this.transactions.run(async (tx) => {
+      const found = await this.accounts.findAccount(owner, "paid", tx);
+      if (!found) throw new CreditsExhaustedException();
+      const account = await this.accounts.lockAccount(found.id, tx);
+      const amount = Decimal.min(request.cap, account.balance.minus(account.held));
+      // addHold's conditional update also refuses a frozen wallet.
+      if (amount.lessThan(request.minimum) || !(await this.accounts.addHold(owner, "paid", amount, tx))) {
+        throw new CreditsExhaustedException();
+      }
+      return this.reservations.createReservation(
+        {
+          accountId: account.id,
+          wallet: "paid",
+          requestId: request.runId,
+          runId: request.runId,
+          amountHeld: amount,
           expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
         },
         tx,
@@ -147,6 +181,9 @@ export class CreditService {
         memberUserId: record.memberUserId,
         requestId: record.requestId,
         callId: record.callId,
+        runId: record.runId,
+        agentId: record.agentId,
+        parentCallId: record.parentCallId,
         modelId: record.modelId,
         tier: record.tier,
         ...record.rates,

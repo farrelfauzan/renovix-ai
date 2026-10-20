@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { ForbiddenException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/client";
 import { AgentRunService } from "./agent-run.service";
 import { AgentToolService } from "./agent-tool.service";
@@ -12,6 +12,9 @@ import { PromptTuningService } from "../../chat/service/prompt-tuning.service";
 import { ConversationService } from "../../chat/service/conversation.service";
 import { DocumentService } from "../../document/service/document.service";
 import { CreditService } from "../../billing/service/credit.service";
+import { CreditsExhaustedException } from "../../billing/errors/credits-exhausted.exception";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { AgentRunMeterService } from "./agent-run-meter.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -27,11 +30,10 @@ import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-inv
 import type { PrismaService } from "../../prisma/prisma.service";
 import { createResolvableModel } from "../../../../test/provider-model";
 
-// RX-14: characterization tests for the agent quota path
-// (checkAndDeductQuota / deductTokenQuota via AgentRunService.chat) and the
+// RX-14: characterization tests for the agent gates (since RX-22b: the
+// subscription gate and the ledger; the quota counters are gone) and the
 // chat-completion billing path (D106; since RX-22 on the credit ledger: one
-// usage entry per call, rounded once). The agent quota cases pin TODAY's
-// numbers (they change with RX-22b). These collaborators load ESM-only
+// usage entry per call, rounded once). These collaborators load ESM-only
 // packages and are stubbed (the pattern of agent-run.agent-lookups.spec.ts).
 jest.mock("./agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
@@ -41,7 +43,7 @@ jest.mock("../../chat/service/conversation.service", () => ({ ConversationServic
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 jest.mock("../../usage/service/usage.service", () => ({ UsageService: class {} }));
 
-describe("RX-14: the agent quota path and the chat billing numbers (test database, fake provider)", () => {
+describe("RX-14: the agent gates and the chat billing numbers (test database, fake provider)", () => {
   const fake = new FakeProviderAdapter();
   let moduleRef: Awaited<ReturnType<typeof createTestModule>>["moduleRef"];
   let prisma: PrismaService;
@@ -55,6 +57,8 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunMeterService,
+          PlatformSettingsService,
           ChatService,
           CreditService,
           ModelRegistryService,
@@ -119,12 +123,16 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
   const balanceOf = async (userId: string) =>
     (await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { balance: true } })).balance;
 
-  describe("checkAndDeductQuota (through AgentRunService.chat)", () => {
+  // RX-22b (RNX-193, D190): checkAndDeductQuota and deductTokenQuota are gone from the agent path. What stays is the
+  // subscription gate (D192) and, at the old overage gate's place, a ledger read (402 when nothing is available); the
+  // run is charged through one reservation and a usage entry per model call. The cases below are the RX-14 cases
+  // rewritten to that behaviour; each says what it pinned before.
+  describe("the agent gates (through AgentRunService.chat)", () => {
     const subscribedUser = async (overrides: {
       planTokens?: bigint;
       tokensUsed?: bigint;
       balance?: Decimal;
-      /** Credits on the ledger's paid wallet (RX-22 review: the overage gate reads the ledger, not User.balance). */
+      /** Credits on the ledger's paid wallet. */
       credits?: string;
     } = {}) => {
       const plan = await createPlan(prisma, {
@@ -141,21 +149,29 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       return { user, agent, plan };
     };
 
-    it("active subscription, tokens under the limit: the chat runs, messagesUsed +1, no balance change, no ledger row", async () => {
-      const { user, agent } = await subscribedUser({ balance: new Decimal("1.0") });
+    const usageAmountsOf = async (userId: string) =>
+      (await prisma.creditLedgerEntry.findMany({ where: { memberUserId: userId, type: "usage" }, orderBy: { seq: "asc" } })).map(
+        (e) => e.amount.toFixed(6),
+      );
+
+    // Was: messagesUsed +1, no balance change, no ledger row.
+    it("active subscription with ledger credits: the chat runs and is one usage entry; messagesUsed and User.balance unchanged", async () => {
+      const { user, agent } = await subscribedUser({ balance: new Decimal("1.0"), credits: "1.0" });
       fake.enqueue({ content: "Hello", usage: { prompt_tokens: 10, completion_tokens: 5 } });
 
       const result = await agentRun.chat(user.id, agent.id, "Hi");
 
       expect(result.message.content).toBe("Hello");
       const sub = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-      expect(sub.messagesUsed).toBe(1);
+      expect(sub.messagesUsed).toBe(0);
       expect((await balanceOf(user.id)).toFixed(6)).toBe("1.000000");
       expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(0);
+      expect(await usageAmountsOf(user.id)).toEqual(["-0.000015"]);
+      await assertCreditLedgerInvariants(prisma);
     });
 
-    // RX-22 review (D208): the overage allowance reads the ledger's paid wallet (balance - held); was User.balance 1.0.
-    it("at the token limit with ledger credits: allowed (overage), messagesUsed +1, balance untouched by the quota check", async () => {
+    // Was: at the token limit with ledger credits, allowed as overage, messagesUsed +1.
+    it("tokensUsed at the plan limit no longer gates: with ledger credits the run is charged on the ledger, counters unchanged", async () => {
       const { user, agent } = await subscribedUser({
         planTokens: 1000n,
         tokensUsed: 1000n,
@@ -167,50 +183,41 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       await agentRun.chat(user.id, agent.id, "Hi");
 
       const sub = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-      expect(sub.messagesUsed).toBe(1);
+      expect([sub.messagesUsed, sub.tokensUsed]).toEqual([0, 1000n]);
       expect((await balanceOf(user.id)).toFixed(6)).toBe("1.000000");
-      // the quota path writes no ledger row and takes no credits either
       expect(await prisma.transaction.count({ where: { userId: user.id } })).toBe(0);
+      expect(await usageAmountsOf(user.id)).toEqual(["-0.000015"]);
+      await assertCreditLedgerInvariants(prisma);
     });
 
-    it("at the token limit with balance 0: BadRequestException, and the messagesUsed increment is ROLLED BACK (the throw happens inside the $transaction)", async () => {
-      const { user, agent } = await subscribedUser({
-        planTokens: 1000n,
-        tokensUsed: 1000n,
-        balance: new Decimal(0),
-      });
+    // Was: at the token limit with balance 0, BadRequestException "Monthly token limit reached ..." and the
+    // messagesUsed increment rolled back.
+    it("no ledger credits: 402 CREDITS_EXHAUSTED before any model call or write; messagesUsed stays 0", async () => {
+      const { user, agent } = await subscribedUser({ planTokens: 1000n, tokensUsed: 1000n });
       // no turn enqueued: the refusal happens before any provider call, and a
       // turn enqueued here would leak to the next test (the fake keeps it)
 
-      await expect(agentRun.chat(user.id, agent.id, "Hi")).rejects.toThrow(
-        new BadRequestException(
-          "Monthly token limit reached and insufficient credit balance for overage. Please upgrade or top up.",
-        ),
-      );
+      await expect(agentRun.chat(user.id, agent.id, "Hi")).rejects.toThrow(CreditsExhaustedException);
 
       const sub = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
       expect(sub.messagesUsed).toBe(0);
       expect(fake.requests).toHaveLength(0);
+      expect(await prisma.agentMessage.count()).toBe(0);
     });
 
-    it("RX-22 review: at the token limit with User.balance 1.0 but no ledger credits: refused (User.balance is not read)", async () => {
-      const { user, agent } = await subscribedUser({
-        planTokens: 1000n,
-        tokensUsed: 1000n,
-        balance: new Decimal("1.0"),
-      });
+    // Was: BadRequestException "Monthly token limit reached ..." (User.balance not read).
+    it("User.balance 1.0 but no ledger credits: 402 CREDITS_EXHAUSTED (User.balance is not read)", async () => {
+      const { user, agent } = await subscribedUser({ balance: new Decimal("1.0") });
 
-      await expect(agentRun.chat(user.id, agent.id, "Hi")).rejects.toThrow(
-        new BadRequestException(
-          "Monthly token limit reached and insufficient credit balance for overage. Please upgrade or top up.",
-        ),
-      );
+      await expect(agentRun.chat(user.id, agent.id, "Hi")).rejects.toThrow(CreditsExhaustedException);
 
       expect(fake.requests).toHaveLength(0);
     });
 
+    // Unchanged: the agent subscription gate stays (D192, D202 item 8).
     it("no subscription: ForbiddenException, no model call", async () => {
       const user = await createUser(prisma);
+      await fundPaidWallet(prisma, user.id, "1.0");
       const agent = await createAgent(prisma, { userId: user.id });
 
       await expect(agentRun.chat(user.id, agent.id, "Hi")).rejects.toThrow(
@@ -221,34 +228,41 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
     });
   });
 
-  describe("deductTokenQuota (after a completed chat, fire-and-forget)", () => {
-    it("tokensUsed increases by the actual total tokens of the run", async () => {
+  describe("after a completed run: no token counter (was deductTokenQuota)", () => {
+    // Was: tokensUsed increases by the run's 42 tokens (fire-and-forget).
+    it("tokensUsed is not written; the run's 30 + 12 tokens are one usage entry of 0.000042", async () => {
       const plan = await createPlan(prisma);
       const user = await createUser(prisma);
       await createSubscription(prisma, { userId: user.id, planId: plan.id, tokensUsed: 0n });
+      await fundPaidWallet(prisma, user.id, "1.0");
       const agent = await createAgent(prisma, { userId: user.id });
       fake.enqueue({ content: "Hello", usage: { prompt_tokens: 30, completion_tokens: 12 } });
 
       await agentRun.chat(user.id, agent.id, "Hi");
 
-      // deductTokenQuota runs async; wait for the quota write to land
-      await new Promise((r) => setTimeout(r, 50));
       const sub = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-      expect(sub.tokensUsed).toBe(42n);
+      expect(sub.tokensUsed).toBe(0n);
+      const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id, type: "usage" } });
+      expect(entries.map((e) => [e.amount.toFixed(6), e.tokensNew, e.tokensOut])).toEqual([["-0.000042", 30, 12]]);
+      await assertCreditLedgerInvariants(prisma);
     });
 
-    it("a run whose usage reports no tokens (totalTokens 0) leaves tokensUsed unchanged (early return)", async () => {
+    // Was: a run reporting 0 tokens leaves tokensUsed unchanged (early return).
+    it("a run whose usage reports no tokens writes a usage entry of 0 and leaves tokensUsed unchanged", async () => {
       const plan = await createPlan(prisma);
       const user = await createUser(prisma);
       await createSubscription(prisma, { userId: user.id, planId: plan.id, tokensUsed: 5n });
+      await fundPaidWallet(prisma, user.id, "1.0");
       const agent = await createAgent(prisma, { userId: user.id });
       fake.enqueue({ content: "Hello", usage: { prompt_tokens: 0, completion_tokens: 0 } });
 
       await agentRun.chat(user.id, agent.id, "Hi");
 
-      await new Promise((r) => setTimeout(r, 50));
       const sub = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
       expect(sub.tokensUsed).toBe(5n);
+      const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id, type: "usage" } });
+      expect(entries.map((e) => [e.amount.toFixed(6), e.outcome])).toEqual([["0.000000", "completed"]]);
+      await assertCreditLedgerInvariants(prisma);
     });
   });
 

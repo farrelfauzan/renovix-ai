@@ -15,6 +15,9 @@ import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { MODEL_UNAVAILABLE_MESSAGE } from "../../config/errors/model-unavailable.exception";
+import { CreditService } from "../../billing/service/credit.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { HealthController } from "../../health/controller/health.controller";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -31,6 +34,7 @@ import {
   StubHttpServer,
 } from "../../../../test/llm-stub";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-169: POST /channels/:id/agents/:agentId/chat answers the client over SSE,
 // but calls the provider without streaming (ProviderRouter.chat). A provider
@@ -100,6 +104,9 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
       providers: [
         ChannelService,
         ChannelChatService,
+        AgentRunMeterService,
+        CreditService,
+        PlatformSettingsService,
         ModelRegistryService,
         {
           provide: AgentToolService,
@@ -132,6 +139,10 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
       outputPrice: 0.000001,
       maxTokens: 8192,
       provider: { baseUrl: primary.baseUrl, apiKey: PRIMARY_KEY },
+    });
+    // RX-22b: channel chats are charged on the ledger at the tier rate.
+    await prisma.tierRate.create({
+      data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
     });
     await moduleRef.get(ModelRegistryService).refresh();
   });
@@ -181,6 +192,7 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
   it("AC6: provider answers 400 → SSE error event naming 400, response ends, health answers", async () => {
     primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));
     const user = await createUser(prisma);
+    await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
     await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: agent.id } });
@@ -204,5 +216,9 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     expect(primary.requests.map((r) => r.body.stream)).toEqual([undefined, undefined]);
     const health = await send({ method: "GET", url: `${appUrl}/health` });
     expect(health.status).toBe(200);
+    // RX-22b (docs/credits.md section 3.1 rule 6): the failed call is charged 0 and the run's hold is released.
+    const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id, type: "usage" } });
+    expect(entries.map((e) => [e.outcome, e.amount.toFixed(6)])).toEqual([["provider_error", "0.000000"]]);
+    expect((await prisma.creditReservation.findMany()).map((r) => r.status)).toEqual(["released"]);
   });
 });

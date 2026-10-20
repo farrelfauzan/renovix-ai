@@ -8,6 +8,9 @@ import { KnowledgeService } from "../../knowledge/service/knowledge.service";
 import { EmbeddingService } from "../../knowledge/service/embedding.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { CreditService } from "../../billing/service/credit.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { AgentRunMeterService } from "./agent-run-meter.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ProvidersModule } from "../../providers/providers.module";
@@ -16,6 +19,7 @@ import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { testConnection } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 import {
   createAgent,
   createPlan,
@@ -57,6 +61,9 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunMeterService,
+          CreditService,
+          PlatformSettingsService,
           KnowledgeService,
           { provide: EmbeddingService, useValue: { embedSingle } },
           { provide: S3Service, useValue: {} },
@@ -66,7 +73,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
               resolveModel: async () => ({ slug: "test-model" }),
               resolveConnection: async () => testConnection(),
               getUserPrice: async () => null,
-              // RX-21: the usage log reads the model's tier and the tier's credit rates.
+              // RX-21, RX-22b: the run's charge reads the model's tier and the tier's credit rates.
               getModel: async () => ({ tier: "standard" }),
               getTierRates: async () => ({
                 inputCreditsPerToken: new Decimal(1),
@@ -115,6 +122,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     const user = await createUser(prisma);
     const plan = await createPlan(prisma);
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await fundPaidWallet(prisma, user.id, "1");
     const workspace = await createWorkspace(prisma, { ownerId: user.id });
     const workspaceKb = await prisma.knowledgeBase.create({
       data: { userId: user.id, workspaceId: workspace.id, name: "Team KB" },
@@ -146,6 +154,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     const plan = await createPlan(prisma, { slug: "enterprise", maxWorkspaceUsers: 100 });
     await createSubscription(prisma, { userId: owner.id, planId: plan.id });
     await createSubscription(prisma, { userId: admin.id, planId: plan.id });
+    await fundPaidWallet(prisma, admin.id, "1");
     const workspace = await createWorkspace(prisma, { ownerId: owner.id });
     await prisma.workspaceMember.createMany({
       data: [
@@ -168,11 +177,13 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     expect(embedSingle).not.toHaveBeenCalled();
   });
 
-  // RX-21 review B2: the usage log prices tokens per 1,000,000 at the tier rate (1/1/1 here).
+  // RX-21 review B2: the usage log prices tokens per 1,000,000 at the tier rate (1/1/1 here). Since RX-22b the row is
+  // written per model call with the credits its usage entry charged.
   it("a sync run logs 1,000 input + 500 output tokens at rate 1 as 0.0015 credits", async () => {
     const user = await createUser(prisma);
     const plan = await createPlan(prisma);
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     fake.enqueue({ content: "ok", usage: { prompt_tokens: 1000, completion_tokens: 500 } });
 

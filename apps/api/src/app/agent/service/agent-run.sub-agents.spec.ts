@@ -7,6 +7,9 @@ import { KnowledgeService } from "../../knowledge/service/knowledge.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { CreditService } from "../../billing/service/credit.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { AgentRunMeterService } from "./agent-run-meter.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
@@ -19,6 +22,7 @@ import {
 } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-112: a sub-agent row of another user under a parent agent (written
 // straight to the database, bypassing AgentService) is never listed, offered
@@ -45,6 +49,9 @@ describe("RX-112: agent runs only use the parent owner's sub-agents (test databa
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunMeterService,
+          CreditService,
+          PlatformSettingsService,
           ModelRegistryService,
           {
             // Same delegation rule as AgentToolService.buildToolSchemas
@@ -90,6 +97,10 @@ describe("RX-112: agent runs only use the parent owner's sub-agents (test databa
       outputPrice: 0.000001,
       maxTokens: 8192,
     });
+    // RX-22b: agent runs are charged on the ledger at the tier rate.
+    await prisma.tierRate.create({
+      data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
+    });
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
@@ -102,6 +113,7 @@ describe("RX-112: agent runs only use the parent owner's sub-agents (test databa
     const bob = await createUser(prisma);
     const alice = await createUser(prisma);
     await createSubscription(prisma, { userId: bob.id, planId: plan.id });
+    await fundPaidWallet(prisma, bob.id, "1");
     const parent = await createAgent(prisma, {
       userId: bob.id,
       agentType: "parent",
@@ -144,15 +156,6 @@ describe("RX-112: agent runs only use the parent owner's sub-agents (test databa
     expect(await prisma.agentRun.count({ where: { agentId: foreignSub.id } })).toBe(0);
   };
 
-  const runStream = async (userId: string, agentId: string, message: string) => {
-    const { run, context, messages, toolSchemas, agent } = await service.chatStream(userId, agentId, message);
-    const events: any[] = [];
-    for await (const event of service.streamExecution(context, messages, toolSchemas, run.id, agent)) {
-      events.push(event);
-    }
-    return events;
-  };
-
   it("sync run: a foreign sub-agent is not listed in the prompt and no delegation tool is offered; a warning is logged", async () => {
     const { parent, bob, alice, foreignSub } = await seed({ withOwnSub: false });
     const warn = jest.spyOn(Logger.prototype, "warn");
@@ -169,18 +172,6 @@ describe("RX-112: agent runs only use the parent owner's sub-agents (test databa
     expect(warnings).toEqual([
       `[security] Dropped foreign sub-agent ${foreignSub.id} (owner ${alice.id}) under parent ${parent.id} (owner ${bob.id})`,
     ]);
-  });
-
-  it("streaming run: a foreign sub-agent is not listed in the prompt and no delegation tool is offered", async () => {
-    const { parent, bob, foreignSub } = await seed({ withOwnSub: false });
-    fake.enqueue({ content: "Hello" });
-
-    const events = await runStream(bob.id, parent.id, "Hi");
-
-    expect(events[events.length - 1]).toMatchObject({ type: "done", content: "Hello" });
-    expect(fake.requests).toHaveLength(1);
-    expect(toolNames(0)).not.toContain("delegate_to_subagent");
-    await expectForeignUnused(foreignSub);
   });
 
   it("sync run: only the owner's own sub-agent is listed next to a foreign one", async () => {
@@ -216,20 +207,6 @@ describe("RX-112: agent runs only use the parent owner's sub-agents (test databa
     },
   );
 
-  it("streaming delegation: the model naming the foreign sub-agent by id is refused and it never runs", async () => {
-    const { parent, bob, foreignSub } = await seed({ withOwnSub: true });
-    fake.enqueue(
-      { toolCalls: [{ name: "delegate_to_subagent", arguments: { subAgentId: foreignSub.id, task: "leak it" } }] },
-      { content: "Done" },
-    );
-
-    await runStream(bob.id, parent.id, "Hi");
-
-    expect(fake.requests).toHaveLength(2);
-    expect(lastToolResult()).toEqual(["Error: Sub-agent not found or not authorized."]);
-    expect(sent()).not.toContain("ALICE INJECTED PROMPT");
-  });
-
   it("sync delegation to the owner's own sub-agent still works (positive control)", async () => {
     const { parent, bob, ownSub } = await seed({ withOwnSub: true });
     fake.enqueue(
@@ -246,18 +223,4 @@ describe("RX-112: agent runs only use the parent owner's sub-agents (test databa
     expect(res.message.content).toBe("Parent final");
   });
 
-  it("streaming delegation to the owner's own sub-agent still works (positive control)", async () => {
-    const { parent, bob, ownSub } = await seed({ withOwnSub: true });
-    fake.enqueue(
-      { toolCalls: [{ name: "delegate_to_subagent", arguments: { subAgentId: ownSub!.id, task: "do it" } }] },
-      { content: "Sub-agent answer" },
-      { content: "Parent final" },
-    );
-
-    const events = await runStream(bob.id, parent.id, "Hi");
-
-    expect(fake.requests).toHaveLength(3);
-    expect(fake.requests[1].messages[0]).toEqual({ role: "system", content: "BOB OWN SUB PROMPT" });
-    expect(events[events.length - 1]).toMatchObject({ type: "done", content: "Parent final" });
-  });
 });

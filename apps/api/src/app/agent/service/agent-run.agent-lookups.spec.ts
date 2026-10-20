@@ -7,6 +7,10 @@ import { KnowledgeService } from "../../knowledge/service/knowledge.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { CreditService } from "../../billing/service/credit.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { AgentRunMeterService } from "./agent-run-meter.service";
+import { AgentRepository } from "../repository/agent.repository";
 import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
@@ -19,6 +23,7 @@ import {
 } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-134: each condition of the agent lookups of a run (the run's agent, the
 // sub-agent of a delegation, the agent of the run history routes) decides a
@@ -48,6 +53,9 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunMeterService,
+          CreditService,
+          PlatformSettingsService,
           ModelRegistryService,
           {
             // Records the tools of the agent; same delegation rule as AgentToolService.buildToolSchemas
@@ -97,34 +105,31 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
       outputPrice: 0.000001,
       maxTokens: 8192,
     });
+    // RX-22b: agent runs are charged on the ledger at the tier rate.
+    await prisma.tierRate.create({
+      data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
+    });
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
   afterAll(() => moduleRef?.close());
 
-  /** Bob (subscribed, the caller) and Alice (another user). */
+  /** Bob (subscribed and funded, the caller) and Alice (another user). */
   const seedUsers = async () => {
     const plan = await createPlan(prisma);
     const bob = await createUser(prisma);
     const alice = await createUser(prisma);
     await createSubscription(prisma, { userId: bob.id, planId: plan.id });
+    await fundPaidWallet(prisma, bob.id, "1");
     return { bob, alice };
   };
 
-  const runStream = async (userId: string, agentId: string, message: string) => {
-    const { run, context, messages, toolSchemas, agent } = await service.chatStream(userId, agentId, message);
-    for await (const _event of service.streamExecution(context, messages, toolSchemas, run.id, agent)) {
-      // drain the stream
-    }
-    return agent;
-  };
-
-  const run = (mode: "sync" | "stream", userId: string, agentId: string) =>
-    mode === "sync" ? service.chat(userId, agentId, "Hi") : runStream(userId, agentId, "Hi");
+  // RX-22b: the stream run (chatStream / streamExecution) had no caller and was removed; only the sync run is left.
+  const run = (_mode: "sync", userId: string, agentId: string) => service.chat(userId, agentId, "Hi");
 
   const systemPrompt = (i: number) => String(fake.requests[i].messages[0].content);
 
-  describe.each([["sync"], ["stream"]] as const)("the run's agent (%s run)", (mode) => {
+  describe.each([["sync"]] as const)("the run's agent (%s run)", (mode) => {
     it("the owner runs their own private draft agent (only the userId branch lets it through)", async () => {
       const { bob } = await seedUsers();
       const agent = await createAgent(prisma, { userId: bob.id, systemPrompt: "BOB PRIVATE PROMPT" });
@@ -233,7 +238,8 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
     });
   });
 
-  it("stream run: only the connected integrations are loaded (integrations: status decides)", async () => {
+  // RX-22b: was checked through the removed stream run; now through the lookup the sync run uses.
+  it("the run's lookup loads only the connected integrations (integrations: status decides)", async () => {
     const { bob } = await seedUsers();
     const agent = await createAgent(prisma, { userId: bob.id });
     await prisma.agentIntegration.createMany({
@@ -242,11 +248,10 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
         { agentId: agent.id, provider: "notion", config: {}, scopes: [], status: "revoked" },
       ],
     });
-    fake.enqueue({ content: "Hello" });
 
-    const loaded = await runStream(bob.id, agent.id, "Hi");
+    const loaded = await moduleRef.get(AgentRepository).findRunnableAgent(agent.id, bob.id);
 
-    expect(loaded.integrations.map((i: { provider: string }) => i.provider)).toEqual(["jira"]);
+    expect(loaded!.integrations.map((i: { provider: string }) => i.provider)).toEqual(["jira"]);
   });
 
   describe("the sub-agent of a delegation (sync run)", () => {

@@ -6,6 +6,9 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import * as jwt from "jsonwebtoken";
 import { AgentRunController } from "./agent-run.controller";
 import { AgentRunService } from "../service/agent-run.service";
+import { AgentRunMeterService } from "../service/agent-run-meter.service";
+import { CreditService } from "../../billing/service/credit.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { AgentToolService } from "../service/agent-tool.service";
 import { AgentMemoryService } from "../service/agent-memory.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
@@ -85,6 +88,9 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
       controllers: [AgentRunController],
       providers: [
         AgentRunService,
+        AgentRunMeterService,
+        CreditService,
+        PlatformSettingsService,
         ModelRegistryService,
         {
           provide: AgentToolService,

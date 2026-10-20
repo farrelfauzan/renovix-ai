@@ -6,6 +6,9 @@ import { KnowledgeService } from "../../knowledge/service/knowledge.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { CreditService } from "../../billing/service/credit.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { AgentRunMeterService } from "./agent-run-meter.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -13,12 +16,15 @@ import { createAgent, createPlan, createSubscription, createUser } from "../../.
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import type { PrismaService } from "../../prisma/prisma.service";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-21 review B2 (test database, real UsageService and ModelRegistryService, fake provider): an agent
 // run writes usage_logs.cost = tokens x tier rate / 1,000,000 (docs/credits.md section 1.3). Without
 // the divide the cost is 10^6 too high, and a large Frontier run overflows usage_logs.cost
-// Decimal(12,6), so the row is lost. Based on QA's RX-21 repro. These collaborators load ESM-only
-// packages and are stubbed (the pattern of agent-run.billing-characterization.spec.ts).
+// Decimal(12,6), so the row is lost. Based on QA's RX-21 repro. Since RX-22b the row is written per
+// model call with the credits of that call's usage entry (one row per run before), so the user is
+// funded on the ledger. These collaborators load ESM-only packages and are stubbed (the pattern of
+// agent-run.billing-characterization.spec.ts).
 jest.mock("./agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
@@ -39,6 +45,9 @@ describe("RX-21: usage_logs.cost of an agent run (test database)", () => {
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunMeterService,
+          CreditService,
+          PlatformSettingsService,
           ModelRegistryService,
           UsageService,
           {
@@ -93,13 +102,14 @@ describe("RX-21: usage_logs.cost of an agent run (test database)", () => {
     const plan = await createPlan(prisma, { maxTokensPerMonth: 1_000_000_000n });
     const user = await createUser(prisma, { balance: new Decimal("1.0") });
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await fundPaidWallet(prisma, user.id, "10");
     const agent = await createAgent(prisma, { userId: user.id });
     fake.enqueue({ content: "Hello", usage: { prompt_tokens: input.promptTokens, completion_tokens: input.completionTokens } });
     await runs.chat(user.id, agent.id, "Hi");
     return user.id;
   };
 
-  /** logUsage is fire-and-forget: waits up to LOG_WAIT_MS for the user's usage_logs rows. */
+  /** Waits up to LOG_WAIT_MS for the user's usage_logs rows (the run awaits the write since RX-22b). */
   const usageLogsOf = async (userId: string) => {
     const deadline = Date.now() + LOG_WAIT_MS;
     let logs = await prisma.usageLog.findMany({ where: { userId } });
@@ -117,6 +127,8 @@ describe("RX-21: usage_logs.cost of an agent run (test database)", () => {
 
     expect(logs).toHaveLength(1);
     expect(logs[0].cost.toFixed(6)).toBe("0.000015");
+    const [entry] = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: userId, type: "usage" } });
+    expect(entry.amount.toFixed(6)).toBe("-0.000015");
   });
 
   it("40,000 input + 100 output tokens at frontier 29 write a row with cost 1.1629 (no Decimal(12,6) overflow)", async () => {
