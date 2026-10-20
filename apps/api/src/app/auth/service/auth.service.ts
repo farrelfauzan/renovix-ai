@@ -7,6 +7,8 @@ import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { UserRepository } from "../repository/user.repository";
+import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
+import { TransactionService } from "../../prisma/transaction.service";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../dto/create-auth.dto";
 
 @Injectable()
@@ -14,6 +16,8 @@ export class AuthService {
   constructor(
     private readonly users: UserRepository,
     private readonly jwtService: JwtService,
+    private readonly workspaces: WorkspaceRepository,
+    private readonly transactions: TransactionService,
   ) {}
 
   private generateApiKey(): string {
@@ -33,11 +37,19 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.password, 12);
     const apiKey = this.generateApiKey();
 
-    const user = await this.users.createUser({
-      email: dto.email,
-      password: hashedPassword,
-      apiKey,
-      name: dto.name || null,
+    // The user and its default workspace (RNX-117) are written together or not at all.
+    const user = await this.transactions.run(async (tx) => {
+      const created = await this.users.createUser(
+        {
+          email: dto.email,
+          password: hashedPassword,
+          apiKey,
+          name: dto.name || null,
+        },
+        tx,
+      );
+      await this.workspaces.ensureDefaultWorkspace(created.id, tx);
+      return created;
     });
 
     const token = this.signToken(user.id, user.email);

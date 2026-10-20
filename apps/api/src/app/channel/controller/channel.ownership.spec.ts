@@ -221,7 +221,8 @@ describe("Channels: ownership (RX-15, Fastify, test database)", () => {
       const res = await app.inject({ method: "DELETE", url: `/channels/${channel.id}`, headers: auth(alice) });
 
       expect({ status: res.statusCode, rows: await readRows() }).toEqual({ status: 409, rows: rowsBefore });
-      expect(rowsBefore.map((rows) => rows.length)).toEqual([1, 1, 1, 2, 1, 1, 1]);
+      // RNX-117: + Alice's default workspace (her agent's) and its owner member row.
+      expect(rowsBefore.map((rows) => rows.length)).toEqual([1, 1, 2, 3, 1, 1, 1]);
       expect(res.json().message).toBe("This channel belongs to a workspace and cannot be deleted");
     });
 

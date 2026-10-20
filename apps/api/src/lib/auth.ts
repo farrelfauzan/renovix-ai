@@ -5,6 +5,7 @@ import { PrismaClient } from "@generated/prisma/client.js";
 import crypto from "crypto";
 import { getCookieDomain } from "./cookie-domain";
 import { readRequiredSecret } from "../common/utils/read-required-secret";
+import { ensureDefaultWorkspace } from "../app/workspace/repository/ensure-default-workspace";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -74,6 +75,17 @@ export const auth = betterAuth({
     process.env.CHAT_APP_URL || "http://localhost:4201",
     process.env.APP_BASE_URL || "http://localhost:3000",
   ],
+  // Every new account gets its default workspace (RNX-117): social and email sign-up both create the user
+  // here. Better Auth runs `after` hooks once the user's transaction has committed.
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          await ensureDefaultWorkspace(getPrisma(), user.id);
+        },
+      },
+    },
+  },
   user: {
     modelName: "User",
     fields: {

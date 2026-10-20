@@ -7,6 +7,7 @@ import { AgentMemoryService } from "./agent-memory.service";
 import { DocumentService } from "../../document/service/document.service";
 import { ChannelChatRoomRepository } from "../../channel/repository/channel-chat-room.repository";
 import { ReminderRepository } from "../../reminder/repository/reminder.repository";
+import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
 import { CronExpressionParser } from "cron-parser";
 import { executeCalculator } from "../utils/execute-calculator";
 import { executeKnowledgeRetrieval } from "../utils/execute-knowledge-retrieval";
@@ -61,6 +62,7 @@ export class AgentToolService {
     private readonly documentService: DocumentService,
     private readonly chatRooms: ChannelChatRoomRepository,
     private readonly reminders: ReminderRepository,
+    private readonly workspaces: WorkspaceRepository,
   ) {}
 
   // ─── Built-in tool definitions (internal tools that need direct DB/process access) ───
@@ -279,7 +281,7 @@ export class AgentToolService {
     const schemas = this.buildToolSchemas(agentTools, options);
 
     // 2. Discover MCP tools from user's connected providers
-    if (!executingUserId || !workspaceId) {
+    if (!executingUserId || !workspaceId || !(await this.isSharedWorkspace(workspaceId))) {
       this.logger.warn(
         `[buildToolSchemasWithMcp] Skipping MCP discovery: userId=${executingUserId ? "SET" : "MISSING"} workspaceId=${workspaceId ? "SET" : "MISSING"}`,
       );
@@ -445,7 +447,7 @@ export class AgentToolService {
     userId?: string,
     workspaceId?: string,
   ): Promise<string> {
-    if (!userId || !workspaceId) {
+    if (!userId || !workspaceId || !(await this.isSharedWorkspace(workspaceId))) {
       return "Web search is unavailable because user or workspace context is missing.";
     }
 
@@ -597,5 +599,14 @@ export class AgentToolService {
       this.logger.error(`[create_reminder] Failed: ${err.message}`, err.stack);
       return `Failed to create reminder: ${err.message}`;
     }
+  }
+
+  /**
+   * False for the owner's default workspace (RNX-117, answer 1): an agent there gets no MCP discovery and no
+   * web search, like an agent with no workspace before every agent had one.
+   */
+  private async isSharedWorkspace(workspaceId: string): Promise<boolean> {
+    const workspace = await this.workspaces.findDefaultFlag(workspaceId);
+    return !!workspace && !workspace.isDefault;
   }
 }

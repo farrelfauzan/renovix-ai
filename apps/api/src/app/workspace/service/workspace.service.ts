@@ -4,6 +4,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { WorkspaceRepository } from "../repository/workspace.repository";
 import type { CreateWorkspaceDto } from "../dto/create-workspace.dto";
 import type { UpdateWorkspaceDto } from "../dto/update-workspace.dto";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
@@ -14,6 +15,7 @@ export class WorkspaceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly quotaService: WorkspaceQuotaService,
+    private readonly workspaces: WorkspaceRepository,
   ) {}
 
   private async generateUniqueSlug(
@@ -68,6 +70,7 @@ export class WorkspaceService {
     return this.prisma.workspace.findMany({
       where: {
         status: { not: "deleted" },
+        isDefault: false, // hidden (RNX-117, D219 a)
         members: {
           some: { userId, status: "active" },
         },
@@ -84,6 +87,7 @@ export class WorkspaceService {
       where: {
         id: workspaceId,
         status: { not: "deleted" },
+        isDefault: false, // hidden (RNX-117, D219 a)
         members: { some: { userId, status: "active" } },
       },
       include: {
@@ -151,6 +155,13 @@ export class WorkspaceService {
 
     if (!member || member.status !== "active") {
       throw new ForbiddenException("Not a member of this workspace");
+    }
+
+    // RNX-117 (D219 a): the default workspace is hidden from the workspace routes. Every route that takes a
+    // workspace id comes through here (requireRole too), so its member gets the not-found answer of getById.
+    const workspace = await this.workspaces.findDefaultFlag(workspaceId);
+    if (workspace?.isDefault) {
+      throw new NotFoundException("Workspace not found");
     }
 
     // Everyone but the workspace owner (by ownerId) needs a workspace whose

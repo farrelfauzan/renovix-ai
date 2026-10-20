@@ -21,15 +21,15 @@ export class AgentMemoryService {
 
   async getMemoryContext(agentId: string, userId: string): Promise<string> {
     // Resolve workspace from agent
-    const agent = await this.agents.findAgentWorkspaceId(agentId);
+    const workspaceId = await this.findSharedWorkspaceId(agentId);
 
     const parts: string[] = [];
 
     // Workspace memories (shared across all agents in workspace)
-    if (agent?.workspaceId) {
+    if (workspaceId) {
       const workspaceMemories =
         await this.workspaceMemories.listActiveWorkspaceMemories(
-          agent.workspaceId,
+          workspaceId,
           20,
         );
       parts.push(...workspaceMemories.map((m) => `- [${m.type}] ${m.content}`));
@@ -49,12 +49,12 @@ export class AgentMemoryService {
    * Get only workspace-scoped memories for agent chat (no user memories).
    */
   async getWorkspaceMemoryContext(agentId: string): Promise<string> {
-    const agent = await this.agents.findAgentWorkspaceId(agentId);
+    const workspaceId = await this.findSharedWorkspaceId(agentId);
 
-    if (!agent?.workspaceId) return "";
+    if (!workspaceId) return "";
 
     const memories = await this.workspaceMemories.listActiveWorkspaceMemories(
-      agent.workspaceId,
+      workspaceId,
       20,
     );
 
@@ -122,8 +122,7 @@ Rules:
         workspaceId = workspace?.id ?? null;
       }
       if (!workspaceId) {
-        const agent = await this.agents.findAgentWorkspaceId(agentId);
-        workspaceId = agent?.workspaceId ?? null;
+        workspaceId = await this.findSharedWorkspaceId(agentId);
       }
 
       // Store each fact
@@ -198,8 +197,7 @@ Rules:
     }
 
     if (!workspaceId) {
-      const agent = await this.agents.findAgentWorkspaceId(agentId);
-      workspaceId = agent?.workspaceId ?? null;
+      workspaceId = await this.findSharedWorkspaceId(agentId);
     }
 
     this.logger.log(
@@ -228,5 +226,15 @@ Rules:
       });
       this.logger.log(`[storeExplicit] Stored user memory successfully`);
     }
+  }
+
+  /**
+   * The agent's workspace id, or null when the agent is in its owner's default workspace (or does not exist):
+   * an agent in a default workspace keeps the memory of an agent with no workspace (RNX-117, answer 1).
+   */
+  private async findSharedWorkspaceId(agentId: string): Promise<string | null> {
+    const agent = await this.agents.findAgentWorkspaceId(agentId);
+    if (!agent || agent.workspace.isDefault) return null;
+    return agent.workspaceId;
   }
 }

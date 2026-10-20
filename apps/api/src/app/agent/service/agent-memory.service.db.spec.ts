@@ -57,6 +57,16 @@ describe("RX-141: agent memory queries (test database)", () => {
     const agent = await createAgent(prisma, { userId: alice.id, workspaceId: workspace.id });
     return { alice, workspace, agent };
   };
+  /**
+   * RNX-117 (answer 1): an agent in its user's default workspace (the factory's default), which must behave
+   * exactly as an agent without a workspace did before every agent had one.
+   */
+  const createDefaultWorkspaceAgent = async (userId: string) => {
+    const agent = await createAgent(prisma, { userId });
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id: agent.workspaceId } });
+    expect(workspace).toMatchObject({ ownerId: userId, isDefault: true });
+    return agent;
+  };
 
   describe("getMemoryContext", () => {
     it("lists the active workspace memories of the agent's workspace, then the active memories of the user, best confidence first", async () => {
@@ -122,10 +132,11 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect(lines).not.toContain(line("interest", "user-1"));
     });
 
-    it("gives no workspace memory for an agent without a workspace or an unknown agent, and still the user's", async () => {
+    it("gives no workspace memory for an agent in its default workspace (as without a workspace) or an unknown agent, and still the user's", async () => {
       const { alice, workspace } = await setup();
-      const solo = await createAgent(prisma, { userId: alice.id });
+      const solo = await createDefaultWorkspaceAgent(alice.id);
       await workspaceMemory(workspace.id, "ws");
+      await workspaceMemory(solo.workspaceId, "default-ws");
       await userMemory(alice.id, "mine");
 
       expect(await service.getMemoryContext(solo.id, alice.id)).toBe(line("interest", "mine"));
@@ -167,10 +178,11 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect(await service.getWorkspaceMemoryContext(agent.id)).toBe(line("fact", "mine"));
     });
 
-    it("is empty for an agent without a workspace, an unknown agent and a workspace without memories", async () => {
+    it("is empty for an agent in its default workspace (as without a workspace), an unknown agent and a workspace without memories", async () => {
       const { alice, workspace, agent } = await setup();
-      const solo = await createAgent(prisma, { userId: alice.id });
+      const solo = await createDefaultWorkspaceAgent(alice.id);
       await workspaceMemory(workspace.id, "ws", { status: "archived" });
+      await workspaceMemory(solo.workspaceId, "default-ws");
       await userMemory(alice.id, "mine");
 
       expect(await service.getWorkspaceMemoryContext(solo.id)).toBe("");
@@ -275,9 +287,9 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect(rows.find((r) => r.id === deleted.id)).toMatchObject({ confidence: 0.5, status: "deleted" });
     });
 
-    it("without a workspace stores a user memory with the agent as its source", async () => {
+    it("in the default workspace (as without a workspace) stores a user memory with the agent as its source, no workspace memory", async () => {
       const { alice } = await setup();
-      const solo = await createAgent(prisma, { userId: alice.id });
+      const solo = await createDefaultWorkspaceAgent(alice.id);
       facts({ type: "interest", content: "Likes Rust", confidence: 0.8 });
 
       await run(solo.id, alice.id);
@@ -285,11 +297,12 @@ describe("RX-141: agent memory queries (test database)", () => {
       const rows = await userRows(alice.id);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ type: "interest", content: "Likes Rust", confidence: 0.8, sourceConversationId: `agent:${solo.id}`, status: "active" });
+      expect(await prisma.workspaceMemory.count()).toBe(0);
     });
 
-    it("without a workspace raises an active user memory with the same text by 0.1 instead of storing a new one", async () => {
+    it("in the default workspace (as without a workspace) raises an active user memory with the same text by 0.1 instead of storing a new one", async () => {
       const { alice } = await setup();
-      const solo = await createAgent(prisma, { userId: alice.id });
+      const solo = await createDefaultWorkspaceAgent(alice.id);
       const existing = await userMemory(alice.id, "Likes Rust", { confidence: 0.5 });
       facts({ type: "interest", content: "Likes Rust" });
 
@@ -299,9 +312,9 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect((await prisma.userMemory.findUniqueOrThrow({ where: { id: existing.id } })).confidence).toBeCloseTo(0.6);
     });
 
-    it("without a workspace does not match an active memory of this user with other text: stores a new one", async () => {
+    it("in the default workspace (as without a workspace) does not match an active memory of this user with other text: stores a new one", async () => {
       const { alice } = await setup();
-      const solo = await createAgent(prisma, { userId: alice.id });
+      const solo = await createDefaultWorkspaceAgent(alice.id);
       const other = await userMemory(alice.id, "Likes hiking", { confidence: 0.5 });
       facts({ type: "interest", content: "Likes Rust" });
 
@@ -311,10 +324,10 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect((await prisma.userMemory.findUniqueOrThrow({ where: { id: other.id } })).confidence).toBe(0.5);
     });
 
-    it("without a workspace does not match the memory of another user or an archived or deleted one", async () => {
+    it("in the default workspace (as without a workspace) does not match the memory of another user or an archived or deleted one", async () => {
       const { alice } = await setup();
       const bob = await createUser(prisma);
-      const solo = await createAgent(prisma, { userId: alice.id });
+      const solo = await createDefaultWorkspaceAgent(alice.id);
       const foreign = await userMemory(bob.id, "Likes Rust", { confidence: 0.5 });
       const archived = await userMemory(alice.id, "Likes Rust", { confidence: 0.5, status: "archived" });
       const deleted = await userMemory(alice.id, "Likes Rust", { confidence: 0.5, status: "deleted" });
@@ -362,15 +375,16 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect((await wsRows(workspace.id)).map((r) => r.content)).toEqual(["from agent"]);
     });
 
-    it("without a workspace stores a user memory with confidence 1 and the agent as its source", async () => {
+    it("in the default workspace (as without a workspace) stores a user memory with confidence 1 and the agent as its source, no workspace memory", async () => {
       const { alice } = await setup();
-      const solo = await createAgent(prisma, { userId: alice.id });
+      const solo = await createDefaultWorkspaceAgent(alice.id);
 
       await service.storeExplicit(solo.id, alice.id, "Likes Rust", "interest");
 
       const rows = await userRows(alice.id);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ type: "interest", content: "Likes Rust", confidence: 1, sourceConversationId: `agent:${solo.id}`, status: "active" });
+      expect(await prisma.workspaceMemory.count()).toBe(0);
     });
   });
 });

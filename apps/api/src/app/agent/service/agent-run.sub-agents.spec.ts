@@ -121,17 +121,15 @@ describe("RX-112: agent runs only use the parent owner's sub-agents (test databa
       agentType: "parent",
       status: "active",
     });
-    const foreignSub = await prisma.agent.create({
-      data: {
-        userId: alice.id,
-        name: "Alice injected helper",
-        slug: "alice-injected-helper",
-        systemPrompt: "ALICE INJECTED PROMPT",
-        model: "test-model",
-        agentType: "sub_agent",
-        status: "active",
-        parentAgentId: parent.id,
-      },
+    const foreignSub = await createAgent(prisma, {
+      userId: alice.id,
+      name: "Alice injected helper",
+      slug: "alice-injected-helper",
+      systemPrompt: "ALICE INJECTED PROMPT",
+      model: "test-model",
+      agentType: "sub_agent",
+      status: "active",
+      parentAgentId: parent.id,
     });
     const ownSub = withOwnSub
       ? await createAgent(prisma, {

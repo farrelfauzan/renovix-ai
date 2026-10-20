@@ -127,17 +127,15 @@ describe("RX-112: channel chat only uses the parent owner's sub-agents (test dat
       status: "active",
       parentAgentId: parent.id,
     });
-    const foreignSub = await prisma.agent.create({
-      data: {
-        userId: alice.id,
-        name: "Alice injected helper",
-        slug: "alice-injected-helper",
-        systemPrompt: "ALICE INJECTED PROMPT",
-        model: "test-model",
-        agentType: "sub_agent",
-        status: "active",
-        parentAgentId: parent.id,
-      },
+    const foreignSub = await createAgent(prisma, {
+      userId: alice.id,
+      name: "Alice injected helper",
+      slug: "alice-injected-helper",
+      systemPrompt: "ALICE INJECTED PROMPT",
+      model: "test-model",
+      agentType: "sub_agent",
+      status: "active",
+      parentAgentId: parent.id,
     });
     const caller = channelOwnedBy === "bob" ? bob : carol;
     // The caller runs the agent and pays (RX-22b: the runner's wallet).
