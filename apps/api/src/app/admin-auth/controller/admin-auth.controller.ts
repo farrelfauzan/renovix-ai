@@ -5,9 +5,11 @@ import { Access } from "../../../common/decorators/access.decorator";
 import { ADMIN_AUTH_CONFIG } from "../config/admin-auth-config.token";
 import { ADMIN_COOKIES } from "../config/admin-cookies";
 import { AdminAudit } from "../decorator/admin-audit.decorator";
+import { ChangePasswordDto } from "../dto/change-password.dto";
 import { ReauthDto } from "../dto/reauth.dto";
 import { SignInDto } from "../dto/sign-in.dto";
 import { TotpCodeDto } from "../dto/totp-code.dto";
+import { AdminAccountService } from "../service/admin-account.service";
 import { AdminEnrolmentService } from "../service/admin-enrolment.service";
 import { AdminSessionService } from "../service/admin-session.service";
 import { AdminSignInService } from "../service/admin-sign-in.service";
@@ -31,6 +33,7 @@ export class AdminAuthController {
     private readonly credentials: AdminSignInService,
     private readonly enrolment: AdminEnrolmentService,
     private readonly sessions: AdminSessionService,
+    private readonly account: AdminAccountService,
     @Inject(ADMIN_AUTH_CONFIG) private readonly settings: AdminAuthConfig,
   ) {}
 
@@ -126,6 +129,34 @@ export class AdminAuthController {
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
     await this.credentials.reauth(req.admin, parsed.data, req.audit.tx);
     req.audit.record({ before: { sessionId: req.admin.sessionId }, after: { sessionId: req.admin.sessionId, reauthenticated: true } });
+  }
+
+  /** The signed-in admin, their role and permissions, and whether a password change is forced (RX-95; any session). */
+  @Get("me")
+  @Access({ auth: ["staff"], staffScope: "any" })
+  @Header("Cache-Control", "no-store")
+  async me(@Req() req: AdminRequest) {
+    return this.account.profile(req.admin);
+  }
+
+  /**
+   * After a forced password reset (RX-95), the only route a "password_change" session reaches: sets the new
+   * password, clears the reset, ends every session of the admin and sets the cookies of a new full session.
+   */
+  @Post("password")
+  @Access({ auth: ["staff"], staffScope: "password_change" })
+  @AdminAudit({ resource: "admin_password", action: "change" })
+  @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  async changePassword(@Body() body: unknown, @Req() req: AuditedAdminRequest, @Res({ passthrough: true }) reply: FastifyReply) {
+    const parsed = ChangePasswordDto.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    const session = await this.account.changePassword(req.admin, parsed.data.newPassword, req.headers["user-agent"], req.audit.tx);
+    req.audit.record({
+      before: { mustChangePassword: true, sessionId: req.admin.sessionId },
+      after: { mustChangePassword: false, sessionId: session.sessionId, scope: session.scope, otherSessionsEnded: true },
+    });
+    return this.sendSession(reply, session);
   }
 
   private sendSession(reply: FastifyReply, session: IssuedAdminSession): { scope: string } {

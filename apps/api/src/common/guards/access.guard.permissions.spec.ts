@@ -208,7 +208,7 @@ describe("AccessGuard staff permissions (RX-96, Fastify, test database)", () => 
     it("the admin moved from Finance to Viewer (AdminRoleService): the same session gets 403 next", async () => {
       const { adminId, cookie } = await signedIn("finance");
       const before = await adjust({ cookie });
-      await moduleRef.get(AdminRoleService).assignRole(adminId, "viewer");
+      await moduleRef.get(AdminRoleService).assignRole(adminId, "viewer", "00000000-0000-4000-8000-0000000000ac");
 
       const after = await adjust({ cookie });
 

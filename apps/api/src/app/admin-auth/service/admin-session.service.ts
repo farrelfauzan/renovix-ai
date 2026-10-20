@@ -11,6 +11,7 @@ import type { AdminAuthConfig } from "../types/admin-auth-config";
 import type { AdminIdentity } from "../types/admin-identity";
 import type { IssuedAdminSession } from "../types/issued-admin-session";
 import type { StaffRequirement } from "../types/staff-requirement";
+import { assertStaffRequirement } from "../utils/assert-staff-requirement";
 import { hasAllPermissions } from "../utils/has-all-permissions";
 import { hashToken } from "../utils/hash-token";
 
@@ -72,7 +73,8 @@ export class AdminSessionService {
 
   /**
    * Rotates the refresh token: 401 for no or an unknown token, or a session that ended (revoked, idle,
-   * absolute limit; an ended one is revoked). A token that was already rotated revokes the whole session.
+   * absolute limit; an ended one is revoked) or whose admin is suspended (RX-95; the session is revoked).
+   * A token that was already rotated revokes the whole session.
    */
   async refresh(refreshToken: string | undefined): Promise<IssuedAdminSession> {
     const session = refreshToken ? await this.sessions.findWithAdminRole(refreshToken.split(".")[0]) : null;
@@ -81,7 +83,7 @@ export class AdminSessionService {
     const now = new Date();
     if (session.usedRefreshTokenHashes.includes(presented)) return this.endOnReuse(session.id, now);
     if (session.refreshTokenHash !== presented) throw new UnauthorizedException(UNAUTHENTICATED);
-    if (!this.isLive(session, now)) {
+    if (!this.isLive(session, now) || session.admin.suspendedAt !== null) {
       await this.sessions.revoke(session.id, now);
       throw new UnauthorizedException(UNAUTHENTICATED);
     }
@@ -98,18 +100,19 @@ export class AdminSessionService {
   }
 
   /**
-   * The `staff` check of AccessGuard: 401 without a valid access token of a live session; 403 when the
-   * session's scope or its last re-authentication does not meet the route's requirement, or the admin's
-   * role lacks one of the route's permissions (read from the database on every request, D60 A4).
+   * The `staff` check of AccessGuard: 401 without a valid access token of a live session, or when its admin
+   * is suspended (RX-95); 403 when the session's scope or its last re-authentication does not meet the
+   * route's requirement, or the admin's role lacks one of the route's permissions (read from the database
+   * on every request, D60 A4).
    */
   async authenticate(accessToken: string | undefined, requirement: StaffRequirement): Promise<AdminIdentity> {
     const claims = this.readAccessToken(accessToken);
     const session = claims ? await this.sessions.findForAccessCheck(claims.sid) : null;
     const now = new Date();
-    if (!claims || !session || session.adminId !== claims.sub || !this.isLive(session, now)) {
+    if (!claims || !session || session.adminId !== claims.sub || !this.isLive(session, now) || session.suspendedAt !== null) {
       throw new UnauthorizedException(UNAUTHENTICATED);
     }
-    this.assertRequirement(session, requirement, now);
+    assertStaffRequirement(session, requirement, now);
     if (!hasAllPermissions(session.permissions, requirement.permissions)) throw new ForbiddenException();
     await this.sessions.touch(session.id, now);
     return { adminId: session.adminId, sessionId: session.id, scope: session.scope, role: session.role };
@@ -133,6 +136,11 @@ export class AdminSessionService {
     await this.sessions.revoke(sessionId, new Date(), tx);
   }
 
+  /** Ends every session of this admin (RX-95: suspension, MFA reset, forced password reset). Returns how many. */
+  endAllForAdmin(adminId: string, tx?: DbTransaction): Promise<number> {
+    return this.sessions.revokeAllForAdmin(adminId, new Date(), tx);
+  }
+
   /** Records a successful re-authentication on the session. */
   async markReauth(sessionId: string, tx?: DbTransaction): Promise<void> {
     await this.sessions.markReauth(sessionId, new Date(), tx);
@@ -151,14 +159,6 @@ export class AdminSessionService {
       now.getTime() < session.absoluteExpiresAt.getTime() &&
       now.getTime() - session.lastSeenAt.getTime() <= idleMs
     );
-  }
-
-  private assertRequirement(session: Pick<AdminSession, "scope" | "lastReauthAt">, requirement: StaffRequirement, now: Date): void {
-    const scopeOk = requirement.scope === "any" || session.scope === (requirement.scope ?? "full");
-    if (!scopeOk) throw new ForbiddenException();
-    const windowMs = this.settings.reauthWindowMinutes * MS_PER_MINUTE;
-    const reauthOk = !requirement.reauth || (session.lastReauthAt !== null && now.getTime() - session.lastReauthAt.getTime() <= windowMs);
-    if (!reauthOk) throw new ForbiddenException("Re-authentication required");
   }
 
   private signAccessToken(sessionId: string, adminId: string, scope: string): string {

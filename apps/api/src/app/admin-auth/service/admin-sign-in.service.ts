@@ -25,7 +25,9 @@ const MS_PER_MINUTE = 60_000;
 /**
  * Back-office sign-in (RX-94, D53): email + password + TOTP or a recovery code; before TOTP is enrolled,
  * password alone gives an enrolment-only session. Wrong password and wrong or missing second factor count
- * as failures; at the limit the account locks and the owner role gets a notification.
+ * as failures; at the limit the account locks and the owner role gets a notification. RX-95: a suspended
+ * admin is refused like any failure; an admin whose password reset was forced gets a "password_change"
+ * session, which only the change-password route accepts.
  */
 @Injectable()
 export class AdminSignInService {
@@ -42,15 +44,15 @@ export class AdminSignInService {
     @Inject(ADMIN_AUTH_CONFIG) private readonly settings: AdminAuthConfig,
   ) {}
 
-  /** Signs in; every failure (unknown email, wrong password or factor, locked) is the same 401. */
+  /** Signs in; every failure (unknown email, wrong password or factor, locked, suspended) is the same 401. */
   async signIn(input: SignInDto, userAgent: string | undefined): Promise<IssuedAdminSession> {
     const admin = await this.admins.findByEmail(input.email.trim().toLowerCase());
     const passwordOk = await this.passwords.verify(admin?.passwordHash, input.password);
-    if (!admin || isLocked(admin.lockedUntil, new Date())) throw new UnauthorizedException(INVALID_CREDENTIALS);
+    if (!admin || isLocked(admin.lockedUntil, new Date()) || admin.suspendedAt) throw new UnauthorizedException(INVALID_CREDENTIALS);
     if (!passwordOk) return this.fail(admin.id);
     if (!admin.totpEnrolledAt) return this.succeed(admin.id, "enrolment", userAgent);
     if (!(await this.checkSecondFactor(admin, input))) return this.fail(admin.id);
-    return this.succeed(admin.id, "full", userAgent);
+    return this.succeed(admin.id, admin.mustChangePassword ? "password_change" : "full", userAgent);
   }
 
   /**
@@ -76,6 +78,7 @@ export class AdminSignInService {
 
   private async succeed(adminId: string, scope: string, userAgent: string | undefined): Promise<IssuedAdminSession> {
     await this.assertStillUnlocked(adminId);
+    await this.admins.markSignedIn(adminId, new Date());
     return this.sessions.start(adminId, scope, userAgent);
   }
 

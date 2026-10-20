@@ -14,7 +14,6 @@ describe("parseAdminAuthConfig (RX-94 security values)", () => {
       accessTokenSeconds: 900,
       idleMinutes: 30,
       absoluteHours: 12,
-      reauthWindowMinutes: 5,
       totpToleranceSeconds: 30,
       recoveryCodeCount: 10,
     });

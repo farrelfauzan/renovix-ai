@@ -19,10 +19,11 @@ export type AccessOptions =
       readonly plan?: string;
       /**
        * Which back-office sessions a `staff` route accepts: by default only full sessions;
-       * "enrolment" only sessions that have not enrolled TOTP yet; "any" both (RX-94).
+       * "enrolment" only sessions that have not enrolled TOTP yet; "password_change" only sessions of an
+       * admin whose password reset was forced (RX-95); "any" all of them (RX-94).
        */
-      readonly staffScope?: "enrolment" | "any";
-      /** A sensitive back-office write: the caller re-authenticated within the configured window (`staff` routes only). */
+      readonly staffScope?: "enrolment" | "password_change" | "any";
+      /** A sensitive back-office write: the caller re-authenticated within REAUTH_WINDOW_MINUTES (`staff` routes only). */
       readonly reauth?: boolean;
       /** The named signature check of a webhook. */
       readonly webhook?: string;

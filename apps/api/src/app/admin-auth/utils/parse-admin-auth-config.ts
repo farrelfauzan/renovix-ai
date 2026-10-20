@@ -11,7 +11,6 @@ const SOURCES: Record<keyof AdminAuthConfig, readonly [string, number]> = {
   accessTokenSeconds: ["ADMIN_AUTH_ACCESS_TOKEN_SECONDS", 900],
   idleMinutes: ["ADMIN_AUTH_IDLE_MINUTES", 30],
   absoluteHours: ["ADMIN_AUTH_ABSOLUTE_HOURS", 12],
-  reauthWindowMinutes: ["ADMIN_AUTH_REAUTH_WINDOW_MINUTES", 5],
   totpToleranceSeconds: ["ADMIN_AUTH_TOTP_TOLERANCE_SECONDS", 30],
   recoveryCodeCount: ["ADMIN_AUTH_RECOVERY_CODE_COUNT", 10],
 };

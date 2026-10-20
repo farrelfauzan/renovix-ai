@@ -17,6 +17,170 @@
     }
   ],
   "paths": {
+    "/api/v1/admin/admins": {
+      "get": {
+        "description": "Back-office route (staff permissions: admins:read)",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions admins:read"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/admins/:id/force-password-reset": {
+      "post": {
+        "description": "Back-office route (staff permissions: admins:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success (no content)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions admins:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/admins/:id/reactivate": {
+      "post": {
+        "description": "Back-office route (staff permissions: admins:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success (no content)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions admins:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/admins/:id/reset-mfa": {
+      "post": {
+        "description": "Back-office route (staff permissions: admins:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success (no content)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions admins:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/admins/:id/suspend": {
+      "post": {
+        "description": "Back-office route (staff permissions: admins:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success (no content)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions admins:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/audit-log": {
       "get": {
         "description": "Back-office route (staff permissions: audit:read)",
@@ -172,6 +336,74 @@
           },
           "403": {
             "description": "Forbidden: needs staff permissions audit:read"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/auth/me": {
+      "get": {
+        "description": "Back-office route (a back-office session; session scope: any)",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/auth/password": {
+      "post": {
+        "description": "Back-office route (a back-office session; session scope: password_change)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "newPassword": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "newPassword"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "429": {
+            "description": "Rate limit exceeded (route-specific throttle)"
           }
         },
         "security": [
@@ -437,6 +669,220 @@
             "BackOfficeSession": []
           }
         ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/invitations": {
+      "post": {
+        "description": "Back-office route (staff permissions: admins:write)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 320,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "role": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "email",
+                  "role"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions admins:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/invitations/:id": {
+      "delete": {
+        "description": "Back-office route (staff permissions: admins:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success (no content)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions admins:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/invitations/:id/resend": {
+      "post": {
+        "description": "Back-office route (staff permissions: admins:write)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions admins:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/invitations/accept": {
+      "post": {
+        "description": "Public: authenticated by the invitation token in the body; the invitee has no account yet",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "token",
+                  "name",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "429": {
+            "description": "Rate limit exceeded (route-specific throttle)"
+          }
+        },
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/invitations/preview": {
+      "post": {
+        "description": "Public: authenticated by the invitation token in the body; the invitee has no account yet",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "429": {
+            "description": "Rate limit exceeded (route-specific throttle)"
+          }
+        },
         "tags": [
           "admin"
         ]
