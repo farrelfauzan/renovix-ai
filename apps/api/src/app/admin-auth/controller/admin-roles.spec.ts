@@ -357,4 +357,70 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
       expect(res.statusCode).toBe(201);
     });
   });
+
+  describe("RNX-214: resending an Owner invitation needs a re-authentication within 2 minutes", () => {
+    const NEW_PASSWORD = "Vr7!kQp2#Lm9-rnx214-new";
+    const resend = (cookie: string, invitationId: string) => send("POST", `/admin/invitations/${invitationId}/resend`, cookie);
+    const tokenOf = (link: string): string => new URL(link).hash.replace("#token=", "");
+    const preview = (token: string) => http.call("POST", "/admin/invitations/preview", {}, { token });
+    const accept = (token: string) => http.call("POST", "/admin/invitations/accept", {}, { token, name: "New Admin", password: NEW_PASSWORD });
+    const invitationRows = () => prisma.adminInvitation.findMany({ select: { id: true, revokedAt: true }, orderBy: { createdAt: "asc" } });
+
+    it("a pending Owner invitation: 403 without a recent re-auth (still pending, old link works, no new invitation); 200 with a new link within 2 minutes", async () => {
+      const { admin: owner, cookie } = await reauthedSession("owner@example.com", "owner");
+      const created = await invite(cookie, "owner");
+      advance(2 * MINUTE + 1_000);
+
+      const refused = await resend(cookie, created.json().invitation.id);
+      const rowsAfterRefusal = await invitationRows();
+      const oldLinkAfterRefusal = await preview(tokenOf(created.json().link));
+      await reauth(cookie, owner);
+      const resent = await resend(cookie, created.json().invitation.id);
+
+      expect(created.statusCode).toBe(201);
+      expect(refused.statusCode).toBe(403);
+      expect(refused.json().message).toBe(REAUTH_REQUIRED);
+      expect(rowsAfterRefusal).toEqual([{ id: created.json().invitation.id, revokedAt: null }]);
+      expect(oldLinkAfterRefusal.statusCode).toBe(200);
+      expect(resent.statusCode).toBe(200);
+      expect(resent.json().link).not.toBe(created.json().link);
+    });
+
+    it("control: a non-Owner invitation is resent without a recent re-auth (200, as before)", async () => {
+      const owner = await enrolledAdmin("owner@example.com", "owner");
+      const cookie = await signIn(owner);
+      const created = await invite(cookie, "operations");
+
+      const resent = await resend(cookie, created.json().invitation.id);
+
+      expect([created.statusCode, resent.statusCode]).toEqual([201, 200]);
+    });
+
+    it("regression: after a resend the old link answers 410 on preview and accept, and the new link previews", async () => {
+      const { cookie } = await reauthedSession("owner@example.com", "owner");
+      const created = await invite(cookie, "owner");
+      const resent = await resend(cookie, created.json().invitation.id);
+
+      const oldPreview = await preview(tokenOf(created.json().link));
+      const oldAccept = await accept(tokenOf(created.json().link));
+      const newPreview = await preview(tokenOf(resent.json().link));
+
+      expect(resent.statusCode).toBe(200);
+      expect([oldPreview.statusCode, oldAccept.statusCode, newPreview.statusCode]).toEqual([410, 410, 200]);
+      expect(newPreview.json().role).toBe("owner");
+    });
+
+    it.each(["revoked", "used"])("a %s Owner invitation resent with a valid re-auth: 404, no invitation created", async (state) => {
+      const { cookie } = await reauthedSession("owner@example.com", "owner");
+      const created = await invite(cookie, "owner");
+      if (state === "revoked") expect((await send("DELETE", `/admin/invitations/${created.json().invitation.id}`, cookie)).statusCode).toBe(204);
+      else expect((await accept(tokenOf(created.json().link))).statusCode).toBe(200);
+      const countBefore = await prisma.adminInvitation.count();
+
+      const res = await resend(cookie, created.json().invitation.id);
+
+      expect(res.statusCode).toBe(404);
+      expect(await prisma.adminInvitation.count()).toBe(countBefore);
+    });
+  });
 });

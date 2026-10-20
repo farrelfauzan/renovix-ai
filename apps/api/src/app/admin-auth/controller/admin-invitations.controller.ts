@@ -48,13 +48,17 @@ export class AdminInvitationsController {
     return { invitation, link };
   }
 
-  /** Revokes the pending invitation's link and returns a new one with a fresh validity. */
+  /**
+   * Revokes the pending invitation's link and returns a new one with a fresh validity. An Owner invitation
+   * needs a recent re-authentication, as creating one does (RNX-214), checked before anything changes.
+   */
   @Post(":id/resend")
   @Access({ auth: ["staff"], permissions: ADMIN_WRITE })
   @AdminAudit({ resource: "admin_invitation", action: "resend" })
   @HttpCode(200)
   @Header("Cache-Control", "no-store")
   async resend(@Param("id") id: string, @Req() req: AuditedAdminRequest) {
+    if ((await this.invitations.roleOf(id, req.audit.tx)) === BUILT_IN_ROLES.owner) await this.sessions.assertRecentReauth(req.admin.sessionId, req.audit.tx);
     const { invitation, link, change } = await this.invitations.resend(id, req.audit.tx);
     req.audit.record(change);
     return { invitation, link };

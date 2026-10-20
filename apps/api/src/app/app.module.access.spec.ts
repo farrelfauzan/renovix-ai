@@ -307,7 +307,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
 
   // RX-95 (D219): the sensitive actions that need a re-authentication within REAUTH_WINDOW_MINUTES.
   // RNX-187: editing a role and every role assignment as well. Inviting an Owner (POST /admin/invitations with
-  // role "owner") also needs one; its controller checks that, since `reauth` cannot depend on the body.
+  // role "owner") also needs one; its controller checks that, since `reauth` cannot depend on the body. RNX-214:
+  // resending an Owner invitation (POST /admin/invitations/:id/resend) too, checked in its controller the same way.
   const REAUTH_ROUTES = [
     "PATCH /admin/roles/:name (AdminRolesController.update)",
     "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
