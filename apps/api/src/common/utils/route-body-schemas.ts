@@ -22,7 +22,7 @@ import { AgentChatSchema, AttachToolSchema, AttachIntegrationSchema, DeployChann
 import { CreateAgentSchema } from "../../app/agent/dto/create-agent.dto";
 import { UpdateAgentSchema } from "../../app/agent/dto/update-agent.dto";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
-import { ChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
+import { ApiChatCompletionRequestSchema, ChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
 import { RedeemCodeDto } from "../../app/codes/dto/redeem-code.dto";
 import { ExportRequestSchema } from "../../app/document/dto/export-request.dto";
 import { CreateKnowledgeBaseSchema, UpdateKnowledgeBaseSchema, AddChunksSchema, SearchChunksSchema } from "../../app/knowledge/dto/knowledge.dto";
@@ -52,7 +52,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /admin/providers/:providerId/models", CreateProviderModelDto],
   ["PATCH /admin/providers/:providerId/models/:modelId", UpdateProviderModelDto],
   // ─── chat and agents ───
-  ["POST /chat/completions", ChatCompletionRequestSchema],
+  ["POST /chat/completions", ApiChatCompletionRequestSchema],
   ["POST /agents", CreateAgentSchema],
   ["PATCH /agents/:id", UpdateAgentSchema],
   ["POST /agents/generate-prompt", z.object({ name: z.string().min(1), description: z.string().optional() })],

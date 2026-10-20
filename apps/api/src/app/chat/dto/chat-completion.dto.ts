@@ -44,3 +44,18 @@ export const ChatCompletionRequestSchema = z.object({
 });
 
 export type ChatCompletionRequest = z.infer<typeof ChatCompletionRequestSchema>;
+
+/**
+ * The body of the API-key route POST /chat/completions (RNX-196): the chat completion with OpenAI's `stream` and
+ * `stream_options.include_usage`. A document (`output_format`) is not generated while streaming, so the two are refused
+ * together.
+ */
+export const ApiChatCompletionRequestSchema = ChatCompletionRequestSchema.extend({
+  stream: z.boolean().default(false),
+  stream_options: z.object({ include_usage: z.boolean().default(false) }).optional(),
+}).refine((body) => !(body.stream && body.output_format), {
+  message: "output_format is not supported with stream",
+  path: ["output_format"],
+});
+
+export type ApiChatCompletionRequest = z.infer<typeof ApiChatCompletionRequestSchema>;
