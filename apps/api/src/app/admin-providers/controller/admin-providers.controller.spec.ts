@@ -417,8 +417,11 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
   describe("AC5: model count", () => {
     it("provider A with 3 models (2 active, 1 inactive) shows 3, provider B with none shows 0", async () => {
       const { cookie, adminId } = await signedIn("owner");
-      const providerA = await createProvider(prisma, { createdByAdminId: adminId, name: "A" });
-      const providerB = await createProvider(prisma, { createdByAdminId: adminId, name: "B" });
+      // RNX-213: A and B in the same millisecond with B's id sorting first, the case that made this test flaky
+      // (findLive orders by createdAt, then by the random id).
+      const sameMillisecond = new Date("2026-10-14T08:00:00.000Z");
+      const providerA = await createProvider(prisma, { createdByAdminId: adminId, name: "A", id: "ffffffff-ffff-4fff-bfff-ffffffffffff", createdAt: sameMillisecond });
+      const providerB = await createProvider(prisma, { createdByAdminId: adminId, name: "B", id: "00000000-0000-4000-8000-000000000000", createdAt: sameMillisecond });
       await createModel(prisma, { providerRecordId: providerA.id });
       await createModel(prisma, { providerRecordId: providerA.id });
       await createModel(prisma, { providerRecordId: providerA.id, active: false });
@@ -426,7 +429,9 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
       const res = await call("GET", "/admin/providers", cookie);
 
       expect(res.statusCode).toBe(200);
-      expect(res.json().map((provider: Json) => [provider.name, provider.modelCount])).toEqual([
+      // RNX-213: compared sorted by name; the list order of same-millisecond rows is not what this test checks.
+      const counts = res.json().map((provider: Json) => [provider.name, provider.modelCount]);
+      expect([...counts].sort(([a], [b]) => String(a).localeCompare(String(b)))).toEqual([
         ["A", 3],
         ["B", 0],
       ]);
