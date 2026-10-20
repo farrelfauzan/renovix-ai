@@ -55,7 +55,7 @@ export class BillingController {
           price_data: {
             currency: "usd",
             product_data: {
-              name: "Performa AI Credits",
+              name: "Renovix AI Credits",
               description: `$${amount} credit top-up`,
             },
             unit_amount: amount * 100,

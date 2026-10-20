@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Knowledge Base module enables **Retrieval-Augmented Generation (RAG)** for Performa AI. It allows users to upload their own documents/text, which are automatically chunked, embedded into vectors, and stored in PostgreSQL using **pgvector**. When a user sends a chat query, the system can search these knowledge bases to retrieve relevant context and inject it into the LLM prompt — producing more accurate, grounded responses.
+The Knowledge Base module enables **Retrieval-Augmented Generation (RAG)** for Renovix AI. It allows users to upload their own documents/text, which are automatically chunked, embedded into vectors, and stored in PostgreSQL using **pgvector**. When a user sends a chat query, the system can search these knowledge bases to retrieve relevant context and inject it into the LLM prompt — producing more accurate, grounded responses.
 
 ### Why RAG?
 
@@ -72,7 +72,7 @@ Authorization: Bearer sk_live_xxx
 {
   "chunks": [
     {
-      "content": "Performa AI supports LLaMA and Qwen models...",
+      "content": "Renovix AI supports LLaMA and Qwen models...",
       "metadata": { "source": "docs/models.md", "page": 1 }
     },
     {

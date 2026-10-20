@@ -510,7 +510,7 @@ Pros:
 
 - production-grade SMTP option
 - cheaper and more scalable than most developer-first providers at higher volume
-- good fit if Performa AI will later send multiple email types beyond invites
+- good fit if Renovix AI will later send multiple email types beyond invites
 - clean alignment if the platform already uses AWS services later
 
 Tradeoffs:
@@ -640,13 +640,13 @@ Recommended structure:
 
 ### Subject Line Options
 
-- `You’ve been invited to join <Workspace Name> on Performa AI`
+- `You’ve been invited to join <Workspace Name> on Renovix AI`
 - `<Inviter Name> invited you to <Workspace Name>`
 
 Preferred default:
 
 ```text
-You’ve been invited to join <Workspace Name> on Performa AI
+You’ve been invited to join <Workspace Name> on Renovix AI
 ```
 
 ### Email Body Content
@@ -654,7 +654,7 @@ You’ve been invited to join <Workspace Name> on Performa AI
 Recommended body copy:
 
 ```text
-<Inviter Name> invited you to join the workspace <Workspace Name> on Performa AI.
+<Inviter Name> invited you to join the workspace <Workspace Name> on Renovix AI.
 
 Role: <Role>
 Expires: <Expiry Date>
@@ -687,7 +687,7 @@ If you were not expecting this invite, you can ignore this email.
 
 Use a clean transactional layout:
 
-- lightweight Performa AI branding at the top
+- lightweight Renovix AI branding at the top
 - clear heading such as `Join Workspace`
 - compact workspace info block containing workspace name, inviter, role, and expiry
 - one high-contrast CTA button
@@ -707,7 +707,7 @@ The message should optimize for trust and completion, not conversion theater.
 
 ```html
 <h1>Join Workspace</h1>
-<p><strong>{{inviterName}}</strong> invited you to join <strong>{{workspaceName}}</strong> on Performa AI.</p>
+<p><strong>{{inviterName}}</strong> invited you to join <strong>{{workspaceName}}</strong> on Renovix AI.</p>
 <p>Role: {{role}}<br />Expires: {{expiresAt}}</p>
 <p>Join this workspace to access shared AI agents, workspace knowledge, and team memory. Your private chat history will remain private to your account.</p>
 <p><a href="{{acceptUrl}}">Accept Invite</a></p>
@@ -723,7 +723,7 @@ Every invite email should also have a plain text version for deliverability and 
 ```text
 Join Workspace
 
-{{inviterName}} invited you to join {{workspaceName}} on Performa AI.
+{{inviterName}} invited you to join {{workspaceName}} on Renovix AI.
 Role: {{role}}
 Expires: {{expiresAt}}
 

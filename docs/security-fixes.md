@@ -1,4 +1,4 @@
-# Security Fixes — Performa AI Backend
+# Security Fixes — Renovix AI Backend
 
 ## Fix Priority & Implementation Guide
 
