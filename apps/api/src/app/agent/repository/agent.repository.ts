@@ -65,7 +65,8 @@ export class AgentRepository {
 
   /**
    * The agent with this id that this user may run (their own, or any public active one), with its enabled tools,
-   * its knowledge bases, its connected integrations and its active sub-agents (RX-134).
+   * its knowledge bases, its connected integrations and its active sub-agents (RX-134), with each sub-agent's system
+   * prompt and max_tokens for the run's pre-run estimate (RX-22b).
    */
   findRunnableAgent(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
@@ -86,6 +87,8 @@ export class AgentRepository {
             status: true,
             model: true,
             userId: true,
+            systemPrompt: true,
+            maxTokens: true,
           },
         },
       },

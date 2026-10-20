@@ -7,6 +7,9 @@ import { AgentMemoryService } from "../../agent/service/agent-memory.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { CreditService } from "../../billing/service/credit.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
@@ -14,6 +17,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-112: in a channel chat, a sub-agent row of another user under the parent
 // agent (written straight to the database) is never listed, offered or
@@ -41,6 +45,9 @@ describe("RX-112: channel chat only uses the parent owner's sub-agents (test dat
         providers: [
           ChannelChatService,
           ChannelService,
+          AgentRunMeterService,
+          CreditService,
+          PlatformSettingsService,
           ModelRegistryService,
           {
             // Same delegation rule as AgentToolService.buildToolSchemas
@@ -87,6 +94,10 @@ describe("RX-112: channel chat only uses the parent owner's sub-agents (test dat
       outputPrice: 0.000001,
       maxTokens: 8192,
     });
+    // RX-22b: channel chats are charged on the ledger at the tier rate.
+    await prisma.tierRate.create({
+      data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
+    });
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
@@ -129,6 +140,8 @@ describe("RX-112: channel chat only uses the parent owner's sub-agents (test dat
       },
     });
     const caller = channelOwnedBy === "bob" ? bob : carol;
+    // The caller runs the agent and pays (RX-22b: the runner's wallet).
+    await fundPaidWallet(prisma, caller.id, "1");
     const channel = await prisma.channel.create({ data: { userId: caller.id, name: "Room" } });
     await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: parent.id } });
     return { bob, alice, caller, parent, ownSub, foreignSub, channel };

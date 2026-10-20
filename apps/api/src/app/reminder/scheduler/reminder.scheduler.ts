@@ -3,12 +3,12 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ReminderService } from "../service/reminder.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
-import { ProviderRouter } from "../../providers/provider-router";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
-import { UsageService } from "../../usage/service/usage.service";
-import { Decimal } from "@prisma/client/runtime/client";
-import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
+import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
+import { budgetStopMessage } from "../../agent/utils/budget-stop-message";
+import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
+import type { ReminderToolLoop } from "../types/reminder-tool-loop";
 import { Prisma } from "@generated/prisma/client.js";
 
 const MAX_TOOL_ITERATIONS = 15;
@@ -22,10 +22,9 @@ export class ReminderScheduler {
     private readonly prisma: PrismaService,
     private readonly reminderService: ReminderService,
     private readonly registry: ModelRegistryService,
-    private readonly providerRouter: ProviderRouter,
     private readonly toolService: AgentToolService,
     private readonly memoryService: AgentMemoryService,
-    private readonly usage: UsageService,
+    private readonly meter: AgentRunMeterService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -151,12 +150,54 @@ export class ReminderScheduler {
       agent.workspaceId || undefined,
     );
 
+    // One run on the ledger (RX-22b), paid by the reminder's owner: a new runId, one reservation, a usage entry per
+    // model call and a budget stop before each call (docs/credits.md section 13).
+    const metered = await this.meter.meterRun(
+      {
+        runnerUserId: reminder.userId,
+        firstCall: {
+          model: modelEntry.slug,
+          connection,
+          messages,
+          tools: toolSchemas,
+          max_tokens: agent.maxTokens ?? 4096,
+        },
+        linkedAgents: [],
+      },
+      (meteredRun) =>
+        this.runReminderLoop(
+          { reminder, chatRoom, modelEntry, connection, messages, toolSchemas },
+          meteredRun,
+        ),
+    );
+    if (metered.status === "completed") return;
+    await this.prisma.channelMessage.create({
+      data: {
+        chatRoomId: chatRoom.id,
+        agentId: agent.id,
+        role: "assistant",
+        content: budgetStopMessage(metered.held),
+        metadata: {
+          source: "reminder",
+          reminderId: reminder.id,
+          scheduledAt: reminder.nextRunAt.toISOString(),
+          error: "budget_stopped",
+        },
+      },
+    });
+  }
+
+  /** The tool loop of one reminder run, every model call metered on the run (RX-22b). */
+  private async runReminderLoop(
+    loop: ReminderToolLoop,
+    meteredRun: AgentRunBudget,
+  ): Promise<void> {
+    const { reminder, chatRoom, modelEntry, connection, messages, toolSchemas } = loop;
+    const agent = reminder.agent;
+
     // Execute LLM call with tool loop
     let iterations = 0;
     let totalTokens = 0;
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    const loopStart = Date.now();
 
     while (iterations < MAX_TOOL_ITERATIONS) {
       const callParams: any = {
@@ -172,12 +213,15 @@ export class ReminderScheduler {
         callParams.tool_choice = "auto";
       }
 
-      const response: any = await this.providerRouter.chat(callParams);
+      const metered = await this.meter.callModel(meteredRun, {
+        agentId: agent.id,
+        parentCallId: null,
+        request: callParams,
+      });
+      const response: any = metered.response;
 
       const choice = response.choices?.[0];
       totalTokens += response.usage?.total_tokens || 0;
-      totalInputTokens += response.usage?.prompt_tokens || 0;
-      totalOutputTokens += response.usage?.completion_tokens || 0;
 
       if (!choice) break;
 
@@ -251,15 +295,6 @@ export class ReminderScheduler {
             },
           },
         });
-
-        // Log usage
-        this.logUsage(
-          reminder.userId,
-          { ...modelEntry, provider: connection.providerName },
-          totalInputTokens,
-          totalOutputTokens,
-          loopStart,
-        );
       }
 
       return;
@@ -281,56 +316,5 @@ export class ReminderScheduler {
         },
       },
     });
-  }
-
-  private logUsage(
-    userId: string,
-    modelEntry: {
-      slug: string;
-      provider: string;
-      inputPrice: any;
-      outputPrice: any;
-    },
-    inputTokens: number,
-    outputTokens: number,
-    startTime: number,
-  ) {
-    const latencyMs = Date.now() - startTime;
-    this.registry
-      .getModel(modelEntry.slug)
-      .then(async (modelConfig) =>
-        modelConfig
-          ? {
-              rates: await this.registry.getTierRates(modelConfig.tier),
-            }
-          : undefined,
-      )
-      .then((model) => {
-        const cost = model?.rates
-          ? calculateActualCost(
-              inputTokens,
-              outputTokens,
-              model.rates.inputCreditsPerToken.toNumber(),
-              model.rates.outputCreditsPerToken.toNumber(),
-            )
-          : new Decimal(0);
-
-        this.usage
-          .logUsage({
-            userId,
-            model: modelEntry.slug,
-            inputTokens,
-            outputTokens,
-            cost,
-            latencyMs,
-            provider: modelEntry.provider,
-          })
-          .catch((err) =>
-            this.logger.error("Failed to log reminder usage", err),
-          );
-      })
-      .catch((err) =>
-        this.logger.error("Failed to get pricing for reminder usage log", err),
-      );
   }
 }

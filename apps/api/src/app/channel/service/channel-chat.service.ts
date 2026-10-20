@@ -1,17 +1,19 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { Decimal } from "@prisma/client/runtime/client";
-import { calculateActualCost } from "../../billing/utils/calculate-actual-cost";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ModelUnavailableException } from "../../config/errors/model-unavailable.exception";
 import type { ModelConnection } from "../../providers/types/model-connection";
-import { ProviderRouter } from "../../providers/provider-router";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
-import { UsageService } from "../../usage/service/usage.service";
+import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ownSubAgents } from "../../agent/utils/own-sub-agents";
+import { budgetStopMessage } from "../../agent/utils/budget-stop-message";
+import { RunBudgetStoppedError } from "../../agent/errors/run-budget-stopped.error";
+import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
+import type { ChannelChatResult } from "../types/channel-chat-result";
+import type { ChannelToolLoop } from "../types/channel-tool-loop";
 
 const MAX_TOOL_ITERATIONS = 30;
 
@@ -22,12 +24,11 @@ export class ChannelChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: ModelRegistryService,
-    private readonly providerRouter: ProviderRouter,
     private readonly channelService: ChannelService,
     private readonly toolService: AgentToolService,
     private readonly memoryService: AgentMemoryService,
-    private readonly usage: UsageService,
     private readonly guardrail: GuardrailService,
+    private readonly meter: AgentRunMeterService,
   ) {}
 
   /**
@@ -48,11 +49,7 @@ export class ChannelChatService {
     agentId: string,
     message: string,
     options?: { documentFormat?: string },
-  ): Promise<{
-    content: string;
-    totalTokens: number;
-    assistantMessageId?: string;
-  }> {
+  ): Promise<ChannelChatResult> {
     console.log(
       `chat called with userId=${userId} channelId=${channelId} agentId=${agentId} message=${message.length} chars options=${JSON.stringify(options)}`,
     );
@@ -104,6 +101,8 @@ export class ChannelChatService {
                 status: true,
                 model: true,
                 userId: true,
+                systemPrompt: true,
+                maxTokens: true,
               },
             }),
             this.logger,
@@ -193,13 +192,59 @@ export class ChannelChatService {
       `Initial chat setup complete. model=${modelEntry.slug} tools=${toolSchemas.length} messages=${currentMessages.length}`,
     ); // Debug log
 
+    // One run on the ledger (RX-22b): a new runId, one reservation, a usage entry per model call (root and
+    // sub-agents) and a budget stop before each call (docs/credits.md section 13).
+    const loop: ChannelToolLoop = {
+      userId,
+      channelId,
+      agentId,
+      message,
+      channelAgent,
+      modelEntry,
+      connection,
+      currentMessages,
+      toolSchemas,
+      maxTokens: options?.documentFormat
+        ? Math.max(agent.maxTokens ?? 4096, 8192)
+        : (agent.maxTokens ?? 4096),
+    };
+    const metered = await this.meter.meterRun(
+      {
+        runnerUserId: userId,
+        firstCall: {
+          model: modelEntry.slug,
+          connection,
+          messages: currentMessages,
+          tools: toolSchemas,
+          max_tokens: loop.maxTokens,
+        },
+        linkedAgents: subAgents,
+      },
+      (meteredRun) => this.runToolLoop(loop, meteredRun),
+    );
+    if (metered.status === "completed") return metered.value;
+    const stopContent = budgetStopMessage(metered.held);
+    const stopMessage = await this.channelService.saveMessage(
+      channelAgent.id,
+      userId,
+      { role: "assistant", content: stopContent },
+    );
+    return { content: stopContent, totalTokens: 0, assistantMessageId: stopMessage.id };
+  }
+
+  /** The tool loop of one channel chat message, every model call metered on the run (RX-22b). */
+  private async runToolLoop(
+    loop: ChannelToolLoop,
+    meteredRun: AgentRunBudget,
+  ): Promise<ChannelChatResult> {
+    const { userId, channelId, agentId, message, channelAgent } = loop;
+    const { modelEntry, connection, currentMessages, toolSchemas } = loop;
+    const agent = channelAgent.agent;
+
     // Tool execution loop
     let iterations = 0;
     let totalTokens = 0;
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
     let accumulatedContent = "";
-    const loopStart = Date.now();
 
     while (iterations < MAX_TOOL_ITERATIONS) {
       const callParams: any = {
@@ -207,9 +252,7 @@ export class ChannelChatService {
         connection,
         messages: currentMessages,
         temperature: agent.temperature,
-        max_tokens: options?.documentFormat
-          ? Math.max(agent.maxTokens ?? 4096, 8192)
-          : (agent.maxTokens ?? 4096),
+        max_tokens: loop.maxTokens,
       };
 
       if (toolSchemas.length > 0) {
@@ -223,13 +266,16 @@ export class ChannelChatService {
       );
 
       const startTime = Date.now();
-      const response: any = await this.providerRouter.chat(callParams);
+      const metered = await this.meter.callModel(meteredRun, {
+        agentId: agent.id,
+        parentCallId: null,
+        request: callParams,
+      });
+      const response: any = metered.response;
       const elapsed = Date.now() - startTime;
 
       const choice = response.choices?.[0];
       totalTokens += response.usage?.total_tokens || 0;
-      totalInputTokens += response.usage?.prompt_tokens || 0;
-      totalOutputTokens += response.usage?.completion_tokens || 0;
 
       this.logger.log(
         `[chat] iteration=${iterations} | RESPONSE in ${elapsed}ms | prompt=${response.usage?.prompt_tokens ?? "?"} completion=${response.usage?.completion_tokens ?? "?"} total=${response.usage?.total_tokens ?? "?"} cumulative=${totalTokens} | finish_reason=${choice?.finish_reason}`,
@@ -253,7 +299,7 @@ export class ChannelChatService {
             let result: string;
 
             if (toolCall.function.name === "delegate_to_subagent") {
-              result = await this.executeSubAgent(agent, args, userId);
+              result = await this.executeSubAgent(agent, args, meteredRun, metered.callId);
             } else {
               result = await this.toolService.executeTool(
                 toolCall.function.name,
@@ -273,6 +319,8 @@ export class ChannelChatService {
                   : result,
             });
           } catch (err: any) {
+            // The budget stop ends the whole run (docs/credits.md section 13.4), not just this tool call.
+            if (err instanceof RunBudgetStoppedError) throw err;
             currentMessages.push({
               role: "tool",
               tool_call_id: toolCall.id,
@@ -337,15 +385,6 @@ export class ChannelChatService {
             this.logger.error(`Memory extraction failed: ${err.message}`),
           );
 
-        // Log usage
-        this.logUsage(
-          userId,
-          { ...modelEntry, provider: connection.providerName },
-          totalInputTokens,
-          totalOutputTokens,
-          loopStart,
-        );
-
         return {
           content: fullContent,
           totalTokens,
@@ -368,15 +407,6 @@ export class ChannelChatService {
       { role: "assistant", content: fallbackContent, tokens: totalTokens },
     );
 
-    // Log usage
-    this.logUsage(
-      userId,
-      { ...modelEntry, provider: connection.providerName },
-      totalInputTokens,
-      totalOutputTokens,
-      loopStart,
-    );
-
     return {
       content: fallbackContent,
       totalTokens,
@@ -384,61 +414,12 @@ export class ChannelChatService {
     };
   }
 
-  private logUsage(
-    userId: string,
-    modelEntry: {
-      slug: string;
-      provider: string;
-      inputPrice: any;
-      outputPrice: any;
-    },
-    inputTokens: number,
-    outputTokens: number,
-    startTime: number,
-  ) {
-    const latencyMs = Date.now() - startTime;
-    this.registry
-      .getModel(modelEntry.slug)
-      .then(async (modelConfig) =>
-        modelConfig
-          ? {
-              rates: await this.registry.getTierRates(modelConfig.tier),
-            }
-          : undefined,
-      )
-      .then((model) => {
-        const cost = model?.rates
-          ? calculateActualCost(
-              inputTokens,
-              outputTokens,
-              model.rates.inputCreditsPerToken.toNumber(),
-              model.rates.outputCreditsPerToken.toNumber(),
-            )
-          : new Decimal(0);
-
-        this.usage
-          .logUsage({
-            userId,
-            model: modelEntry.slug,
-            inputTokens,
-            outputTokens,
-            cost,
-            latencyMs,
-            provider: modelEntry.provider,
-          })
-          .catch((err) =>
-            this.logger.error("Failed to log channel chat usage", err),
-          );
-      })
-      .catch((err) =>
-        this.logger.error("Failed to get pricing for usage log", err),
-      );
-  }
-
+  /** One hop (RX-22b): the sub-agent's model call is metered on the run, with the calling model call as its parent. */
   private async executeSubAgent(
     parentAgent: any,
     args: any,
-    userId: string,
+    meteredRun: AgentRunBudget,
+    parentCallId: string,
   ): Promise<string> {
     const rawIdentifier = [args?.subAgentId, args?.subAgentName]
       .find((v) => typeof v === "string" && v.trim().length > 0)
@@ -490,13 +471,17 @@ export class ChannelChatService {
     // Don't pass tools to sub-agent during delegation — it should respond with text only
     const startTime = Date.now();
     const connection = await this.registry.resolveConnection(modelEntry.slug);
-    const response: any = await this.providerRouter.chat({
-      model: modelEntry.slug,
-      connection,
-      messages: subMessages,
-      temperature: subAgent.temperature,
-      max_tokens: subAgent.maxTokens ?? 4096,
-    } as any);
+    const { response } = await this.meter.callModel(meteredRun, {
+      agentId: subAgent.id,
+      parentCallId,
+      request: {
+        model: modelEntry.slug,
+        connection,
+        messages: subMessages,
+        temperature: subAgent.temperature,
+        max_tokens: subAgent.maxTokens ?? 4096,
+      },
+    });
 
     const result =
       response.choices?.[0]?.message?.content ||

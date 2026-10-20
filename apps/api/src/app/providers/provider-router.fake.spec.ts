@@ -53,7 +53,7 @@ describe("RX-8: fake provider through ProviderRouter", () => {
   it("chatStream yields OpenRouter-shaped JSON chunks the chat engine can assemble", async () => {
     fake.enqueue(turn);
 
-    // Same parsing as AgentRunService.streamExecution.
+    // How a stream consumer (the portal stream) assembles the chunks.
     let content = "";
     let usage: unknown;
     const toolCalls: { id: string; name: string; arguments: string }[] = [];

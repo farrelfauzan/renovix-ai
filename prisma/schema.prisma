@@ -176,8 +176,8 @@ model AiModel {
 
 /// RX-21: the tier rate table, one row per tier. Each column holds the tier's rate for one
 /// token kind as docs/credits.md defines it: CREDITS PER 1,000,000 TOKENS of that kind
-/// (column names keep the short form). The adopted values (Standard 1/1/1, Advanced 5/4/6,
-/// Premium 10/11/20, Frontier 17/25/17 for input/cached/output) come only from
+/// (column names keep the short form). The adopted values (Standard 1/1/1, Advanced 5/6/4,
+/// Premium 10/20/11, Frontier 29/29/42 for input/cached/output) come only from
 /// prisma/tier-rates.seed.json (`bun run seed:tier-rates`); no rate is written in code.
 model TierRate {
   tier                   String   @id @unique

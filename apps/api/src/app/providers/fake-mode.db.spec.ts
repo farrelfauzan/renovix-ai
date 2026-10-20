@@ -22,6 +22,9 @@ import { DocumentService } from "../document/service/document.service";
 import { AgentRunService } from "../agent/service/agent-run.service";
 import { AgentToolService } from "../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../agent/service/agent-memory.service";
+import { AgentRunMeterService } from "../agent/service/agent-run-meter.service";
+import { PlatformSettingsService } from "../offers/service/platform-settings.service";
+import { fundPaidWallet } from "../../../test/credit-funding";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import {
@@ -180,7 +183,7 @@ describe("RX-88: POST /chat/portal/completions with LLM_PROVIDER=fake", () => {
   });
 });
 
-describe("RX-88: agent runs (chat, streaming, tool call) with LLM_PROVIDER=fake", () => {
+describe("RX-88: agent runs (chat, tool call) with LLM_PROVIDER=fake", () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let service: AgentRunService;
@@ -192,6 +195,9 @@ describe("RX-88: agent runs (chat, streaming, tool call) with LLM_PROVIDER=fake"
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
       providers: [
         AgentRunService,
+        AgentRunMeterService,
+        CreditService,
+        PlatformSettingsService,
         ModelRegistryService,
         {
           provide: AgentToolService,
@@ -233,6 +239,10 @@ describe("RX-88: agent runs (chat, streaming, tool call) with LLM_PROVIDER=fake"
         maxTokens: 8192,
       },
     });
+    // RX-22b: agent runs are charged on the ledger at the tier rate, also in fake mode.
+    await prisma.tierRate.create({
+      data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
+    });
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
@@ -242,17 +252,9 @@ describe("RX-88: agent runs (chat, streaming, tool call) with LLM_PROVIDER=fake"
     const plan = await createPlan(prisma);
     const user = await createUser(prisma);
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id, status: "active" });
     return { user, agent };
-  };
-
-  const runStream = async (userId: string, agentId: string, message: string) => {
-    const { run, context, messages, toolSchemas, agent } = await service.chatStream(userId, agentId, message);
-    const events: any[] = [];
-    for await (const event of service.streamExecution(context, messages, toolSchemas, run.id, agent)) {
-      events.push(event);
-    }
-    return events;
   };
 
   it("AC5: a plain chat gets the canned reply and no tool runs", async () => {
@@ -272,16 +274,6 @@ describe("RX-88: agent runs (chat, streaming, tool call) with LLM_PROVIDER=fake"
     expect(executeTool).toHaveBeenCalledTimes(1);
     expect(executeTool).toHaveBeenCalledWith("echo", {}, expect.anything(), user.id);
     expect(res.message.content).toBe(FAKE_REPLY);
-  });
-
-  it(`AC5: a streaming chat with ${FAKE_TOOL_KEYWORD} calls the tool once, then streams the canned reply`, async () => {
-    const { user, agent } = await seed();
-
-    const events = await runStream(user.id, agent.id, `Use a tool ${FAKE_TOOL_KEYWORD}`);
-
-    expect(executeTool).toHaveBeenCalledTimes(1);
-    expect(events[events.length - 1]).toMatchObject({ type: "done", content: FAKE_REPLY });
-    expect(events.filter((e) => e.type === "chunk")).toHaveLength(FAKE_REPLY.split(" ").length);
   });
 });
 
