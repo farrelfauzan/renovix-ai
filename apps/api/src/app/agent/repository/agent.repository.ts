@@ -15,7 +15,8 @@ const AGENT_RELATIONS = {
 /**
  * The queries on `agents` (RX-133). Every method takes the transaction as its optional last argument.
  * The writes by id (`updateAgent`, `updateAgentStatus`, `deleteAgent`) take no user: the service checks
- * the owner with `findUserAgent` first.
+ * the owner with `findUserAgent` first. RNX-203: a user owns an agent when they own its workspace
+ * (`agent.workspace.ownerId`); `agent.userId` is the creator, kept for information, the slug key and the quota.
  */
 @Injectable()
 export class AgentRepository {
@@ -28,25 +29,28 @@ export class AgentRepository {
     });
   }
 
-  /** The agent with this id if it belongs to this user. */
+  /** The agent with this id if this user owns its workspace (RNX-203). */
   findUserAgent(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
-      where: { id: agentId, userId },
+      where: { id: agentId, workspace: { ownerId: userId } },
     });
   }
 
-  /** The id and type of the agent with this id if it belongs to this user. */
+  /** The id, type and workspace of the agent with this id if this user owns its workspace (RNX-203). */
   findUserAgentType(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
-      where: { id: agentId, userId },
-      select: { id: true, agentType: true },
+      where: { id: agentId, workspace: { ownerId: userId } },
+      select: { id: true, agentType: true, workspaceId: true },
     });
   }
 
-  /** This user's agent with every relation, its knowledge bases and its sub-agents (with their tools and run count). */
+  /**
+   * The agent with this id in a workspace this user owns (RNX-203), with every relation, its knowledge bases and
+   * its sub-agents (with their tools and run count).
+   */
   findAgentDetail(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
-      where: { id: agentId, userId },
+      where: { id: agentId, workspace: { ownerId: userId } },
       include: {
         tools: true,
         integrations: true,
@@ -64,15 +68,15 @@ export class AgentRepository {
   }
 
   /**
-   * The agent with this id that this user may run (their own, or any public active one), with its enabled tools,
-   * its knowledge bases, its connected integrations and its active sub-agents (RX-134), with each sub-agent's system
-   * prompt and max_tokens for the run's pre-run estimate (RX-22b).
+   * The agent with this id that this user may run (one in a workspace they own, RNX-203, or any public active one),
+   * with its enabled tools, its knowledge bases, its connected integrations and its active sub-agents (RX-134), with
+   * each sub-agent's system prompt and max_tokens for the run's pre-run estimate (RX-22b).
    */
   findRunnableAgent(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
       where: {
         id: agentId,
-        OR: [{ userId }, { isPublic: true, status: "active" }],
+        OR: [{ workspace: { ownerId: userId } }, { isPublic: true, status: "active" }],
       },
       include: {
         tools: { where: { enabled: true } },
@@ -87,6 +91,7 @@ export class AgentRepository {
             status: true,
             model: true,
             userId: true,
+            workspaceId: true,
             systemPrompt: true,
             maxTokens: true,
           },
@@ -96,19 +101,19 @@ export class AgentRepository {
   }
 
   /**
-   * This user's sub-agent under this parent agent, named by its id or by its name (any case), with its enabled
-   * tools, its knowledge bases and its connected integrations (RX-134).
+   * The sub-agent under this parent agent in the parent's workspace (RNX-203), named by its id or by its name
+   * (any case), with its enabled tools, its knowledge bases and its connected integrations (RX-134).
    */
   findDelegateSubAgent(
     parentAgentId: string,
-    userId: string,
+    workspaceId: string,
     identifier: string,
     tx?: DbTransaction,
   ) {
     return (tx ?? this.prisma).agent.findFirst({
       where: {
         parentAgentId,
-        userId,
+        workspaceId,
         agentType: "sub_agent",
         OR: [
           { id: identifier },
@@ -123,12 +128,15 @@ export class AgentRepository {
     });
   }
 
-  /** The agent with this id if this user may add it to a channel: their own, or any public active one (RX-136). */
+  /**
+   * The agent with this id if this user may add it to a channel: one in a workspace they own (RNX-203), or any
+   * public active one (RX-136).
+   */
   findUsableAgent(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
       where: {
         id: agentId,
-        OR: [{ userId }, { isPublic: true, status: "active" }],
+        OR: [{ workspace: { ownerId: userId } }, { isPublic: true, status: "active" }],
       },
     });
   }
@@ -141,17 +149,20 @@ export class AgentRepository {
     });
   }
 
-  /** This user's agents that have no parent, newest change first, each with its relations and sub-agents. */
+  /**
+   * The agents without a parent in the workspaces this user owns (RNX-203), newest change first, each with its
+   * relations and sub-agents.
+   */
   listTopLevelAgents(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findMany({
-      where: { userId, parentAgentId: null },
+      where: { workspace: { ownerId: userId }, parentAgentId: null },
       include: {
         tools: true,
         integrations: true,
         knowledgeBases: true,
         channels: true,
         subAgents: {
-          select: { id: true, name: true, status: true, userId: true },
+          select: { id: true, name: true, status: true, userId: true, workspaceId: true },
         },
         _count: { select: { runs: true } },
       },
@@ -187,7 +198,7 @@ export class AgentRepository {
     });
   }
 
-  /** How many agents this user has. */
+  /** How many agents this user has created (the plan quota counts by creator). */
   countAgentsByUser(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.count({ where: { userId } });
   }

@@ -180,6 +180,46 @@ describe("Channels: ownership (RX-15, Fastify, test database)", () => {
     expect(publicRes.statusCode).toBe(201);
   });
 
+  // RNX-203: a private agent belongs to its workspace's owner, not its creator (rows written straight to the database).
+  describe("adding a private agent whose creator does not own its workspace (RNX-203)", () => {
+    /** Bob's private agent in a workspace Alice owns; Bob is not a member there. Each has a channel. */
+    const setupSharedAgent = async () => {
+      const { alice, bob, channel } = await setup();
+      const workspace = await createWorkspace(prisma, { ownerId: alice.id });
+      const agent = await createAgent(prisma, { userId: bob.id, workspaceId: workspace.id });
+      const bobChannel = await prisma.channel.create({ data: { userId: bob.id, name: "Bob channel" } });
+      return { alice, bob, agent, aliceChannel: channel, bobChannel };
+    };
+
+    it("the creator cannot add it to their channel: 404, no link stored", async () => {
+      const { bob, agent, bobChannel } = await setupSharedAgent();
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/channels/${bobChannel.id}/agents`,
+        headers: auth(bob),
+        payload: { agentId: agent.id },
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(await prisma.channelAgent.count({ where: { agentId: agent.id } })).toBe(0);
+    });
+
+    it("the workspace owner adds it to their channel (positive control)", async () => {
+      const { alice, agent, aliceChannel } = await setupSharedAgent();
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/channels/${aliceChannel.id}/agents`,
+        headers: auth(alice),
+        payload: { agentId: agent.id },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(await prisma.channelAgent.count({ where: { agentId: agent.id, channelId: aliceChannel.id } })).toBe(1);
+    });
+  });
+
   // RX-144: a workspace is linked to its channel with onDelete: Cascade, so deleting
   // the channel would delete the workspace and everything under it.
   describe("DELETE /channels/:id and the channel's workspace (RX-144)", () => {

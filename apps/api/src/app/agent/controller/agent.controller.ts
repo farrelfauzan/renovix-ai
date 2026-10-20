@@ -17,6 +17,7 @@ import { AgentService } from "../service/agent.service";
 import { getAvailableTools } from "../utils/get-available-tools";
 import { CreateAgentSchema } from "../dto/create-agent.dto";
 import { UpdateAgentSchema } from "../dto/update-agent.dto";
+import { CloneAgentSchema } from "../dto/clone-agent.dto";
 import {
   AttachToolSchema,
   AttachIntegrationSchema,
@@ -83,9 +84,24 @@ export class AgentController {
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   async cloneFromTemplate(
     @Param("templateId", ParseUUIDPipe) templateId: string,
+    @Body() body: unknown,
     @Req() req: any,
   ) {
-    return this.agentService.cloneFromTemplate(req.user.userId, templateId);
+    const parsed = CloneAgentSchema.safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          message: "Invalid request body",
+          type: "invalid_request_error",
+          details: parsed.error.flatten().fieldErrors,
+        },
+      });
+    }
+    return this.agentService.cloneFromTemplate(
+      req.user.userId,
+      templateId,
+      parsed.data,
+    );
   }
 
   @Get("subscription")

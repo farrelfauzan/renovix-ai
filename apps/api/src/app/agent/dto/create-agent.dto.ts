@@ -14,6 +14,8 @@ export const CreateAgentSchema = z.object({
     .optional()
     .default("standalone"),
   parentAgentId: z.string().uuid().optional(),
+  // RNX-203: a workspace the caller owns; the caller's default workspace when left out.
+  workspaceId: z.string().uuid().optional(),
 });
 
 export type CreateAgentDto = z.infer<typeof CreateAgentSchema>;

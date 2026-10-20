@@ -311,23 +311,25 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
         payload: { knowledgeBaseId },
       });
 
-    it.each(["owner", "admin"] as const)("a current %s attaches the workspace base to their agent in that workspace (201)", async (actor) => {
+    it("the owner attaches the workspace base to an agent in that workspace (201)", async () => {
       const ctx = await setup();
-      const agent = await createAgent(prisma, { userId: ctx[actor].id, workspaceId: ctx.workspace.id });
+      const agent = await createAgent(prisma, { userId: ctx.owner.id, workspaceId: ctx.workspace.id });
 
-      const res = await attach(agent.id, ctx.kb.id, ctx[actor]);
+      const res = await attach(agent.id, ctx.kb.id, ctx.owner);
 
       expect(res.statusCode).toBe(201);
       expect(await prisma.agentKnowledgeBase.count({ where: { agentId: agent.id, knowledgeBaseId: ctx.kb.id } })).toBe(1);
     });
 
-    it("a current member (role member) cannot attach the workspace base (403)", async () => {
+    // RNX-203: an agent belongs to its workspace's owner; an admin or member who created it there no longer reaches it
+    // (RX-113 answered 201 for an admin and 403 for a member).
+    it.each(["admin", "member"] as const)("a current %s cannot attach the workspace base to an agent they created there (404)", async (actor) => {
       const ctx = await setup();
-      const agent = await createAgent(prisma, { userId: ctx.member.id, workspaceId: ctx.workspace.id });
+      const agent = await createAgent(prisma, { userId: ctx[actor].id, workspaceId: ctx.workspace.id });
 
-      const res = await attach(agent.id, ctx.kb.id, ctx.member);
+      const res = await attach(agent.id, ctx.kb.id, ctx[actor]);
 
-      expect(res.statusCode).toBe(403);
+      expect(res.statusCode).toBe(404);
       expect(await prisma.agentKnowledgeBase.count()).toBe(0);
     });
 

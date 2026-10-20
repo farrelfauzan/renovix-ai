@@ -27,6 +27,14 @@ export class WorkspaceRepository {
     });
   }
 
+  /** The id of the workspace with this id if this user owns it (RNX-203). */
+  findOwnedWorkspace(workspaceId: string, ownerId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).workspace.findFirst({
+      where: { id: workspaceId, ownerId },
+      select: { id: true },
+    });
+  }
+
   /** This owner's default workspace, created with its owner member row when there is none (RNX-117; race-safe). */
   ensureDefaultWorkspace(ownerId: string, tx?: DbTransaction) {
     return ensureDefaultWorkspace(tx ?? this.prisma, ownerId);

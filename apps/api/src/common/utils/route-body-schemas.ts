@@ -20,6 +20,7 @@ import { CreateProviderModelDto } from "../../app/admin-providers/dto/create-pro
 import { UpdateProviderModelDto } from "../../app/admin-providers/dto/update-provider-model.dto";
 import { AgentChatSchema, AttachToolSchema, AttachIntegrationSchema, DeployChannelSchema, AttachKnowledgeBaseSchema } from "../../app/agent/dto/agent-chat.dto";
 import { CreateAgentSchema } from "../../app/agent/dto/create-agent.dto";
+import { CloneAgentSchema } from "../../app/agent/dto/clone-agent.dto";
 import { UpdateAgentSchema } from "../../app/agent/dto/update-agent.dto";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
 import { ApiChatCompletionRequestSchema, ChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
@@ -54,6 +55,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   // ─── chat and agents ───
   ["POST /chat/completions", ApiChatCompletionRequestSchema],
   ["POST /agents", CreateAgentSchema],
+  ["POST /agents/clone/:templateId", CloneAgentSchema],
   ["PATCH /agents/:id", UpdateAgentSchema],
   ["POST /agents/generate-prompt", z.object({ name: z.string().min(1), description: z.string().optional() })],
   ["PATCH /agents/:id/status", z.object({ status: z.enum(["active", "draft", "archived"]) })],
