@@ -5,6 +5,7 @@ import { AgentRunMeterService } from "./agent-run-meter.service";
 import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -71,6 +72,7 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
             useValue: { getMemoryContext: async () => "", extractAndStore: async () => undefined },
           },
           { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           {
             provide: GuardrailService,
             useValue: {

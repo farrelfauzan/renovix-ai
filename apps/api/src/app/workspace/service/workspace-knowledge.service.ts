@@ -4,10 +4,14 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { Prisma } from "@generated/prisma/client.js";
+import type { KnowledgeBase } from "@generated/prisma/client.js";
 import { PrismaService } from "../../prisma/prisma.service";
 import { EmbeddingService } from "../../knowledge/service/embedding.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { chunkMarkdown } from "../../knowledge/utils/markdown-chunker";
+import { KnowledgeChunkRepository } from "../../knowledge/repository/knowledge-chunk.repository";
+import { WorkspaceMemberRepository } from "../repository/workspace-member.repository";
+import { WorkspaceQuotaService } from "./workspace-quota.service";
 
 @Injectable()
 export class WorkspaceKnowledgeService {
@@ -15,7 +19,26 @@ export class WorkspaceKnowledgeService {
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
     private readonly s3Service: S3Service,
+    private readonly knowledgeChunks: KnowledgeChunkRepository,
+    private readonly workspaceMembers: WorkspaceMemberRepository,
+    private readonly quotaService: WorkspaceQuotaService,
   ) {}
+
+  /**
+   * Whether this user may search this knowledge base in an agent run (RX-116, D71). A personal base: only its owner.
+   * A workspace base: a current (active) member of its workspace, and the workspace owner's plan allows collaboration
+   * (the owner always passes, `WorkspaceQuotaService.isCollaborationAllowed`). The one place this is decided, so
+   * other run paths reuse it.
+   */
+  async canSearchKnowledgeBase(
+    userId: string,
+    knowledgeBase: Pick<KnowledgeBase, "userId" | "workspaceId">,
+  ): Promise<boolean> {
+    if (!knowledgeBase.workspaceId) return knowledgeBase.userId === userId;
+    const member = await this.workspaceMembers.findMembership(knowledgeBase.workspaceId, userId);
+    if (member?.status !== "active") return false;
+    return this.quotaService.isCollaborationAllowed(knowledgeBase.workspaceId, userId);
+  }
 
   async createKnowledgeBase(
     workspaceId: string,
@@ -230,5 +253,14 @@ export class WorkspaceKnowledgeService {
     );
 
     return results;
+  }
+
+  /**
+   * The `topK` chunks of this one workspace base closest to `query` (RX-116). No access check: the caller decides
+   * first with `canSearchKnowledgeBase`.
+   */
+  async searchKnowledgeBase(knowledgeBaseId: string, query: string, topK: number) {
+    const { embedding } = await this.embeddingService.embedSingle(query);
+    return this.knowledgeChunks.searchChunksInKnowledgeBase(knowledgeBaseId, embedding, topK);
   }
 }

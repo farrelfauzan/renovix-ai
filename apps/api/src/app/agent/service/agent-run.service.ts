@@ -13,6 +13,8 @@ import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { AgentRunMeterService } from "./agent-run-meter.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { Decimal } from "@prisma/client/runtime/client";
 import { ownSubAgents } from "../utils/own-sub-agents";
@@ -24,6 +26,8 @@ import { RunBudgetStoppedError } from "../errors/run-budget-stopped.error";
 import type { AgentRunBudget } from "../types/agent-run-budget";
 
 const MAX_TOOL_ITERATIONS = 15;
+/** Chunks taken from each attached knowledge base for the run's knowledge context. */
+const KNOWLEDGE_TOP_K_PER_BASE = 3;
 /** The smallest charge: an agent message needs at least this much available before any work (RX-22b). */
 const ONE_MICRO_CREDIT = new Decimal("0.000001");
 
@@ -62,6 +66,8 @@ export class AgentRunService {
     private readonly subscriptions: UserSubscriptionRepository,
     private readonly credits: CreditService,
     private readonly meter: AgentRunMeterService,
+    private readonly knowledgeBases: KnowledgeBaseRepository,
+    private readonly workspaceKnowledge: WorkspaceKnowledgeService,
   ) {}
 
   async chat(
@@ -716,18 +722,39 @@ export class AgentRunService {
     const allResults: { content: string }[] = [];
     for (const kbId of knowledgeBaseIds) {
       try {
-        const results = await this.knowledge.searchChunks(userId, query, {
-          knowledgeBaseId: kbId,
-          topK: 3,
-        });
-        if (results?.length) allResults.push(...results);
+        const results = await this.searchAttachedKnowledgeBase(userId, kbId, query);
+        if (results.length) allResults.push(...results);
       } catch {
-        // A base the caller cannot search is skipped; the others still count
+        // A base whose search fails is skipped; the others still count
       }
     }
     if (allResults.length === 0) return "";
 
     return allResults.map((r) => r.content).join("\n\n---\n\n");
+  }
+
+  /**
+   * One attached base's chunks for this runner, or none when the runner may not search it (RX-116): the access
+   * check comes before any embedding call. A personal base is searched as before; a workspace base through the
+   * workspace knowledge service, since the personal KnowledgeService refuses workspace bases (RX-113).
+   */
+  private async searchAttachedKnowledgeBase(
+    userId: string,
+    knowledgeBaseId: string,
+    query: string,
+  ): Promise<{ content: string }[]> {
+    const kb = await this.knowledgeBases.findKnowledgeBaseById(knowledgeBaseId);
+    if (!kb || !(await this.workspaceKnowledge.canSearchKnowledgeBase(userId, kb))) {
+      this.logger.debug("Skipped an attached knowledge base the runner may not search");
+      return [];
+    }
+    if (kb.workspaceId) {
+      return this.workspaceKnowledge.searchKnowledgeBase(kb.id, query, KNOWLEDGE_TOP_K_PER_BASE);
+    }
+    return this.knowledge.searchChunks(userId, query, {
+      knowledgeBaseId: kb.id,
+      topK: KNOWLEDGE_TOP_K_PER_BASE,
+    });
   }
 
   private async getOrCreateRun(agentId: string, sessionId?: string) {

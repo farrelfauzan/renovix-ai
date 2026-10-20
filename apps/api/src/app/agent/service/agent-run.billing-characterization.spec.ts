@@ -4,6 +4,7 @@ import { AgentRunService } from "./agent-run.service";
 import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -74,6 +75,7 @@ describe("RX-14: the agent gates and the chat billing numbers (test database, fa
             useValue: { getMemoryContext: async () => "", extractAndStore: async () => undefined },
           },
           { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           { provide: UsageService, useValue: { logUsage: async () => undefined } },
           {
             provide: GuardrailService,

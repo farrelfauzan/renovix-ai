@@ -3,6 +3,7 @@ import { AgentRunService } from "./agent-run.service";
 import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -62,6 +63,7 @@ describe("RX-21: usage_logs.cost of an agent run (test database)", () => {
             useValue: { getMemoryContext: async () => "", extractAndStore: async () => undefined },
           },
           { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           {
             provide: GuardrailService,
             useValue: {
