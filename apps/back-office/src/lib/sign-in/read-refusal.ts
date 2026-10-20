@@ -7,5 +7,5 @@ import { RefusedError } from "./refused-error";
 export async function readRefusal(res: Response): Promise<RefusedError> {
   const body: unknown = await res.json().catch(() => null);
   const message = typeof body === "object" && body !== null && "message" in body ? body.message : null;
-  return new RefusedError(typeof message === "string" ? message : `The request was refused (${res.status}).`);
+  return new RefusedError(typeof message === "string" ? message : `The request was refused (${res.status}).`, res.status);
 }
