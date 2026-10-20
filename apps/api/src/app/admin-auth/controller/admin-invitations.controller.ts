@@ -3,11 +3,13 @@ import { Throttle } from "@nestjs/throttler";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Access } from "../../../common/decorators/access.decorator";
 import { ADMIN_AUTH_CONFIG } from "../config/admin-auth-config.token";
+import { BUILT_IN_ROLES } from "../config/built-in-roles";
 import { AdminAudit } from "../decorator/admin-audit.decorator";
 import { AcceptInvitationDto } from "../dto/accept-invitation.dto";
 import { CreateInvitationDto } from "../dto/create-invitation.dto";
 import { InvitationTokenDto } from "../dto/invitation-token.dto";
 import { AdminInvitationService } from "../service/admin-invitation.service";
+import { AdminSessionService } from "../service/admin-session.service";
 import type { AdminAuthConfig } from "../types/admin-auth-config";
 import type { AuditedAdminRequest } from "../types/audited-admin-request";
 import { buildSessionCookies } from "../utils/build-session-cookies";
@@ -19,15 +21,20 @@ const ADMIN_WRITE = ["admins:write"];
  * Back-office invitations (RX-95) under /api/v1/admin/invitations. Owners (`admins:write`) create, resend
  * and revoke; the raw link is in the create and resend responses only. The link's holder previews and
  * completes it on the public, rate-limited token routes; the token travels in the body, never the URL.
+ * Inviting an Owner also needs a re-authentication within REAUTH_WINDOW_MINUTES (RNX-187).
  */
 @Controller("admin/invitations")
 export class AdminInvitationsController {
   constructor(
     private readonly invitations: AdminInvitationService,
+    private readonly sessions: AdminSessionService,
     @Inject(ADMIN_AUTH_CONFIG) private readonly settings: AdminAuthConfig,
   ) {}
 
-  /** Invites an email with a role. 409 for the email of an admin or of a pending invitation. */
+  /**
+   * Invites an email with a role. 409 for the email of an admin or of a pending invitation. The role Owner
+   * needs a recent re-authentication (403 otherwise); `reauth: true` cannot say "only for this role".
+   */
   @Post()
   @Access({ auth: ["staff"], permissions: ADMIN_WRITE })
   @AdminAudit({ resource: "admin_invitation", action: "create" })
@@ -35,6 +42,7 @@ export class AdminInvitationsController {
   async create(@Body() body: unknown, @Req() req: AuditedAdminRequest) {
     const parsed = CreateInvitationDto.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (parsed.data.role === BUILT_IN_ROLES.owner) await this.sessions.assertRecentReauth(req.admin.sessionId, req.audit.tx);
     const { invitation, link, change } = await this.invitations.create(req.admin.adminId, parsed.data, req.audit.tx);
     req.audit.record(change);
     return { invitation, link };
