@@ -20,7 +20,8 @@ const RECOVERY_CODE_BYTES = 8;
 /**
  * TOTP enrolment of the back office (RX-94, D53), on an enrolment-only session: a new secret (otpauth URI
  * and manual secret), then the first code confirms it, issues the recovery codes once and replaces the
- * enrolment session by a full one. Re-enrolment of an enrolled admin is RX-95's admin management.
+ * enrolment session by a full one ("password_change" when an Owner forced a password reset, RX-95). An
+ * Owner's MFA reset (RX-95) makes an enrolled admin enrol again.
  */
 @Injectable()
 export class AdminEnrolmentService {
@@ -55,7 +56,8 @@ export class AdminEnrolmentService {
       if ((await this.admins.markTotpEnrolled(admin.id, new Date(), tx)) === 0) throw new ConflictException();
       await this.recoveryCodes.replaceAll(admin.id, codes.map((c) => hashToken(normalizeRecoveryCode(c))), tx);
       await this.sessions.end(identity.sessionId, tx);
-      return { recoveryCodes: codes, session: await this.sessions.start(admin.id, "full", userAgent, tx) };
+      const scope = admin.mustChangePassword ? "password_change" : "full";
+      return { recoveryCodes: codes, session: await this.sessions.start(admin.id, scope, userAgent, tx) };
     }, undefined, tx);
   }
 

@@ -17,11 +17,11 @@ export class AdminSessionRepository {
     return (tx ?? this.prisma).adminSession.create({ data });
   }
 
-  /** The session with this id, with its admin's role. */
+  /** The session with this id, with its admin's role and suspension (RX-95). */
   findWithAdminRole(sessionId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).adminSession.findUnique({
       where: { id: sessionId },
-      include: { admin: { select: { role: true } } },
+      include: { admin: { select: { role: true, suspendedAt: true } } },
     });
   }
 
@@ -33,7 +33,7 @@ export class AdminSessionRepository {
     const rows = await (tx ?? this.prisma).$queryRaw<StaffSessionRecord[]>`
       SELECT s."id", s."admin_id" AS "adminId", s."scope", s."revoked_at" AS "revokedAt",
              s."absolute_expires_at" AS "absoluteExpiresAt", s."last_seen_at" AS "lastSeenAt",
-             s."last_reauth_at" AS "lastReauthAt", a."role", COALESCE(r."permissions", '{}'::text[]) AS "permissions"
+             s."last_reauth_at" AS "lastReauthAt", a."suspended_at" AS "suspendedAt", a."role", COALESCE(r."permissions", '{}'::text[]) AS "permissions"
       FROM "admin_sessions" s
       JOIN "admin_users" a ON a."id" = s."admin_id"
       JOIN "admin_roles" r ON r."name" = a."role"
@@ -76,6 +76,15 @@ export class AdminSessionRepository {
   async revoke(sessionId: string, now: Date, tx?: DbTransaction): Promise<number> {
     const { count } = await (tx ?? this.prisma).adminSession.updateMany({
       where: { id: sessionId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    return count;
+  }
+
+  /** Revokes every session of this admin that is not revoked yet (RX-95). Returns how many. */
+  async revokeAllForAdmin(adminId: string, now: Date, tx?: DbTransaction): Promise<number> {
+    const { count } = await (tx ?? this.prisma).adminSession.updateMany({
+      where: { adminId, revokedAt: null },
       data: { revokedAt: now },
     });
     return count;

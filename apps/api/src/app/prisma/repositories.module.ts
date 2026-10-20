@@ -1,5 +1,6 @@
 import { Global, Module } from "@nestjs/common";
 import { AdminAuditLogRepository } from "../admin-auth/repository/admin-audit-log.repository";
+import { AdminInvitationRepository } from "../admin-auth/repository/admin-invitation.repository";
 import { AdminNotificationRepository } from "../admin-auth/repository/admin-notification.repository";
 import { AdminPiiGrantRepository } from "../admin-auth/repository/admin-pii-grant.repository";
 import { AdminRecoveryCodeRepository } from "../admin-auth/repository/admin-recovery-code.repository";
@@ -52,6 +53,7 @@ import { WorkspaceRepository } from "../workspace/repository/workspace.repositor
 
 const REPOSITORIES = [
   AdminAuditLogRepository,
+  AdminInvitationRepository,
   AdminNotificationRepository,
   AdminPiiGrantRepository,
   AdminRecoveryCodeRepository,

@@ -911,7 +911,7 @@ model Reminder {
 
 // ─── Back-office staff identity (RX-94) ─────────────────────────────────────────
 // Separate from User: staff never sign in with a product account (D60). No route creates an
-// AdminUser; the first one comes from scripts/create-admin.ts, the next ones from invitations (RX-95).
+// AdminUser directly; the first one comes from scripts/create-admin.ts, the next ones from completed invitations (RX-95).
 
 /// A back-office staff account. email is stored lowercased. role: the name of an AdminRole (RX-96).
 model AdminUser {
@@ -925,6 +925,13 @@ model AdminUser {
   lastAcceptedTimeStep Int?      @map("last_accepted_time_step") // TOTP step last accepted: a code of this step or earlier is refused
   failedAttempts       Int       @default(0) @map("failed_attempts")
   lockedUntil          DateTime? @map("locked_until") @db.Timestamptz()
+  /// RX-95: set at invitation completion; null for admins made by scripts/create-admin.ts.
+  name                 String?
+  /// RX-95: a suspended admin cannot sign in, refresh or pass the access check (removal is a suspension, D123).
+  suspendedAt          DateTime? @map("suspended_at") @db.Timestamptz()
+  lastSignInAt         DateTime? @map("last_sign_in_at") @db.Timestamptz()
+  /// RX-95: an Owner forced a password reset: the next session reaches only the change-password route.
+  mustChangePassword   Boolean   @default(false) @map("must_change_password")
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
@@ -936,9 +943,31 @@ model AdminUser {
   auditLog           AdminAuditLog[]
   providersCreated   Provider[]          @relation("ProviderCreatedBy")
   providersUpdated   Provider[]          @relation("ProviderUpdatedBy")
+  invitationsSent    AdminInvitation[]   @relation("AdminInvitationInviter")
 
   @@index([role])
   @@map("admin_users")
+}
+
+/// An invitation to the back office (RX-95): the AdminUser row is created only when it is completed.
+/// Only the SHA-256 hash of the link's token is stored; the raw link is shown once to the inviting Owner.
+/// Pending = not used and not revoked (expired ones included): at most one per email (partial unique index).
+model AdminInvitation {
+  id               String    @id @default(uuid())
+  email            String // lowercased
+  role             String
+  adminRole        AdminRole @relation(fields: [role], references: [name], onDelete: Restrict, onUpdate: Cascade)
+  tokenHash        String    @unique @map("token_hash")
+  invitedByAdminId String    @map("invited_by_admin_id")
+  invitedBy        AdminUser @relation("AdminInvitationInviter", fields: [invitedByAdminId], references: [id], onDelete: Restrict)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz()
+  usedAt           DateTime? @map("used_at") @db.Timestamptz()
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz()
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([email], map: "admin_invitations_pending_email_key", where: raw("used_at IS NULL AND revoked_at IS NULL"))
+  @@index([invitedByAdminId])
+  @@map("admin_invitations")
 }
 
 /// A back-office role (RX-96, PRD 09 F5): a named set of `resource:action` staff permissions. The five
@@ -951,7 +980,8 @@ model AdminRole {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  admins AdminUser[]
+  admins      AdminUser[]
+  invitations AdminInvitation[]
 
   @@map("admin_roles")
 }

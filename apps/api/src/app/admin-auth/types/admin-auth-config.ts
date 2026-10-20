@@ -21,8 +21,6 @@ export type AdminAuthConfig = {
   readonly idleMinutes: number;
   /** A session ends this long after sign-in whatever happens, in hours (default 12). */
   readonly absoluteHours: number;
-  /** A route that asks for re-authentication accepts one this recent, in minutes (default 5). */
-  readonly reauthWindowMinutes: number;
   /** TOTP clock tolerance in seconds, either side (default 30: one step). */
   readonly totpToleranceSeconds: number;
   /** Recovery codes issued at enrolment (default 10). */

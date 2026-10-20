@@ -10,6 +10,10 @@ import type { ZodType } from "zod";
 import { z } from "zod";
 import { SignInDto } from "../../app/admin-auth/dto/sign-in.dto";
 import { ReauthDto } from "../../app/admin-auth/dto/reauth.dto";
+import { ChangePasswordDto } from "../../app/admin-auth/dto/change-password.dto";
+import { CreateInvitationDto } from "../../app/admin-auth/dto/create-invitation.dto";
+import { InvitationTokenDto } from "../../app/admin-auth/dto/invitation-token.dto";
+import { AcceptInvitationDto } from "../../app/admin-auth/dto/accept-invitation.dto";
 import { TotpCodeDto } from "../../app/admin-auth/dto/totp-code.dto";
 import { AuditLogQueryDto } from "../../app/admin-auth/dto/audit-log-query.dto";
 import { AuditLogExportQueryDto } from "../../app/admin-auth/dto/audit-log-export-query.dto";
@@ -46,6 +50,10 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /admin/auth/sign-in", SignInDto],
   ["POST /admin/auth/totp/confirm", TotpCodeDto],
   ["POST /admin/auth/reauth", ReauthDto],
+  ["POST /admin/auth/password", ChangePasswordDto],
+  ["POST /admin/invitations", CreateInvitationDto],
+  ["POST /admin/invitations/preview", InvitationTokenDto],
+  ["POST /admin/invitations/accept", AcceptInvitationDto],
   ["POST /admin/providers", CreateProviderDto],
   ["PATCH /admin/providers/:id", UpdateProviderDto],
   ["POST /admin/providers/:id/test", TestProviderDto],

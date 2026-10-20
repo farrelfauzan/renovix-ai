@@ -138,6 +138,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /workspace-invites/accept (WorkspaceInviteController.resolveInvite)",
     "POST /admin/auth/refresh (AdminAuthController.refresh)",
     "POST /admin/auth/sign-in (AdminAuthController.signIn)",
+    "POST /admin/invitations/accept (AdminInvitationsController.accept)",
+    "POST /admin/invitations/preview (AdminInvitationsController.preview)",
     "POST /auth/login (AuthController.login)",
     "POST /auth/logout (AuthController.logout)",
     "POST /auth/register (AuthController.register)",
@@ -179,7 +181,9 @@ describe("RX-114: every route of AppModule declares its access", () => {
   // Back-office routes (RX-94): `staff` only, full sessions unless a scope is declared.
   const STAFF_ROUTES = [
     "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
+    "DELETE /admin/invitations/:id (AdminInvitationsController.revoke)",
     "DELETE /admin/providers/:id (AdminProvidersController.remove)",
+    "GET /admin/admins (AdminAdminsController.list)",
     "GET /admin/audit-log (AdminAuditLogController.list)",
     "GET /admin/audit-log/export (AdminAuditLogController.export)",
     "GET /admin/auth/sessions (AdminAuthController.listSessions)",
@@ -188,7 +192,13 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/providers/:providerId/models (AdminProviderModelsController.list)",
     "PATCH /admin/providers/:id (AdminProvidersController.update)",
     "PATCH /admin/providers/:providerId/models/:modelId (AdminProviderModelsController.update)",
+    "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
+    "POST /admin/admins/:id/reactivate (AdminAdminsController.reactivate)",
+    "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
+    "POST /admin/admins/:id/suspend (AdminAdminsController.suspend)",
     "POST /admin/auth/reauth (AdminAuthController.reauth)",
+    "POST /admin/invitations (AdminInvitationsController.create)",
+    "POST /admin/invitations/:id/resend (AdminInvitationsController.resend)",
     "POST /admin/providers (AdminProvidersController.create)",
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
     "POST /admin/providers/:id/test (AdminProvidersController.test)",
@@ -198,13 +208,27 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/auth/totp/confirm (AdminAuthController.confirm)",
     "POST /admin/auth/totp/enrol (AdminAuthController.enrol)",
   ];
-  const STAFF_ANY_SCOPE_ROUTES = ["POST /admin/auth/sign-out (AdminAuthController.signOut)"];
+  const STAFF_ANY_SCOPE_ROUTES = [
+    "GET /admin/auth/me (AdminAuthController.me)",
+    "POST /admin/auth/sign-out (AdminAuthController.signOut)",
+  ];
+  // RX-95: the only route a "password_change" session (forced password reset) reaches, besides the any-scope ones.
+  const STAFF_PASSWORD_CHANGE_ROUTES = ["POST /admin/auth/password (AdminAuthController.changePassword)"];
   // Back-office routes that declare staff permissions (RX-96), with the permissions each declares. RX-94's
   // routes are self-service (an admin manages their own session) and need none. RX-164 (D113 item 53,
   // D138): the audit log and its CSV export need `audit:read` only (not `exports:create`).
   const STAFF_PERMISSION_ROUTES: Record<string, string[]> = {
     "GET /admin/audit-log (AdminAuditLogController.list)": ["audit:read"],
     "GET /admin/audit-log/export (AdminAuditLogController.export)": ["audit:read"],
+    // RX-95: the admin list needs admins:read; invitations, suspension and resets need admins:write (Owner only).
+    "DELETE /admin/invitations/:id (AdminInvitationsController.revoke)": ["admins:write"],
+    "GET /admin/admins (AdminAdminsController.list)": ["admins:read"],
+    "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)": ["admins:write"],
+    "POST /admin/admins/:id/reactivate (AdminAdminsController.reactivate)": ["admins:write"],
+    "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)": ["admins:write"],
+    "POST /admin/admins/:id/suspend (AdminAdminsController.suspend)": ["admins:write"],
+    "POST /admin/invitations (AdminInvitationsController.create)": ["admins:write"],
+    "POST /admin/invitations/:id/resend (AdminInvitationsController.resend)": ["admins:write"],
     // RX-177: provider records (providers:*) and their models (models:*).
     "DELETE /admin/providers/:id (AdminProvidersController.remove)": ["providers:write"],
     "GET /admin/providers (AdminProvidersController.list)": ["providers:read"],
@@ -229,9 +253,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     expect(labels(routes.filter((route) => declaresStaff(route, undefined)))).toEqual(STAFF_ROUTES);
     expect(labels(routes.filter((route) => declaresStaff(route, "enrolment")))).toEqual(STAFF_ENROLMENT_ROUTES);
     expect(labels(routes.filter((route) => declaresStaff(route, "any")))).toEqual(STAFF_ANY_SCOPE_ROUTES);
-    // No route lists staff next to another method, and none outside the three lists above.
+    expect(labels(routes.filter((route) => declaresStaff(route, "password_change")))).toEqual(STAFF_PASSWORD_CHANGE_ROUTES);
+    // No route lists staff next to another method, and none outside the four lists above.
     expect(labels(routes.filter((route) => !route.access?.public && route.access?.auth?.includes("staff")))).toEqual(
-      [...STAFF_ROUTES, ...STAFF_ENROLMENT_ROUTES, ...STAFF_ANY_SCOPE_ROUTES].sort(),
+      [...STAFF_ROUTES, ...STAFF_ENROLMENT_ROUTES, ...STAFF_ANY_SCOPE_ROUTES, ...STAFF_PASSWORD_CHANGE_ROUTES].sort(),
     );
     const known = [
       ...PUBLIC_ROUTES,
@@ -240,6 +265,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
       ...STAFF_ROUTES,
       ...STAFF_ENROLMENT_ROUTES,
       ...STAFF_ANY_SCOPE_ROUTES,
+      ...STAFF_PASSWORD_CHANGE_ROUTES,
     ];
     const others = routes.filter((route) => !known.includes(route.label));
     expect(labels(others.filter((route) => !declares(route, ["jwt", "session"])))).toEqual([]);
@@ -268,16 +294,35 @@ describe("RX-114: every route of AppModule declares its access", () => {
     );
   });
 
+  // RX-95 (D219): the sensitive actions that need a re-authentication within REAUTH_WINDOW_MINUTES.
+  const REAUTH_ROUTES = [
+    "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
+    "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
+    "POST /admin/admins/:id/suspend (AdminAdminsController.suspend)",
+  ];
+
+  it("RX-95: the routes that declare reauth are pinned", () => {
+    expect(labels(routes.filter((route) => !route.access?.public && route.access?.reauth === true))).toEqual(REAUTH_ROUTES);
+  });
+
   // RX-97 criterion 3: every state-changing /admin route is hooked or exempt; the lists below are the PR's.
   const AUDITED_ROUTES = [
     "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
+    "DELETE /admin/invitations/:id (AdminInvitationsController.revoke)",
     "DELETE /admin/providers/:id (AdminProvidersController.remove)",
     "PATCH /admin/providers/:id (AdminProvidersController.update)",
     "PATCH /admin/providers/:providerId/models/:modelId (AdminProviderModelsController.update)",
+    "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
+    "POST /admin/admins/:id/reactivate (AdminAdminsController.reactivate)",
+    "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
+    "POST /admin/admins/:id/suspend (AdminAdminsController.suspend)",
+    "POST /admin/auth/password (AdminAuthController.changePassword)",
     "POST /admin/auth/reauth (AdminAuthController.reauth)",
     "POST /admin/auth/sign-out (AdminAuthController.signOut)",
     "POST /admin/auth/totp/confirm (AdminAuthController.confirm)",
     "POST /admin/auth/totp/enrol (AdminAuthController.enrol)",
+    "POST /admin/invitations (AdminInvitationsController.create)",
+    "POST /admin/invitations/:id/resend (AdminInvitationsController.resend)",
     "POST /admin/providers (AdminProvidersController.create)",
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
     "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)",
@@ -285,6 +330,9 @@ describe("RX-114: every route of AppModule declares its access", () => {
   const AUDIT_EXEMPT_ROUTES = [
     "POST /admin/auth/refresh (AdminAuthController.refresh)",
     "POST /admin/auth/sign-in (AdminAuthController.signIn)",
+    // RX-95: the invitation link's holder has no account yet; accept writes the new admin's audit row itself.
+    "POST /admin/invitations/accept (AdminInvitationsController.accept)",
+    "POST /admin/invitations/preview (AdminInvitationsController.preview)",
     // RX-177: the provider call must run outside a transaction; the handler writes its own audit row in a
     // short transaction after the call (admin-providers.controller.spec.ts checks the row).
     "POST /admin/providers/:id/test (AdminProvidersController.test)",

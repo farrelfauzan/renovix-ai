@@ -1,11 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { TransactionService } from "../../prisma/transaction.service";
 import { BUILT_IN_ROLES } from "../config/built-in-roles";
 import { AdminUserRepository } from "../repository/admin-user.repository";
 
 /**
- * Role assignment of back-office admins (RX-96, PRD 09 F3/F5). No route yet: RX-95 adds it. At least one
- * owner must remain: the owners' rows are locked first, so two parallel demotions cannot both pass.
+ * Role assignment of back-office admins (RX-96, PRD 09 F3/F5). No route yet (RNX-187 adds it). At least one
+ * active owner must remain (RX-95: suspended owners do not count): the active owners' rows are locked first,
+ * so two parallel demotions or suspensions cannot both pass. No admin changes their own role (RX-95).
  */
 @Injectable()
 export class AdminRoleService {
@@ -15,14 +16,16 @@ export class AdminRoleService {
   ) {}
 
   /**
-   * Gives the admin the role `roleName`. 409 when that would leave no owner, 404 for an unknown admin,
-   * 400 for an unknown role. The change applies on the admin's next request (D60 A4).
+   * `actorAdminId` gives the admin `adminId` the role `roleName`. 403 when they are the same admin, 409
+   * when that would leave no active owner, 404 for an unknown admin, 400 for an unknown role. The change
+   * applies on the admin's next request (D60 A4).
    */
-  async assignRole(adminId: string, roleName: string): Promise<void> {
+  async assignRole(adminId: string, roleName: string, actorAdminId: string): Promise<void> {
+    if (actorAdminId === adminId) throw new ForbiddenException("You cannot change your own role");
     await this.transactions.run(async (tx) => {
-      const owners = await this.admins.lockIdsWithRole(BUILT_IN_ROLES.owner, tx);
+      const owners = await this.admins.lockActiveIdsWithRole(BUILT_IN_ROLES.owner, tx);
       const removesLastOwner = roleName !== BUILT_IN_ROLES.owner && owners.length === 1 && owners[0] === adminId;
-      if (removesLastOwner) throw new ConflictException("At least one owner must remain");
+      if (removesLastOwner) throw new ConflictException("At least one active owner must remain");
       if ((await this.admins.updateRole(adminId, roleName, tx)) === 0) throw new NotFoundException();
     });
   }

@@ -324,10 +324,10 @@ describe("AccessGuard staff method (RX-94, Fastify, test database)", () => {
       expect(res.json().message).toBe("Re-authentication required");
     });
 
-    it("re-authenticated: 200 for 5 minutes, 403 after", async () => {
+    it("re-authenticated: 200 for 2 minutes (RX-95: REAUTH_WINDOW_MINUTES), 403 after", async () => {
       const { cookie, sessionId } = await adminCookie("full");
       await sessions.markReauth(sessionId);
-      jest.setSystemTime(Date.now() + 5 * MINUTE);
+      jest.setSystemTime(Date.now() + 2 * MINUTE);
       const within = await get("/staff-probe/reauth", { cookie });
       jest.setSystemTime(Date.now() + MINUTE);
 

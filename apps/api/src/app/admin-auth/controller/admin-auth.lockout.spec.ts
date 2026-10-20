@@ -313,7 +313,7 @@ describe("Back-office sign-in: lockout and second factor (RX-94, Fastify, test d
   });
 
   describe("re-authentication", () => {
-    it("password + fresh TOTP: 204; a reauth: true route accepts the session for 5 minutes", async () => {
+    it("password + fresh TOTP: 204; a reauth: true route accepts the session for 2 minutes (RX-95)", async () => {
       const admin = await createAdmin(prisma, moduleRef, { email: "ops@example.com", enrolled: true });
       const cookie = accessCookie(await http.signIn({ email: admin.email, password: ADMIN_PASSWORD, totp: totpCode(admin.secret) }));
       const before = await http.call("GET", "/admin/probe/sensitive", { cookie });
@@ -321,7 +321,7 @@ describe("Back-office sign-in: lockout and second factor (RX-94, Fastify, test d
 
       const reauth = await http.call("POST", "/admin/auth/reauth", { cookie }, { password: ADMIN_PASSWORD, totp: totpCode(admin.secret) });
       const within = await http.call("GET", "/admin/probe/sensitive", { cookie });
-      advance(5 * MINUTE + 1_000);
+      advance(2 * MINUTE + 1_000);
       const after = await http.call("GET", "/admin/probe/sensitive", { cookie });
 
       expect([before.statusCode, reauth.statusCode, within.statusCode, after.statusCode]).toEqual([403, 204, 200, 403]);

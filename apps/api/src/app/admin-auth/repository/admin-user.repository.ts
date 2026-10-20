@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -73,13 +73,85 @@ export class AdminUserRepository {
   }
 
   /**
-   * The ids of the admins holding `role`, locking their rows until the transaction ends (RX-96: a parallel
-   * role change waits, then sees the committed roles). Raw SQL: Prisma has no SELECT ... FOR UPDATE.
+   * The ids of the active (not suspended, RX-95) admins holding `role`, locking their rows until the
+   * transaction ends (RX-96: a parallel role change or suspension waits, then sees the committed rows).
+   * Raw SQL: Prisma has no SELECT ... FOR UPDATE.
    */
-  async lockIdsWithRole(role: string, tx: DbTransaction): Promise<string[]> {
+  async lockActiveIdsWithRole(role: string, tx: DbTransaction): Promise<string[]> {
     const rows = await tx.$queryRaw<{ id: string }[]>`
-      SELECT "id" FROM "admin_users" WHERE "role" = ${role}::text ORDER BY "id" FOR UPDATE`;
+      SELECT "id" FROM "admin_users" WHERE "role" = ${role}::text AND "suspended_at" IS NULL ORDER BY "id" FOR UPDATE`;
     return rows.map((row) => row.id);
+  }
+
+  /** Creates an admin (RX-95, invitation completion). 409 when an admin has this email already. */
+  async create(data: { email: string; role: string; name: string; passwordHash: string }, tx: DbTransaction) {
+    try {
+      return await tx.adminUser.create({ data });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException("An admin with this email already exists");
+      }
+      throw err;
+    }
+  }
+
+  /** Every admin for the admin list (RX-95), oldest first. No secrets or hashes. */
+  listForManagement(tx?: DbTransaction) {
+    return (tx ?? this.prisma).adminUser.findMany({
+      select: { id: true, name: true, email: true, role: true, totpEnrolledAt: true, lastSignInAt: true, suspendedAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  /** The admin with their role's permissions (RX-95, the "me" route). */
+  findWithPermissions(adminId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).adminUser.findUnique({
+      where: { id: adminId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        totpEnrolledAt: true,
+        mustChangePassword: true,
+        adminRole: { select: { permissions: true } },
+      },
+    });
+  }
+
+  /** Records a successful sign-in (RX-95, the admin list's last sign-in). */
+  async markSignedIn(adminId: string, at: Date, tx?: DbTransaction): Promise<void> {
+    await (tx ?? this.prisma).adminUser.update({ where: { id: adminId }, data: { lastSignInAt: at } });
+  }
+
+  /** Suspends the admin, if not suspended yet (RX-95). Returns 0 or 1. */
+  async suspend(adminId: string, at: Date, tx: DbTransaction): Promise<number> {
+    const { count } = await tx.adminUser.updateMany({ where: { id: adminId, suspendedAt: null }, data: { suspendedAt: at } });
+    return count;
+  }
+
+  /** Lifts the suspension, if the admin is suspended (RX-95). Returns 0 or 1. */
+  async reactivate(adminId: string, tx: DbTransaction): Promise<number> {
+    const { count } = await tx.adminUser.updateMany({ where: { id: adminId, suspendedAt: { not: null } }, data: { suspendedAt: null } });
+    return count;
+  }
+
+  /** Removes the admin's TOTP secret and enrolment (RX-95, MFA reset): the next sign-in starts enrolment again. */
+  async resetTotp(adminId: string, tx: DbTransaction): Promise<void> {
+    await tx.adminUser.update({
+      where: { id: adminId },
+      data: { totpSecretEncrypted: null, totpEnrolledAt: null, lastAcceptedTimeStep: null },
+    });
+  }
+
+  /** Sets the forced password reset flag (RX-95). */
+  async forcePasswordChange(adminId: string, tx: DbTransaction): Promise<void> {
+    await tx.adminUser.update({ where: { id: adminId }, data: { mustChangePassword: true } });
+  }
+
+  /** Stores a new password hash and clears the forced reset flag (RX-95). */
+  async changePassword(adminId: string, passwordHash: string, tx: DbTransaction): Promise<void> {
+    await tx.adminUser.update({ where: { id: adminId }, data: { passwordHash, mustChangePassword: false } });
   }
 
   /** Gives the admin the role with this name. Returns 0 (no such admin) or 1; 400 when no role has that name. */

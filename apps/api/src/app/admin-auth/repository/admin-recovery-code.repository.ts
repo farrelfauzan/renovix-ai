@@ -13,6 +13,12 @@ export class AdminRecoveryCodeRepository {
     await tx.adminRecoveryCode.createMany({ data: codeHashes.map((codeHash) => ({ adminId, codeHash })) });
   }
 
+  /** Removes all of this admin's recovery codes (RX-95, MFA reset). Returns how many. */
+  async deleteAll(adminId: string, tx?: DbTransaction): Promise<number> {
+    const { count } = await (tx ?? this.prisma).adminRecoveryCode.deleteMany({ where: { adminId } });
+    return count;
+  }
+
   /** Marks this admin's unused code with this hash as used (one conditional UPDATE). Returns 1 when it was unused, else 0. */
   async useCode(adminId: string, codeHash: string, now: Date, tx?: DbTransaction): Promise<number> {
     const { count } = await (tx ?? this.prisma).adminRecoveryCode.updateMany({
