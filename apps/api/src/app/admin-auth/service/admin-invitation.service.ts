@@ -52,6 +52,11 @@ export class AdminInvitationService {
     return { ...issued, change: { before: {}, after: describeInvitation(issued.invitation) } };
   }
 
+  /** The role an invitation grants, or null for an unknown id (RNX-214: resending an Owner invitation needs a re-auth). */
+  async roleOf(invitationId: string, tx: DbTransaction): Promise<string | null> {
+    return (await this.invitations.findById(invitationId, tx))?.role ?? null;
+  }
+
   /** Revokes the pending invitation's link and issues a new one, valid INVITATION_TTL_HOURS again. 404 when not pending. */
   async resend(invitationId: string, tx: DbTransaction): Promise<IssuedInvitation> {
     const old = await this.invitations.findById(invitationId, tx);
