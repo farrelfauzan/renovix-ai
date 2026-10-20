@@ -9,6 +9,7 @@ import { SubscriptionPlanRepository } from "../../billing/repository/subscriptio
 import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
 import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
 import { ProviderRouter } from "../../providers/provider-router";
+import { ModelRegistryService } from "../../config/model-registry.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import type { CreateAgentDto } from "../dto/create-agent.dto";
 import type { UpdateAgentDto } from "../dto/update-agent.dto";
@@ -39,6 +40,7 @@ export class AgentService {
     private readonly knowledgeBases: KnowledgeBaseRepository,
     private readonly providerRouter: ProviderRouter,
     private readonly workspaceService: WorkspaceService,
+    private readonly registry: ModelRegistryService,
   ) {}
 
   private async generateUniqueSlug(
@@ -523,9 +525,11 @@ export class AgentService {
       ? `Agent name: "${name}"\nDescription: "${description}"`
       : `Agent name: "${name}"`;
 
-    const response = await this.providerRouter.chat("openrouter", {
-      providerId: "deepseek/deepseek-v4-pro",
-      model: "deepseek/deepseek-v4-pro",
+    // RX-178: the cheapest resolvable Standard model, never a hard-coded vendor id.
+    const connection = await this.registry.resolveCheapestConnection("standard");
+    const response = await this.providerRouter.chat({
+      connection,
+      model: connection.slug,
       messages: [
         {
           role: "system",

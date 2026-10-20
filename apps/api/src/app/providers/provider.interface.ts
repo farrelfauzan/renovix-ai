@@ -1,5 +1,6 @@
 import type { ProviderTestResult } from "./types/provider-test-result";
 import type { ProviderTestTarget } from "./types/provider-test-target";
+import type { ModelConnection } from "./types/model-connection";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -30,7 +31,8 @@ export type ResponseFormat =
 
 export interface ChatRequest {
   model: string;
-  providerId: string;
+  /** RX-178: the model's provider record (base URL, key, slug sent as `model`), from ModelRegistryService.resolveConnection. */
+  connection: ModelConnection;
   messages: ChatMessage[];
   temperature?: number;
   max_tokens?: number;
@@ -78,8 +80,8 @@ export interface ProviderAdapter {
   chat(params: ChatRequest): Promise<ChatResponse>;
   chatStream?(params: ChatRequest): AsyncGenerator<string, void, unknown>;
   /** The max_tokens this adapter sends for these params (RX-22: the estimate uses the same value). */
-  resolveMaxTokens(params: Pick<ChatRequest, "providerId" | "max_tokens">): number;
-  /** Lists the provider's models with their current prices (GET /models); optional (RX-21). */
+  resolveMaxTokens(params: Pick<ChatRequest, "connection" | "max_tokens">): number;
+  /** Lists the provider's models with their current prices (GET /models on the env endpoint, not a provider record); optional (RX-21). */
   listModels?(): Promise<ProviderModelPrice[]>;
 
   /**

@@ -14,6 +14,7 @@ import { AgentMemoryService } from "../../agent/service/agent-memory.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { MODEL_UNAVAILABLE_MESSAGE } from "../../config/errors/model-unavailable.exception";
 import { ProvidersModule } from "../../providers/providers.module";
 import { HealthController } from "../../health/controller/health.controller";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -24,10 +25,12 @@ import {
   blockOutbound,
   OutboundBlocker,
   pointLlmAtStubs,
+  chatCompletion,
   sendJson,
   startStubHttpServer,
   StubHttpServer,
 } from "../../../../test/llm-stub";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-169: POST /channels/:id/agents/:agentId/chat answers the client over SSE,
 // but calls the provider without streaming (ProviderRouter.chat). A provider
@@ -49,6 +52,15 @@ interface HttpAnswer {
   contentType: string | undefined;
   body: string;
 }
+
+/** The `message` of a JSON error body; undefined for anything else (an SSE stream, as the route answered before RX-178 B1). */
+const messageOf = (body: string): unknown => {
+  try {
+    return JSON.parse(body).message;
+  } catch {
+    return undefined;
+  }
+};
 
 /** One request to the listening app over a real socket; resolves when the response has ended. */
 const send = (params: { url: string; method: string; headers?: Record<string, string>; body?: unknown }) =>
@@ -113,15 +125,13 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     blocker = blockOutbound();
     primary.requests.length = 0;
     await resetDatabase(prisma);
-    await prisma.aiModel.create({
-      data: {
-        slug: "test-model",
-        modelName: "test-model",
-        providerId: "vendor/test-model",
-        inputPrice: 0.000001,
-        outputPrice: 0.000001,
-        maxTokens: 8192,
-      },
+    await createResolvableModel(prisma, {
+      slug: "test-model",
+      modelName: "test-model",
+      inputPrice: 0.000001,
+      outputPrice: 0.000001,
+      maxTokens: 8192,
+      provider: { baseUrl: primary.baseUrl, apiKey: PRIMARY_KEY },
     });
     await moduleRef.get(ModelRegistryService).refresh();
   });
@@ -133,6 +143,40 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     await primary?.close();
     restoreEnv?.();
   });
+
+  it.each([
+    ["an agent that stores a slug with no model row", "vendor/old-slug-without-a-row", undefined],
+    ["an agent whose model's provider is inactive", "fake/on-inactive-provider", "inactive" as const],
+  ])(
+    "RX-178 review B1: %s → 400 with the fixed text before the SSE headers; no upstream call (classifier included), no message",
+    async (_name, slug, providerStatus) => {
+      primary.respond((_r, res) => sendJson(res, 200, chatCompletion("none")));
+      if (providerStatus) {
+        await createResolvableModel(prisma, { slug, provider: { baseUrl: primary.baseUrl, apiKey: PRIMARY_KEY, status: providerStatus } });
+        await moduleRef.get(ModelRegistryService).refresh();
+      }
+      const user = await createUser(prisma);
+      const agent = await createAgent(prisma, { userId: user.id, model: slug });
+      const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
+      await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: agent.id } });
+      const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+
+      const res = await send({
+        method: "POST",
+        url: `${appUrl}/channels/${channel.id}/agents/${agent.id}/chat`,
+        headers: { authorization: `Bearer ${token}` },
+        body: { message: "Hi" },
+      });
+
+      expect({ status: res.status, message: messageOf(res.body), echoesSlug: res.body.includes(slug) }).toEqual({
+        status: 400,
+        message: MODEL_UNAVAILABLE_MESSAGE,
+        echoesSlug: false,
+      });
+      expect(primary.requests).toHaveLength(0);
+      expect(await prisma.channelMessage.count()).toBe(0);
+    },
+  );
 
   it("AC6: provider answers 400 → SSE error event naming 400, response ends, health answers", async () => {
     primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));

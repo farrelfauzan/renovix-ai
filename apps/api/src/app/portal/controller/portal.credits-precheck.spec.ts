@@ -20,6 +20,7 @@ import { createUser } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { realPromptTuning } from "../../../../test/real-prompt-tuning";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-22 review B1: the paid portal path refuses with 402 BEFORE prompt tuning, whose knowledge searches embed the
 // query (paid /embeddings calls). The REAL PromptTuningService and knowledge services run; only
@@ -69,8 +70,8 @@ describe("RX-22 review B1: the paid portal chat refuses an unaffordable request 
     await prisma.tierRate.create({
       data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
     });
-    await prisma.aiModel.create({
-      data: { slug: "b1-model", modelName: "b1-model", providerId: "vendor/b1-model", inputPrice: 0.000001, outputPrice: 0.000001, maxTokens: 8192 },
+    await createResolvableModel(prisma, {
+      slug: "b1-model", modelName: "b1-model", inputPrice: 0.000001, outputPrice: 0.000001, maxTokens: 8192,
     });
     await prisma.knowledgeBase.create({ data: { name: "system", isSystem: true, active: true } });
     await moduleRef.get(ModelRegistryService).refresh();

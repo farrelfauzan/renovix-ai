@@ -19,6 +19,7 @@ import {
   startStubHttpServer,
   StubHttpServer,
 } from "../../../../test/llm-stub";
+import { testConnection } from "../../../../test/provider-model";
 
 // RX-169: AgentRunService.streamExecution is the one ProviderRouter.chatStream
 // caller outside the portal. No route calls it today (POST /agents/:id/chat uses
@@ -77,8 +78,7 @@ describe("RX-169: provider error on AgentRunService.streamExecution", () => {
       userId: "user-1",
       systemPrompt: "",
       model: "test-model",
-      providerId: "vendor/test-model",
-      provider: "openrouter",
+      connection: testConnection({ baseUrl: primary.baseUrl, apiKey: PRIMARY_KEY }),
       temperature: 0.7,
       tools: [],
       knowledgeBaseIds: [],

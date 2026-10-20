@@ -31,7 +31,8 @@ const TEST_SUCCESS = "success";
 /**
  * The queries on `providers` (RX-177). Live rows only: PrismaService hides soft-deleted providers from
  * top-level reads (VISIBLE_ONLY); every write below names `deletedAt: null` itself. The key is sealed
- * and opened here only (ProviderKeyCryptoService) and never leaves except to `findConnection`.
+ * and opened here only (ProviderKeyCryptoService) and never leaves except to `findConnection` and
+ * `revealStoredKey` (RX-178: ModelRegistryService opens its cached ciphertext per chat call).
  */
 @Injectable()
 export class ProviderRepository {
@@ -128,7 +129,7 @@ export class ProviderRepository {
   }
 
   /** Opens a stored key; one that does not open under the current encryption key becomes a 409. */
-  private revealStoredKey(ciphertext: string): string {
+  revealStoredKey(ciphertext: string): string {
     try {
       return this.crypto.reveal(ciphertext);
     } catch {

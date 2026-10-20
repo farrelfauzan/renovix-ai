@@ -23,6 +23,7 @@ import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { ProviderRouter } from "../../providers/provider-router";
+import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 import {
   CreateChannelSchema,
@@ -43,6 +44,7 @@ export class ChannelController {
     private readonly documentService: DocumentService,
     private readonly toolService: AgentToolService,
     private readonly providerRouter: ProviderRouter,
+    private readonly registry: ModelRegistryService,
   ) {}
 
   @Post()
@@ -269,6 +271,10 @@ export class ChannelController {
     const userId = req.user.userId;
     const origin = req.headers.origin || req.headers.Origin || "*";
 
+    // RX-178 (review B1): the room access check, then the fixed 400 for an unusable model, before the SSE headers and
+    // the classifier call.
+    await this.chatService.resolveAgentConnection(userId, id, agentId);
+
     // Setup SSE streaming
     res.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -414,9 +420,11 @@ export class ChannelController {
     message: string,
   ): Promise<string | null> {
     try {
-      const response = await this.providerRouter.chat("openrouter", {
-        model: "classifier",
-        providerId: "deepseek/deepseek-chat-v3.1",
+      // RX-178: the cheapest resolvable Standard model, never a hard-coded vendor id.
+      const connection = await this.registry.resolveCheapestConnection("standard");
+      const response = await this.providerRouter.chat({
+        model: connection.slug,
+        connection,
         messages: [
           {
             role: "system",

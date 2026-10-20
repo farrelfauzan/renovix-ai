@@ -88,9 +88,10 @@ Rules:
 - Confidence should reflect how certain the fact is
 - Return [] if nothing noteworthy`;
 
-      const response = await this.providerRouter.chat(cheapestModel.provider, {
+      const connection = await this.registry.resolveConnection(cheapestModel.slug);
+      const response = await this.providerRouter.chat({
         model: cheapestModel.slug,
-        providerId: cheapestModel.providerId,
+        connection,
         messages: [
           {
             role: "system",

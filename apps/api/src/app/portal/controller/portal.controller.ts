@@ -413,6 +413,7 @@ export class PortalController {
     if (!cheapest) {
       throw new InternalServerErrorException("No models available");
     }
+    const connection = await this.registry.resolveConnection(cheapest.slug);
 
     // Input guardrail check — extract last user message
     const lastUserMsg = body.messages.filter((m) => m.role === "user").pop();
@@ -474,10 +475,10 @@ export class PortalController {
       // RX-161: a client that disconnects aborts the upstream request.
       const disconnected = new AbortController();
       res.raw.on("close", () => disconnected.abort());
-      const stream = this.providerRouter.chatStream(cheapest.provider, {
+      const stream = this.providerRouter.chatStream({
         signal: disconnected.signal,
         model: cheapest.slug,
-        providerId: cheapest.providerId,
+        connection,
         messages: tunedMessages,
         temperature: body.temperature,
         max_tokens: resolveMaxTokens(
@@ -619,7 +620,8 @@ export class PortalController {
       }
     }
 
-    // Validate model
+    // Validate model: resolved to its provider record first (RX-178), a 400 before anything is reserved
+    const connection = await this.registry.resolveConnection(body.model);
     const modelConfig = await this.registry.getModel(body.model);
     if (!modelConfig) {
       const available = await this.registry.getAllModels();
@@ -644,8 +646,8 @@ export class PortalController {
       user.id,
       estimateCallCredits(
         countPromptTokens(body.messages),
-        this.providerRouter.resolveMaxTokens(modelConfig.provider, {
-          providerId: modelConfig.providerId,
+        this.providerRouter.resolveMaxTokens({
+          connection,
           max_tokens: resolveMaxTokens(body.max_tokens, modelConfig.maxOutputTokens, body.output_format || null),
         }),
         rates,
@@ -675,8 +677,8 @@ export class PortalController {
       requestId,
       amount: estimateCallCredits(
         promptTokens,
-        this.providerRouter.resolveMaxTokens(modelConfig.provider, {
-          providerId: modelConfig.providerId,
+        this.providerRouter.resolveMaxTokens({
+          connection,
           max_tokens: maxTokens,
         }),
         rates,
@@ -729,10 +731,10 @@ export class PortalController {
         res.raw.write(`data: ${JSON.stringify({ status: "generating" })}\n\n`);
       }
 
-      const stream = this.providerRouter.chatStream(modelConfig.provider, {
+      const stream = this.providerRouter.chatStream({
         signal: disconnected.signal,
         model: body.model,
-        providerId: modelConfig.providerId,
+        connection,
         messages: tunedMessages,
         temperature: body.temperature,
         max_tokens: maxTokens,
@@ -821,7 +823,7 @@ export class PortalController {
           outputTokens: entry.tokensOut ?? 0,
           cost: entry.amount.negated(),
           latencyMs,
-          provider: modelConfig.provider,
+          provider: connection.providerName,
         })
         .catch((err) => this.logger.error("Failed to log usage", err));
 

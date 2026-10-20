@@ -7,7 +7,9 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { ModelUnavailableException } from "../../config/errors/model-unavailable.exception";
 import { ProviderRouter } from "../../providers/provider-router";
+import type { ModelConnection } from "../../providers/types/model-connection";
 import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
@@ -35,8 +37,8 @@ interface AgentContext {
   userId: string;
   systemPrompt: string;
   model: string;
-  providerId: string;
-  provider: string;
+  /** RX-178: the agent model's provider record, resolved when the context is built. */
+  connection: ModelConnection;
   temperature: number;
   maxTokens?: number;
   tools: any[];
@@ -206,7 +208,7 @@ export class AgentRunService {
         outputTokens: result.totalOutputTokens,
         cost,
         latencyMs: loopLatency,
-        provider: context.provider,
+        provider: context.connection.providerName,
       })
       .catch((err) => this.logger.error("Failed to log agent usage", err));
 
@@ -320,7 +322,7 @@ export class AgentRunService {
     const context = await this.buildContext(agent, userId);
 
     console.log(
-      `Context built: model=${context.model} provider=${context.provider} tools=${context.tools.length} knowledgeBases=${context.knowledgeBaseIds.length}`,
+      `Context built: model=${context.model} provider=${context.connection.providerName} tools=${context.tools.length} knowledgeBases=${context.knowledgeBaseIds.length}`,
     );
 
     // Get conversation history
@@ -400,7 +402,7 @@ export class AgentRunService {
     while (iterations < MAX_TOOL_ITERATIONS) {
       const streamParams: any = {
         model: context.model,
-        providerId: context.providerId,
+        connection: context.connection,
         messages: currentMessages,
         temperature: context.temperature,
         max_tokens: context.maxTokens ?? 4096,
@@ -418,13 +420,13 @@ export class AgentRunService {
       }
 
       this.logger.log(
-        `[Agent Chat] agentId=${context.agentId} runId=${runId} | Calling LLM: model=${context.providerId} provider=${context.provider} messages=${currentMessages.length} tools=${toolSchemas.length}`,
+        `[Agent Chat] agentId=${context.agentId} runId=${runId} | Calling LLM: model=${context.connection.slug} provider=${context.connection.providerName} messages=${currentMessages.length} tools=${toolSchemas.length}`,
       );
 
       const startTime = Date.now();
       let stream: AsyncGenerator<string, void, unknown>;
       try {
-        stream = this.providerRouter.chatStream(context.provider, streamParams);
+        stream = this.providerRouter.chatStream(streamParams);
       } catch (err: any) {
         this.logger.error(
           `[streamExecution] Failed to create stream: ${err.message}`,
@@ -724,7 +726,7 @@ export class AgentRunService {
             outputTokens: estimatedOutput,
             cost,
             latencyMs,
-            provider: context.provider,
+            provider: context.connection.providerName,
           })
           .catch((err) =>
             this.logger.error("Failed to log agent stream usage", err),
@@ -812,7 +814,7 @@ export class AgentRunService {
     while (iterations < MAX_TOOL_ITERATIONS) {
       const callParams: any = {
         model: context.model,
-        providerId: context.providerId,
+        connection: context.connection,
         messages: currentMessages,
         temperature: context.temperature,
         max_tokens: context.maxTokens ?? 4096,
@@ -832,14 +834,11 @@ export class AgentRunService {
       // Log payload size and details
       const payloadJson = JSON.stringify(callParams);
       this.logger.log(
-        `[executeLLMLoop] iteration=${iterations} | model=${context.providerId} provider=${context.provider} | messages=${currentMessages.length} tools=${toolSchemas.length} tool_choice=${JSON.stringify(callParams.tool_choice ?? "none")} | payload=${(payloadJson.length / 1024).toFixed(1)}KB`,
+        `[executeLLMLoop] iteration=${iterations} | model=${context.connection.slug} provider=${context.connection.providerName} | messages=${currentMessages.length} tools=${toolSchemas.length} tool_choice=${JSON.stringify(callParams.tool_choice ?? "none")} | payload=${(payloadJson.length / 1024).toFixed(1)}KB`,
       );
 
       const startTime = Date.now();
-      const response: any = await this.providerRouter.chat(
-        context.provider,
-        callParams as any,
-      );
+      const response: any = await this.providerRouter.chat(callParams as any);
       const elapsed = Date.now() - startTime;
 
       totalTokens += response.usage?.total_tokens || 0;
@@ -973,15 +972,15 @@ export class AgentRunService {
 
     // Don't pass tools to sub-agent during delegation — force text-only response
     this.logger.log(
-      `[executeSubAgent] Calling LLM: provider=${context.provider} model=${context.providerId} (no tools) | payload=${(JSON.stringify(messages).length / 1024).toFixed(1)}KB`,
+      `[executeSubAgent] Calling LLM: provider=${context.connection.providerName} model=${context.connection.slug} (no tools) | payload=${(JSON.stringify(messages).length / 1024).toFixed(1)}KB`,
     );
 
     const subStartTime = Date.now();
     let response: any;
     try {
-      response = await this.providerRouter.chat(context.provider, {
+      response = await this.providerRouter.chat({
         model: context.model,
-        providerId: context.providerId,
+        connection: context.connection,
         messages,
         temperature: context.temperature,
         max_tokens: context.maxTokens ?? 4096,
@@ -1005,22 +1004,32 @@ export class AgentRunService {
     return subResult;
   }
 
+  /**
+   * RX-178 (review B1): the connection of the agent's model, checked before any work on the chat route (the classifier
+   * call, the SSE headers, the quota, the run and the message). 404 for an agent the user cannot run comes first, then
+   * the fixed 400 (ModelUnavailableException) for a model that cannot be resolved.
+   */
+  async resolveAgentConnection(userId: string, agentId: string): Promise<ModelConnection> {
+    const agent = await this.agents.findRunnableAgent(agentId, userId);
+    if (!agent) throw new NotFoundException("Agent not found");
+    const modelConfig = await this.registry.resolveModel(agent.model);
+    if (!modelConfig) throw new ModelUnavailableException();
+    return this.registry.resolveConnection(modelConfig.slug);
+  }
+
   private async buildContext(
     agent: any,
     userId: string,
   ): Promise<AgentContext> {
     const modelConfig = await this.registry.resolveModel(agent.model);
-    if (!modelConfig) {
-      throw new BadRequestException(`Model "${agent.model}" not available`);
-    }
+    if (!modelConfig) throw new ModelUnavailableException();
 
     return {
       agentId: agent.id,
       userId,
       systemPrompt: agent.systemPrompt,
       model: agent.model,
-      providerId: modelConfig.providerId,
-      provider: modelConfig.provider,
+      connection: await this.registry.resolveConnection(modelConfig.slug),
       temperature: agent.temperature,
       maxTokens: agent.maxTokens,
       tools: agent.tools,

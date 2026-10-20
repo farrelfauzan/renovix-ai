@@ -8,6 +8,7 @@ import { ProvidersModule } from "./providers.module";
 import { ProviderRouter } from "./provider-router";
 import { OpenRouterAdapter } from "./openrouter.adapter";
 import { FakeProviderAdapter } from "./fake.adapter";
+import { testConnection } from "../../../test/provider-model";
 
 describe("RX-88: resolveLlmProvider (boot guard)", () => {
   it.each([
@@ -93,10 +94,13 @@ describe("RX-88: ProvidersModule picks the adapter from LLM_PROVIDER", () => {
     const moduleRef = await compile();
 
     expect(moduleRef.get(OpenRouterAdapter)).toBeInstanceOf(OpenRouterAdapter);
+    // RX-178: the router sends the call through the real adapter to the request's connection.
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockRejectedValue(new Error("RX-178 test: no network"));
     const router = moduleRef.get(ProviderRouter);
-    await expect(router.chat("other", { model: "m", providerId: "p", messages: [] })).rejects.toThrow(
-      "No adapter found for provider: other",
-    );
+    const connection = testConnection();
+    await expect(router.chat({ model: "m", connection, messages: [] })).rejects.toThrow("RX-178 test: no network");
+    expect(fetchSpy).toHaveBeenCalledWith(`${connection.baseUrl}/chat/completions`, expect.anything());
+    fetchSpy.mockRestore();
   });
 
   it("AC3: an unknown value fails the module", async () => {
@@ -119,8 +123,8 @@ describe("RX-88: ProvidersModule picks the adapter from LLM_PROVIDER", () => {
       "LLM provider: FAKE — no real model calls. Never use in production.",
     );
     const router = moduleRef.get(ProviderRouter);
-    for (const provider of ["openrouter", "anything-else"]) {
-      const res = await router.chat(provider, { model: "m", providerId: "p", messages: [] });
+    for (const providerName of ["openrouter", "anything-else"]) {
+      const res = await router.chat({ model: "m", connection: testConnection({ providerName }), messages: [] });
       expect(res.choices[0].message.content).toContain("canned reply");
     }
   });

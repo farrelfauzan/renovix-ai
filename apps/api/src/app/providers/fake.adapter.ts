@@ -58,7 +58,7 @@ export class FakeProviderAdapter implements ProviderAdapter {
     return this;
   }
 
-  resolveMaxTokens(params: Pick<ChatRequest, "providerId" | "max_tokens">): number {
+  resolveMaxTokens(params: Pick<ChatRequest, "connection" | "max_tokens">): number {
     return params.max_tokens ?? this.defaultMaxTokens;
   }
 
@@ -93,7 +93,7 @@ export class FakeProviderAdapter implements ProviderAdapter {
         id,
         object: "chat.completion.chunk",
         created: 0,
-        model: params.providerId,
+        model: params.connection.slug,
         choices: [{ index: 0, finish_reason: null, ...choice }],
         ...extra,
       });

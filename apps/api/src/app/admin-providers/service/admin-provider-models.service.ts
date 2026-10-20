@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { ModelRegistryService } from "../../config/model-registry.service";
 import { AiModelRepository } from "../../config/repository/ai-model.repository";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import type { CreateProviderModelDto } from "../dto/create-provider-model.dto";
@@ -14,13 +15,16 @@ import { AdminProvidersService } from "./admin-providers.service";
  * The models of a provider record (RX-177, D149), under /admin/providers/:providerId/models. An unknown or
  * deleted provider is a 404, and so is a model of another provider. The slug is the provider's own model id,
  * unique across all providers and never changed; a model is deactivated, never deleted. provider and
- * provider_id are neither written nor read (D149 option B; request-time resolution is RX-178).
+ * provider_id are neither written nor read (D149 option B; request-time resolution is RX-178). RX-178 (D199-2): a
+ * deactivation drops the model from this process's ModelRegistryService cache at once; an activation makes the
+ * registry reload on its next lookup.
  */
 @Injectable()
 export class AdminProviderModelsService {
   constructor(
     private readonly providers: AdminProvidersService,
     private readonly models: AiModelRepository,
+    private readonly registry: ModelRegistryService,
   ) {}
 
   /** Every model of a live provider, active or not. */
@@ -44,6 +48,8 @@ export class AdminProviderModelsService {
     const before = await this.models.findOnProviderRecord(modelId, providerId, tx);
     if (!before) throw new NotFoundException("Model not found on this provider");
     const after = toProviderModelView(await this.models.updateOnProviderRecord(modelId, providerId, dto, tx), providerId);
+    if (dto.active === false) this.registry.forgetModel(before.slug);
+    if (dto.active === true) this.registry.expireCache();
     const change = buildAuditChange({
       subject: { providerId, modelId },
       before: toAuditedModelValues(toProviderModelView(before, providerId)),

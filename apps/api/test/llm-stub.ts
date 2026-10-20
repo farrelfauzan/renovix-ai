@@ -73,8 +73,10 @@ const LLM_ENV_KEYS = [
 ] as const;
 
 /**
- * RX-169: points the real chat adapter at the stubs (an adapter built after this call,
- * e.g. by ProvidersModule, reads these variables). Returns a function that restores them.
+ * RX-169: points the real adapter's env variables at the stubs (an adapter built after this call,
+ * e.g. by ProvidersModule, reads them). RX-178: chat calls go to the request's connection (the model's
+ * provider record), so only GET /models uses LLM_BASE_URL / LLM_API_KEY; the fallback variables are set
+ * only so a test can show that nothing is sent there. Returns a function that restores them.
  */
 export function pointLlmAtStubs(params: {
   primary: StubHttpServer;

@@ -20,6 +20,7 @@ import { AgentToolService } from "../service/agent-tool.service";
 import { AgentChatSchema } from "../dto/agent-chat.dto";
 import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
+import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 
 @Controller("agents")
@@ -32,6 +33,7 @@ export class AgentRunController {
     private readonly toolService: AgentToolService,
     private readonly documentService: DocumentService,
     private readonly providerRouter: ProviderRouter,
+    private readonly registry: ModelRegistryService,
   ) {}
 
   @Post(":id/chat")
@@ -56,6 +58,9 @@ export class AgentRunController {
 
     const { message, sessionId, output_format } = parsed.data;
     const userId = req.user.userId;
+
+    // RX-178 (review B1): 404 or the fixed 400 for an unusable model, before the classifier call and the SSE headers.
+    await this.runService.resolveAgentConnection(userId, id);
 
     // Classify document intent via LLM
     const detectedFormat =
@@ -199,9 +204,11 @@ export class AgentRunController {
     message: string,
   ): Promise<string | null> {
     try {
-      const response = await this.providerRouter.chat("openrouter", {
-        model: "classifier",
-        providerId: "deepseek/deepseek-v4-pro",
+      // RX-178: the cheapest resolvable Standard model, never a hard-coded vendor id.
+      const connection = await this.registry.resolveCheapestConnection("standard");
+      const response = await this.providerRouter.chat({
+        model: connection.slug,
+        connection,
         messages: [
           {
             role: "system",

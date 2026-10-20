@@ -25,6 +25,7 @@ import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-pro
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import type { PrismaService } from "../../prisma/prisma.service";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-14: characterization tests for the agent quota path
 // (checkAndDeductQuota / deductTokenQuota via AgentRunService.chat) and the
@@ -97,15 +98,12 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
   beforeEach(async () => {
     await resetDatabase(prisma);
     fake.requests.length = 0;
-    await prisma.aiModel.create({
-      data: {
-        slug: "test-model",
-        modelName: "test-model",
-        providerId: "vendor/test-model",
-        inputPrice: 0.000001,
-        outputPrice: 0.000002,
-        maxTokens: 8192,
-      },
+    await createResolvableModel(prisma, {
+      slug: "test-model",
+      modelName: "test-model",
+      inputPrice: 0.000001,
+      outputPrice: 0.000002,
+      maxTokens: 8192,
     });
     // RX-21: charging reads the tier rate table (credits per 1,000,000 tokens). Seed the
     // standard rate 1/1/1 so the completion path can charge; the D106 numbers below are
@@ -318,15 +316,12 @@ describe("RX-14: the agent quota path and the chat billing numbers (test databas
       // The model row the D106 finding used (deepseek-v4-flash prices): provider prices do not enter the charge.
       // Before RX-22 the never-settled pending row double-counted the reservation (sum -0.000118 vs delta 0.000117);
       // a hold is not an entry, so the sum of entries now equals the balance.
-      await prisma.aiModel.create({
-        data: {
-          slug: "d106-model",
-          modelName: "d106-model",
-          providerId: "vendor/d106-model",
-          inputPrice: 0.0000000983,
-          outputPrice: 0.0000001966,
-          maxTokens: 8192,
-        },
+      await createResolvableModel(prisma, {
+        slug: "d106-model",
+        modelName: "d106-model",
+        inputPrice: 0.0000000983,
+        outputPrice: 0.0000001966,
+        maxTokens: 8192,
       });
       await registry.refresh();
       const user = await fundedUser("1.0");

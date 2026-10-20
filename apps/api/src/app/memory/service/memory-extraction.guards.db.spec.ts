@@ -9,6 +9,7 @@ import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
+import { createResolvableModel } from "../../../../test/provider-model";
 
 // RX-141: the conditions of the extraction's queries (eligibility, the 5-conversation window, the
 // messages it reads, the duplicate and conflict lookups), written against the code before they moved into
@@ -31,9 +32,7 @@ describe("RX-141: memory extraction conditions (test database)", () => {
   beforeEach(async () => {
     await resetDatabase(prisma);
     fake.requests.length = 0;
-    await prisma.aiModel.create({
-      data: { slug: "standard-cheap", modelName: "standard-cheap", providerId: "vendor/standard-cheap", inputPrice: 0.000001, outputPrice: 0.000001, maxTokens: 8000, tier: "standard" },
-    });
+    await createResolvableModel(prisma, { slug: "standard-cheap", modelName: "standard-cheap", inputPrice: 0.000001, outputPrice: 0.000001, maxTokens: 8000, tier: "standard" });
     await moduleRef.get(ModelRegistryService).refresh();
   });
   afterAll(() => moduleRef?.close());

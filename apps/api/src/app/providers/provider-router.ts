@@ -28,14 +28,15 @@ export class ProviderRouter {
     }
   }
 
-  async chat(provider: string, params: ChatRequest): Promise<ChatResponse> {
-    const adapter = this.fakeAdapter ?? this.adapters[provider];
-    if (!adapter) {
-      throw new Error(`No adapter found for provider: ${provider}`);
-    }
-
+  /**
+   * RX-178: one chat call to the request's connection (its provider record), through the OpenAI-compatible
+   * adapter (the fake in LLM_PROVIDER=fake mode). No env endpoint and no fallback.
+   */
+  async chat(params: ChatRequest): Promise<ChatResponse> {
+    const adapter = this.fakeAdapter ?? this.openRouterAdapter;
+    const provider = params.connection.providerName;
     this.logger.log(
-      `[chat] provider=${provider} model=${params.providerId} messages=${params.messages?.length} tools=${params.tools?.length ?? 0}`,
+      `[chat] provider=${provider} model=${params.connection.slug} messages=${params.messages?.length} tools=${params.tools?.length ?? 0}`,
     );
 
     try {
@@ -45,42 +46,32 @@ export class ProviderRouter {
         `Provider ${provider} failed: ${error.message} status=${error.status}`,
         error.stack,
       );
-
-      // TODO: Add fallback provider logic here (e.g. try another provider if the primary fails)
       throw error;
     }
   }
 
-  async *chatStream(
-    provider: string,
-    params: ChatRequest,
-  ): AsyncGenerator<string, void, unknown> {
-    const adapter = this.fakeAdapter ?? this.adapters[provider];
-    if (!adapter) {
-      throw new Error(`No adapter found for provider: ${provider}`);
-    }
-
+  /** RX-178: streams one chat call from the request's connection (see chat). */
+  async *chatStream(params: ChatRequest): AsyncGenerator<string, void, unknown> {
+    const adapter = this.fakeAdapter ?? this.openRouterAdapter;
+    const provider = params.connection.providerName;
     if (!adapter.chatStream) {
       throw new Error(`Provider ${provider} does not support streaming`);
     }
 
     this.logger.log(
-      `[chatStream] provider=${provider} model=${params.providerId} messages=${params.messages?.length} tools=${params.tools?.length ?? 0} tool_choice=${JSON.stringify(params.tool_choice)} toolNames=[${(params.tools || []).map((t: any) => t.function?.name).join(",")}]`,
+      `[chatStream] provider=${provider} model=${params.connection.slug} messages=${params.messages?.length} tools=${params.tools?.length ?? 0} tool_choice=${JSON.stringify(params.tool_choice)} toolNames=[${(params.tools || []).map((t: any) => t.function?.name).join(",")}]`,
     );
 
     yield* adapter.chatStream(params);
   }
 
-  /** The max_tokens the provider's adapter sends for these params (RX-22: the credit estimate's M). */
-  resolveMaxTokens(provider: string, params: Pick<ChatRequest, "providerId" | "max_tokens">): number {
-    const adapter = this.fakeAdapter ?? this.adapters[provider];
-    if (!adapter) {
-      throw new Error(`No adapter found for provider: ${provider}`);
-    }
+  /** The max_tokens the adapter sends for these params (RX-22: the credit estimate's M; RX-178: the same reasoning detection). */
+  resolveMaxTokens(params: Pick<ChatRequest, "connection" | "max_tokens">): number {
+    const adapter = this.fakeAdapter ?? this.openRouterAdapter;
     return adapter.resolveMaxTokens(params);
   }
 
-  /** Lists the provider's models with their current prices (RX-21); undefined when the adapter cannot. */
+  /** Lists the provider's models with their current prices (RX-21, the env endpoint); undefined when the adapter cannot. */
   async listModels(
     provider: string,
   ): Promise<ProviderModelPrice[] | undefined> {

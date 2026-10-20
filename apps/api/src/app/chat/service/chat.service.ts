@@ -43,7 +43,8 @@ export class ChatService {
   async createCompletion(body: ChatCompletionRequest, user: AuthenticatedUser) {
     const startTime = Date.now();
 
-    // 1. Validate model exists
+    // 1. Resolve the slug to its provider record (RX-178): an unresolvable model is a 400, nothing reserved.
+    const connection = await this.registry.resolveConnection(body.model);
     const modelConfig = await this.registry.getModel(body.model);
     if (!modelConfig) {
       const available = await this.registry.getAllModels();
@@ -64,8 +65,8 @@ export class ChatService {
     // 3. M is the max_tokens the adapter will send. RX-22 review B1: refuse with 402 before any paid work (tuning
     // embeds the query for the knowledge searches) when the paid wallet cannot cover the estimate of the untuned
     // prompt, a lower bound (tuning only adds content).
-    const maxTokens = this.providerRouter.resolveMaxTokens(modelConfig.provider, {
-      providerId: modelConfig.providerId,
+    const maxTokens = this.providerRouter.resolveMaxTokens({
+      connection,
       max_tokens: body.max_tokens,
     });
     await this.credits.assertAvailable(
@@ -96,9 +97,9 @@ export class ChatService {
     // 5. Call provider
     let providerResponse;
     try {
-      providerResponse = await this.providerRouter.chat(modelConfig.provider, {
+      providerResponse = await this.providerRouter.chat({
         model: body.model,
-        providerId: modelConfig.providerId,
+        connection,
         messages: tunedMessages,
         temperature: body.temperature,
         max_tokens: body.max_tokens,
@@ -132,7 +133,7 @@ export class ChatService {
         outputTokens: providerResponse.usage.completion_tokens,
         cost: actualCost,
         latencyMs,
-        provider: modelConfig.provider,
+        provider: connection.providerName,
       })
       .catch((err) => this.logger.error("Failed to log usage", err));
 
