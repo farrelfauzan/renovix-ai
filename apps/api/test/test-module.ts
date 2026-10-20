@@ -1,5 +1,5 @@
 import { ModuleMetadata } from "@nestjs/common";
-import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { Test, TestingModule, TestingModuleBuilder } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AdminAuditModule } from "../src/app/admin-auth/admin-audit.module";
@@ -8,6 +8,7 @@ import { PrismaModule } from "../src/app/prisma/prisma.module";
 import { PrismaService } from "../src/app/prisma/prisma.service";
 import { RepositoriesModule } from "../src/app/prisma/repositories.module";
 import { AccessModule } from "../src/common/access.module";
+import { GlobalExceptionFilter } from "../src/common/filters/global-exception.filter";
 import { AccessGuard } from "../src/common/guards/access.guard";
 import { AdminOriginGuard } from "../src/common/guards/admin-origin.guard";
 import { createFastifyAdapter } from "../src/common/utils/create-fastify-adapter";
@@ -19,7 +20,7 @@ import { testDatabaseUrl } from "./test-database";
  * AdminOriginGuard (RX-156: an /admin route answers only the back-office
  * Origin), the global AccessGuard (a route
  * without `@Access` answers 403) and the global back-office audit hook
- * (RX-97), registered the way AppModule does it. `override` gets the builder for
+ * (RX-97) and the global exception filter (RNX-171), registered the way AppModule does it. `override` gets the builder for
  * overrideProvider/overrideGuard (e.g. `withFakeProvider`). Close it with
  * `moduleRef.close()` in afterAll.
  */
@@ -36,6 +37,7 @@ export async function createTestModule(
         { provide: APP_GUARD, useExisting: AdminOriginGuard },
         { provide: APP_GUARD, useExisting: AccessGuard },
         { provide: APP_INTERCEPTOR, useExisting: AdminAuditInterceptor },
+        { provide: APP_FILTER, useClass: GlobalExceptionFilter },
         ...(metadata.providers ?? []),
       ],
     }),

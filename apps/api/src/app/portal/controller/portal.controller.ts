@@ -25,6 +25,7 @@ import {
   FreeReservation,
 } from "../service/portal-tier.service";
 import { clientIp } from "../../../common/utils/client-ip";
+import { guardSseStream } from "../../../common/utils/guard-sse-stream";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { CreditService } from "../../billing/service/credit.service";
 import { callRatesOf } from "../../billing/utils/call-rates-of";
@@ -113,11 +114,20 @@ export class PortalController {
 
     const origin = req.headers["origin"] || "*";
 
+    // RNX-171: an error after the SSE headers ends that stream, not the process.
     if (identity.tier === "free") {
-      return this.handleFreeRequest(identity, requestData, ip, res, origin);
+      return guardSseStream({
+        response: res.raw,
+        logger: this.logger,
+        stream: () => this.handleFreeRequest(identity, requestData, ip, res, origin),
+      });
     }
 
-    return this.handlePaidRequest(identity, requestData, res, origin);
+    return guardSseStream({
+      response: res.raw,
+      logger: this.logger,
+      stream: () => this.handlePaidRequest(identity, requestData, res, origin),
+    });
   }
 
   @Get("usage")

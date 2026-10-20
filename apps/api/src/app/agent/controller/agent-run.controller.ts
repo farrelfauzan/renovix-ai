@@ -22,6 +22,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
+import { guardSseStream } from "../../../common/utils/guard-sse-stream";
 
 @Controller("agents")
 @Access({ auth: ["jwt", "session"] })
@@ -45,6 +46,11 @@ export class AgentRunController {
     @Req() req: any,
     @Res() res: FastifyReply,
   ) {
+    // RNX-171: an error after the SSE headers ends that stream, not the process.
+    return guardSseStream({ response: res.raw, logger: this.logger, stream: () => this.streamChat(id, body, req, res) });
+  }
+
+  private async streamChat(id: string, body: unknown, req: any, res: FastifyReply) {
     const parsed = AgentChatSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({

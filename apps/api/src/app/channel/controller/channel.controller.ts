@@ -25,6 +25,7 @@ import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
+import { guardSseStream } from "../../../common/utils/guard-sse-stream";
 import {
   CreateChannelSchema,
   UpdateChannelSchema,
@@ -257,6 +258,15 @@ export class ChannelController {
     @Req() req: any,
     @Res() res: FastifyReply,
   ) {
+    // RNX-171: an error after the SSE headers ends that stream, not the process.
+    return guardSseStream({
+      response: res.raw,
+      logger: this.logger,
+      stream: () => this.streamChat(id, agentId, body, req, res),
+    });
+  }
+
+  private async streamChat(id: string, agentId: string, body: unknown, req: any, res: FastifyReply) {
     const parsed = ChatMessageSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({
