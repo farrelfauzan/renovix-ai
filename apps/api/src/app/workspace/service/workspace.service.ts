@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  ConflictException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { WorkspaceRepository } from "../repository/workspace.repository";
@@ -71,6 +70,7 @@ export class WorkspaceService {
     return this.prisma.workspace.findMany({
       where: {
         status: { not: "deleted" },
+        isDefault: false, // hidden (RNX-117, D219 a)
         members: {
           some: { userId, status: "active" },
         },
@@ -87,6 +87,7 @@ export class WorkspaceService {
       where: {
         id: workspaceId,
         status: { not: "deleted" },
+        isDefault: false, // hidden (RNX-117, D219 a)
         members: { some: { userId, status: "active" } },
       },
       include: {
@@ -124,11 +125,6 @@ export class WorkspaceService {
 
   async archive(workspaceId: string, userId: string) {
     await this.requireRole(workspaceId, userId, ["owner"]);
-    // The default workspace holds the account's agents (RNX-117): it is never archived.
-    const workspace = await this.workspaces.findDefaultFlag(workspaceId);
-    if (workspace?.isDefault) {
-      throw new ConflictException("The default workspace cannot be archived");
-    }
 
     return this.prisma.workspace.update({
       where: { id: workspaceId },
@@ -159,6 +155,13 @@ export class WorkspaceService {
 
     if (!member || member.status !== "active") {
       throw new ForbiddenException("Not a member of this workspace");
+    }
+
+    // RNX-117 (D219 a): the default workspace is hidden from the workspace routes. Every route that takes a
+    // workspace id comes through here (requireRole too), so its member gets the not-found answer of getById.
+    const workspace = await this.workspaces.findDefaultFlag(workspaceId);
+    if (workspace?.isDefault) {
+      throw new NotFoundException("Workspace not found");
     }
 
     // Everyone but the workspace owner (by ownerId) needs a workspace whose
