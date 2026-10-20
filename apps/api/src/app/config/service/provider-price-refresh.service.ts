@@ -68,7 +68,7 @@ export class ProviderPriceRefreshService {
     const listed = await this.listModels(provider);
     if (listed === undefined) {
       this.logger.warn(
-        `Provider "${provider}" does not support listing models; price refresh skipped`,
+        `Provider "${provider}" cannot list models (unsupported, or no LLM_API_KEY / OPENROUTER_API_KEY configured); price refresh skipped`,
       );
       return { checked: 0, updated: 0, alerted: 0 };
     }
