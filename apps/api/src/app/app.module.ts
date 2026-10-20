@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import type { FastifyRequest } from "fastify";
 import { ScheduleModule } from "@nestjs/schedule";
@@ -33,6 +33,7 @@ import { AdminAuditModule } from "./admin-auth/admin-audit.module";
 import { AdminProvidersModule } from "./admin-providers/admin-providers.module";
 import { AdminAuditInterceptor } from "./admin-auth/interceptor/admin-audit.interceptor";
 import { AccessModule } from "../common/access.module";
+import { GlobalExceptionFilter } from "../common/filters/global-exception.filter";
 import { AccessGuard } from "../common/guards/access.guard";
 import { AdminOriginGuard } from "../common/guards/admin-origin.guard";
 import { clientIp } from "../common/utils/client-ip";
@@ -87,6 +88,8 @@ import { clientIp } from "../common/utils/client-ip";
     { provide: APP_GUARD, useExisting: AccessGuard },
     // RX-97: the back-office audit hook, on every route that declares @AdminAudit.
     { provide: APP_INTERCEPTOR, useExisting: AdminAuditInterceptor },
+    // RNX-171: an error after a reply's headers were sent ends that reply; any other error is answered as before.
+    { provide: APP_FILTER, useClass: GlobalExceptionFilter },
   ],
 })
 export class AppModule {}
