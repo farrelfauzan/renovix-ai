@@ -23,6 +23,6 @@ import { KnowledgeModule } from "../knowledge/knowledge.module";
     WorkspaceQuotaService,
     WorkspaceKnowledgeService,
   ],
-  exports: [WorkspaceService, WorkspaceQuotaService],
+  exports: [WorkspaceService, WorkspaceQuotaService, WorkspaceKnowledgeService],
 })
 export class WorkspaceModule {}

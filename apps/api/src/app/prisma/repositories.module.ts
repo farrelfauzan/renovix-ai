@@ -47,6 +47,7 @@ import { TierRateRepository } from "../offers/repository/tier-rate.repository";
 import { AnonymousUsageCounterRepository } from "../portal/repository/anonymous-usage-counter.repository";
 import { PortalSessionRepository } from "../portal/repository/portal-session.repository";
 import { ReminderRepository } from "../reminder/repository/reminder.repository";
+import { WorkspaceMemberRepository } from "../workspace/repository/workspace-member.repository";
 import { WorkspaceMemoryRepository } from "../workspace/repository/workspace-memory.repository";
 import { WorkspaceRepository } from "../workspace/repository/workspace.repository";
 
@@ -98,6 +99,7 @@ const REPOSITORIES = [
   AnonymousUsageCounterRepository,
   PortalSessionRepository,
   ReminderRepository,
+  WorkspaceMemberRepository,
   WorkspaceMemoryRepository,
   WorkspaceRepository,
 ];

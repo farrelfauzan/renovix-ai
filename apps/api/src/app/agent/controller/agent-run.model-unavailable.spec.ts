@@ -12,6 +12,7 @@ import { PlatformSettingsService } from "../../offers/service/platform-settings.
 import { AgentToolService } from "../service/agent-tool.service";
 import { AgentMemoryService } from "../service/agent-memory.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { DocumentService } from "../../document/service/document.service";
 import { UsageService } from "../../usage/service/usage.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
@@ -98,6 +99,7 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
         },
         { provide: AgentMemoryService, useValue: { getMemoryContext: async () => "" } },
         { provide: KnowledgeService, useValue: {} },
+        { provide: WorkspaceKnowledgeService, useValue: {} },
         { provide: UsageService, useValue: { logUsage: async () => undefined } },
         { provide: GuardrailService, useValue: { checkInput: async () => ({ blocked: false }) } },
         { provide: DocumentService, useValue: {} },

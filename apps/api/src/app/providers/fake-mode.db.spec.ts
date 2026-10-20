@@ -14,6 +14,7 @@ import { UsageService } from "../usage/service/usage.service";
 import { PromptTuningService } from "../chat/service/prompt-tuning.service";
 import { ConversationService } from "../chat/service/conversation.service";
 import { KnowledgeService } from "../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../workspace/service/workspace-knowledge.service";
 import { KnowledgeController } from "../knowledge/controller/knowledge.controller";
 import { EmbeddingService } from "../knowledge/service/embedding.service";
 import { S3Service } from "../knowledge/service/s3.service";
@@ -212,6 +213,7 @@ describe("RX-88: agent runs (chat, tool call) with LLM_PROVIDER=fake", () => {
           useValue: { getMemoryContext: async () => "", extractAndStore: async () => undefined },
         },
         { provide: KnowledgeService, useValue: {} },
+        { provide: WorkspaceKnowledgeService, useValue: {} },
         { provide: UsageService, useValue: { logUsage: async () => undefined } },
         {
           provide: GuardrailService,
