@@ -12,6 +12,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { BACK_OFFICE_ORIGIN, createAdmin } from "../../../../test/admin-auth";
 import { createModel, createProvider, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-177 (D148, D149): provider records and their models through the admin API, real HTTP (Fastify
 // `inject`) on the test database, with the fake provider (no request leaves the machine). Obviously fake
@@ -322,15 +323,17 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
 
     it("a test writes no usage log, reserves no credits and makes no chat request", async () => {
       const { cookie } = await signedIn("owner");
-      const user = await createUser(prisma, { balance: 10 });
+      // RNX-186: was User.balance 10 and no Transaction row; the credits are on the ledger now.
+      const user = await createUser(prisma);
+      await fundPaidWallet(prisma, user.id, 10);
       const created = await createVia(cookie);
 
       const res = await call("POST", `/admin/providers/${created.id}/test`, cookie, { slug: "cc/claude-sonnet-5" });
 
       expect(res.statusCode).toBe(200);
       expect(await prisma.usageLog.count()).toBe(0);
-      expect(await prisma.transaction.count()).toBe(0);
-      expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).balance.toFixed()).toBe("10");
+      expect(await prisma.creditReservation.count()).toBe(0);
+      expect(await prisma.creditLedgerEntry.count({ where: { memberUserId: user.id, type: { not: "bonus" } } })).toBe(0);
       expect(fake.requests).toEqual([]);
     });
 

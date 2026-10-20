@@ -148,7 +148,7 @@ describe("CodesService.redeemCode (test database)", () => {
     return { balance: await paidBalanceOf(userId), ledgerSum: ledger._sum.amount?.toNumber() ?? 0 };
   };
 
-  it("RX-22: a redeemed code grants into the credit ledger (credits-only code: bonus; package code: plan_grant), User.balance and transactions untouched", async () => {
+  it("RX-22: a redeemed code grants into the credit ledger (credits-only code: bonus; package code: plan_grant)", async () => {
     const user = await createUser(prisma);
     const plan = await createPlan(prisma, { slug: "pro" });
     const topup = await topupCode(1);
@@ -167,8 +167,6 @@ describe("CodesService.redeemCode (test database)", () => {
       [2, "plan_grant", "10.000000", "35.000000", redemptionOf(both.id), "paid"],
     ]);
     expect(await paidBalanceOf(user.id)).toBe(35);
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).balance.toNumber()).toBe(0);
-    expect(await prisma.transaction.count()).toBe(0);
     await assertCreditLedgerInvariants(prisma);
   });
 
@@ -524,7 +522,7 @@ describe("CodesService.redeemCode (test database)", () => {
     const user = await createUser(prisma);
     const basic = await createPlan(prisma, { slug: "basic" });
     const pro = await createPlan(prisma, { slug: "pro" });
-    const before = await createSubscription(prisma, { userId: user.id, planId: basic.id, status: "active", messagesUsed: 7 });
+    const before = await createSubscription(prisma, { userId: user.id, planId: basic.id, status: "active" });
     const code = await subscriptionCode(pro.id);
     jest
       .spyOn(moduleRef.get(CodeRedemptionRepository), "createRedemption")
@@ -536,7 +534,6 @@ describe("CodesService.redeemCode (test database)", () => {
     const after = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
     expect(after).toMatchObject({
       planId: basic.id,
-      messagesUsed: 7,
       currentPeriodEnd: before.currentPeriodEnd,
     });
   });

@@ -23,8 +23,8 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 
 // RX-22b (RNX-193) AC4: a channel chat is one agent run on the credit ledger (docs/credits.md section 13): one
-// reservation, a usage entry per model call attributed to the agent, the run and the caller who runs it, and no
-// write to the old counters (User.balance, Transaction, UserSubscription). Real ChannelChatService, ChannelService,
+// reservation, a usage entry per model call attributed to the agent, the run and the caller who runs it (RNX-186 removed
+// the old counters: User.balance, Transaction, the UserSubscription counters). Real ChannelChatService, ChannelService,
 // meter, CreditService and UsageService on the test database; fake provider. These collaborators load ESM-only packages.
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
@@ -83,11 +83,11 @@ describe("RX-22b: channel chat on the credit ledger (test database, fake provide
 
   afterAll(() => moduleRef?.close());
 
-  /** A user with old-path values that must not move (User.balance 5, counters 3 / 2,000), ledger credits, an agent in a channel. */
+  /** A subscribed user with ledger credits and an agent in a channel. */
   const seed = async () => {
     const plan = await createPlan(prisma);
-    const user = await createUser(prisma, { balance: new Decimal("5") });
-    await createSubscription(prisma, { userId: user.id, planId: plan.id, messagesUsed: 3, tokensUsed: 2000n });
+    const user = await createUser(prisma);
+    await createSubscription(prisma, { userId: user.id, planId: plan.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
@@ -95,7 +95,7 @@ describe("RX-22b: channel chat on the credit ledger (test database, fake provide
     return { user, agent, channel };
   };
 
-  it("AC4: a channel chat is charged through the ledger, one entry per model call, and writes no old counter", async () => {
+  it("AC4: a channel chat is charged through the ledger, one entry per model call", async () => {
     const { user, agent, channel } = await seed();
     fake.enqueue(
       { toolCalls: [{ name: "echo", arguments: {} }], usage: { prompt_tokens: 40, completion_tokens: 2 } },
@@ -113,10 +113,6 @@ describe("RX-22b: channel chat on the credit ledger (test database, fake provide
     ]);
     expect([reservation.status, reservation.consumed.toFixed(6)]).toEqual(["settled", "0.000110"]);
     expect(await prisma.usageLog.count({ where: { userId: user.id } })).toBe(2);
-    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
-    const subscription = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect([after.balance.toFixed(6), subscription.messagesUsed, subscription.tokensUsed]).toEqual(["5.000000", 3, 2000n]);
-    expect(await prisma.transaction.count()).toBe(0);
     await assertCreditLedgerInvariants(prisma);
   });
 

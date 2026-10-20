@@ -138,6 +138,25 @@ describe("email auth cookie (RX-68, Fastify, test database)", () => {
     ]);
   });
 
+  it("RNX-186: register, login and GET /auth/me answer without the removed User.balance", async () => {
+    const registered = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "no-balance@test.local", password: PASSWORD },
+    });
+    const loggedIn = await login("no-balance@test.local");
+    const me = await app.inject({
+      method: "GET",
+      url: "/auth/me",
+      headers: { authorization: `Bearer ${loggedIn.json().token}` },
+    });
+
+    expect([registered.statusCode, loggedIn.statusCode, me.statusCode]).toEqual([201, 200, 200]);
+    expect(registered.json().user).not.toHaveProperty("balance");
+    expect(loggedIn.json().user).not.toHaveProperty("balance");
+    expect(me.json()).not.toHaveProperty("balance");
+  });
+
   it("register sets the same cookie with the body's token", async () => {
     const res = await app.inject({
       method: "POST",

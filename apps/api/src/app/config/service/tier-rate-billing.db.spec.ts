@@ -1,4 +1,3 @@
-import { Decimal } from "@prisma/client/runtime/client";
 import { TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -79,7 +78,7 @@ describe("RX-21 AC1: a changed tier rate changes the credits charged (test datab
   const complete = (userId: string) =>
     chat.createCompletion(
       { model: "ac1-model", messages: [{ role: "user", content: "Hi" }], store: false },
-      { id: userId, email: "u@test.local", balance: new Decimal(0) },
+      { id: userId, email: "u@test.local" },
     );
 
   /** RX-22: the newest usage entry of the user on the credit ledger (was: the newest success Transaction row). */

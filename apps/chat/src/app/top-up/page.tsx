@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import { apiClient } from "@/lib/api-client";
+import { usePortalUsage } from "@/hooks/use-portal";
 import { ArrowLeft, Gift, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 
@@ -18,7 +20,10 @@ export default function TopUpPage() {
     planName?: string;
   } | null>(null);
   const hydrated = useHydrated();
-  const { isLoggedIn, setBalance, balance } = useAuthStore();
+  const { isLoggedIn } = useAuthStore();
+  const queryClient = useQueryClient();
+  // The balance is the ledger's paid wallet, read from GET /chat/portal/usage (RNX-186: no local copy).
+  const { data: usage } = usePortalUsage();
 
   const handleRedeem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,9 +40,7 @@ export default function TopUpPage() {
         daysGranted?: number | null;
       }>("/codes/redeem", { code: code.trim().toUpperCase() });
 
-      if (res.creditsGranted) {
-        setBalance(Number(balance ?? 0) + res.creditsGranted);
-      }
+      queryClient.invalidateQueries({ queryKey: ["portal-usage"] });
 
       setResult({
         success: true,
@@ -107,7 +110,7 @@ export default function TopUpPage() {
               Current Balance
             </span>
             <span className="text-lg font-semibold">
-              ${Number(balance ?? 0).toFixed(2)}
+              ${Number(usage?.balance ?? 0).toFixed(2)}
             </span>
           </div>
         </div>

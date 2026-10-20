@@ -1,6 +1,5 @@
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
-import { Decimal } from "@prisma/client/runtime/client";
 import { ChatService } from "./chat.service";
 import { ConversationService } from "./conversation.service";
 import { CreditService } from "../../billing/service/credit.service";
@@ -78,7 +77,7 @@ describe("RX-22 review B1: the API-key chat refuses an unaffordable request befo
   const complete = (userId: string) =>
     moduleRef.get(ChatService).createCompletion(
       { model: "b1-model", messages: [{ role: "user", content: "Hi" }], store: false },
-      { id: userId, email: "u@test.local", balance: new Decimal(0) },
+      { id: userId, email: "u@test.local" },
     );
 
   it("a user with 0 ledger credits: 402, no embedding call, no provider call, nothing written", async () => {

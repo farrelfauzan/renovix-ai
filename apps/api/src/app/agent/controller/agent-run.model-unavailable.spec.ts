@@ -162,7 +162,6 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
       echoesSlug: false,
     });
     expect([provider.requests.length, envStub.requests.length]).toEqual([0, 0]);
-    const subscription = await prisma.userSubscription.findFirstOrThrow({ where: { userId: user.id } });
-    expect([subscription.messagesUsed, await prisma.agentRun.count(), await prisma.agentMessage.count()]).toEqual([0, 0, 0]);
+    expect([await prisma.agentRun.count(), await prisma.agentMessage.count()]).toEqual([0, 0]);
   });
 });

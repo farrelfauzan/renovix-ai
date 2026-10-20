@@ -138,8 +138,6 @@ export class CodesService {
               status: "active",
               currentPeriodStart: periodStart,
               currentPeriodEnd: newEnd,
-              messagesUsed: 0,
-              tokensUsed: 0,
             },
             tx,
           );

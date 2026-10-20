@@ -320,9 +320,11 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
         userId: user.id,
         planId: plan.id,
         status: "active",
-        tokensUsed: "0",
         plan: { id: plan.id, maxTokensPerMonth: "5000000", priceMonthly: 99000 },
       });
+      // RNX-186: the usage counters are gone from the schema and the response.
+      expect(res.json().subscription).not.toHaveProperty("tokensUsed");
+      expect(res.json().subscription).not.toHaveProperty("messagesUsed");
     });
 
     it("returns the caller's plan, not another user's", async () => {
@@ -645,19 +647,19 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
 
       const result = await service().subscribe(user.id, "pro");
 
-      expect(result.subscription).toMatchObject({ userId: user.id, planId: plan.id, status: "active", tokensUsed: "0" });
+      expect(result.subscription).toMatchObject({ userId: user.id, planId: plan.id, status: "active" });
       expect(result.subscription.plan).toMatchObject({ id: plan.id, priceMonthly: null, maxTokensPerMonth: "1000000" });
       expect(await prisma.userSubscription.count()).toBe(1);
     });
 
-    it("an active subscription: moves it to the plan and resets the usage", async () => {
+    // RNX-186: was "... and resets the usage" (messagesUsed and tokensUsed back to 0); the counters are gone.
+    it("an active subscription: moves it to the plan", async () => {
       const { user } = await subscribed();
-      await prisma.userSubscription.update({ where: { userId: user.id }, data: { messagesUsed: 7, tokensUsed: 70n } });
       const plan = await createPlan(prisma, { slug: "pro", priceMonthly: 150000 });
 
       const result = await service().subscribe(user.id, "pro");
 
-      expect(result.subscription).toMatchObject({ planId: plan.id, messagesUsed: 0, tokensUsed: "0" });
+      expect(result.subscription).toMatchObject({ planId: plan.id });
       expect(result.subscription.plan).toMatchObject({ id: plan.id, priceMonthly: 150000 });
       expect(await prisma.userSubscription.count()).toBe(1);
     });

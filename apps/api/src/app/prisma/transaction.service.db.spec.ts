@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
-import { Decimal } from "@prisma/client/runtime/client";
 import type { DbTransaction } from "./db-transaction";
 import { PrismaService } from "./prisma.service";
 import { TransactionService } from "./transaction.service";
@@ -28,8 +27,7 @@ describe("TransactionService.run (test database)", () => {
   let users: UsersRepository;
   let userId: string;
 
-  const balance = async () =>
-    (await prisma.user.findUniqueOrThrow({ where: { id: userId } })).balance.toNumber();
+  const apiKey = async () => (await prisma.user.findUniqueOrThrow({ where: { id: userId } })).apiKey;
   const emails = async () =>
     (await prisma.user.findMany({ orderBy: { email: "asc" } })).map((u) => u.email);
   const isolationLevel = async (tx: DbTransaction) =>
@@ -45,7 +43,7 @@ describe("TransactionService.run (test database)", () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    userId = (await createUser(prisma, { email: "taken@test.local" })).id;
+    userId = (await createUser(prisma, { email: "taken@test.local", apiKey: "sk_live_before" })).id;
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -54,23 +52,23 @@ describe("TransactionService.run (test database)", () => {
 
   it("two repositories called inside run, the second call throws: the first call's write is rolled back", async () => {
     const run = transactions.run(async (tx) => {
-      await codes.incrementUserBalance(userId, new Decimal(5), tx);
+      await codes.updateApiKey(userId, "sk_live_after", tx);
       await users.createUser("taken@test.local", tx); // duplicate email
     });
 
     await expect(run).rejects.toMatchObject({ code: "P2002" });
-    expect(await balance()).toBe(0);
+    expect(await apiKey()).toBe("sk_live_before");
     expect(await emails()).toEqual(["taken@test.local"]);
   });
 
   it("commits the writes of both repositories when the work succeeds, and returns its result", async () => {
     const result = await transactions.run(async (tx) => {
-      await codes.incrementUserBalance(userId, new Decimal(5), tx);
+      await codes.updateApiKey(userId, "sk_live_after", tx);
       return (await users.createUser("new@test.local", tx)).email;
     });
 
     expect(result).toBe("new@test.local");
-    expect(await balance()).toBe(5);
+    expect(await apiKey()).toBe("sk_live_after");
     expect(await emails()).toEqual(["new@test.local", "taken@test.local"]);
   });
 

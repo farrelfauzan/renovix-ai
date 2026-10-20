@@ -1,4 +1,3 @@
-import { Decimal } from "@prisma/client/runtime/client";
 import { AgentRunService } from "./agent-run.service";
 import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
@@ -100,7 +99,7 @@ describe("RX-21: usage_logs.cost of an agent run (test database)", () => {
     });
     await registry.refresh();
     const plan = await createPlan(prisma, { maxTokensPerMonth: 1_000_000_000n });
-    const user = await createUser(prisma, { balance: new Decimal("1.0") });
+    const user = await createUser(prisma);
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
     await fundPaidWallet(prisma, user.id, "10");
     const agent = await createAgent(prisma, { userId: user.id });

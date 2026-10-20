@@ -10,7 +10,7 @@ export class PortalUserService {
     private readonly creditAccounts: CreditAccountRepository,
   ) {}
 
-  /** The id, email and balance of this user, if there is one. */
+  /** The id and email of this user, if there is one. */
   findPortalUser(userId: string) {
     return this.users.findPortalUser(userId);
   }

@@ -1,9 +1,7 @@
 import {
   Controller,
-  Get,
   Post,
   Body,
-  Query,
   Req,
   BadRequestException,
   ServiceUnavailableException,
@@ -11,18 +9,12 @@ import {
 import { Access } from "../../../common/decorators/access.decorator";
 import { ConfigService } from "@nestjs/config";
 import type Stripe from "stripe";
-import { BillingService } from "../service/billing.service";
-import { PrismaService } from "../../prisma/prisma.service";
 
 @Controller("billing")
 export class BillingController {
   private stripe?: Stripe.Stripe;
 
-  constructor(
-    private readonly billing: BillingService,
-    private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
-  ) {
+  constructor(private readonly configService: ConfigService) {
     const stripeKey = this.configService.get<string>("STRIPE_SECRET_KEY");
     if (stripeKey) {
       this.initStripe(stripeKey);
@@ -32,38 +24,6 @@ export class BillingController {
   private async initStripe(key: string) {
     const { default: StripeSDK } = await import("stripe");
     this.stripe = new (StripeSDK as any)(key) as Stripe.Stripe;
-  }
-
-  @Get("balance")
-  @Access({ auth: ["jwt", "session"] })
-  async getBalance(@Req() req: any) {
-    const balance = await this.billing.getBalance(req.user.userId);
-    return { balance };
-  }
-
-  @Get("transactions")
-  @Access({ auth: ["jwt", "session"] })
-  async getTransactions(
-    @Req() req: any,
-    @Query("limit") limit?: string,
-    @Query("offset") offset?: string,
-  ) {
-    const take = limit ? parseInt(limit, 10) : 50;
-    const skip = offset ? parseInt(offset, 10) : 0;
-
-    const [transactions, total] = await Promise.all([
-      this.prisma.transaction.findMany({
-        where: { userId: req.user.userId },
-        orderBy: { createdAt: "desc" },
-        take,
-        skip,
-      }),
-      this.prisma.transaction.count({
-        where: { userId: req.user.userId },
-      }),
-    ]);
-
-    return { transactions, total };
   }
 
   @Post("checkout")

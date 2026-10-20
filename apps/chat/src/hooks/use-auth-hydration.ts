@@ -10,7 +10,7 @@ import { authClient } from "@/lib/auth-client";
  * On mount, verify auth state:
  * 1. If JWT exists, validate via /auth/me (legacy flow)
  * 2. Otherwise, check for a Better Auth session (cookie-based SSO)
- * If valid, refresh email + balance. If invalid, clear auth state.
+ * If valid, refresh the email. If invalid, clear auth state.
  * Also invalidates portal queries so tier is re-evaluated.
  */
 export function useAuthHydration() {
@@ -30,9 +30,9 @@ export function useAuthHydration() {
     // If we have a JWT, validate it (legacy email/password flow)
     if (jwt) {
       apiClient
-        .get<{ id: string; email: string; balance: number }>("/auth/me")
+        .get<{ id: string; email: string }>("/auth/me")
         .then((user) => {
-          setAuth(jwt, user.email, Number(user.balance));
+          setAuth(jwt, user.email);
           invalidatePortal();
         })
         .catch(() => {
@@ -50,7 +50,6 @@ export function useAuthHydration() {
           const user = res.data.user as any;
           setSessionAuth(
             user.email,
-            Number(user.balance ?? 0),
             user.name ?? null,
             user.image ?? user.avatar ?? null,
           );

@@ -5,7 +5,6 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import type { Decimal } from "@prisma/client/runtime/client";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { CreditService } from "../../billing/service/credit.service";
 import { callRatesOf } from "../../billing/utils/call-rates-of";
@@ -23,7 +22,6 @@ import { buildDocumentResponseText } from "../utils/build-document-response-text
 interface AuthenticatedUser {
   id: string;
   email: string;
-  balance: Decimal;
 }
 
 @Injectable()

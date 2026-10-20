@@ -10,6 +10,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 // RX-141: the conditions of the extraction's queries (eligibility, the 5-conversation window, the
 // messages it reads, the duplicate and conflict lookups), written against the code before they moved into
@@ -37,11 +38,10 @@ describe("RX-141: memory extraction conditions (test database)", () => {
   });
   afterAll(() => moduleRef?.close());
 
-  const topup = (userId: string, data: { type?: string; status?: string } = {}) =>
-    prisma.transaction.create({ data: { userId, amount: 10, type: "topup", status: "success", ...data } });
+  /** A user with a paid credit account: funded through the real ledger, which creates the account (RNX-186). */
   const toppedUp = async () => {
     const user = await createUser(prisma);
-    await topup(user.id);
+    await fundPaidWallet(prisma, user.id, 10);
     return user;
   };
   /** A conversation with `userMessages` user messages and `assistantMessages` assistant ones, updated at `updatedAt`. */
@@ -62,8 +62,10 @@ describe("RX-141: memory extraction conditions (test database)", () => {
   const fact = (content: string, confidence = 0.9) => JSON.stringify([{ type: "interest", content, confidence }]);
   const memories = (userId: string) => prisma.userMemory.findMany({ where: { userId }, orderBy: { content: "asc" } });
 
-  describe("eligibility: a successful top-up of this user", () => {
-    it("calls the provider for a user with a successful top-up", async () => {
+  // RNX-186: was "a successful top-up of this user" (a Transaction row of type topup, status success). The Transaction
+  // table is gone; the ledger creates the paid account with the first paid grant (top-up, code bonus or plan_grant).
+  describe("eligibility: this user has a paid credit account", () => {
+    it("calls the provider for a user with a paid credit account", async () => {
       fake.enqueue({ content: "[]" });
       const user = await toppedUp();
       const conv = await conversation(user.id, 2);
@@ -73,9 +75,8 @@ describe("RX-141: memory extraction conditions (test database)", () => {
       expect(fake.requests).toHaveLength(1);
     });
 
-    it("skips a user whose only top-up is not successful", async () => {
+    it("skips a user without any credit account", async () => {
       const user = await createUser(prisma);
-      await topup(user.id, { status: "pending" });
       const conv = await conversation(user.id, 2);
 
       await service.extract(user.id, conv.id);
@@ -83,9 +84,9 @@ describe("RX-141: memory extraction conditions (test database)", () => {
       expect(fake.requests).toHaveLength(0);
     });
 
-    it("skips a user whose only successful transaction is not a top-up", async () => {
+    it("skips a user whose only credit account is the weekly free wallet", async () => {
       const user = await createUser(prisma);
-      await topup(user.id, { type: "usage" });
+      await prisma.creditAccount.create({ data: { userId: user.id, wallet: "weekly_free" } });
       const conv = await conversation(user.id, 2);
 
       await service.extract(user.id, conv.id);
@@ -93,7 +94,7 @@ describe("RX-141: memory extraction conditions (test database)", () => {
       expect(fake.requests).toHaveLength(0);
     });
 
-    it("skips a user without any transaction even when another user topped up", async () => {
+    it("skips a user without a paid account even when another user has one", async () => {
       await toppedUp();
       const user = await createUser(prisma);
       const conv = await conversation(user.id, 2);

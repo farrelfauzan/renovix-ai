@@ -168,16 +168,13 @@ interface AuthState {
   email: string | null;
   name: string | null;
   avatar: string | null;
-  balance: number | null;
   sessionAuth: boolean; // true when authenticated via Better Auth (cookie session)
-  setAuth: (jwt: string, email: string, balance: number) => void;
+  setAuth: (jwt: string, email: string) => void;
   setSessionAuth: (
     email: string,
-    balance: number,
     name?: string | null,
     avatar?: string | null,
   ) => void;
-  setBalance: (balance: number) => void;
   logout: () => void;
   isLoggedIn: () => boolean;
 }
@@ -189,16 +186,14 @@ export const useAuthStore = create<AuthState>()(
       email: null,
       name: null,
       avatar: null,
-      balance: null,
       sessionAuth: false,
-      setAuth: (jwt, email, balance) => {
+      setAuth: (jwt, email) => {
         if (typeof window !== "undefined") localStorage.setItem("jwt", jwt);
-        set({ jwt, email, balance, sessionAuth: false });
+        set({ jwt, email, sessionAuth: false });
       },
-      setSessionAuth: (email, balance, name = null, avatar = null) => {
-        set({ jwt: null, email, balance, sessionAuth: true, name, avatar });
+      setSessionAuth: (email, name = null, avatar = null) => {
+        set({ jwt: null, email, sessionAuth: true, name, avatar });
       },
-      setBalance: (balance) => set({ balance }),
       logout: () => {
         if (typeof window !== "undefined") localStorage.removeItem("jwt");
         set({
@@ -206,7 +201,6 @@ export const useAuthStore = create<AuthState>()(
           email: null,
           name: null,
           avatar: null,
-          balance: null,
           sessionAuth: false,
         });
       },
