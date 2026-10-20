@@ -11,6 +11,7 @@ import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-ba
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
+import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
 import type { CreateAgentDto } from "../dto/create-agent.dto";
 import type { UpdateAgentDto } from "../dto/update-agent.dto";
 import {
@@ -41,6 +42,7 @@ export class AgentService {
     private readonly providerRouter: ProviderRouter,
     private readonly workspaceService: WorkspaceService,
     private readonly registry: ModelRegistryService,
+    private readonly workspaces: WorkspaceRepository,
   ) {}
 
   private async generateUniqueSlug(
@@ -86,8 +88,11 @@ export class AgentService {
     }
 
     const slug = await this.generateUniqueSlug(userId, dto.name);
+    // Every agent lives in its owner's default workspace (RNX-117), created here for an account without one.
+    const workspace = await this.workspaces.ensureDefaultWorkspace(userId);
 
     return this.agents.createAgent(userId, {
+      workspaceId: workspace.id,
       name: dto.name,
       slug,
       description: dto.description,
@@ -228,8 +233,10 @@ export class AgentService {
     await this.checkAgentLimit(userId);
 
     const slug = await this.generateUniqueSlug(userId, template.name);
+    const workspace = await this.workspaces.ensureDefaultWorkspace(userId);
 
     const agent = await this.agents.createAgent(userId, {
+      workspaceId: workspace.id,
       name: template.name,
       slug,
       description: template.description,

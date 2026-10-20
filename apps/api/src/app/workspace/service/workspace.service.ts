@@ -2,8 +2,10 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { WorkspaceRepository } from "../repository/workspace.repository";
 import type { CreateWorkspaceDto } from "../dto/create-workspace.dto";
 import type { UpdateWorkspaceDto } from "../dto/update-workspace.dto";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
@@ -14,6 +16,7 @@ export class WorkspaceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly quotaService: WorkspaceQuotaService,
+    private readonly workspaces: WorkspaceRepository,
   ) {}
 
   private async generateUniqueSlug(
@@ -121,6 +124,11 @@ export class WorkspaceService {
 
   async archive(workspaceId: string, userId: string) {
     await this.requireRole(workspaceId, userId, ["owner"]);
+    // The default workspace holds the account's agents (RNX-117): it is never archived.
+    const workspace = await this.workspaces.findDefaultFlag(workspaceId);
+    if (workspace?.isDefault) {
+      throw new ConflictException("The default workspace cannot be archived");
+    }
 
     return this.prisma.workspace.update({
       where: { id: workspaceId },

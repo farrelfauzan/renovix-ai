@@ -331,8 +331,8 @@ model Agent {
   parentAgentId   String?         @map("parent_agent_id")
   parentAgent     Agent?          @relation("SubAgents", fields: [parentAgentId], references: [id], onDelete: SetNull)
   subAgents       Agent[]         @relation("SubAgents")
-  workspaceId     String?         @map("workspace_id")
-  workspace       Workspace?      @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  workspaceId     String          @map("workspace_id")
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   name            String
   slug            String
   description     String?
@@ -688,6 +688,8 @@ model Workspace {
   description String?
   avatar      String?
   status      String            @default("active") // "active" | "archived" | "deleted"
+  /// The account's default workspace (RNX-117): one per owner, created at sign-up, never archived.
+  isDefault   Boolean           @default(false) @map("is_default")
   members     WorkspaceMember[]
   invites     WorkspaceInvite[]
   memories    WorkspaceMemory[]
@@ -698,6 +700,7 @@ model Workspace {
   createdAt   DateTime          @default(now()) @db.Timestamptz()
   updatedAt   DateTime          @updatedAt @db.Timestamptz()
 
+  @@unique([ownerId], where: raw("is_default"))
   @@index([ownerId, status])
   @@index([channelId])
   @@map("workspaces")

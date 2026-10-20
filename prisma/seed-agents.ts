@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../apps/api/src/generated/prisma/client.js";
+import { ensureDefaultWorkspace } from "../apps/api/src/app/workspace/repository/ensure-default-workspace";
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
@@ -229,6 +230,9 @@ async function main() {
     console.log(`  ✓ Created system user: ${SYSTEM_USER_EMAIL}`);
   }
 
+  // Every agent lives in a workspace (RNX-117): the system user's default one, created once.
+  const workspace = await ensureDefaultWorkspace(prisma, systemUser.id);
+
   for (const agentData of publicAgents) {
     const existing = await prisma.agent.findUnique({
       where: {
@@ -250,6 +254,7 @@ async function main() {
     const agent = await prisma.agent.create({
       data: {
         userId: systemUser.id,
+        workspaceId: workspace.id,
         name: agentData.name,
         slug: agentData.slug,
         description: agentData.description,

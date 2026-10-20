@@ -6,6 +6,7 @@ import * as bcrypt from "bcrypt";
 import { AuthModule } from "../auth.module";
 import { JWT_LIFETIME_SECONDS } from "../utils/auth-cookie";
 import { PrismaService } from "../../prisma/prisma.service";
+import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
@@ -168,6 +169,42 @@ describe("email auth cookie (RX-68, Fastify, test database)", () => {
     expect(setCookies(res)).toEqual([
       `jwt=${res.json().token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${JWT_LIFETIME_SECONDS}`,
     ]);
+  });
+
+  it("RNX-117: register gives the new account exactly one default workspace it owns, with an active owner member row", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "with-workspace@test.local", password: PASSWORD },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const workspaces = await prisma.workspace.findMany({ include: { members: true } });
+    expect(workspaces).toEqual([
+      expect.objectContaining({
+        ownerId: res.json().user.id,
+        isDefault: true,
+        status: "active",
+        members: [expect.objectContaining({ userId: res.json().user.id, role: "owner", status: "active" })],
+      }),
+    ]);
+  });
+
+  it("RNX-117: register writes the user and its default workspace in one transaction: a failed workspace leaves no user", async () => {
+    jest
+      .spyOn(moduleRef.get(WorkspaceRepository), "ensureDefaultWorkspace")
+      .mockRejectedValue(new Error("planted workspace failure"));
+    jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "rolled-back@test.local", password: PASSWORD },
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(await prisma.user.count()).toBe(0);
+    expect(await prisma.workspace.count()).toBe(0);
   });
 
   it("login with a wrong password sets no cookie", async () => {

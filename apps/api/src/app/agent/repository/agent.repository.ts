@@ -230,11 +230,11 @@ export class AgentRepository {
     return (tx ?? this.prisma).agent.delete({ where: { id: agentId } });
   }
 
-  /** The workspace id of the agent with this id (null for an agent outside a workspace), if the agent exists. */
+  /** The workspace id of the agent with this id and whether it is a default workspace (RNX-117), if the agent exists. */
   findAgentWorkspaceId(agentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findUnique({
       where: { id: agentId },
-      select: { workspaceId: true },
+      select: { workspaceId: true, workspace: { select: { isDefault: true } } },
     });
   }
 }

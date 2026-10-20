@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "@generated/prisma/client.js";
 import { ProviderKeyCryptoService } from "../src/app/admin-providers/service/provider-key-crypto.service";
+import { ensureDefaultWorkspace } from "../src/app/workspace/repository/ensure-default-workspace";
 
 // Small factories for the test database: required fields only, unique values
 // by default, any field can be overridden.
@@ -50,12 +51,14 @@ export function createSubscription(
   });
 }
 
-export function createAgent(
+/** An agent; without a `workspaceId` it goes into its user's default workspace, created if needed (RNX-117). */
+export async function createAgent(
   prisma: PrismaClient,
   data: Pick<Prisma.AgentUncheckedCreateInput, "userId"> &
     Partial<Prisma.AgentUncheckedCreateInput>,
 ) {
   const slug = data.slug ?? `agent-${unique()}`;
+  const workspaceId = data.workspaceId ?? (await ensureDefaultWorkspace(prisma, data.userId)).id;
   return prisma.agent.create({
     data: {
       name: slug,
@@ -63,6 +66,7 @@ export function createAgent(
       systemPrompt: "You are a test agent.",
       model: "test-model",
       ...data,
+      workspaceId,
     },
   });
 }
