@@ -6,15 +6,21 @@ import * as jwt from "jsonwebtoken";
 import { McpUserController } from "./mcp-user.controller";
 import { McpUserService } from "../service/mcp-user.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { WorkspaceService } from "../../workspace/service/workspace.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser, createWorkspace } from "../../../../test/factories";
+import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 
 // RX-151: the public OAuth callback stores a provider credential only for a state the server signed,
 // that has not expired, is used once, and whose user is still a member of its workspace. The provider
 // token exchange (global fetch) is mocked: no provider is called. RX-152: each callback here is sent with
 // the cookie the start response set for the one-time value its state carries (the starting browser), so
 // these tests still exercise the state checks and not the cookie check (that is mcp-user.oauth-cookie.spec.ts).
+// RNX-206: start and callback check the workspace with WorkspaceService.requireMembership (a member row,
+// the collaboration rule of RX-113, the default-workspace 404 of RNX-117). So the owner has its owner member
+// row (as WorkspaceService.create makes it) and is on the Enterprise plan, which lets `member` use W.
 const STATE_SECRET = "rx151-marker-state-secret-not-a-real-secret";
 const PROVIDER = "google-gmail";
 const CHAT_APP_URL = "http://chat.test.local";
@@ -57,7 +63,12 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [McpUserController],
-      providers: [McpUserService, { provide: ConfigService, useValue: new ConfigService(CONFIG) }],
+      providers: [
+        McpUserService,
+        WorkspaceService,
+        WorkspaceQuotaService,
+        { provide: ConfigService, useValue: new ConfigService(CONFIG) },
+      ],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -70,9 +81,14 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     otherOwner = await createUser(prisma);
     workspaceId = (await createWorkspace(prisma, { ownerId: owner.id })).id;
     otherWorkspaceId = (await createWorkspace(prisma, { ownerId: otherOwner.id })).id;
-    await prisma.workspaceMember.create({
-      data: { workspaceId, userId: member.id, role: "member", status: "active", joinedAt: new Date() },
+    await prisma.workspaceMember.createMany({
+      data: [
+        { workspaceId, userId: owner.id, role: "owner", status: "active", joinedAt: new Date() },
+        { workspaceId, userId: member.id, role: "member", status: "active", joinedAt: new Date() },
+      ],
     });
+    const enterprise = await createPlan(prisma, { slug: "enterprise" });
+    await createSubscription(prisma, { userId: owner.id, planId: enterprise.id });
     markers = [STATE_SECRET, CONFIG.GOOGLE_OAUTH_CLIENT_SECRET];
     logLines = [];
     issuedCookies = new Map();
@@ -166,6 +182,10 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     return new URL(location).searchParams.get("oauth");
   };
 
+  /** The refusal message the callback's error redirect carries. */
+  const redirectMessage = (res: { headers: Record<string, unknown> }) =>
+    new URL(String(res.headers.location)).searchParams.get("message");
+
   const credentials = () => prisma.userMcpCredential.findMany();
   const stateRowCount = async (): Promise<number> => {
     const [{ n }] = await prisma.$queryRawUnsafe<{ n: number }[]>("SELECT count(*)::int AS n FROM mcp_oauth_states");
@@ -250,12 +270,74 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("AC 6: a user removed from the workspace after starting is refused", async () => {
+  it("AC 6: a member of the Enterprise owner's workspace removed after starting is refused", async () => {
     const state = await startFlow(member);
     await prisma.workspaceMember.updateMany({ where: { workspaceId, userId: member.id }, data: { status: "removed" } });
-    expect(oauthResult(await callback(state))).toBe("error");
+    const res = await callback(state);
+    expect(oauthResult(res)).toBe("error");
+    // RNX-206 AC 3: refused by WorkspaceService.requireMembership (its 403 message), not the old helper.
+    expect(redirectMessage(res)).toBe("Not a member of this workspace");
     expect(await credentials()).toEqual([]);
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  describe("RNX-206: the workspace check of WorkspaceService.requireMembership", () => {
+    /** Moves W's owner to a plan without collaboration (slug `slug`, not "enterprise"). */
+    const moveOwnerToPlan = async (slug: string) => {
+      const plan = await createPlan(prisma, { slug });
+      await prisma.userSubscription.update({ where: { userId: owner.id }, data: { planId: plan.id } });
+    };
+
+    const expectStartRefused = async (res: { statusCode: number; body: string; headers: Record<string, unknown> }, status: number, message: string) => {
+      expect({ status: res.statusCode, message: JSON.parse(res.body).message }).toEqual({ status, message });
+      expect(res.body).not.toContain("authUrl");
+      expect(res.headers["set-cookie"]).toBeUndefined();
+      expect(await stateRowCount()).toBe(0);
+    };
+
+    it("AC 2: a user who is not a member of W cannot start a flow: 403, no auth URL, no cookie, no state", async () => {
+      await expectStartRefused(await start(otherOwner), 403, "Not a member of this workspace");
+    });
+
+    it.each(["starter", "pro"])(
+      "AC 2: an active member of a %s workspace not their own is refused with the collaboration message, no state",
+      async (slug) => {
+        await moveOwnerToPlan(slug);
+        await expectStartRefused(await start(member), 403, "Workspace collaboration requires an Enterprise plan.");
+      },
+    );
+
+    it("AC 2: the owner's default workspace answers 404 Workspace not found, no state", async () => {
+      const defaultWorkspace = await ensureDefaultWorkspace(prisma, owner.id);
+      await expectStartRefused(await start(owner, defaultWorkspace.id), 404, "Workspace not found");
+    });
+
+    it("AC 3: started while allowed, W's owner now on a plan without collaboration: error, no code exchange, nothing stored", async () => {
+      const state = await startFlow(member);
+      await moveOwnerToPlan("starter");
+      const res = await callback(state);
+      expect(oauthResult(res)).toBe("error");
+      expect(redirectMessage(res)).toBe("Workspace collaboration requires an Enterprise plan.");
+      expect(await credentials()).toEqual([]);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it("AC 3: started while allowed, W is now a default workspace: error, no code exchange, nothing stored", async () => {
+      const state = await startFlow(owner);
+      await prisma.workspace.update({ where: { id: workspaceId }, data: { isDefault: true } });
+      const res = await callback(state);
+      expect(oauthResult(res)).toBe("error");
+      expect(redirectMessage(res)).toBe("Workspace not found");
+      expect(await credentials()).toEqual([]);
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it("AC 7 (control): a member of the Enterprise owner's workspace completes the flow", async () => {
+      const state = await startFlow(member);
+      expect(oauthResult(await callback(state))).toBe("success");
+      expect((await credentials()).map((c) => ({ userId: c.userId, workspaceId: c.workspaceId }))).toEqual([{ userId: member.id, workspaceId }]);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    });
   });
 
   it.each([

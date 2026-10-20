@@ -27,6 +27,8 @@ export class WebSearchController {
       throw new BadRequestException("workspaceId query param is required");
     }
 
+    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
+
     return this.webSearchService.getUserWebSearchStatus(
       req.user.userId,
       workspaceId,

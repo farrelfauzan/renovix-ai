@@ -13,6 +13,8 @@ import {
 import { Access } from "../../../common/decorators/access.decorator";
 import { ConfigService } from "@nestjs/config";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { WorkspaceService } from "../../workspace/service/workspace.service";
+import { ConnectMcpTokenSchema } from "../dto/connect-mcp-token.dto";
 import { McpUserService } from "../service/mcp-user.service";
 import { mcpOAuthCookieName } from "../utils/mcp-oauth-cookie-name";
 import { mcpOAuthSetCookie } from "../utils/mcp-oauth-set-cookie";
@@ -29,6 +31,7 @@ export class McpUserController {
   constructor(
     private readonly mcpUserService: McpUserService,
     private readonly configService: ConfigService,
+    private readonly workspaceService: WorkspaceService,
   ) {}
 
   /**
@@ -120,23 +123,16 @@ export class McpUserController {
   @Access({ auth: ["jwt", "session"] })
   async connectWithToken(
     @Req() req: any,
-    @Body()
-    body: {
-      provider: string;
-      workspaceId: string;
-      env: Record<string, string>;
-    },
+    @Body() body: unknown,
   ) {
-    if (!body.provider || !body.workspaceId || !body.env) {
-      throw new BadRequestException(
-        "provider, workspaceId, and env are required",
-      );
-    }
+    const parsed = ConnectMcpTokenSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    await this.workspaceService.requireMembership(parsed.data.workspaceId, req.user.userId);
     return this.mcpUserService.connectWithToken(
       req.user.userId,
-      body.workspaceId,
-      body.provider,
-      body.env,
+      parsed.data.workspaceId,
+      parsed.data.provider,
+      parsed.data.env,
     );
   }
 
@@ -152,6 +148,7 @@ export class McpUserController {
     if (!workspaceId) {
       throw new BadRequestException("workspaceId query param is required");
     }
+    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
     return this.mcpUserService.getUserCredentials(req.user.userId, workspaceId);
   }
 
@@ -168,6 +165,7 @@ export class McpUserController {
     if (!workspaceId) {
       throw new BadRequestException("workspaceId query param is required");
     }
+    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
     return this.mcpUserService.revokeCredential(
       req.user.userId,
       workspaceId,

@@ -32,9 +32,12 @@ const webSearch = {
   revokeBraveApiKey: jest.fn(async () => ({ ok: true })),
   getPolicy: jest.fn(async () => ({ ok: true })),
   updatePolicy: jest.fn(async () => ({ ok: true })),
+  getUserWebSearchStatus: jest.fn(async () => ({ ok: true })),
 };
 
 const ROUTES: [string, Route][] = [
+  // RNX-206: the status route checks membership too.
+  ["GET /integrations/web-search/status", { method: "GET", url: (id) => `/integrations/web-search/status?workspaceId=${id}`, called: "getUserWebSearchStatus" }],
   ["PUT /integrations/web-search/brave/key", { method: "PUT", url: () => "/integrations/web-search/brave/key", payload: (id) => ({ workspaceId: id, apiKey: "fake-brave-key" }), called: "upsertBraveApiKey" }],
   ["DELETE /integrations/web-search/brave/key", { method: "DELETE", url: (id) => `/integrations/web-search/brave/key?workspaceId=${id}`, called: "revokeBraveApiKey" }],
   ["GET /integrations/web-search/policy", { method: "GET", url: (id) => `/integrations/web-search/policy?workspaceId=${id}`, called: "getPolicy" }],
