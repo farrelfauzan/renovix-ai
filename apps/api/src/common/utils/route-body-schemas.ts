@@ -12,6 +12,9 @@ import { SignInDto } from "../../app/admin-auth/dto/sign-in.dto";
 import { ReauthDto } from "../../app/admin-auth/dto/reauth.dto";
 import { ChangePasswordDto } from "../../app/admin-auth/dto/change-password.dto";
 import { CreateInvitationDto } from "../../app/admin-auth/dto/create-invitation.dto";
+import { AssignRoleDto } from "../../app/admin-auth/dto/assign-role.dto";
+import { CreateRoleDto } from "../../app/admin-auth/dto/create-role.dto";
+import { UpdateRoleDto } from "../../app/admin-auth/dto/update-role.dto";
 import { InvitationTokenDto } from "../../app/admin-auth/dto/invitation-token.dto";
 import { AcceptInvitationDto } from "../../app/admin-auth/dto/accept-invitation.dto";
 import { TotpCodeDto } from "../../app/admin-auth/dto/totp-code.dto";
@@ -55,6 +58,9 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /admin/invitations", CreateInvitationDto],
   ["POST /admin/invitations/preview", InvitationTokenDto],
   ["POST /admin/invitations/accept", AcceptInvitationDto],
+  ["PUT /admin/admins/:id/role", AssignRoleDto],
+  ["POST /admin/roles", CreateRoleDto],
+  ["PATCH /admin/roles/:name", UpdateRoleDto],
   ["POST /admin/providers", CreateProviderDto],
   ["PATCH /admin/providers/:id", UpdateProviderDto],
   ["POST /admin/providers/:id/test", TestProviderDto],

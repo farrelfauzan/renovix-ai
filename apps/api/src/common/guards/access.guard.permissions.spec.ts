@@ -173,6 +173,15 @@ describe("AccessGuard staff permissions (RX-96, Fastify, test database)", () => 
       expect(accepted.statusCode).toBe(200);
     });
 
+    it("RNX-187: a custom role holding only the first of the two (users:read): 403", async () => {
+      await prisma.adminRole.create({ data: { name: "reader", permissions: ["users:read"] } });
+      const { cookie } = await signedIn("reader");
+
+      const res = await get("/admin/rbac-probe/two", { cookie });
+
+      expect(res.statusCode).toBe(403);
+    });
+
     it("a role with no permissions: 403 on a permission route", async () => {
       await prisma.adminRole.create({ data: { name: "empty" } });
       const { cookie } = await signedIn("empty");

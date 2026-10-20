@@ -80,6 +80,15 @@ describe("AdminRoleService.assignRole (RX-96, test database)", () => {
     expect(await roleOf(suspended.id)).toBe("viewer");
   });
 
+  it("RNX-187: with a single (active) owner, another admin's role can be changed", async () => {
+    const owner = await createAdmin("a@example.com", "owner");
+    const ops = await createAdmin("ops@example.com", "operations");
+
+    await roles.assignRole(ops.id, "finance", owner.id);
+
+    expect([await roleOf(owner.id), await roleOf(ops.id)]).toEqual(["owner", "finance"]);
+  });
+
   it("RX-95: an admin cannot change their own role (self-demotion): 403, role unchanged", async () => {
     const owner = await createAdmin("a@example.com", "owner");
     await createAdmin("b@example.com", "owner");

@@ -183,6 +183,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
     "DELETE /admin/invitations/:id (AdminInvitationsController.revoke)",
     "DELETE /admin/providers/:id (AdminProvidersController.remove)",
+    "DELETE /admin/roles/:name (AdminRolesController.delete)",
     "GET /admin/admins (AdminAdminsController.list)",
     "GET /admin/audit-log (AdminAuditLogController.list)",
     "GET /admin/audit-log/export (AdminAuditLogController.export)",
@@ -190,8 +191,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/providers (AdminProvidersController.list)",
     "GET /admin/providers/:id (AdminProvidersController.get)",
     "GET /admin/providers/:providerId/models (AdminProviderModelsController.list)",
+    "GET /admin/roles (AdminRolesController.list)",
     "PATCH /admin/providers/:id (AdminProvidersController.update)",
     "PATCH /admin/providers/:providerId/models/:modelId (AdminProviderModelsController.update)",
+    "PATCH /admin/roles/:name (AdminRolesController.update)",
     "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
     "POST /admin/admins/:id/reactivate (AdminAdminsController.reactivate)",
     "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
@@ -203,6 +206,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
     "POST /admin/providers/:id/test (AdminProvidersController.test)",
     "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)",
+    "POST /admin/roles (AdminRolesController.create)",
+    "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
   ];
   const STAFF_ENROLMENT_ROUTES = [
     "POST /admin/auth/totp/confirm (AdminAuthController.confirm)",
@@ -240,6 +245,12 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)": ["providers:write"],
     "POST /admin/providers/:id/test (AdminProvidersController.test)": ["providers:write"],
     "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)": ["models:write"],
+    // RNX-187: the role list needs roles:read; custom roles and role assignment need roles:write (Owner only).
+    "DELETE /admin/roles/:name (AdminRolesController.delete)": ["roles:write"],
+    "GET /admin/roles (AdminRolesController.list)": ["roles:read"],
+    "PATCH /admin/roles/:name (AdminRolesController.update)": ["roles:write"],
+    "POST /admin/roles (AdminRolesController.create)": ["roles:write"],
+    "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)": ["roles:write"],
   };
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
@@ -295,10 +306,14 @@ describe("RX-114: every route of AppModule declares its access", () => {
   });
 
   // RX-95 (D219): the sensitive actions that need a re-authentication within REAUTH_WINDOW_MINUTES.
+  // RNX-187: editing a role and every role assignment as well. Inviting an Owner (POST /admin/invitations with
+  // role "owner") also needs one; its controller checks that, since `reauth` cannot depend on the body.
   const REAUTH_ROUTES = [
+    "PATCH /admin/roles/:name (AdminRolesController.update)",
     "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
     "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
     "POST /admin/admins/:id/suspend (AdminAdminsController.suspend)",
+    "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
   ];
 
   it("RX-95: the routes that declare reauth are pinned", () => {
@@ -310,8 +325,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "DELETE /admin/auth/sessions/:id (AdminAuthController.revokeSession)",
     "DELETE /admin/invitations/:id (AdminInvitationsController.revoke)",
     "DELETE /admin/providers/:id (AdminProvidersController.remove)",
+    "DELETE /admin/roles/:name (AdminRolesController.delete)",
     "PATCH /admin/providers/:id (AdminProvidersController.update)",
     "PATCH /admin/providers/:providerId/models/:modelId (AdminProviderModelsController.update)",
+    "PATCH /admin/roles/:name (AdminRolesController.update)",
     "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
     "POST /admin/admins/:id/reactivate (AdminAdminsController.reactivate)",
     "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
@@ -326,6 +343,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/providers (AdminProvidersController.create)",
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
     "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)",
+    "POST /admin/roles (AdminRolesController.create)",
+    "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
   ];
   const AUDIT_EXEMPT_ROUTES = [
     "POST /admin/auth/refresh (AdminAuthController.refresh)",

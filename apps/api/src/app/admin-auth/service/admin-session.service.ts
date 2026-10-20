@@ -118,6 +118,16 @@ export class AdminSessionService {
     return { adminId: session.adminId, sessionId: session.id, scope: session.scope, role: session.role };
   }
 
+  /**
+   * 403 unless the session re-authenticated within REAUTH_WINDOW_MINUTES (RNX-187): the check of a
+   * `reauth: true` route, for a route that needs it only for some request bodies (an Owner invitation).
+   */
+  async assertRecentReauth(sessionId: string, tx?: DbTransaction): Promise<void> {
+    const session = await this.sessions.findForAccessCheck(sessionId, tx);
+    if (!session) throw new UnauthorizedException(UNAUTHENTICATED);
+    assertStaffRequirement(session, { scope: "any", reauth: true, permissions: [] }, new Date());
+  }
+
   /** The admin's live sessions, without token hashes; `current` marks the one making the request. */
   async list(identity: AdminIdentity) {
     const now = new Date();

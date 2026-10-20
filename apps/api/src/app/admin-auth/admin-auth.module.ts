@@ -5,6 +5,7 @@ import { AdminAdminsController } from "./controller/admin-admins.controller";
 import { AdminAuditLogController } from "./controller/admin-audit-log.controller";
 import { AdminAuthController } from "./controller/admin-auth.controller";
 import { AdminInvitationsController } from "./controller/admin-invitations.controller";
+import { AdminRolesController } from "./controller/admin-roles.controller";
 import { AdminAccountService } from "./service/admin-account.service";
 import { AdminAuditLogService } from "./service/admin-audit-log.service";
 import { AdminEnrolmentService } from "./service/admin-enrolment.service";
@@ -25,10 +26,11 @@ import { TotpService } from "./service/totp.service";
  * Audit log screen (RX-164): the read route and the CSV export under /admin/audit-log.
  * Admin management (RX-95): invitations under /admin/invitations, the admin list, suspension and resets under
  * /admin/admins, and the admin's own profile and forced password change under /admin/auth.
+ * Roles API (RNX-187): the role list and custom roles under /admin/roles, role assignment under /admin/admins.
  */
 @Module({
   imports: [ConfigModule, AdminSessionModule],
-  controllers: [AdminAuthController, AdminAuditLogController, AdminInvitationsController, AdminAdminsController],
+  controllers: [AdminAuthController, AdminAuditLogController, AdminInvitationsController, AdminAdminsController, AdminRolesController],
   providers: [
     PasswordService,
     TotpService,

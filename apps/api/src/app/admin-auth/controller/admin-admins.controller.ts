@@ -1,18 +1,24 @@
-import { Controller, Get, HttpCode, Param, Post, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Put, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../decorator/admin-audit.decorator";
+import { AssignRoleDto } from "../dto/assign-role.dto";
 import { AdminManagementService } from "../service/admin-management.service";
+import { AdminRoleService } from "../service/admin-role.service";
 import type { AuditedAdminRequest } from "../types/audited-admin-request";
 
 /**
  * Admin management (RX-95) under /api/v1/admin/admins. The list needs `admins:read`; every write needs
  * `admins:write` (Owners only among the built-in roles) and is audited. Suspend, MFA reset and forced
  * password reset also need a re-authentication within REAUTH_WINDOW_MINUTES (`reauth: true`). Removing an
- * admin is a suspension: no route deletes an admin.
+ * admin is a suspension: no route deletes an admin. Role assignment (RNX-187) needs `roles:write` and a
+ * re-authentication.
  */
 @Controller("admin/admins")
 export class AdminAdminsController {
-  constructor(private readonly management: AdminManagementService) {}
+  constructor(
+    private readonly management: AdminManagementService,
+    private readonly roles: AdminRoleService,
+  ) {}
 
   /** Admins (active, suspended) and pending invitations (invited): name, email, role, MFA, last sign-in, status. */
   @Get()
@@ -55,5 +61,19 @@ export class AdminAdminsController {
   @HttpCode(204)
   async forcePasswordReset(@Param("id") id: string, @Req() req: AuditedAdminRequest) {
     req.audit.record(await this.management.forcePasswordReset(id, req.audit.tx));
+  }
+
+  /**
+   * Gives the admin a role (RNX-187). Not one's own role (403), not away from the last active owner (409).
+   * Every assignment needs a recent re-authentication, not only those that give or take Owner.
+   */
+  @Put(":id/role")
+  @Access({ auth: ["staff"], permissions: ["roles:write"], reauth: true })
+  @AdminAudit({ resource: "admin_user", action: "assign_role" })
+  @HttpCode(204)
+  async assignRole(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
+    const parsed = AssignRoleDto.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    req.audit.record(await this.roles.assignRole(id, parsed.data.role, req.admin.adminId, req.audit.tx));
   }
 }
