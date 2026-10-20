@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../../prisma/prisma.service";
+import { WorkspaceService } from "../../workspace/service/workspace.service";
 import * as crypto from "crypto";
 import { readEncryptionKey } from "../../../common/utils/read-encryption-key";
 import { readRequiredSecret } from "../../../common/utils/read-required-secret";
@@ -64,6 +65,7 @@ export class McpUserService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly oauthStates: McpOAuthStateRepository,
+    private readonly workspaceService: WorkspaceService,
   ) {
     this.encryptionKey = readEncryptionKey(process.env, "MCP_ENCRYPTION_KEY");
     const stateTtlSeconds = Number(this.configService.get<string>("MCP_OAUTH_STATE_TTL_SECONDS"));
@@ -133,8 +135,8 @@ export class McpUserService {
       throw new BadRequestException(`Unknown Google provider: ${provider}`);
     }
 
-    // Verify user is a member of the workspace
-    await this.verifyWorkspaceMembership(userId, workspaceId);
+    // RNX-206: the same membership check as the workspace routes (403, collaboration rule, default workspace 404).
+    await this.workspaceService.requireMembership(workspaceId, userId);
 
     const state = await this.issueOAuthState(userId, workspaceId, provider, nonce, stateSecret);
 
@@ -439,31 +441,8 @@ export class McpUserService {
     // RX-152: compared AFTER the value is used up, so a link presented without the starter's cookie
     // burns the flow: the starter (who may be the attacker) cannot replay a code that leaked from it.
     if (!isSameOneTimeValue(browserValue, payload.n)) throw new BadRequestException(INVALID_STATE_MESSAGE);
-    await this.verifyWorkspaceMembership(payload.u, payload.w);
+    await this.workspaceService.requireMembership(payload.w, payload.u);
     return payload;
-  }
-
-  private async verifyWorkspaceMembership(
-    userId: string,
-    workspaceId: string,
-  ): Promise<void> {
-    const membership = await this.prisma.workspaceMember.findFirst({
-      where: {
-        workspaceId,
-        userId,
-        status: "active",
-      },
-    });
-
-    // Also allow workspace owner
-    if (!membership) {
-      const workspace = await this.prisma.workspace.findFirst({
-        where: { id: workspaceId, ownerId: userId },
-      });
-      if (!workspace) {
-        throw new BadRequestException("You are not a member of this workspace");
-      }
-    }
   }
 
   private async exchangeGoogleCode(

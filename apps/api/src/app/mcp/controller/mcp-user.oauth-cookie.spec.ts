@@ -7,14 +7,19 @@ import { McpUserController } from "./mcp-user.controller";
 import { McpUserService } from "../service/mcp-user.service";
 import { McpOAuthStateRepository } from "../repository/mcp-oauth-state.repository";
 import { PrismaService } from "../../prisma/prisma.service";
+import { WorkspaceService } from "../../workspace/service/workspace.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser, createWorkspace } from "../../../../test/factories";
+import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 
 // RX-152: the public OAuth callback completes a flow only in the browser that started it. The start
 // response sets the flow's one-time value (the `n` of RX-151's signed state) as a cookie per provider;
 // the callback refuses unless that cookie equals the state's value, and every reply clears it. The
 // provider token exchange (global fetch) is mocked: no provider is called.
+// RNX-206: start and callback check the workspace with WorkspaceService.requireMembership, so userA has
+// its owner member row (as WorkspaceService.create makes it) and is on the Enterprise plan, which lets
+// userB (a member) use the workspace under the collaboration rule (RX-113).
 const STATE_SECRET = "rx152-marker-state-secret-not-a-real-secret";
 const GMAIL = "google-gmail";
 const GITHUB = "github";
@@ -53,7 +58,12 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [McpUserController],
-      providers: [McpUserService, { provide: ConfigService, useValue: new ConfigService(CONFIG) }],
+      providers: [
+        McpUserService,
+        WorkspaceService,
+        WorkspaceQuotaService,
+        { provide: ConfigService, useValue: new ConfigService(CONFIG) },
+      ],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -64,9 +74,14 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
     userA = await createUser(prisma);
     userB = await createUser(prisma);
     workspaceId = (await createWorkspace(prisma, { ownerId: userA.id })).id;
-    await prisma.workspaceMember.create({
-      data: { workspaceId, userId: userB.id, role: "member", status: "active", joinedAt: new Date() },
+    await prisma.workspaceMember.createMany({
+      data: [
+        { workspaceId, userId: userA.id, role: "owner", status: "active", joinedAt: new Date() },
+        { workspaceId, userId: userB.id, role: "member", status: "active", joinedAt: new Date() },
+      ],
     });
+    const enterprise = await createPlan(prisma, { slug: "enterprise" });
+    await createSubscription(prisma, { userId: userA.id, planId: enterprise.id });
     markers = [STATE_SECRET, CONFIG.GOOGLE_OAUTH_CLIENT_SECRET, CONFIG.GITHUB_OAUTH_CLIENT_SECRET];
     logLines = [];
     fetchStatus = 200;
@@ -329,6 +344,7 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
       new ConfigService({ ...CONFIG, MCP_OAUTH_STATE_TTL_SECONDS: ttl }),
       prisma,
       moduleRef.get(McpOAuthStateRepository),
+      moduleRef.get(WorkspaceService),
     );
     const { oneTimeValue, maxAgeSeconds } = await service.startOAuthFlow(userA.id, workspaceId, GMAIL);
     markers.push(oneTimeValue);
