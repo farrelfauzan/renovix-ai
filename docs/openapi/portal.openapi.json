@@ -2974,6 +2974,19 @@
                       "docx",
                       "xlsx"
                     ]
+                  },
+                  "stream": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "stream_options": {
+                    "type": "object",
+                    "properties": {
+                      "include_usage": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
                   }
                 },
                 "required": [
