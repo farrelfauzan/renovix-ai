@@ -17,6 +17,8 @@ import { ProviderTestResult } from "./types/provider-test-result";
 import { ProviderTestTarget } from "./types/provider-test-target";
 import { readUsage } from "./utils/read-usage";
 import { readPositiveInteger } from "../../common/utils/read-positive-integer";
+import { toProviderErrorText } from "../../common/utils/to-provider-error-text";
+import { errorName } from "../../common/utils/error-name";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MAX_TOKENS = 4096;
@@ -433,8 +435,9 @@ export class OpenRouterAdapter implements ProviderAdapter {
       return await this.post(endpoint, body, AbortSignal.any(signal ? [signal, connect.signal] : [connect.signal]));
     } catch (err: any) {
       // RX-169: callers get the status and the body text (ProviderHttpError), never a stream.
+      // RNX-208 (D197, D208): the log names the host and the status only, never the body or an error message.
       this.logger.error(
-        `OpenRouter stream error (${new URL(endpoint.baseUrl).host}, ${err.status}): ${err.bodyText ?? err.message}`,
+        `OpenRouter stream error (${new URL(endpoint.baseUrl).host}, ${err.status}): ${err instanceof ProviderHttpError ? toProviderErrorText(err.status).logText : errorName(err)}`,
       );
       throw err;
     } finally {
