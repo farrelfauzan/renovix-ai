@@ -130,6 +130,18 @@ export class AdminUserRepository {
     return count;
   }
 
+  /**
+   * Whether the admin is suspended, holding a share lock on their row until the transaction ends (RNX-211):
+   * a suspension in progress is waited for and then seen, and a suspension starting later waits for this
+   * transaction. FOR SHARE, not FOR KEY SHARE, so it conflicts with the update of `suspended_at`. Raw SQL:
+   * Prisma has no SELECT ... FOR SHARE.
+   */
+  async lockIsSuspended(adminId: string, tx: DbTransaction): Promise<boolean> {
+    const rows = await tx.$queryRaw<{ suspended_at: Date | null }[]>`
+      SELECT "suspended_at" FROM "admin_users" WHERE "id" = ${adminId}::text FOR SHARE`;
+    return rows[0]?.suspended_at != null;
+  }
+
   /** Lifts the suspension, if the admin is suspended (RX-95). Returns 0 or 1. */
   async reactivate(adminId: string, tx: DbTransaction): Promise<number> {
     const { count } = await tx.adminUser.updateMany({ where: { id: adminId, suspendedAt: { not: null } }, data: { suspendedAt: null } });

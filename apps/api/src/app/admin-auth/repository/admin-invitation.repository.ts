@@ -47,11 +47,11 @@ export class AdminInvitationRepository {
     return (tx ?? this.prisma).adminInvitation.findUnique({ where: { id }, select: INVITATION_VIEW });
   }
 
-  /** The invitation whose token has this hash, with the name and email of the admin who invited. */
+  /** The invitation whose token has this hash, with the name, email and suspension (RNX-211) of the admin who invited. */
   findByTokenHash(tokenHash: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).adminInvitation.findUnique({
       where: { tokenHash },
-      select: { ...INVITATION_VIEW, invitedBy: { select: { name: true, email: true } } },
+      select: { ...INVITATION_VIEW, invitedBy: { select: { name: true, email: true, suspendedAt: true } } },
     });
   }
 
@@ -80,5 +80,17 @@ export class AdminInvitationRepository {
       data: { revokedAt: now },
     });
     return count;
+  }
+
+  /**
+   * Revokes every pending invitation the admin sent (RNX-211, on their suspension): one conditional UPDATE
+   * on the `invited_by_admin_id` index, whatever the count. Returns the revoked invitations' ids and emails.
+   */
+  revokeAllPendingFrom(invitedByAdminId: string, now: Date, tx: DbTransaction) {
+    return tx.adminInvitation.updateManyAndReturn({
+      where: { invitedByAdminId, usedAt: null, revokedAt: null },
+      data: { revokedAt: now },
+      select: { id: true, email: true },
+    });
   }
 }
