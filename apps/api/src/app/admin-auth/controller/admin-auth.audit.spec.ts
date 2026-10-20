@@ -1,6 +1,7 @@
-import { Body, Controller, HttpCode, Logger, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, HttpCode, Logger, Param, Post, Req, Res } from "@nestjs/common";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { TestingModule } from "@nestjs/testing";
+import type { FastifyReply } from "fastify";
 import { inspect } from "node:util";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAuthModule } from "../admin-auth.module";
@@ -23,6 +24,7 @@ import {
   createAdmin,
   nextStep,
   refreshCookie,
+  setCookies,
   START,
   totpCode,
   useFakeDate,
@@ -57,6 +59,16 @@ class AuditProbeController {
   @HttpCode(204)
   async forgetsRecord(@Req() req: AuditedAdminRequest) {
     await this.sessions.revoke(req.admin.sessionId, new Date(), req.audit.tx);
+  }
+
+  /** An audited route whose handler sets a cookie, then fails (RNX-167). */
+  @Post("cookie-then-fail")
+  @Access({ auth: ["staff"] })
+  @AdminAudit({ resource: "probe", action: "cookie_then_fail" })
+  @HttpCode(204)
+  async cookieThenFail(@Res({ passthrough: true }) reply: FastifyReply) {
+    reply.header("set-cookie", "probe=1; Path=/; HttpOnly");
+    throw new Error("handler failed after setting a cookie (test)");
   }
 }
 
@@ -331,6 +343,61 @@ describe("Back-office audit log (RX-97, Fastify, test database)", () => {
       expect(res.statusCode).toBe(500);
       expect((await prisma.adminSession.findFirstOrThrow({ where: { adminId } })).revokedAt).toBeNull();
       expect(await auditRows()).toEqual([]);
+    });
+  });
+
+  describe("RNX-167: a failed audited request sends no Set-Cookie", () => {
+    /** The access cookie a browser holds after `res`: the one `res` set, else the one it already had. */
+    const heldAccessCookie = (held: string, res: Awaited<ReturnType<typeof revoke>>) =>
+      setCookies(res).some((cookie) => cookie.startsWith(`${ACCESS}=`)) ? accessCookie(res) : held;
+
+    it("AC1: the audit insert fails on sign-out: 500, no Set-Cookie, the session stays live", async () => {
+      const { sessionA, cookie } = await signedInTwice();
+      jest.spyOn(AdminAuditLogRepository.prototype, "create").mockRejectedValueOnce(new Error("audit insert refused (test)"));
+
+      const failed = await http.call("POST", "/admin/auth/sign-out", { cookie });
+
+      expect(failed.statusCode).toBe(500);
+      expect(failed.headers["set-cookie"]).toBeUndefined();
+      expect(await revokedAt(sessionA.id)).toBeNull();
+    });
+
+    it("AC2: the audit insert fails on totp/confirm: no Set-Cookie; a retry with the enrolment cookie the browser holds succeeds", async () => {
+      const admin = await createAdmin(prisma, moduleRef, { email: "new@example.com" });
+      const enrolmentCookie = accessCookie(await http.signIn({ email: admin.email, password: ADMIN_PASSWORD }));
+      const { secret } = (await http.call("POST", "/admin/auth/totp/enrol", { cookie: enrolmentCookie })).json();
+      jest.spyOn(AdminAuditLogRepository.prototype, "create").mockRejectedValueOnce(new Error("audit insert refused (test)"));
+
+      const failed = await http.call("POST", "/admin/auth/totp/confirm", { cookie: enrolmentCookie }, { code: totpCode(secret) });
+      nextStep();
+      const retried = await http.call("POST", "/admin/auth/totp/confirm", { cookie: heldAccessCookie(enrolmentCookie, failed) }, { code: totpCode(secret) });
+
+      expect(failed.statusCode).toBe(500);
+      expect(retried.statusCode).toBe(200);
+      expect(failed.headers["set-cookie"]).toBeUndefined();
+      expect(accessCookie(retried)).not.toBe(enrolmentCookie);
+      expect((await auditRows()).map((row) => row.action)).toEqual(["enrol", "confirm"]);
+    });
+
+    it("the handler fails after setting a cookie: 500 and no Set-Cookie", async () => {
+      const { cookie } = await startedSession("operations");
+
+      const res = await http.call("POST", "/admin/audit-probe/cookie-then-fail", { cookie });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.headers["set-cookie"]).toBeUndefined();
+    });
+
+    it("AC3: a successful sign-out still clears the access and refresh cookies", async () => {
+      const { cookie } = await signedInTwice();
+
+      const res = await http.call("POST", "/admin/auth/sign-out", { cookie });
+
+      expect(res.statusCode).toBe(204);
+      expect(setCookies(res)).toEqual([
+        expect.stringMatching(new RegExp(`^${ACCESS}=; Path=/; .*Max-Age=0$`)),
+        expect.stringMatching(/^rx_admin_refresh=; Path=\/api\/v1\/admin\/auth\/refresh; .*Max-Age=0$/),
+      ]);
     });
   });
 
