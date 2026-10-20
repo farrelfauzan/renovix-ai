@@ -53,7 +53,7 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
   };
 
   it("401 without X-Portal-Session, even with a valid JWT (RX-114: was 400)", async () => {
-    const user = await createUser(prisma, { balance: 5 });
+    const user = await createUser(prisma);
 
     await expect(
       guard.canActivate(contextFor({ headers: { authorization: `Bearer ${token(user.id)}` } })),
@@ -80,14 +80,6 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
       tier: "paid",
       user: { id: user.id, email: user.email, balance: 5 },
     });
-  });
-
-  it("RX-22: valid JWT, User.balance 5 but no ledger credits: free tier (User.balance is not read)", async () => {
-    const user = await createUser(prisma, { balance: 5 });
-
-    const identity = await identityFor({ "x-portal-session": SESSION, authorization: `Bearer ${token(user.id)}` });
-    expect(identity.tier).toBe("free");
-    expect(identity.user).toEqual({ id: user.id, email: user.email, balance: 0 });
   });
 
   it("RX-22: valid JWT, ledger credits all held by an open reservation: free tier (available is 0)", async () => {
@@ -117,14 +109,14 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
     ["a malformed token", () => "Bearer not.a.jwt"],
     ["a Basic scheme", () => "Basic abc"],
   ])("%s: treated as anonymous (no user), not rejected", async (_case, header: (id: string) => string) => {
-    const user = await createUser(prisma, { balance: 5 });
+    const user = await createUser(prisma);
 
     const identity = await identityFor({ "x-portal-session": SESSION, authorization: header(user.id) });
     expect(identity).toEqual({ sessionId: SESSION, tier: "free", user: undefined });
   });
 
   it("an API key (wrong credential type) is skipped: anonymous, even when it is the user's real key", async () => {
-    await createUser(prisma, { balance: 5, apiKey: "sk_live_portal-key" });
+    await createUser(prisma, { apiKey: "sk_live_portal-key" });
 
     const identity = await identityFor({
       "x-portal-session": SESSION,
@@ -167,7 +159,7 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
     });
 
     it("an invalid JWT falls through to the cookie session", async () => {
-      const user = await createUser(prisma, { balance: 2 });
+      const user = await createUser(prisma);
       mockGetSession.mockResolvedValue({ user: { id: user.id, email: user.email }, session: { id: "s" } });
 
       const identity = await identityFor({
@@ -179,8 +171,8 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
     });
 
     it("a valid JWT wins over the cookie session (getSession not called)", async () => {
-      const jwtUser = await createUser(prisma, { balance: 1 });
-      const cookieUser = await createUser(prisma, { balance: 1 });
+      const jwtUser = await createUser(prisma);
+      const cookieUser = await createUser(prisma);
       mockGetSession.mockResolvedValue({ user: { id: cookieUser.id, email: cookieUser.email } });
 
       const identity = await identityFor({

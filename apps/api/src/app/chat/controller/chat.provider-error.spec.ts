@@ -138,7 +138,7 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
   });
 
   it("RX-22: an unaffordable estimate → HTTP 402 CREDITS_EXHAUSTED (was 400 Insufficient balance), no provider call, nothing written", async () => {
-    const user = await createUser(prisma, { apiKey: API_KEY, balance: 5 });
+    const user = await createUser(prisma, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, "0.000001");
 
     const res = await app.inject({

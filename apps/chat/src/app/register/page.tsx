@@ -36,12 +36,12 @@ export default function RegisterPage() {
     try {
       const res = await apiClient.post<{
         token: string;
-        user: { email: string; balance: number };
+        user: { email: string };
       }>("/auth/register", {
         email,
         password,
       });
-      setAuth(res.token, res.user.email, res.user.balance);
+      setAuth(res.token, res.user.email);
       // Link portal session to authenticated user
       apiClient.post("/chat/portal/link-session").catch(() => {});
       queryClient.invalidateQueries({ queryKey: ["portal-usage"] });

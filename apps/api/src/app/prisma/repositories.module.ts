@@ -20,7 +20,6 @@ import { CreditAccountRepository } from "../billing/repository/credit-account.re
 import { CreditLedgerEntryRepository } from "../billing/repository/credit-ledger-entry.repository";
 import { CreditReservationRepository } from "../billing/repository/credit-reservation.repository";
 import { SubscriptionPlanRepository } from "../billing/repository/subscription-plan.repository";
-import { TransactionRepository } from "../billing/repository/transaction.repository";
 import { UserSubscriptionRepository } from "../billing/repository/user-subscription.repository";
 import { ChannelAgentRepository } from "../channel/repository/channel-agent.repository";
 import { ChannelChatRoomRepository } from "../channel/repository/channel-chat-room.repository";
@@ -72,7 +71,6 @@ const REPOSITORIES = [
   CreditLedgerEntryRepository,
   CreditReservationRepository,
   SubscriptionPlanRepository,
-  TransactionRepository,
   UserSubscriptionRepository,
   ChannelAgentRepository,
   ChannelChatRoomRepository,

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { TestingModule } from "@nestjs/testing";
-import { Decimal } from "@prisma/client/runtime/client";
 import { ReminderScheduler } from "./reminder.scheduler";
 import { ReminderService } from "../service/reminder.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
@@ -22,8 +21,8 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 
 // RX-22b (RNX-193) AC4: a reminder run is one agent run on the credit ledger, paid by the reminder's owner
-// (docs/credits.md section 13): one reservation, a usage entry per model call, and no write to the old counters
-// (User.balance, Transaction, UserSubscription). Real ReminderScheduler, meter, CreditService and UsageService on the
+// (docs/credits.md section 13): one reservation and a usage entry per model call (RNX-186 removed the old counters:
+// User.balance, Transaction, the UserSubscription counters). Real ReminderScheduler, meter, CreditService and UsageService on the
 // test database; fake provider. These collaborators load ESM-only packages.
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../service/reminder.service", () => ({ ReminderService: class {} }));
@@ -72,11 +71,11 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
 
   afterAll(() => moduleRef?.close());
 
-  /** A due reminder of a user with old-path values that must not move (User.balance 5, counters 3 / 2,000). */
+  /** A due reminder of a subscribed user, funded on the ledger with `credits` (none when null). */
   const seedReminder = async (credits: string | null) => {
     const plan = await createPlan(prisma);
-    const user = await createUser(prisma, { balance: new Decimal("5") });
-    await createSubscription(prisma, { userId: user.id, planId: plan.id, messagesUsed: 3, tokensUsed: 2000n });
+    const user = await createUser(prisma);
+    await createSubscription(prisma, { userId: user.id, planId: plan.id });
     if (credits) await fundPaidWallet(prisma, user.id, credits);
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
@@ -95,7 +94,7 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
 
   const executeReminder = (reminder: unknown): Promise<void> => scheduler["executeReminder"](reminder);
 
-  it("AC4: a reminder run is charged through the ledger, one entry per model call, and writes no old counter", async () => {
+  it("AC4: a reminder run is charged through the ledger, one entry per model call", async () => {
     const { user, agent, reminder } = await seedReminder("1");
     fake.enqueue(
       { toolCalls: [{ name: "echo", arguments: {} }], usage: { prompt_tokens: 40, completion_tokens: 2 } },
@@ -112,14 +111,10 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
     ]);
     expect([reservation.status, reservation.consumed.toFixed(6)]).toEqual(["settled", "0.000110"]);
     expect(await prisma.usageLog.count({ where: { userId: user.id } })).toBe(2);
-    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
-    const subscription = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect([after.balance.toFixed(6), subscription.messagesUsed, subscription.tokensUsed]).toEqual(["5.000000", 3, 2000n]);
-    expect(await prisma.transaction.count()).toBe(0);
     await assertCreditLedgerInvariants(prisma);
   });
 
-  it("an owner without ledger credits: the reminder run is refused with 402 before any model call (User.balance is not read)", async () => {
+  it("an owner without ledger credits: the reminder run is refused with 402 before any model call", async () => {
     const { reminder } = await seedReminder(null);
 
     await expect(executeReminder(reminder)).rejects.toThrow(CreditsExhaustedException);

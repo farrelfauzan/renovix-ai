@@ -3,10 +3,7 @@ import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 
-/**
- * The queries on `users`. Every method takes the transaction as its last argument: optional, and required on
- * a balance change (`incrementUserBalance`).
- */
+/** The queries on `users`. Every method takes the transaction as its last argument, optional. */
 @Injectable()
 export class UserRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -30,7 +27,6 @@ export class UserRepository {
         email: true,
         name: true,
         apiKey: true,
-        balance: true,
         createdAt: true,
       },
     });
@@ -62,7 +58,6 @@ export class UserRepository {
         timezone: true,
         locale: true,
         status: true,
-        balance: true,
         apiKey: true,
         createdAt: true,
         updatedAt: true,
@@ -103,40 +98,11 @@ export class UserRepository {
     });
   }
 
-  /** The id, email and balance of this user, if there is one (the chat portal's signed-in user). */
+  /** The id and email of this user, if there is one (the chat portal's signed-in user). */
   findPortalUser(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, balance: true },
-    });
-  }
-
-  /** Adds `amount` to this user's balance. Only inside a transaction. */
-  incrementUserBalance(
-    userId: string,
-    amount: Prisma.Decimal,
-    tx: DbTransaction,
-  ) {
-    return tx.user.update({
-      where: { id: userId },
-      data: {
-        balance: { increment: amount },
-      },
-    });
-  }
-
-  /** The id and balance of this user with their first successful top-up transaction, if there is one. */
-  findUserWithFirstTopup(userId: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        balance: true,
-        transactions: {
-          take: 1,
-          where: { type: "topup", status: "success" },
-        },
-      },
+      select: { id: true, email: true },
     });
   }
 }

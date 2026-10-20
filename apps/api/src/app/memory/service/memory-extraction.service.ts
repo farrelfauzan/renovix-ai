@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { UserMemoryService } from "./user-memory.service";
 import { MemoryPolicyService } from "./memory-policy.service";
-import { UserRepository } from "../../auth/repository/user.repository";
+import { CreditAccountRepository } from "../../billing/repository/credit-account.repository";
 import { ConversationRepository } from "../../chat/repository/conversation.repository";
 import { MessageRepository } from "../../chat/repository/message.repository";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -44,7 +44,7 @@ export class MemoryExtractionService {
   constructor(
     private readonly memoryService: UserMemoryService,
     private readonly policyService: MemoryPolicyService,
-    private readonly users: UserRepository,
+    private readonly creditAccounts: CreditAccountRepository,
     private readonly conversations: ConversationRepository,
     private readonly messages: MessageRepository,
     private readonly providerRouter: ProviderRouter,
@@ -60,12 +60,13 @@ export class MemoryExtractionService {
       `Starting memory extraction for conversation ${conversationId} of user ${userId}`,
     );
     try {
-      // Check eligibility: user must have topped up at least once
-      const user = await this.users.findUserWithFirstTopup(userId);
+      // Check eligibility: the user must have a paid credit account. The ledger creates it with the first paid
+      // grant (a top-up, or a code's bonus or plan_grant), so this means "has paid or redeemed credits" (RNX-186).
+      const paidAccount = await this.creditAccounts.findAccount({ userId }, "paid");
 
-      if (!user || user.transactions.length === 0) {
+      if (!paidAccount) {
         this.logger.debug(
-          `Skipping extraction: user ${userId} never topped up`,
+          `Skipping extraction: user ${userId} has no paid credit account`,
         );
         return;
       }

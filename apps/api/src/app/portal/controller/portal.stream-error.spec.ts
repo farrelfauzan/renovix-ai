@@ -331,11 +331,11 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
         payload: { model: "standard-cheap", messages: [{ role: "user", content: "Hi" }] },
       });
 
-    it("AC: the portal gate follows the ledger: User.balance 5 but no ledger credits → the free path (no reservation)", async () => {
+    it("AC: the portal gate follows the ledger: a signed-in user without ledger credits → the free path (no reservation)", async () => {
       const lines: string[] = [];
       jest.spyOn(Logger.prototype, "error").mockImplementation((...args: unknown[]) => void lines.push(String(args[0])));
       primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));
-      const user = await createUser(prisma, { balance: 5 });
+      const user = await createUser(prisma);
 
       const res = await chatAs(user, "55555555-5555-4555-8555-555555555555");
 

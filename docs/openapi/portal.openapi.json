@@ -1522,26 +1522,6 @@
         ]
       }
     },
-    "/api/v1/billing/balance": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Not authenticated (missing or invalid credentials)"
-          }
-        },
-        "security": [
-          {
-            "JwtOrSession": []
-          }
-        ],
-        "tags": [
-          "billing"
-        ]
-      }
-    },
     "/api/v1/billing/checkout": {
       "post": {
         "requestBody": {
@@ -1562,47 +1542,6 @@
           },
           "400": {
             "description": "Invalid request body"
-          },
-          "401": {
-            "description": "Not authenticated (missing or invalid credentials)"
-          }
-        },
-        "security": [
-          {
-            "JwtOrSession": []
-          }
-        ],
-        "tags": [
-          "billing"
-        ]
-      }
-    },
-    "/api/v1/billing/transactions": {
-      "get": {
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "400": {
-            "description": "Invalid query parameters"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"

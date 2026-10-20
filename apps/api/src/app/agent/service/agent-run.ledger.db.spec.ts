@@ -364,23 +364,4 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
       await assertCreditLedgerInvariants(prisma);
     });
   });
-
-  it("AC4 (agent path): the run writes no old counter: User.balance, Transaction rows and the subscription counters stay", async () => {
-    const plan = await createPlan(prisma, { maxTokensPerMonth: 1000n });
-    const bob = await createUser(prisma, { balance: new Decimal("5") });
-    await createSubscription(prisma, { userId: bob.id, planId: plan.id, messagesUsed: 3, tokensUsed: 2000n });
-    await fundPaidWallet(prisma, bob.id, "1");
-    const agent = await createAgent(prisma, { userId: bob.id });
-    fake.enqueue({ content: "Hello", usage: { prompt_tokens: 30, completion_tokens: 12 } });
-
-    // tokensUsed is above the plan's limit: the old token gate would have needed an overage; the ledger decides now.
-    await service.chat(bob.id, agent.id, "Hi");
-
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: bob.id } });
-    const subscription = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: bob.id } });
-    expect([user.balance.toFixed(6), subscription.messagesUsed, subscription.tokensUsed]).toEqual(["5.000000", 3, 2000n]);
-    expect(await prisma.transaction.count()).toBe(0);
-    expect((await usageEntriesOf(bob.id)).map((e) => e.amount.toFixed(6))).toEqual(["-0.000042"]);
-    await assertCreditLedgerInvariants(prisma);
-  });
 });

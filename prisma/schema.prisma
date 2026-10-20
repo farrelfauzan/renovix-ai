@@ -35,9 +35,6 @@ model User {
   // Status
   status        String         @default("active") // "active" | "suspended" | "deleted"
 
-  // Billing
-  balance       Decimal        @default(0) @db.Decimal(12, 6)
-
   // Better Auth relations
   accounts      Account[]
   sessions      Session[]
@@ -46,7 +43,6 @@ model User {
   createdAt     DateTime       @default(now()) @db.Timestamptz()
   updatedAt     DateTime       @updatedAt @db.Timestamptz()
   usageLogs     UsageLog[]
-  transactions  Transaction[]
   conversations Conversation[]
   knowledgeBases KnowledgeBase[]
   portalSessions PortalSession[]
@@ -84,22 +80,6 @@ model UsageLog {
   @@index([createdAt])
 
   @@map("usage_logs")
-}
-
-model Transaction {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  amount    Decimal  @db.Decimal(12, 6)
-  type      String   // "topup" | "deduction" | "refund"
-  status    String   // "pending" | "success" | "failed"
-  reference String?  @unique // Stripe/Xendit payment ID
-  createdAt DateTime @default(now()) @db.Timestamptz()
-
-  @@index([userId])
-  @@index([createdAt])
-
-  @@map("transactions")
 }
 
 /// RX-177 (D148, D149): an upstream LLM connection, managed through /admin/providers (no seed). The key is
@@ -517,10 +497,6 @@ model UserSubscription {
   status             String           @default("active") // "active" | "canceled" | "expired"
   currentPeriodStart DateTime         @map("current_period_start") @db.Timestamptz()
   currentPeriodEnd   DateTime         @map("current_period_end") @db.Timestamptz()
-
-  // Usage tracking
-  messagesUsed       Int              @default(0) @map("messages_used")
-  tokensUsed         BigInt           @default(0) @map("tokens_used")
 
   cancelAtPeriodEnd  Boolean          @default(false) @map("cancel_at_period_end")
   createdAt          DateTime         @default(now()) @db.Timestamptz()

@@ -31,7 +31,6 @@ interface UserProfile {
   timezone: string | null;
   locale: string | null;
   status: string;
-  balance: number;
   apiKey: string;
   createdAt: string;
   updatedAt: string;

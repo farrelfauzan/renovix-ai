@@ -155,7 +155,7 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    user = await createUser(prisma, { apiKey: API_KEY, balance: 5 });
+    user = await createUser(prisma, { apiKey: API_KEY });
     // RX-22 (D202-2): the portal tier reads the ledger's paid wallet, so the portal user is funded there too.
     await fundPaidWallet(prisma, user.id, 5);
     mockGetSession.mockReset();
@@ -251,12 +251,12 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
   });
 
   describe("a route that accepts an API key", () => {
-    it("valid API key: 200, req.user = { id, email, balance }, one database lookup", async () => {
+    // RNX-186: was { id, email, balance } (User.balance is gone).
+    it("valid API key: 200, req.user = { id, email }, one database lookup", async () => {
       const res = await get("/probe/api-key", { authorization: `Bearer ${API_KEY}` });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json().user).toMatchObject({ id: user.id, email: user.email });
-      expect(res.json().user).toHaveProperty("balance");
+      expect(res.json().user).toEqual({ id: user.id, email: user.email });
       expect(userLookups).toHaveBeenCalledTimes(1);
     });
 

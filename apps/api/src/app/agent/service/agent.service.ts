@@ -446,7 +446,6 @@ export class AgentService {
     return {
       subscription: {
         ...subscription,
-        tokensUsed: subscription.tokensUsed.toString(),
         plan: {
           ...subscription.plan,
           maxTokensPerMonth: subscription.plan.maxTokensPerMonth.toString(),
@@ -473,14 +472,11 @@ export class AgentService {
           planId: plan.id,
           currentPeriodStart: new Date(),
           currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          messagesUsed: 0,
-          tokensUsed: 0,
         },
       );
       return {
         subscription: {
           ...updated,
-          tokensUsed: updated.tokensUsed.toString(),
           plan: {
             ...updated.plan,
             maxTokensPerMonth: updated.plan.maxTokensPerMonth.toString(),
@@ -506,7 +502,6 @@ export class AgentService {
     return {
       subscription: {
         ...subscription,
-        tokensUsed: subscription.tokensUsed.toString(),
         plan: {
           ...subscription.plan,
           maxTokensPerMonth: subscription.plan.maxTokensPerMonth.toString(),

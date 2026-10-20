@@ -6,8 +6,6 @@
 export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   // RX-134 moved its agent and sub-agent lookups to AgentRepository; the run, message and metering calls stay for RX-23 and RX-25.
   "apps/api/src/app/agent/service/agent-run.service.ts",
-  "apps/api/src/app/billing/controller/billing.controller.ts",
-  "apps/api/src/app/billing/service/billing.service.ts",
   // The channel chat run path; RX-136 left its 3 calls (sub-agents, history, delegation) for RX-24, which rewrites it.
   "apps/api/src/app/channel/service/channel-chat.service.ts",
   "apps/api/src/app/config/model-registry.service.ts",

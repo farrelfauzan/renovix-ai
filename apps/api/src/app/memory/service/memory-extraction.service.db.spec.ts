@@ -13,6 +13,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
 
 describe("RX-5: memory extraction through ProviderRouter (test database)", () => {
   const fake = new FakeProviderAdapter();
@@ -46,12 +47,10 @@ describe("RX-5: memory extraction through ProviderRouter (test database)", () =>
       tier,
     });
 
-  /** A topped-up user with a conversation of two user messages. */
+  /** A user with a paid credit account (RNX-186: was a topup Transaction row) and a conversation of two user messages. */
   const seedConversation = async () => {
     const user = await createUser(prisma);
-    await prisma.transaction.create({
-      data: { userId: user.id, amount: 10, type: "topup", status: "success" },
-    });
+    await fundPaidWallet(prisma, user.id, 10);
     const conversation = await prisma.conversation.create({
       data: { userId: user.id, model: "any" },
     });

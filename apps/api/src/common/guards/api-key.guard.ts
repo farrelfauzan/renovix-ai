@@ -33,7 +33,7 @@ export class ApiKeyGuard implements CanActivate {
 
     const user = await this.prisma.user.findUnique({
       where: { apiKey },
-      select: { id: true, email: true, balance: true, apiKey: true },
+      select: { id: true, email: true, apiKey: true },
     });
 
     if (!user) {
@@ -47,7 +47,7 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException("Invalid API key");
     }
 
-    request.user = { id: user.id, email: user.email, balance: user.balance };
+    request.user = { id: user.id, email: user.email };
     return true;
   }
 }
