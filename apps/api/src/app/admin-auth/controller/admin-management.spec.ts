@@ -449,6 +449,29 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       expect((await prisma.adminUser.findUniqueOrThrow({ where: { id: ops.id } })).mustChangePassword).toBe(false);
     });
 
+    it("after an MFA reset too, re-enrolling (totp/confirm) gives only a password_change session: 403 elsewhere until the password is changed", async () => {
+      const { cookie: ownerCookie } = await ownerSession();
+      const ops = await enrolledAdmin("ops@example.com");
+      const resetMfa = await http.call("POST", `/admin/admins/${ops.id}/reset-mfa`, { cookie: ownerCookie });
+      const force = await http.call("POST", `/admin/admins/${ops.id}/force-password-reset`, { cookie: ownerCookie });
+      nextStep();
+      const enrolmentCookie = accessCookie(await http.signIn({ email: ops.email, password: ADMIN_PASSWORD }));
+      const enrol = await http.call("POST", "/admin/auth/totp/enrol", { cookie: enrolmentCookie });
+      nextStep();
+      const confirm = await http.call("POST", "/admin/auth/totp/confirm", { cookie: enrolmentCookie }, { code: totpCode(enrol.json().secret) });
+      const confirmed = accessCookie(confirm);
+
+      const me = await http.call("GET", "/admin/auth/me", { cookie: confirmed });
+      const blocked = await http.call("GET", "/admin/admins", { cookie: confirmed });
+      const changed = await http.call("POST", "/admin/auth/password", { cookie: confirmed }, { newPassword: NEW_PASSWORD });
+
+      expect([resetMfa.statusCode, force.statusCode, enrol.statusCode, confirm.statusCode]).toEqual([204, 204, 200, 200]);
+      expect(me.json()).toMatchObject({ id: ops.id, scope: "password_change", mustChangePassword: true });
+      expect(blocked.statusCode).toBe(403);
+      expect(changed.statusCode).toBe(200);
+      expect(changed.json()).toEqual({ scope: "full" });
+    });
+
     it("control: without a forced reset, sign-in gives a full session and change-password answers 403", async () => {
       const ops = await enrolledAdmin("ops@example.com");
       const cookie = await signIn(ops);
