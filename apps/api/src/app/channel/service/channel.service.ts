@@ -58,8 +58,9 @@ export class ChannelService {
       userId,
     );
     if (!channel) throw new NotFoundException("Channel not found");
-    // The workspace row cascades from its channel (schema: Workspace.channel onDelete: Cascade),
-    // so deleting the channel would delete the workspace and everything under it (RX-144).
+    // A channel that has a workspace is not deleted (RX-144): this 409 is the first answer, and the database
+    // refuses the delete as well (RNX-202: Workspace.channel onDelete: Restrict), which closes the gap between
+    // this read and the delete below.
     if (channel.workspace) {
       throw new ConflictException(
         "This channel belongs to a workspace and cannot be deleted",

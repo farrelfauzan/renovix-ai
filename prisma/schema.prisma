@@ -704,7 +704,7 @@ model ChannelMessage {
 model Workspace {
   id          String            @id @default(uuid())
   channelId   String?           @unique @map("channel_id")
-  channel     Channel?          @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  channel     Channel?          @relation(fields: [channelId], references: [id], onDelete: Restrict)
   ownerId     String            @map("owner_id")
   owner       User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
   name        String
