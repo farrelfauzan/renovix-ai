@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { AddressInfo } from "node:net";
 import { ConfigModule } from "@nestjs/config";
@@ -35,6 +36,7 @@ import {
 } from "../../../../test/llm-stub";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
 
 // RX-169: POST /channels/:id/agents/:agentId/chat answers the client over SSE,
 // but calls the provider without streaming (ProviderRouter.chat). A provider
@@ -147,7 +149,10 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
-  afterEach(() => blocker.restore());
+  afterEach(() => {
+    blocker.restore();
+    jest.restoreAllMocks();
+  });
 
   afterAll(async () => {
     await app?.close();
@@ -220,5 +225,34 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id, type: "usage" } });
     expect(entries.map((e) => [e.outcome, e.amount.toFixed(6)])).toEqual([["provider_error", "0.000000"]]);
     expect((await prisma.creditReservation.findMany()).map((r) => r.status)).toEqual(["released"]);
+  });
+
+  // RNX-208 (D197, D208): a provider error body (a planted marker and a fake key suffix, as a 401 can echo, RX-174)
+  // reaches no log line and no SSE line of the channel chat route; the client still gets an SSE error naming the status.
+  it.each([401, 400])("RNX-208: the provider answers %i with a marker in its body → the marker is in no log line and no SSE line", async (status) => {
+    const marker = `LEAK-MARKER-${randomUUID()}`;
+    const isLeak = (text: string) => text.includes(marker) || text.includes("FAKE1234");
+    const logs = captureLogs();
+    primary.respond((_r, res) => sendJson(res, status, { error: { message: `Incorrect API key provided: ${marker} ...sk-or-v1-FAKE1234`, code: status } }));
+    const user = await createUser(prisma);
+    await fundPaidWallet(prisma, user.id, "1");
+    const agent = await createAgent(prisma, { userId: user.id });
+    const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
+    await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: agent.id } });
+    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+
+    const res = await send({
+      method: "POST",
+      url: `${appUrl}/channels/${channel.id}/agents/${agent.id}/chat`,
+      headers: { authorization: `Bearer ${token}` },
+      body: { message: "Hi" },
+    });
+
+    expect(primary.requests).toHaveLength(2); // the classifier and the chat both reached the stub
+    expect({
+      leakingLogLines: logs.lines.filter(isLeak),
+      leakingSseLines: res.body.split("\n").filter(isLeak),
+      clientMessages: sseErrorMessages(res.body),
+    }).toEqual({ leakingLogLines: [], leakingSseLines: [], clientMessages: [expect.stringContaining(String(status))] });
   });
 });

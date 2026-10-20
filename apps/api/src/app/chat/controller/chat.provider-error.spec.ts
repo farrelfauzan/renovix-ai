@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -26,6 +27,7 @@ import {
   StubHttpServer,
 } from "../../../../test/llm-stub";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
 
 // RX-169: the API-key route POST /chat/completions never streams (its request
 // schema has no `stream` field; ChatService calls ProviderRouter.chat). A
@@ -94,7 +96,10 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
-  afterEach(() => blocker.restore());
+  afterEach(() => {
+    blocker.restore();
+    jest.restoreAllMocks();
+  });
 
   afterAll(async () => {
     await app?.close();
@@ -154,5 +159,37 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
     expect(await prisma.creditReservation.count()).toBe(0);
     expect(await prisma.creditLedgerEntry.count({ where: { type: "usage" } })).toBe(0);
     await assertCreditLedgerInvariants(prisma);
+  });
+
+  // RNX-208 (D197, D208): with stream true (RNX-196) a provider error body (a planted marker and a fake key suffix, as a
+  // 401 can echo, RX-174) reaches no log line and no SSE line; the client and the log get only the fixed texts.
+  it.each([401, 400])("RNX-208: stream true, the provider answers %i with a marker in its body → the marker is in no log line and no SSE line", async (status) => {
+    const marker = `LEAK-MARKER-${randomUUID()}`;
+    const isLeak = (text: string) => text.includes(marker) || text.includes("FAKE1234") || text.includes("rx169-marker-key");
+    const logs = captureLogs();
+    primary.respond((_r, res) => sendJson(res, status, { error: { message: `Incorrect API key provided: ${marker} ...sk-or-v1-FAKE1234`, code: status } }));
+    const user = await createUser(prisma, { apiKey: API_KEY });
+    await fundPaidWallet(prisma, user.id, 1);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/chat/completions",
+      headers: { authorization: `Bearer ${API_KEY}` },
+      payload: { model: "test-model", messages: [{ role: "user", content: "Hi" }], stream: true },
+    });
+
+    const streamErrorLine = `OpenRouter stream error (${new URL(primary.baseUrl).host}, ${status})`;
+    expect(primary.requests.map((r) => r.body.stream)).toEqual([true]);
+    expect({
+      leakingLogLines: logs.lines.filter(isLeak),
+      leakingSseLines: res.body.split("\n").filter(isLeak),
+      clientMessages: sseErrorMessages(res.body),
+      streamErrorLogLines: logs.lines.filter((l) => l.startsWith(streamErrorLine)),
+    }).toEqual({
+      leakingLogLines: [],
+      leakingSseLines: [],
+      clientMessages: [`Provider request failed (${status}). No credits were charged.`],
+      streamErrorLogLines: [`${streamErrorLine}: Provider error (status ${status})`],
+    });
   });
 });

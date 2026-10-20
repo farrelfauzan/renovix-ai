@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { AddressInfo } from "node:net";
 import { ConfigModule } from "@nestjs/config";
@@ -25,6 +26,8 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
 import { blockOutbound, OutboundBlocker, pointLlmAtStubs, sendJson, startStubHttpServer, StubHttpServer, chatCompletion } from "../../../../test/llm-stub";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { fundPaidWallet } from "../../../../test/credit-funding";
+import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
 
 // RX-178 review B1: POST /agents/:id/chat answers 400 with the fixed text for an agent whose model cannot be resolved
 // (an old slug with no model row, or a model on an inactive provider), BEFORE the document-intent classifier call, the
@@ -121,7 +124,10 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
     await createResolvableModel(prisma, { slug: "fake/usable-standard", provider: { baseUrl: provider.baseUrl, apiKey: RECORD_KEY } });
   });
 
-  afterEach(() => blocker.restore());
+  afterEach(() => {
+    blocker.restore();
+    jest.restoreAllMocks();
+  });
 
   afterAll(async () => {
     await app?.close();
@@ -165,5 +171,31 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
     });
     expect([provider.requests.length, envStub.requests.length]).toEqual([0, 0]);
     expect([await prisma.agentRun.count(), await prisma.agentMessage.count()]).toEqual([0, 0]);
+  });
+
+  // RNX-208 (D197, D208): a provider error body (a planted marker and a fake key suffix, as a 401 can echo, RX-174)
+  // reaches no log line and no SSE line of the agent chat route; the client still gets an SSE error naming the status.
+  it.each([401, 400])("RNX-208: the provider answers %i with a marker in its body → the marker is in no log line and no SSE line", async (status) => {
+    const marker = `LEAK-MARKER-${randomUUID()}`;
+    const isLeak = (text: string) => text.includes(marker) || text.includes("FAKE1234");
+    const logs = captureLogs();
+    provider.respond((_r, res) => sendJson(res, status, { error: { message: `Incorrect API key provided: ${marker} ...sk-or-v1-FAKE1234`, code: status } }));
+    await prisma.tierRate.create({ data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 } });
+    await moduleRef.get(ModelRegistryService).refresh();
+    const user = await createUser(prisma);
+    const plan = await createPlan(prisma);
+    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await fundPaidWallet(prisma, user.id, "1");
+    const agent = await createAgent(prisma, { userId: user.id, model: "fake/usable-standard" });
+    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+
+    const res = await send({ url: `${appUrl}/agents/${agent.id}/chat`, headers: { authorization: `Bearer ${token}` }, body: { message: "Hi" } });
+
+    expect(provider.requests.length).toBeGreaterThan(1); // the classifier and the run both reached the stub
+    expect({
+      leakingLogLines: logs.lines.filter(isLeak),
+      leakingSseLines: res.body.split("\n").filter(isLeak),
+      clientMessages: sseErrorMessages(res.body),
+    }).toEqual({ leakingLogLines: [], leakingSseLines: [], clientMessages: [expect.stringContaining(String(status))] });
   });
 });

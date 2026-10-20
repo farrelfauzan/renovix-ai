@@ -4,6 +4,7 @@ import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import axios from "axios";
+import { randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { AddressInfo } from "node:net";
 import { PortalController } from "./portal.controller";
@@ -38,6 +39,7 @@ import {
   StubHttpServer,
 } from "../../../../test/llm-stub";
 import { createResolvableModel, testConnection } from "../../../../test/provider-model";
+import { captureLogs } from "../../../../test/sse-client";
 
 // RX-169: a provider that answers a streamed portal chat with an error status
 // must give the client an SSE error event and leave the process running. The
@@ -196,31 +198,39 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
     await expectHealthy();
   });
 
-  it("AC3: the provider's error text (trimmed to 300 characters) reaches the client; no key in any log line", async () => {
-    const lines: string[] = [];
-    const capture = (...args: unknown[]) =>
-      void lines.push(args.map((a) => (typeof a === "string" ? a : String(a))).join(" "));
-    for (const m of ["log", "warn", "error", "debug", "verbose", "fatal"] as const) {
-      jest.spyOn(Logger.prototype, m).mockImplementation(capture);
-    }
-    for (const m of ["log", "warn", "error", "info", "debug"] as const) jest.spyOn(console, m).mockImplementation(capture);
-    const providerText = `RX169-PROVIDER-TEXT context length exceeded ${"y".repeat(400)}`;
-    primary.respond((_r, res) => {
-      res.writeHead(400, { "Content-Type": "text/plain" });
-      res.end(providerText);
+  // RNX-208 (D197, D208; replaces the RX-169 AC3 excerpt): a provider 401 body can echo the key's last characters and
+  // its hash (RX-174). The body (a planted marker and a fake key suffix) reaches no log line and no SSE line; the
+  // client and the log get only the fixed texts (toProviderErrorText), and a 400 still says "Provider rejected request".
+  describe("RNX-208: the provider's error body reaches no log line and no SSE line (real adapter, local stub)", () => {
+    const marker = `LEAK-MARKER-${randomUUID()}`;
+    const plantedBody = { error: { message: `Incorrect API key provided: ${marker} ...sk-or-v1-FAKE1234`, code: 401 } };
+    const isLeak = (text: string) => text.includes(marker) || text.includes("FAKE1234") || text.includes("rx169-marker-key");
+
+    it.each([
+      ["free", 401, "Provider request failed (401)"],
+      ["free", 400, "Provider rejected request (HTTP 400)"],
+      ["paid", 401, "Provider request failed (401). No credits were charged."],
+      ["paid", 400, "Provider rejected request (HTTP 400). No credits were charged."],
+    ])("%s tier, the provider answers %i with the marker in its body → the client gets %j", async (tier, status, expectedMessage) => {
+      const logs = captureLogs();
+      primary.respond((_r, res) => sendJson(res, status, plantedBody));
+
+      const res = tier === "free" ? await freeChat() : await paidChat();
+
+      const streamErrorLine = `OpenRouter stream error (${new URL(primary.baseUrl).host}, ${status})`;
+      expect(primary.requests).toHaveLength(1);
+      expect({
+        leakingLogLines: logs.lines.filter(isLeak),
+        leakingSseLines: res.body.split("\n").filter(isLeak),
+        clientMessage: sseErrorMessage(res.body),
+        streamErrorLogLines: logs.lines.filter((l) => l.startsWith(streamErrorLine)),
+      }).toEqual({
+        leakingLogLines: [],
+        leakingSseLines: [],
+        clientMessage: expectedMessage,
+        streamErrorLogLines: [`${streamErrorLine}: Provider error (status ${status})`],
+      });
     });
-
-    const res = await freeChat();
-
-    const message = sseErrorMessage(res.body);
-    expect(message).toContain(providerText.slice(0, 300));
-    expect(message).not.toContain(providerText.slice(0, 301));
-    expect(primary.requests[0].headers.authorization).toBe(`Bearer ${PRIMARY_KEY}`);
-    expect(lines.length).toBeGreaterThan(0);
-    expect(lines.some((l) => l.includes("RX169-PROVIDER-TEXT"))).toBe(true);
-    expect(lines.filter((l) => l.includes("rx169-marker-key"))).toEqual([]);
-    expect(res.body).not.toContain("rx169-marker-key");
-    await expectHealthy();
   });
 
   it("AC5: paid tier, provider answers 400 → SSE error event naming 400 with the no-charge note, hold released, health answers", async () => {
@@ -638,7 +648,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       expect(actual.clientMessage).toMatch(/400/);
     });
 
-    it("the adapter's stream error carries the status and the body text, and extractProviderError uses them", async () => {
+    it("the adapter's stream error carries the status and the body text; extractProviderError uses only the status (RNX-208)", async () => {
       primary.respond((_r, res) => sendJson(res, 429, { error: { message: "RX169 slow down" } }));
       const adapter = moduleRef.get(OpenRouterAdapter);
       const thrown = await (async () => {
@@ -651,7 +661,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
 
       expect(thrown).toMatchObject({ status: 429, bodyText: '{"error":{"message":"RX169 slow down"}}' });
       expect(actual).toMatchObject({ status: 429 });
-      expect(actual.clientMessage).toBe('Provider request failed (429): {"error":{"message":"RX169 slow down"}}');
+      expect(actual.clientMessage).toBe("Provider request failed (429)");
     });
   });
 });
