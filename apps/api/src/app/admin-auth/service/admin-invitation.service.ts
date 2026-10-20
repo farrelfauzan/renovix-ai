@@ -22,6 +22,7 @@ import { PasswordService } from "./password.service";
 
 const MS_PER_HOUR = 3_600_000;
 const NOT_FOUND = "Invitation not found";
+const REVOKED = "This invitation link has been revoked";
 
 /**
  * Back-office invitations (RX-95): an Owner invites an email with a role; the AdminUser row is created only
@@ -71,8 +72,8 @@ export class AdminInvitationService {
 
   /** Who invited and with which role, for the link's holder. 404 unknown token; 410 used, revoked or expired. */
   async preview(token: string): Promise<InvitationPreview> {
-    const invitation = await this.findUsable(token);
-    return { email: invitation.email, role: invitation.role, invitedBy: invitation.invitedBy, expiresAt: invitation.expiresAt };
+    const { email, role, invitedBy, expiresAt } = await this.findUsable(token);
+    return { email, role, invitedBy: { name: invitedBy.name, email: invitedBy.email }, expiresAt };
   }
 
   /**
@@ -80,6 +81,9 @@ export class AdminInvitationService {
    * password, and starts an enrolment session (TOTP enrolment and the recovery codes follow on the RX-94
    * enrolment routes). One transaction: the conditional claim of the token, the admin row, its audit row and
    * the session; a used, revoked or expired link (also one used by a parallel completion) creates nothing.
+   * The inviter's row is share-locked and checked first in that transaction (RNX-211): a suspension committed
+   * after the checks above is seen, and one still in progress is waited for, so a suspended inviter's link
+   * creates nothing; a suspension that starts later waits for this completion.
    */
   async accept(input: AcceptInvitationDto, requestId: string, userAgent: string | undefined): Promise<IssuedAdminSession> {
     const invitation = await this.findUsable(input.token);
@@ -87,6 +91,7 @@ export class AdminInvitationService {
     const passwordHash = await this.passwords.hash(input.password);
     return this.transactions.run(async (tx) => {
       const now = new Date();
+      if (await this.admins.lockIsSuspended(invitation.invitedByAdminId, tx)) throw new GoneException(REVOKED);
       if ((await this.invitations.claim(invitation.id, now, tx)) === 0) throw new GoneException("This invitation link is no longer valid");
       const admin = await this.admins.create({ email: invitation.email, role: invitation.role, name: input.name, passwordHash }, tx);
       await this.auditLog.create(

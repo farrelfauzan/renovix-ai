@@ -31,9 +31,10 @@ export class AdminManagementService {
   }
 
   /**
-   * Suspends the admin and ends all their sessions. 403 for oneself, 404 unknown, 409 already suspended or
-   * the last active owner (the active owners' rows are locked first, so two parallel suspensions cannot
-   * both pass).
+   * Suspends the admin, ends all their sessions and revokes every pending invitation they sent (RNX-211; the
+   * audit change names those invitations' ids and emails, never a token). 403 for oneself, 404 unknown, 409
+   * already suspended or the last active owner (the active owners' rows are locked first, so two parallel
+   * suspensions cannot both pass).
    */
   async suspend(actorAdminId: string, adminId: string, tx: DbTransaction): Promise<AdminAuditChange> {
     if (actorAdminId === adminId) throw new ForbiddenException("You cannot suspend yourself");
@@ -41,9 +42,11 @@ export class AdminManagementService {
     const admin = await this.admins.findById(adminId, tx);
     if (!admin) throw new NotFoundException();
     if (owners.length === 1 && owners[0] === adminId) throw new ConflictException("At least one active owner must remain");
-    if ((await this.admins.suspend(adminId, new Date(), tx)) === 0) throw new ConflictException("The admin is already suspended");
+    const now = new Date();
+    if ((await this.admins.suspend(adminId, now, tx)) === 0) throw new ConflictException("The admin is already suspended");
     const sessionsEnded = await this.sessions.endAllForAdmin(adminId, tx);
-    return { before: { adminId, status: "active" }, after: { adminId, status: "suspended", sessionsEnded } };
+    const revokedInvitations = JSON.stringify(await this.invitations.revokeAllPendingFrom(adminId, now, tx));
+    return { before: { adminId, status: "active" }, after: { adminId, status: "suspended", sessionsEnded, revokedInvitations } };
   }
 
   /** Lifts a suspension. 404 unknown, 409 not suspended. */

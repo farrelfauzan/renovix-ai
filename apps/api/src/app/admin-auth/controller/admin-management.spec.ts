@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { AdminAuthModule } from "../admin-auth.module";
 import { AdminInvitationRepository } from "../repository/admin-invitation.repository";
 import { AdminUserRepository } from "../repository/admin-user.repository";
+import { PasswordService } from "../service/password.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -574,6 +575,132 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       expect(res.statusCode).toBe(200);
       expect(res.json()).toMatchObject({ id: ops.id, email: ops.email, role: "operations", scope: "full", mfaEnrolled: true, mustChangePassword: false });
       expect(res.json().permissions).toContain("users:read");
+    });
+  });
+
+  describe("RNX-211: suspending an admin revokes their pending invitations; a suspended inviter's link is refused", () => {
+    /** Owners A and B, both signed in and re-authenticated; B suspends A through the real route. */
+    const twoOwners = async () => ({ a: await ownerSession("owner-a@example.com"), b: await ownerSession("owner-b@example.com") });
+    const suspend = (cookie: string, adminId: string) => http.call("POST", `/admin/admins/${adminId}/suspend`, { cookie });
+    const preview = (token: string) => http.call("POST", "/admin/invitations/preview", {}, { token });
+    /** The `revokedInvitations` of the one suspension audit entry, parsed. */
+    const revokedInAudit = async (): Promise<{ id: string; email: string }[]> => {
+      const entry = await prisma.adminAuditLog.findFirstOrThrow({ where: { resource: "admin_user", action: "suspend" } });
+      return JSON.parse((entry.after as Record<string, string>).revokedInvitations ?? "null");
+    };
+
+    it("criterion 1: A invites, B suspends A (re-authenticated): the old link's preview and accept are 410, no admin row", async () => {
+      const { a, b } = await twoOwners();
+      const token = tokenOf((await invite(a.cookie)).json().link);
+
+      const suspended = await suspend(b.cookie, a.owner.id);
+      const previewed = await preview(token);
+      const accepted = await accept(token);
+
+      expect([suspended.statusCode, previewed.statusCode, accepted.statusCode]).toEqual([204, 410, 410]);
+      expect([previewed.json().message, accepted.json().message]).toEqual(["This invitation link has been revoked", "This invitation link has been revoked"]);
+      expect(await adminsWithEmail(INVITEE)).toBe(0);
+    });
+
+    it("criterion 2: each of A's pending invitations is revoked at the suspension and named (id, email) in its audit entry; B's and A's used one are untouched", async () => {
+      const { a, b } = await twoOwners();
+      const used = (await invite(a.cookie, "used@example.com")).json();
+      expect((await accept(tokenOf(used.link))).statusCode).toBe(200);
+      const first = (await invite(a.cookie, "first@example.com")).json().invitation;
+      const second = (await invite(a.cookie, "second@example.com")).json().invitation;
+      const ofB = (await invite(b.cookie, "of-b@example.com")).json();
+
+      const suspended = await suspend(b.cookie, a.owner.id);
+
+      expect(suspended.statusCode).toBe(204);
+      const { suspendedAt } = await prisma.adminUser.findUniqueOrThrow({ where: { id: a.owner.id } });
+      const revoked = await prisma.adminInvitation.findMany({ where: { id: { in: [first.id, second.id] } } });
+      expect(revoked.map((row) => row.revokedAt)).toEqual([suspendedAt, suspendedAt]);
+      expect(await revokedInAudit()).toEqual(
+        expect.arrayContaining([{ id: first.id, email: "first@example.com" }, { id: second.id, email: "second@example.com" }]),
+      );
+      expect(await revokedInAudit()).toHaveLength(2);
+      expect(await prisma.adminInvitation.findUniqueOrThrow({ where: { id: used.invitation.id } })).toMatchObject({ revokedAt: null, usedAt: expect.any(Date) });
+      expect((await prisma.adminInvitation.findUniqueOrThrow({ where: { id: ofB.invitation.id } })).revokedAt).toBeNull();
+      expect((await accept(tokenOf(ofB.link))).statusCode).toBe(200);
+    });
+
+    it("criterion 3: a link whose revoke was skipped (suspended_at set in the database) with a suspended inviter: preview and accept 410, nothing created", async () => {
+      const { owner, cookie } = await ownerSession();
+      const created = (await invite(cookie)).json();
+      await prisma.adminUser.update({ where: { id: owner.id }, data: { suspendedAt: new Date() } });
+      const sessionsBefore = await prisma.adminSession.count();
+
+      const previewed = await preview(tokenOf(created.link));
+      const accepted = await accept(tokenOf(created.link));
+
+      expect([previewed.statusCode, accepted.statusCode]).toEqual([410, 410]);
+      expect(accepted.json().message).toBe("This invitation link has been revoked");
+      expect(await adminsWithEmail(INVITEE)).toBe(0);
+      expect(await prisma.adminSession.count()).toBe(sessionsBefore);
+      expect((await prisma.adminInvitation.findUniqueOrThrow({ where: { id: created.invitation.id } })).usedAt).toBeNull();
+    });
+
+    it("criterion 3: the inviter suspended (revoke skipped) after accept's checks passed, before its transaction: 410 from inside the transaction, nothing created", async () => {
+      const { owner, cookie } = await ownerSession();
+      const created = (await invite(cookie)).json();
+      const passwords = moduleRef.get(PasswordService);
+      const hash = passwords.hash.bind(passwords);
+      jest.spyOn(passwords, "hash").mockImplementation(async (password: string) => {
+        await prisma.adminUser.update({ where: { id: owner.id }, data: { suspendedAt: new Date() } });
+        return hash(password);
+      });
+
+      const accepted = await accept(tokenOf(created.link));
+
+      expect(accepted.statusCode).toBe(410);
+      expect(accepted.json().message).toBe("This invitation link has been revoked");
+      expect(await adminsWithEmail(INVITEE)).toBe(0);
+      expect((await prisma.adminInvitation.findUniqueOrThrow({ where: { id: created.invitation.id } })).usedAt).toBeNull();
+    });
+
+    it("criterion 4: A reactivated: the old link stays refused, resending it is 404 (RNX-95: only a pending one), a new invite of the email by an Owner gives a working link", async () => {
+      const { a, b } = await twoOwners();
+      const created = (await invite(a.cookie)).json();
+      expect((await suspend(b.cookie, a.owner.id)).statusCode).toBe(204);
+
+      const reactivated = await http.call("POST", `/admin/admins/${a.owner.id}/reactivate`, { cookie: b.cookie });
+      const oldPreview = await preview(tokenOf(created.link));
+      const oldAccept = await accept(tokenOf(created.link));
+      expect([reactivated.statusCode, oldPreview.statusCode, oldAccept.statusCode]).toEqual([204, 410, 410]);
+      const resent = await http.call("POST", `/admin/invitations/${created.invitation.id}/resend`, { cookie: b.cookie });
+      const reinvited = await invite(b.cookie);
+      expect([resent.statusCode, reinvited.statusCode]).toEqual([404, 201]);
+      const fresh = await accept(tokenOf(reinvited.json().link));
+
+      expect(fresh.statusCode).toBe(200);
+      expect(reinvited.json().link).not.toBe(created.link);
+      expect(await adminsWithEmail(INVITEE)).toBe(1);
+    });
+
+    it("criterion 5: no token value in the logs or audit rows of invite, suspension, refused links, reactivation and re-invite", async () => {
+      const logged: string[] = [];
+      for (const level of ["log", "warn", "error", "debug", "verbose", "fatal"] as const) {
+        jest.spyOn(Logger.prototype, level).mockImplementation((...args: unknown[]) => void logged.push(args.map(String).join(" ")));
+      }
+      const { a, b } = await twoOwners();
+      const created = (await invite(a.cookie)).json();
+      const oldToken = tokenOf(created.link);
+      await suspend(b.cookie, a.owner.id);
+      await preview(oldToken);
+      await accept(oldToken);
+      await http.call("POST", `/admin/admins/${a.owner.id}/reactivate`, { cookie: b.cookie });
+      const newToken = tokenOf((await invite(b.cookie, "again@example.com")).json().link);
+      expect((await accept(newToken)).statusCode).toBe(200);
+      const audit = JSON.stringify(await prisma.adminAuditLog.findMany());
+
+      expect(Math.min(oldToken.length, newToken.length)).toBeGreaterThanOrEqual(43);
+      expect(await revokedInAudit()).toEqual([{ id: created.invitation.id, email: INVITEE }]);
+      expect(logged.join("\n")).toContain(created.invitation.id);
+      for (const token of [oldToken, newToken]) {
+        expect(logged.join("\n")).not.toContain(token);
+        expect(audit).not.toContain(token);
+      }
     });
   });
 });
