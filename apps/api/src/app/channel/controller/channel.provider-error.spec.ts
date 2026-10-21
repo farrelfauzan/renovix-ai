@@ -114,6 +114,7 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
           provide: AgentToolService,
           useValue: {
             buildToolSchemasWithMcp: async () => [],
+            cleanupMcpConnections: async () => undefined,
             clearLastDocumentResult: () => undefined,
             getLastDocumentResult: () => null,
           },

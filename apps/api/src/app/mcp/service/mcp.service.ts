@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import { McpClientService, McpServerConfig } from "./mcp-client.service";
+import { McpClientService, McpServerConfig, McpToolSchema } from "./mcp-client.service";
 import { McpRegistryService } from "./mcp-registry.service";
 import * as crypto from "crypto";
 import { readEncryptionKey } from "../../../common/utils/read-encryption-key";
@@ -83,9 +83,14 @@ export class McpService {
     };
 
     try {
-      await this.mcpClient.connectServer(config);
-      const tools = await this.mcpClient.listTools(config.id);
-      await this.mcpClient.disconnectServer(config.id);
+      // RNX-217: its own connection, closed here; nothing is shared with a run.
+      const connection = await this.mcpClient.connect(config);
+      let tools: McpToolSchema[];
+      try {
+        ({ tools } = (await connection.client.listTools()) as { tools: McpToolSchema[] });
+      } finally {
+        await this.mcpClient.close(connection);
+      }
 
       await this.prisma.userMcpCredential.update({
         where: { id: cred.id },

@@ -66,12 +66,12 @@ describe("MCP credentials and MCP_ENCRYPTION_KEY (RX-110)", () => {
   it("McpService: key B on a key-A credential throws and logs an error, never connects with {}", async () => {
     const store = createCredentialStore();
     await userService(store, KEY_A).connectWithToken("u1", "w1", "notion", SECRET_ENV);
-    const connectServer = jest.fn();
+    const connect = jest.fn();
     const registry = { getPackageInfo: () => ({ package: "@example/notion-mcp" }) };
-    const service = withKey(KEY_B, () => new McpService(store as never, { connectServer } as never, registry as never));
+    const service = withKey(KEY_B, () => new McpService(store as never, { connect } as never, registry as never));
     await expect(service.testConnection("u1", "cred-1")).rejects.toThrow("MCP credential could not be decrypted");
     expect(errorLog).toHaveBeenCalledWith(expect.stringContaining("MCP credential could not be decrypted"));
-    expect(connectServer).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -12,6 +12,9 @@ import { CronExpressionParser } from "cron-parser";
 import { executeCalculator } from "../utils/execute-calculator";
 import { executeKnowledgeRetrieval } from "../utils/execute-knowledge-retrieval";
 import { mcpToolToOpenAI } from "../../mcp/utils/mcp-tool-to-openai";
+import type { McpToolSchema } from "../../mcp/service/mcp-client.service";
+import type { McpConnection } from "../../mcp/types/mcp-connection";
+import type { McpRunSession } from "../types/mcp-run-session";
 
 interface ToolSchema {
   type: "function";
@@ -233,9 +236,6 @@ export class AgentToolService {
     },
   };
 
-  // Track which MCP server owns which tool (populated during buildToolSchemas)
-  private mcpToolMap = new Map<string, string>(); // toolName -> serverId
-
   buildToolSchemas(
     agentTools: any[],
     options?: { injectDelegation?: boolean },
@@ -269,13 +269,15 @@ export class AgentToolService {
    * Build tool schemas including MCP tools from user's connected providers.
    * Connects to each provider using the executing user's credentials,
    * discovers tools, and merges them with built-in tools.
+   * RNX-217: every connection opened goes into the run's own `options.mcpSession` (with the tool names it serves),
+   * which the caller created before this call and closes with cleanupMcpConnections in a `finally`.
    */
   async buildToolSchemasWithMcp(
     agentTools: any[],
     agentId: string,
-    executingUserId?: string,
-    workspaceId?: string,
-    options?: { injectDelegation?: boolean },
+    executingUserId: string | undefined,
+    workspaceId: string | undefined,
+    options: { injectDelegation?: boolean; mcpSession: McpRunSession },
   ): Promise<ToolSchema[]> {
     // 1. Built-in tools
     const schemas = this.buildToolSchemas(agentTools, options);
@@ -323,8 +325,10 @@ export class AgentToolService {
             continue;
           }
 
-          await this.mcpClient.connectServer(config);
-          const mcpTools = await this.mcpClient.listTools(config.id);
+          const connection = await this.mcpClient.connect(config);
+          options.mcpSession.connections.push(connection);
+          const { tools } = await connection.client.listTools();
+          const mcpTools = tools as McpToolSchema[];
 
           this.logger.log(
             `[buildToolSchemasWithMcp] Connected to ${provider} (${config.id}), found ${mcpTools.length} tools`,
@@ -343,7 +347,7 @@ export class AgentToolService {
             }
             this.stripSchemaDescriptions(schema.function.parameters);
             schemas.push(schema);
-            this.mcpToolMap.set(tool.name, config.id);
+            options.mcpSession.toolConnections.set(tool.name, connection);
           }
         } catch (err: any) {
           this.logger.warn(
@@ -360,10 +364,12 @@ export class AgentToolService {
     return schemas;
   }
 
+  /** RNX-217: an MCP tool runs only on a connection of the calling run's own `mcpSession`. */
   async executeTool(
     toolName: string,
     args: any,
     agent: any,
+    mcpSession: McpRunSession,
     userId?: string,
     channelId?: string,
   ): Promise<string> {
@@ -371,9 +377,9 @@ export class AgentToolService {
 
     const executeWithTimeout = async (): Promise<string> => {
       // Check if it's an MCP tool
-      const mcpServerId = this.mcpToolMap.get(toolName);
-      if (mcpServerId) {
-        return this.executeMcpTool(mcpServerId, toolName, args);
+      const mcpConnection = mcpSession.toolConnections.get(toolName);
+      if (mcpConnection) {
+        return this.executeMcpTool(mcpConnection, toolName, args);
       }
 
       // Built-in tools
@@ -407,12 +413,12 @@ export class AgentToolService {
    * Execute a tool via MCP server
    */
   private async executeMcpTool(
-    serverId: string,
+    connection: McpConnection,
     toolName: string,
     args: any,
   ): Promise<string> {
     try {
-      const result = await this.mcpClient.callTool(serverId, toolName, args);
+      const result = await connection.client.callTool({ name: toolName, arguments: args });
 
       // MCP returns content as an array of content blocks
       if (result.content && Array.isArray(result.content)) {
@@ -433,11 +439,17 @@ export class AgentToolService {
   }
 
   /**
-   * Disconnect all MCP servers after a run completes
+   * RNX-217: closes the connections of one run's session, and no other run's, concurrently; waits for all of them.
+   * A connection that fails to close is logged by its server id only, and the others are still closed. The session
+   * is emptied first, so a second call closes nothing.
    */
-  async cleanupMcpConnections(): Promise<void> {
-    await this.mcpClient.disconnectAll();
-    this.mcpToolMap.clear();
+  async cleanupMcpConnections(mcpSession: McpRunSession): Promise<void> {
+    const connections = mcpSession.connections.splice(0);
+    mcpSession.toolConnections.clear();
+    const results = await Promise.allSettled(connections.map((connection) => this.mcpClient.close(connection)));
+    results.forEach((result, i) => {
+      if (result.status === "rejected") this.logger.warn(`Failed to close MCP server ${connections[i].serverId}`);
+    });
   }
 
   // ─── Tool Implementations ───
