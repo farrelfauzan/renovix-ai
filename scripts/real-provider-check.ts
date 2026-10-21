@@ -65,9 +65,10 @@ const say = (line: string): void => console.log(redact(line));
 /** Redacted first, then cut, so a cut never leaves part of a key. */
 const excerpt = (text: string): string => redact(text).replace(/\s+/g, " ").slice(0, EXCERPT_LENGTH);
 
+/** RNX-190: a ProviderHttpError carries no body any more, only its status and its kind's fixed text (D197, D199). */
 const describeError = (err: unknown): string =>
   err instanceof ProviderHttpError
-    ? `${err.name} ${err.status}: ${excerpt(err.bodyText)}`
+    ? `${err.name} ${err.status}: ${err.message}`
     : `${(err as Error)?.name ?? "Error"}: ${excerpt(String((err as Error)?.message ?? err))}`;
 
 const hostOf = (url: string): string => new URL(url).host;

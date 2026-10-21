@@ -648,7 +648,8 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       expect(actual.clientMessage).toMatch(/400/);
     });
 
-    it("the adapter's stream error carries the status and the body text; extractProviderError uses only the status (RNX-208)", async () => {
+    // RNX-190: the error no longer carries the body text, only the status and its kind.
+    it("the adapter's stream error carries the status and its kind, not the body text; extractProviderError uses only the status (RNX-208)", async () => {
       primary.respond((_r, res) => sendJson(res, 429, { error: { message: "RX169 slow down" } }));
       const adapter = moduleRef.get(OpenRouterAdapter);
       const thrown = await (async () => {
@@ -659,7 +660,8 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
 
       const actual = extract(thrown);
 
-      expect(thrown).toMatchObject({ status: 429, bodyText: '{"error":{"message":"RX169 slow down"}}' });
+      expect(thrown).toMatchObject({ status: 429, kind: "unavailable" });
+      expect(thrown).not.toHaveProperty("bodyText");
       expect(actual).toMatchObject({ status: 429 });
       expect(actual.clientMessage).toBe("Provider request failed (429)");
     });

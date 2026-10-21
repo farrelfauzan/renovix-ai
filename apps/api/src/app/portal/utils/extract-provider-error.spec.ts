@@ -1,8 +1,10 @@
 import { Readable } from "node:stream";
 import { extractProviderError } from "./extract-provider-error";
 import { ProviderHttpError } from "../../providers/errors/provider-http-error";
+import { toProviderErrorKind } from "../../providers/utils/to-provider-error-kind";
 
-const providerError = (status: number, bodyText: string) => new ProviderHttpError({ message: `Request failed with status code ${status}`, status, bodyText });
+// RNX-190: the error no longer keeps the body; the body only decides its kind, as the adapter does.
+const providerError = (status: number, bodyText: string) => new ProviderHttpError({ status, kind: toProviderErrorKind({ status, bodyText }) });
 
 // RNX-208 (D197, D208): the log message and the client message name only the status (toProviderErrorText); no body
 // text is read, whatever the provider sent. A 400 keeps "Provider rejected request (HTTP 400)".
