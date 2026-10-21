@@ -24,6 +24,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { AgentLinkService } from "./agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RNX-200 AC4: the MCP connections opened for an agent run (buildToolSchemasWithMcp) are closed exactly once on every
 // path: success, a refusal once the tools are built (the per-run cap on the real prompt, the reservation refused), a
@@ -55,6 +56,7 @@ describe("RNX-200 AC4: an agent run closes its MCP connections on every path (te
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,
           AgentRunMeterService,

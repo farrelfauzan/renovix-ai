@@ -13,6 +13,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser } from "../../../../test/factories";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-136: the channel routes and conditions that the ownership suite (RX-15, channel.ownership.spec.ts)
 // does not cover, written against the code before its queries moved into repositories. Each test
@@ -38,6 +40,8 @@ describe("RX-136: channel routes (Fastify, test database)", () => {
       controllers: [ChannelController],
       providers: [
         ChannelService,
+        AgentRunPolicyService,
+        WorkspaceQuotaService,
         { provide: ChannelChatService, useValue: {} },
         { provide: S3Service, useValue: {} },
         { provide: DocumentService, useValue: {} },

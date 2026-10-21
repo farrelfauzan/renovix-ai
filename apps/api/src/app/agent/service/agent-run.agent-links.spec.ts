@@ -22,6 +22,7 @@ import { createAgent, createPlan, createSubscription, createUser, createWorkspac
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RNX-118 (PRD 10, D81; replaces RX-112's sub-agent suite): an agent run offers call_agent and lists the callable
 // agents only when the agent has links and the runner is the workspace owner or a current collaborator there. The
@@ -51,6 +52,7 @@ describe("RNX-118: agent runs call only linked agents (test database)", () => {
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           AgentLinkService,
           AgentService,
           WorkspaceService,

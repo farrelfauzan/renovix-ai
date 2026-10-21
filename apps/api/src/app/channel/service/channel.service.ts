@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { AgentRepository } from "../../agent/repository/agent.repository";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { ChannelAgentRepository } from "../repository/channel-agent.repository";
 import { ChannelChatRoomRepository } from "../repository/channel-chat-room.repository";
 import { ChannelMessageRepository } from "../repository/channel-message.repository";
@@ -18,6 +19,7 @@ export class ChannelService {
     private readonly channelMessages: ChannelMessageRepository,
     private readonly chatRooms: ChannelChatRoomRepository,
     private readonly agents: AgentRepository,
+    private readonly policy: AgentRunPolicyService,
   ) {}
 
   async create(
@@ -73,6 +75,7 @@ export class ChannelService {
 
   // ─── Agent Management ───
 
+  /** Adds an agent to the caller's channel: 404 unless the run policy lets the caller run it (RNX-119, also per run). */
   async addAgent(
     userId: string,
     channelId: string,
@@ -82,8 +85,9 @@ export class ChannelService {
     const channel = await this.channels.findUserChannel(channelId, userId);
     if (!channel) throw new NotFoundException("Channel not found");
 
-    const agent = await this.agents.findUsableAgent(agentId, userId);
+    const agent = await this.agents.findAgentForRun(agentId);
     if (!agent) throw new NotFoundException("Agent not found");
+    await this.policy.assertRunScope(agent, userId);
 
     return this.channelAgents.createChannelAgent(channelId, agentId, role);
   }

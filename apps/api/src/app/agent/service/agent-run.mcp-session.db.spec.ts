@@ -35,6 +35,7 @@ import { setRunCap } from "../../../../test/run-cap";
 import { captureLogLines } from "../../../../test/capture-log-lines";
 import { AgentLinkService } from "./agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RNX-217: the MCP connections and the tool-name map belong to one run. Two runs that overlap (two users with the
 // same provider connected, or one user twice) never share a connection or a tool mapping, and one run ending closes
@@ -75,6 +76,7 @@ describe("RNX-217: MCP connections and the tool map belong to one run (test data
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           ChannelChatService,
           AgentLinkService,
           WorkspaceQuotaService,

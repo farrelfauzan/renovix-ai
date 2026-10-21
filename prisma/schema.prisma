@@ -47,6 +47,7 @@ model User {
   portalSessions PortalSession[]
   memories      UserMemory[]
   agents        Agent[]
+  agentRuns     AgentRun[]
   subscription  UserSubscription?
   codeRedemptions CodeRedemption[]
   channels      Channel[]
@@ -485,6 +486,9 @@ model AgentRun {
   id             String          @id @default(uuid())
   agentId        String
   agent          Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  /// RNX-119: the person who ran it (the runner, who pays); runs, history and delete are scoped to them.
+  userId         String          @map("user_id")
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   sessionId      String          @map("session_id")
   channelType    String          @map("channel_type") // "web" | "whatsapp" | "api"
   externalUserId String?         @map("external_user_id")
@@ -495,6 +499,7 @@ model AgentRun {
   updatedAt      DateTime        @updatedAt @db.Timestamptz()
 
   @@index([agentId])
+  @@index([agentId, userId])
   @@index([sessionId])
   @@index([externalUserId])
   @@map("agent_runs")

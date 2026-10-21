@@ -6,6 +6,8 @@ import { ModelRegistryService } from "../../config/model-registry.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
 import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
+import type { RunScope } from "../../agent/types/run-scope";
 import { budgetStopMessage } from "../../agent/utils/budget-stop-message";
 import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
 import type { ReminderToolLoop } from "../types/reminder-tool-loop";
@@ -26,6 +28,7 @@ export class ReminderScheduler {
     private readonly toolService: AgentToolService,
     private readonly memoryService: AgentMemoryService,
     private readonly meter: AgentRunMeterService,
+    private readonly policy: AgentRunPolicyService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -44,15 +47,7 @@ export class ReminderScheduler {
 
       for (const reminder of dueReminders) {
         try {
-          await this.executeReminder(reminder);
-          await this.reminderService.markExecuted(
-            reminder.id,
-            reminder.cronExpression,
-            reminder.timezone,
-          );
-          this.logger.log(
-            `[processReminders] Executed reminder ${reminder.id} (${reminder.description || reminder.prompt.slice(0, 50)})`,
-          );
+          await this.fireReminder(reminder);
         } catch (err: any) {
           const failures = reminder.consecutiveFailures + 1;
           await this.reminderService.markFailed(
@@ -94,7 +89,30 @@ export class ReminderScheduler {
     return table.includes("reminders");
   }
 
-  private async executeReminder(reminder: any) {
+  /**
+   * One due reminder. RNX-119: the run policy and the subscription gate (D192) are checked at fire time for the
+   * reminder's owner, who runs and pays. A refused fire is skipped: no run, nothing charged, a log line without the
+   * reminder's content, and the next fire time is set (not counted as a failure, so no retry loop).
+   */
+  private async fireReminder(reminder: any): Promise<void> {
+    const decision = await this.policy.decideRun(reminder.agent, reminder.userId);
+    if (!decision.allowed) {
+      await this.reminderService.markSkipped(reminder.id, reminder.cronExpression, reminder.timezone);
+      this.logger.warn(`[processReminders] Skipped reminder ${reminder.id}: ${decision.reason}`);
+      return;
+    }
+    await this.executeReminder(reminder, decision.scope);
+    await this.reminderService.markExecuted(
+      reminder.id,
+      reminder.cronExpression,
+      reminder.timezone,
+    );
+    this.logger.log(
+      `[processReminders] Executed reminder ${reminder.id} (${reminder.description || reminder.prompt.slice(0, 50)})`,
+    );
+  }
+
+  private async executeReminder(reminder: any, scope: RunScope) {
     const agent = reminder.agent;
 
     // Resolve model
@@ -126,9 +144,11 @@ export class ReminderScheduler {
     // Build system prompt
     let systemContent = agent.systemPrompt || "You are a helpful assistant.";
 
-    // Inject workspace memories
+    // Inject workspace memories (RNX-119, R17: none for a run outside the workspace)
     const memoryContext = await this.memoryService.getWorkspaceMemoryContext(
       agent.id,
+      scope,
+      reminder.channelId,
     );
     if (memoryContext) {
       systemContent += `\n\n## Workspace Memory\nHere are important facts you should remember:\n${memoryContext}`;
@@ -171,7 +191,7 @@ export class ReminderScheduler {
         },
         (meteredRun) =>
           this.runReminderLoop(
-            { reminder, chatRoom, modelEntry, connection, messages, toolSchemas, mcpSession },
+            { reminder, chatRoom, modelEntry, connection, messages, toolSchemas, mcpSession, scope },
             meteredRun,
           ),
       );
@@ -200,7 +220,7 @@ export class ReminderScheduler {
     loop: ReminderToolLoop,
     meteredRun: AgentRunBudget,
   ): Promise<void> {
-    const { reminder, chatRoom, modelEntry, connection, messages, toolSchemas, mcpSession } = loop;
+    const { reminder, chatRoom, modelEntry, connection, messages, toolSchemas, mcpSession, scope } = loop;
     const agent = reminder.agent;
 
     // Execute LLM call with tool loop
@@ -245,6 +265,7 @@ export class ReminderScheduler {
               args,
               agent,
               mcpSession,
+              scope,
               reminder.userId,
               reminder.channelId,
             );

@@ -76,7 +76,7 @@ describe("RX-141: agent memory queries (test database)", () => {
       await userMemory(alice.id, "user-low", { confidence: 0.6 });
       await userMemory(alice.id, "user-high", { confidence: 0.9 });
 
-      expect(await service.getMemoryContext(agent.id, alice.id)).toBe(
+      expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(
         [line("policy", "ws-high"), line("fact", "ws-low"), line("interest", "user-high"), line("interest", "user-low")].join("\n"),
       );
     });
@@ -87,7 +87,7 @@ describe("RX-141: agent memory queries (test database)", () => {
       await workspaceMemory(workspace.id, "mine");
       await workspaceMemory(other.id, "theirs");
 
-      expect(await service.getMemoryContext(agent.id, alice.id)).toBe(line("fact", "mine"));
+      expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(line("fact", "mine"));
     });
 
     it("leaves out archived and deleted workspace memories", async () => {
@@ -96,14 +96,14 @@ describe("RX-141: agent memory queries (test database)", () => {
       await workspaceMemory(workspace.id, "archived", { status: "archived" });
       await workspaceMemory(workspace.id, "deleted", { status: "deleted" });
 
-      expect(await service.getMemoryContext(agent.id, alice.id)).toBe(line("fact", "active"));
+      expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(line("fact", "active"));
     });
 
     it("gives 20 workspace memories at most, the best ones", async () => {
       const { alice, workspace, agent } = await setup();
       for (let i = 1; i <= 21; i++) await workspaceMemory(workspace.id, `ws-${i}`, { confidence: i / 100 });
 
-      const lines = (await service.getMemoryContext(agent.id, alice.id)).split("\n");
+      const lines = (await service.getMemoryContext(agent.id, alice.id, "inside")).split("\n");
 
       expect(lines).toHaveLength(20);
       expect(lines[0]).toBe(line("fact", "ws-21"));
@@ -118,14 +118,14 @@ describe("RX-141: agent memory queries (test database)", () => {
       await userMemory(alice.id, "deleted", { status: "deleted" });
       await userMemory(bob.id, "bobs");
 
-      expect(await service.getMemoryContext(agent.id, alice.id)).toBe(line("interest", "mine"));
+      expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(line("interest", "mine"));
     });
 
     it("gives 10 user memories at most, the best ones", async () => {
       const { alice, agent } = await setup();
       for (let i = 1; i <= 11; i++) await userMemory(alice.id, `user-${i}`, { confidence: i / 100 });
 
-      const lines = (await service.getMemoryContext(agent.id, alice.id)).split("\n");
+      const lines = (await service.getMemoryContext(agent.id, alice.id, "inside")).split("\n");
 
       expect(lines).toHaveLength(10);
       expect(lines[0]).toBe(line("interest", "user-11"));
@@ -139,8 +139,8 @@ describe("RX-141: agent memory queries (test database)", () => {
       await workspaceMemory(solo.workspaceId, "default-ws");
       await userMemory(alice.id, "mine");
 
-      expect(await service.getMemoryContext(solo.id, alice.id)).toBe(line("interest", "mine"));
-      expect(await service.getMemoryContext("00000000-0000-0000-0000-000000000000", alice.id)).toBe(line("interest", "mine"));
+      expect(await service.getMemoryContext(solo.id, alice.id, "inside")).toBe(line("interest", "mine"));
+      expect(await service.getMemoryContext("00000000-0000-0000-0000-000000000000", alice.id, "inside")).toBe(line("interest", "mine"));
     });
 
     it("uses the workspace of the agent it is asked about, not of another agent of the same user", async () => {
@@ -150,17 +150,39 @@ describe("RX-141: agent memory queries (test database)", () => {
       await workspaceMemory(workspace.id, "first");
       await workspaceMemory(other.id, "second");
 
-      expect(await service.getMemoryContext(agent.id, alice.id)).toBe(line("fact", "first"));
-      expect(await service.getMemoryContext(otherAgent.id, alice.id)).toBe(line("fact", "second"));
+      expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(line("fact", "first"));
+      expect(await service.getMemoryContext(otherAgent.id, alice.id, "inside")).toBe(line("fact", "second"));
     });
   });
 
   describe("getWorkspaceMemoryContext", () => {
+    // RNX-119 review round 1: a run reads the channel's workspace only when it is the agent's own workspace.
+    it("with a channel of another workspace reads the agent's workspace, never the channel's", async () => {
+      const { alice, workspace, agent } = await setup();
+      const channel = await prisma.channel.create({ data: { userId: alice.id, name: "c" } });
+      const channelWorkspace = await createWorkspace(prisma, { ownerId: alice.id, channelId: channel.id });
+      await workspaceMemory(workspace.id, "agent's");
+      await workspaceMemory(channelWorkspace.id, "channel's");
+
+      expect(await service.getWorkspaceMemoryContext(agent.id, "inside", channel.id)).toBe(line("fact", "agent's"));
+    });
+
+    it("with the channel of the agent's own (default) workspace reads that workspace", async () => {
+      const { alice } = await setup();
+      const solo = await createDefaultWorkspaceAgent(alice.id);
+      const channel = await prisma.channel.create({ data: { userId: alice.id, name: "c" } });
+      await prisma.workspace.update({ where: { id: solo.workspaceId }, data: { channelId: channel.id } });
+      await workspaceMemory(solo.workspaceId, "own");
+
+      expect(await service.getWorkspaceMemoryContext(solo.id, "inside", channel.id)).toBe(line("fact", "own"));
+      expect(await service.getWorkspaceMemoryContext(solo.id, "outside", channel.id)).toBe("");
+    });
+
     it("lists the active memories of the agent's workspace, best confidence first, 20 at most", async () => {
       const { workspace, agent } = await setup();
       for (let i = 1; i <= 21; i++) await workspaceMemory(workspace.id, `ws-${i}`, { confidence: i / 100 });
 
-      const lines = (await service.getWorkspaceMemoryContext(agent.id)).split("\n");
+      const lines = (await service.getWorkspaceMemoryContext(agent.id, "inside")).split("\n");
 
       expect(lines).toHaveLength(20);
       expect(lines[0]).toBe(line("fact", "ws-21"));
@@ -175,7 +197,7 @@ describe("RX-141: agent memory queries (test database)", () => {
       await workspaceMemory(workspace.id, "deleted", { status: "deleted" });
       await workspaceMemory(other.id, "theirs");
 
-      expect(await service.getWorkspaceMemoryContext(agent.id)).toBe(line("fact", "mine"));
+      expect(await service.getWorkspaceMemoryContext(agent.id, "inside")).toBe(line("fact", "mine"));
     });
 
     it("is empty for an agent in its default workspace (as without a workspace), an unknown agent and a workspace without memories", async () => {
@@ -185,15 +207,47 @@ describe("RX-141: agent memory queries (test database)", () => {
       await workspaceMemory(solo.workspaceId, "default-ws");
       await userMemory(alice.id, "mine");
 
-      expect(await service.getWorkspaceMemoryContext(solo.id)).toBe("");
-      expect(await service.getWorkspaceMemoryContext("00000000-0000-0000-0000-000000000000")).toBe("");
-      expect(await service.getWorkspaceMemoryContext(agent.id)).toBe("");
+      expect(await service.getWorkspaceMemoryContext(solo.id, "inside")).toBe("");
+      expect(await service.getWorkspaceMemoryContext("00000000-0000-0000-0000-000000000000", "inside")).toBe("");
+      expect(await service.getWorkspaceMemoryContext(agent.id, "inside")).toBe("");
+    });
+  });
+
+  // RNX-119 (R17): a run outside the agent's workspace (an outsider on a public agent) reads and writes no workspace memory.
+  describe("a run outside the workspace (RNX-119, R17)", () => {
+    it("getMemoryContext gives no workspace memory, only the runner's own", async () => {
+      const { workspace, agent } = await setup();
+      const outsider = await createUser(prisma);
+      await workspaceMemory(workspace.id, "team secret");
+      await userMemory(outsider.id, "mine");
+
+      expect(await service.getMemoryContext(agent.id, outsider.id, "outside")).toBe(line("interest", "mine"));
+    });
+
+    it("getWorkspaceMemoryContext is empty", async () => {
+      const { workspace, agent } = await setup();
+      await workspaceMemory(workspace.id, "team secret");
+
+      expect(await service.getWorkspaceMemoryContext(agent.id, "outside")).toBe("");
+    });
+
+    it("extractAndStore makes no extraction call and writes no fact, in the workspace or the user's memory", async () => {
+      const { workspace, agent } = await setup();
+      const outsider = await createUser(prisma);
+      facts({ type: "interest", content: "Likes Rust", confidence: 0.8 });
+      router.chat.mockClear();
+
+      await service.extractAndStore(agent.id, outsider.id, "I like Rust", "Noted", "outside");
+
+      expect(router.chat).not.toHaveBeenCalled();
+      expect(await wsRows(workspace.id)).toHaveLength(0);
+      expect(await userRows(outsider.id)).toHaveLength(0);
     });
   });
 
   describe("extractAndStore", () => {
     const run = (agentId: string, userId: string, channelId?: string) =>
-      service.extractAndStore(agentId, userId, "I like Rust", "Noted", channelId);
+      service.extractAndStore(agentId, userId, "I like Rust", "Noted", "inside", channelId);
 
     it("stores a new fact as a workspace memory of the agent's workspace, with the run and the user recorded", async () => {
       const { alice, workspace, agent } = await setup();
@@ -207,7 +261,9 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect(await userRows(alice.id)).toHaveLength(0);
     });
 
-    it("stores the workspace of the channel in preference to the agent's, and falls back to the agent's for an unknown channel", async () => {
+    // RNX-119 review round 1 (replaces "stores the workspace of the channel in preference to the agent's"): the
+    // channel's workspace is used only when it is the agent's own workspace; never a channel's other workspace.
+    it("stores in the agent's workspace, not the channel's other workspace; an unknown channel falls back the same", async () => {
       const { alice, workspace, agent } = await setup();
       const channel = await prisma.channel.create({ data: { userId: alice.id, name: "c" } });
       const channelWorkspace = await createWorkspace(prisma, { ownerId: alice.id, channelId: channel.id });
@@ -216,8 +272,21 @@ describe("RX-141: agent memory queries (test database)", () => {
       await run(agent.id, alice.id, channel.id);
       await run(agent.id, alice.id, "00000000-0000-0000-0000-000000000000");
 
-      expect(await wsRows(channelWorkspace.id)).toHaveLength(1);
+      expect(await wsRows(channelWorkspace.id)).toHaveLength(0);
       expect(await wsRows(workspace.id)).toHaveLength(1);
+    });
+
+    it("stores in the channel's workspace when it is the agent's own workspace (its owner's default workspace with that channel)", async () => {
+      const { alice } = await setup();
+      const solo = await createDefaultWorkspaceAgent(alice.id);
+      const channel = await prisma.channel.create({ data: { userId: alice.id, name: "c" } });
+      await prisma.workspace.update({ where: { id: solo.workspaceId }, data: { channelId: channel.id } });
+      facts({ type: "interest", content: "Likes Rust" });
+
+      await run(solo.id, alice.id, channel.id);
+
+      expect((await wsRows(solo.workspaceId)).map((r) => r.content)).toEqual(["Likes Rust"]);
+      expect(await userRows(alice.id)).toHaveLength(0);
     });
 
     it("uses the default confidence 0.75 when the fact has none, skips a fact without text, and looks at 3 facts at most", async () => {
@@ -355,7 +424,7 @@ describe("RX-141: agent memory queries (test database)", () => {
     it("stores a workspace memory with confidence 1 in the agent's workspace", async () => {
       const { alice, workspace, agent } = await setup();
 
-      await service.storeExplicit(agent.id, alice.id, "Office closes at 5", "policy");
+      await service.storeExplicit(agent.id, alice.id, "Office closes at 5", "policy", "inside");
 
       const rows = await wsRows(workspace.id);
       expect(rows).toHaveLength(1);
@@ -363,23 +432,32 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect(await userRows(alice.id)).toHaveLength(0);
     });
 
-    it("prefers the workspace of the channel, and falls back to the agent's for an unknown channel", async () => {
+    // RNX-119 review round 1 (replaces "prefers the workspace of the channel"): never a channel's other workspace.
+    it("stores in the agent's workspace, not the channel's other workspace; an unknown channel falls back the same", async () => {
       const { alice, workspace, agent } = await setup();
       const channel = await prisma.channel.create({ data: { userId: alice.id, name: "c" } });
       const channelWorkspace = await createWorkspace(prisma, { ownerId: alice.id, channelId: channel.id });
 
-      await service.storeExplicit(agent.id, alice.id, "from channel", "fact", channel.id);
-      await service.storeExplicit(agent.id, alice.id, "from agent", "fact", "00000000-0000-0000-0000-000000000000");
+      await service.storeExplicit(agent.id, alice.id, "from channel", "fact", "inside", channel.id);
+      await service.storeExplicit(agent.id, alice.id, "from agent", "fact", "inside", "00000000-0000-0000-0000-000000000000");
 
-      expect((await wsRows(channelWorkspace.id)).map((r) => r.content)).toEqual(["from channel"]);
-      expect((await wsRows(workspace.id)).map((r) => r.content)).toEqual(["from agent"]);
+      expect(await wsRows(channelWorkspace.id)).toEqual([]);
+      expect((await wsRows(workspace.id)).map((r) => r.content)).toEqual(["from agent", "from channel"]);
+    });
+
+    it("stores nothing for a run outside the workspace (RNX-119, R17)", async () => {
+      const { alice, workspace, agent } = await setup();
+
+      await service.storeExplicit(agent.id, alice.id, "outsider fact", "fact", "outside");
+
+      expect([await wsRows(workspace.id), await userRows(alice.id)]).toEqual([[], []]);
     });
 
     it("in the default workspace (as without a workspace) stores a user memory with confidence 1 and the agent as its source, no workspace memory", async () => {
       const { alice } = await setup();
       const solo = await createDefaultWorkspaceAgent(alice.id);
 
-      await service.storeExplicit(solo.id, alice.id, "Likes Rust", "interest");
+      await service.storeExplicit(solo.id, alice.id, "Likes Rust", "interest", "inside");
 
       const rows = await userRows(alice.id);
       expect(rows).toHaveLength(1);

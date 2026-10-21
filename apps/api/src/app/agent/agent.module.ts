@@ -5,6 +5,7 @@ import { AgentLinkController } from "./controller/agent-link.controller";
 import { AgentService } from "./service/agent.service";
 import { AgentLinkService } from "./service/agent-link.service";
 import { AgentRunService } from "./service/agent-run.service";
+import { AgentRunPolicyService } from "./service/agent-run-policy.service";
 import { AgentRunMeterService } from "./service/agent-run-meter.service";
 import { AgentToolService } from "./service/agent-tool.service";
 import { AgentMemoryService } from "./service/agent-memory.service";
@@ -35,6 +36,7 @@ import { OffersModule } from "../offers/offers.module";
     AgentService,
     AgentLinkService,
     AgentRunService,
+    AgentRunPolicyService,
     AgentRunMeterService,
     AgentToolService,
     AgentMemoryService,
@@ -43,6 +45,7 @@ import { OffersModule } from "../offers/offers.module";
     AgentService,
     AgentLinkService,
     AgentRunService,
+    AgentRunPolicyService,
     AgentRunMeterService,
     AgentToolService,
     AgentMemoryService,

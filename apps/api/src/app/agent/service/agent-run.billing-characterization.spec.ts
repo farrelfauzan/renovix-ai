@@ -31,6 +31,7 @@ import type { PrismaService } from "../../prisma/prisma.service";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { AgentLinkService } from "./agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RX-14: characterization tests for the agent gates (since RX-22b: the
 // subscription gate and the ledger; the quota counters are gone) and the
@@ -59,6 +60,7 @@ describe("RX-14: the agent gates and the chat billing numbers (test database, fa
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,
           AgentRunMeterService,

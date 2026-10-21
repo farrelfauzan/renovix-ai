@@ -25,6 +25,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { AgentLinkService } from "./agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RX-22b (RNX-193): agent runs on the credit ledger (docs/credits.md section 13). One reservation per agent message
 // with a new runId, one usage entry per model call (root and sub-agent hops) attributed to the agent, the run and the
@@ -51,6 +52,7 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,
           AgentRunMeterService,

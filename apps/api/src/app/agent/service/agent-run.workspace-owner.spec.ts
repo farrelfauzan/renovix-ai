@@ -21,6 +21,7 @@ import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { AgentLinkService } from "./agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RNX-203: the runs of an agent (chat and the run history) belong to its workspace owner, not its creator, and a
 // call_agent (RNX-118: was a delegation) only runs a linked agent in the caller's workspace. Rows where the creator
@@ -46,6 +47,7 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,
           AgentRunMeterService,
@@ -153,12 +155,13 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
     const call = (userId: string, agentId: string, runId: string) =>
       method === "listRuns" ? service.listRuns(userId, agentId) : service[method](userId, agentId, runId);
 
-    const seedRun = (agentId: string) =>
-      prisma.agentRun.create({ data: { agentId, sessionId: "s-1", channelType: "web" } });
+    /** RNX-119: a run belongs to the person who ran it; here the workspace owner. */
+    const seedRun = (agentId: string, userId: string) =>
+      prisma.agentRun.create({ data: { agentId, userId, sessionId: "s-1", channelType: "web" } });
 
     it("the creator who does not own the workspace: 404 Agent not found, the run kept", async () => {
-      const { creator, agent } = await seedAgentInOwnersWorkspace();
-      const agentRun = await seedRun(agent.id);
+      const { owner, creator, agent } = await seedAgentInOwnersWorkspace();
+      const agentRun = await seedRun(agent.id, owner.id);
 
       await expect(call(creator.id, agent.id, agentRun.id)).rejects.toThrow(new NotFoundException("Agent not found"));
 
@@ -167,7 +170,7 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
 
     it("the workspace owner who did not create it reaches the run (positive control)", async () => {
       const { owner, agent } = await seedAgentInOwnersWorkspace();
-      const agentRun = await seedRun(agent.id);
+      const agentRun = await seedRun(agent.id, owner.id);
 
       await expect(call(owner.id, agent.id, agentRun.id)).resolves.toBeTruthy();
     });

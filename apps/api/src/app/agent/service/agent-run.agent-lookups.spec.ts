@@ -27,6 +27,7 @@ import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { AgentLinkService } from "./agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RX-134: each condition of the agent lookups of a run (the run's agent, the
 // called agent of a call_agent (RNX-118: was the sub-agent of a delegation), the
@@ -56,6 +57,7 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,
           AgentRunMeterService,
@@ -246,7 +248,7 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
       ],
     });
 
-    const loaded = await moduleRef.get(AgentRepository).findRunnableAgent(agent.id, bob.id);
+    const loaded = await moduleRef.get(AgentRepository).findAgentForRun(agent.id);
 
     expect(loaded!.integrations.map((i: { provider: string }) => i.provider)).toEqual(["jira"]);
   });
@@ -327,13 +329,14 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
     const call = (userId: string, agentId: string, runId: string) =>
       method === "listRuns" ? service.listRuns(userId, agentId) : service[method](userId, agentId, runId);
 
-    const seedRun = (agentId: string) =>
-      prisma.agentRun.create({ data: { agentId, sessionId: "s-1", channelType: "web" } });
+    /** RNX-119: a run belongs to the person who ran it; here the agent's creator, who owns its workspace. */
+    const seedRun = (agent: { id: string; userId: string }) =>
+      prisma.agentRun.create({ data: { agentId: agent.id, userId: agent.userId, sessionId: "s-1", channelType: "web" } });
 
     it("the owner reaches their agent's run (positive control)", async () => {
       const { bob } = await seedUsers();
       const agent = await createAgent(prisma, { userId: bob.id });
-      const agentRun = await seedRun(agent.id);
+      const agentRun = await seedRun(agent);
 
       await expect(call(bob.id, agent.id, agentRun.id)).resolves.toBeTruthy();
     });
@@ -341,7 +344,7 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
     it("another user's agent, the caller owning none: 404 Agent not found, the run kept (userId decides)", async () => {
       const { bob, alice } = await seedUsers();
       const agent = await createAgent(prisma, { userId: alice.id });
-      const agentRun = await seedRun(agent.id);
+      const agentRun = await seedRun(agent);
 
       await expect(call(bob.id, agent.id, agentRun.id)).rejects.toThrow(new NotFoundException("Agent not found"));
 
@@ -351,7 +354,7 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
     it("an unknown agent id while the caller owns an agent: 404 Agent not found (id decides)", async () => {
       const { bob } = await seedUsers();
       const agent = await createAgent(prisma, { userId: bob.id });
-      const agentRun = await seedRun(agent.id);
+      const agentRun = await seedRun(agent);
 
       await expect(call(bob.id, UNKNOWN_ID, agentRun.id)).rejects.toThrow(new NotFoundException("Agent not found"));
 

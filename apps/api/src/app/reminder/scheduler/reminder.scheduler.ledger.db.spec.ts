@@ -19,6 +19,8 @@ import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-pro
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-22b (RNX-193) AC4: a reminder run is one agent run on the credit ledger, paid by the reminder's owner
 // (docs/credits.md section 13): one reservation and a usage entry per model call (RNX-186 removed the old counters:
@@ -43,6 +45,8 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
         imports: [ProvidersModule],
         providers: [
           ReminderScheduler,
+          AgentRunPolicyService,
+          WorkspaceQuotaService,
           AgentRunMeterService,
           CreditService,
           PlatformSettingsService,
@@ -96,7 +100,8 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
     return { user, agent, reminder };
   };
 
-  const executeReminder = (reminder: unknown): Promise<void> => scheduler["executeReminder"](reminder);
+  // RNX-119: the run policy is checked in fireReminder; these runs are inside the owner's own workspace.
+  const executeReminder = (reminder: unknown): Promise<void> => scheduler["executeReminder"](reminder, "inside");
 
   it("AC4: a reminder run is charged through the ledger, one entry per model call", async () => {
     const { user, agent, reminder } = await seedReminder("1");

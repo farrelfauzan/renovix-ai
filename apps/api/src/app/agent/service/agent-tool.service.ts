@@ -15,6 +15,7 @@ import { mcpToolToOpenAI } from "../../mcp/utils/mcp-tool-to-openai";
 import type { McpToolSchema } from "../../mcp/service/mcp-client.service";
 import type { McpConnection } from "../../mcp/types/mcp-connection";
 import type { McpRunSession } from "../types/mcp-run-session";
+import type { RunScope } from "../types/run-scope";
 
 interface ToolSchema {
   type: "function";
@@ -361,12 +362,16 @@ export class AgentToolService {
     return schemas;
   }
 
-  /** RNX-217: an MCP tool runs only on a connection of the calling run's own `mcpSession`. */
+  /**
+   * RNX-217: an MCP tool runs only on a connection of the calling run's own `mcpSession`. RNX-119: `scope` is the run
+   * policy's answer for the run; a run outside the agent's workspace gets no workspace memory tool (R17).
+   */
   async executeTool(
     toolName: string,
     args: any,
     agent: any,
     mcpSession: McpRunSession,
+    scope: RunScope,
     userId?: string,
     channelId?: string,
   ): Promise<string> {
@@ -388,7 +393,7 @@ export class AgentToolService {
         case "knowledge_retrieval":
           return executeKnowledgeRetrieval(args, agent);
         case "memory_store":
-          return this.executeMemoryStore(args, agent, userId, channelId);
+          return this.executeMemoryStore(args, agent, scope, userId, channelId);
         case "create_reminder":
           return this.executeCreateReminder(args, agent, userId, channelId);
         case "create_document":
@@ -472,12 +477,18 @@ export class AgentToolService {
     }
   }
 
+  /** Stores a fact the model asked to remember. RNX-119 (R17): a run outside the workspace stores nothing. */
   private async executeMemoryStore(
     args: { fact: string; type: string },
     agent: any,
+    scope: RunScope,
     userId?: string,
     channelId?: string,
   ): Promise<string> {
+    if (scope !== "inside") {
+      this.logger.warn(`[memory_store] Refused for a run outside the workspace of agent ${agent.id}`);
+      return "Memory is not available for this run.";
+    }
     if (!userId) {
       this.logger.warn(
         `[memory_store] No userId provided for agent ${agent.id}`,
@@ -493,6 +504,7 @@ export class AgentToolService {
         userId,
         args.fact,
         args.type || "context",
+        scope,
         channelId,
       );
       return `Successfully stored memory: "${args.fact}" (type: ${args.type})`;

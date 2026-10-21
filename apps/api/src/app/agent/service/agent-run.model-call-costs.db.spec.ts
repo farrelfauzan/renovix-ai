@@ -20,6 +20,7 @@ import { createAgent, createPlan, createSubscription, createUser } from "../../.
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RNX-162 AC8: the agent meter (AgentRunMeterService.callModel) writes one model_call_costs row per model call of a
 // run, root and hop, right after each usage entry, with the run's workspace. Real AgentRunService, meter and
@@ -42,6 +43,7 @@ describe("RNX-162: model call costs on the agent meter (test database, fake prov
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,
           AgentRunMeterService,

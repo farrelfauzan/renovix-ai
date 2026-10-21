@@ -24,7 +24,7 @@ import { HealthController } from "../../health/controller/health.controller";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createUser } from "../../../../test/factories";
+import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
 import {
   blockOutbound,
   OutboundBlocker,
@@ -39,6 +39,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
 import { AgentLinkService } from "../../agent/service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 
 // RX-169: POST /channels/:id/agents/:agentId/chat answers the client over SSE,
 // but calls the provider without streaming (ProviderRouter.chat). A provider
@@ -107,6 +108,7 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
       controllers: [ChannelController, HealthController],
       providers: [
         ChannelService,
+        AgentRunPolicyService,
         ChannelChatService,
         AgentLinkService,
         WorkspaceQuotaService,
@@ -200,6 +202,8 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
   it("AC6: provider answers 400 → SSE error event naming 400, response ends, health answers", async () => {
     primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));
     const user = await createUser(prisma);
+    // RNX-119: channel chat applies the D192 subscription gate to the runner.
+    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
@@ -238,6 +242,8 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     const logs = captureLogs();
     primary.respond((_r, res) => sendJson(res, status, { error: { message: `Incorrect API key provided: ${marker} ...sk-or-v1-FAKE1234`, code: status } }));
     const user = await createUser(prisma);
+    // RNX-119: channel chat applies the D192 subscription gate to the runner.
+    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
