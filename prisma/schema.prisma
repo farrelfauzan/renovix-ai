@@ -1100,7 +1100,8 @@ model PackageVersion {
   packageId         String             @map("package_id")
   package           Package            @relation(fields: [packageId], references: [id], onDelete: Restrict)
   versionNumber     Int                @map("version_number")
-  priceRupiah       Int                @map("price_rupiah")
+  /// The price in US dollar cents (RNX-53, D235); the rupiah amount is derived at purchase from the stored exchange rate.
+  priceUsdCents     Int                @map("price_usd_cents")
   creditsGranted    Decimal            @map("credits_granted") @db.Decimal(18, 6)
   billing           PackageBilling
   maxAgents         Int                @map("max_agents")
@@ -1137,7 +1138,8 @@ model TopUpPackVersion {
   pack           TopUpPack          @relation(fields: [packId], references: [id], onDelete: Restrict)
   versionNumber  Int                @map("version_number")
   creditsGranted Decimal            @map("credits_granted") @db.Decimal(18, 6)
-  priceRupiah    Int                @map("price_rupiah")
+  /// The price in US dollar cents (RNX-53, D235); the rupiah amount is derived at purchase from the stored exchange rate.
+  priceUsdCents  Int                @map("price_usd_cents")
   effectiveFrom  DateTime           @default(now()) @map("effective_from") @db.Timestamptz()
   createdBy      String             @map("created_by")
   reason         String
@@ -1167,7 +1169,7 @@ model EnterpriseBundleVersion {
   bundle               EnterpriseBundle  @relation(fields: [bundleId], references: [id], onDelete: Restrict)
   versionNumber        Int               @map("version_number")
   poolCreditsPerPeriod Decimal?          @map("pool_credits_per_period") @db.Decimal(18, 6)
-  monthlyPriceRupiah   Int?              @map("monthly_price_rupiah")
+  monthlyPriceUsdCents Int?              @map("monthly_price_usd_cents")
   effectiveFrom        DateTime          @default(now()) @map("effective_from") @db.Timestamptz()
   createdBy            String            @map("created_by")
   reason               String
@@ -1212,6 +1214,13 @@ model PurchaseSnapshot {
   packageVersion     PackageVersion?   @relation(fields: [packageVersionId], references: [id], onDelete: Restrict)
   topUpPackVersionId String?           @map("top_up_pack_version_id")
   topUpPackVersion   TopUpPackVersion? @relation(fields: [topUpPackVersionId], references: [id], onDelete: Restrict)
+  /// The version's price in US dollar cents at the time of purchase (RNX-53).
+  priceUsdCents      Int               @map("price_usd_cents")
+  /// The USD to IDR rate used for this charge, its own date and its source (RNX-53, D235).
+  exchangeRate       Decimal           @map("exchange_rate") @db.Decimal(18, 6)
+  exchangeRateDate   DateTime          @map("exchange_rate_date") @db.Date
+  exchangeRateSource String            @map("exchange_rate_source")
+  /// The rupiah amount charged: priceUsdCents x exchangeRate, rounded up to the rupiah rounding step.
   priceRupiah        Int               @map("price_rupiah")
   creditsGranted     Decimal           @map("credits_granted") @db.Decimal(18, 6)
   billing            PackageBilling?
@@ -1227,6 +1236,22 @@ model PurchaseSnapshot {
   @@index([packageVersionId])
   @@index([topUpPackVersionId])
   @@map("purchase_snapshots")
+}
+
+/// One USD to IDR reference rate fetched from a public source (RNX-53, D235): the rupiah price of an offer is its
+/// USD price x the latest rate. rateDate is the rate's own date at the source. Insert-only; the unique key makes
+/// several instances fetching the same day insert one row, and its prefix serves the latest-rate query.
+model ExchangeRate {
+  id        String   @id @default(uuid())
+  base      String
+  quote     String
+  rate      Decimal  @db.Decimal(18, 6)
+  rateDate  DateTime @map("rate_date") @db.Date
+  fetchedAt DateTime @map("fetched_at") @db.Timestamptz()
+  source    String
+
+  @@unique([base, quote, rateDate, source])
+  @@map("exchange_rates")
 }
 
 // RX-20: the credit ledger (docs/credits.md section 2). Fresh start: no balance, Transaction row or token counter

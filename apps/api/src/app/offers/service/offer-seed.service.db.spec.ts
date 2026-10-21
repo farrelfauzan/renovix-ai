@@ -26,11 +26,11 @@ const EXAMPLE_SEED: OfferSeedDto = {
       displayOrder: 2,
       active: true,
       visible: true,
-      version: { priceRupiah: 149000, creditsGranted: 20, billing: "one_time", maxAgents: 10, maxConnectedTools: 5, apiAccess: true, allowedChannels: ["web"] },
+      version: { priceUsdCents: 1900, creditsGranted: 20, billing: "one_time", maxAgents: 10, maxConnectedTools: 5, apiAccess: true, allowedChannels: ["web"] },
     },
   ],
-  topUpPacks: [{ name: "Example pack", active: true, version: { creditsGranted: 10, priceRupiah: 50000 } }],
-  enterpriseBundles: [{ name: "Example bundle", active: true, version: { poolCreditsPerPeriod: null, monthlyPriceRupiah: null } }],
+  topUpPacks: [{ name: "Example pack", active: true, version: { creditsGranted: 10, priceUsdCents: 500 } }],
+  enterpriseBundles: [{ name: "Example bundle", active: true, version: { poolCreditsPerPeriod: null, monthlyPriceUsdCents: null } }],
 };
 
 describe("OfferSeedService (RX-86, test database)", () => {
@@ -58,7 +58,7 @@ describe("OfferSeedService (RX-86, test database)", () => {
     changes: await prisma.catalogChange.count(),
   });
 
-  it("the shipped file holds the decided settings only, and no package version, top-up pack or bundle", () => {
+  it("the shipped file holds the decided settings and the three D237 top-up packs, and no package version or bundle", () => {
     const actual = readShippedSeed();
     expect(actual.settings).toEqual({
       weeklyFreeAllowanceCredits: 2,
@@ -79,7 +79,11 @@ describe("OfferSeedService (RX-86, test database)", () => {
       ["Pro", null],
       ["Enterprise", null],
     ]);
-    expect(actual.topUpPacks).toEqual([]);
+    expect(actual.topUpPacks).toEqual([
+      { name: "Top-up 20 credits", active: true, version: { creditsGranted: 20, priceUsdCents: 500 } },
+      { name: "Top-up 100 credits", active: true, version: { creditsGranted: 100, priceUsdCents: 2000 } },
+      { name: "Top-up 200 credits", active: true, version: { creditsGranted: 200, priceUsdCents: 3600 } },
+    ]);
     expect(actual.enterpriseBundles).toEqual([]);
     expect(actual.defaultAllowedTiers).toEqual(["standard", "advanced", "premium", "frontier"]);
   });
@@ -89,8 +93,21 @@ describe("OfferSeedService (RX-86, test database)", () => {
     const expected = await countRows();
     await seeder.applySeed(readShippedSeed(), "test");
     expect(await countRows()).toEqual(expected);
-    expect(expected).toMatchObject({ packages: 3, packageVersions: 0, settings: 12, changes: 15 });
+    expect(expected).toMatchObject({ packages: 3, packageVersions: 0, packs: 3, packVersions: 3, settings: 12, changes: 21 });
     expect(await prisma.catalogChange.count({ where: { NOT: { changedBy: "seed:test" } } })).toBe(0);
+  });
+
+  it("RNX-53 (D237): applying the shipped file stores the three top-up packs, active, with US$5/20, US$20/100 and US$36/200 credits", async () => {
+    await seeder.applySeed(readShippedSeed(), "test");
+    const actual = await prisma.topUpPack.findMany({ include: { versions: true } });
+    const actualByCredits = actual
+      .map(({ name, active, versions }) => ({ name, active, versions: versions.map((v) => [v.priceUsdCents, v.creditsGranted.toNumber()]) }))
+      .sort((a, b) => a.versions[0][1] - b.versions[0][1]);
+    expect(actualByCredits).toEqual([
+      { name: "Top-up 20 credits", active: true, versions: [[500, 20]] },
+      { name: "Top-up 100 credits", active: true, versions: [[2000, 100]] },
+      { name: "Top-up 200 credits", active: true, versions: [[3600, 200]] },
+    ]);
   });
 
   it("is idempotent with versions; a changed price creates a new version and a change record and leaves the old version as it was", async () => {
@@ -100,19 +117,19 @@ describe("OfferSeedService (RX-86, test database)", () => {
     await seeder.applySeed(EXAMPLE_SEED, "test");
     expect(await countRows()).toEqual(firstRun);
     const [pro] = EXAMPLE_SEED.packages;
-    const inputChangedSeed: OfferSeedDto = { ...EXAMPLE_SEED, reason: "price change", packages: [{ ...pro, version: pro.version && { ...pro.version, priceRupiah: 199000 } }] };
+    const inputChangedSeed: OfferSeedDto = { ...EXAMPLE_SEED, reason: "price change", packages: [{ ...pro, version: pro.version && { ...pro.version, priceUsdCents: 2500 } }] };
     await seeder.applySeed(inputChangedSeed, "test");
     expect(await countRows()).toEqual({ ...firstRun, packageVersions: 2, changes: firstRun.changes + 1 });
     expect(await prisma.packageVersion.findUniqueOrThrow({ where: { id: oldVersion.id } })).toEqual(oldVersion);
     const newVersion = await prisma.packageVersion.findFirstOrThrow({ where: { versionNumber: 2 } });
-    expect(newVersion).toMatchObject({ priceRupiah: 199000, allowedTiers: ["standard", "advanced", "premium", "frontier"], createdBy: "seed:test", reason: "price change" });
+    expect(newVersion).toMatchObject({ priceUsdCents: 2500, allowedTiers: ["standard", "advanced", "premium", "frontier"], createdBy: "seed:test", reason: "price change" });
     expect(await prisma.catalogChange.findFirstOrThrow({ where: { entityId: newVersion.id } })).toMatchObject({ changedBy: "seed:test", reason: "price change" });
   });
 
   it("is one transaction: a refused item rolls back everything the run wrote before it", async () => {
     const [pro] = EXAMPLE_SEED.packages;
-    const inputBadSeed = { ...EXAMPLE_SEED, packages: [{ ...pro, version: pro.version && { ...pro.version, priceRupiah: -1 } }] } as OfferSeedDto;
-    await expect(seeder.applySeed(inputBadSeed, "test")).rejects.toThrow("priceRupiah");
+    const inputBadSeed = { ...EXAMPLE_SEED, packages: [{ ...pro, version: pro.version && { ...pro.version, priceUsdCents: -1 } }] } as OfferSeedDto;
+    await expect(seeder.applySeed(inputBadSeed, "test")).rejects.toThrow("priceUsdCents");
     expect(await countRows()).toEqual({ packages: 0, packageVersions: 0, packs: 0, packVersions: 0, bundles: 0, bundleVersions: 0, settings: 0, changes: 0 });
   });
 

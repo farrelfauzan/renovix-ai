@@ -13,4 +13,16 @@ export class AdminNotificationRepository {
       data: { recipientRole, kind, subjectAdminId },
     });
   }
+
+  /** Records an in-app platform alert, about no admin, for the admins of `recipientRole` (RNX-53). */
+  createPlatformAlert(recipientRole: string, kind: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).adminNotification.create({
+      data: { recipientRole, kind, subjectAdminId: null },
+    });
+  }
+
+  /** An unread notification of this kind, if any: a repeating alert keeps one unread row (RNX-53). */
+  findUnreadByKind(kind: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).adminNotification.findFirst({ where: { kind, readAt: null }, select: { id: true } });
+  }
 }

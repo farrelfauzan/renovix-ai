@@ -6,8 +6,6 @@ import { Check, Sparkles, Zap, Crown } from 'lucide-react';
 const plans = [
   {
     name: 'Free',
-    price: '$0',
-    period: 'forever',
     description: 'Perfect for trying out Renovix AI',
     icon: Zap,
     features: [
@@ -22,8 +20,6 @@ const plans = [
   },
   {
     name: 'Pro',
-    price: '$19',
-    period: 'per month',
     description: 'For power users who need more',
     icon: Sparkles,
     features: [
@@ -41,8 +37,6 @@ const plans = [
   },
   {
     name: 'Team',
-    price: '$49',
-    period: 'per user/month',
     description: 'For teams that ship together',
     icon: Crown,
     features: [
@@ -116,11 +110,6 @@ export function PricingSection() {
                 </div>
                 <h3 className="text-xl font-bold text-white">{plan.name}</h3>
                 <p className="mt-1 text-sm text-gray-500">{plan.description}</p>
-              </div>
-
-              <div className="mb-6">
-                <span className="text-4xl font-bold text-white">{plan.price}</span>
-                <span className="ml-2 text-sm text-gray-500">/{plan.period}</span>
               </div>
 
               <ul className="mb-8 space-y-3">

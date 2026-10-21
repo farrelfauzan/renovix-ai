@@ -60,6 +60,10 @@
       "description": "Routes under /models"
     },
     {
+      "name": "prices",
+      "description": "Routes under /prices"
+    },
+    {
       "name": "reminders",
       "description": "Routes under /reminders"
     },
@@ -4353,6 +4357,19 @@
         },
         "tags": [
           "models"
+        ]
+      }
+    },
+    "/api/v1/prices": {
+      "get": {
+        "description": "Public: public price list in rupiah, no account needed to see prices (RNX-53, D237)",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "prices"
         ]
       }
     },

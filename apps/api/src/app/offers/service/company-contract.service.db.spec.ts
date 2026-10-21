@@ -30,7 +30,7 @@ describe("CompanyContractService (RX-86, test database)", () => {
     await resetDatabase(prisma);
     const catalog = moduleRef.get(OfferCatalogService);
     const bundle = await catalog.saveEnterpriseBundle({ name: "Example bundle", active: true }, AUTHOR);
-    const version = await catalog.saveEnterpriseBundleVersion({ ownerId: bundle.id, terms: { poolCreditsPerPeriod: null, monthlyPriceRupiah: null }, author: AUTHOR });
+    const version = await catalog.saveEnterpriseBundleVersion({ ownerId: bundle.id, terms: { poolCreditsPerPeriod: null, monthlyPriceUsdCents: null }, author: AUTHOR });
     inputContract = {
       companyId: "company-example",
       bundleVersionId: version.id,
@@ -52,7 +52,7 @@ describe("CompanyContractService (RX-86, test database)", () => {
     await setCeiling();
     const actual = await contracts.createContract({ contract: inputContract, author: AUTHOR });
     expect(await prisma.companyContract.findUniqueOrThrow({ where: { id: actual.id } })).toMatchObject({ seatLimit: TEST_SEAT_CEILING, graceDays: null, capPolicy: null, topUpRoles: null, defaultMemberShareCredits: null });
-    expect(await prisma.enterpriseBundleVersion.findFirstOrThrow()).toMatchObject({ poolCreditsPerPeriod: null, monthlyPriceRupiah: null });
+    expect(await prisma.enterpriseBundleVersion.findFirstOrThrow()).toMatchObject({ poolCreditsPerPeriod: null, monthlyPriceUsdCents: null });
     expect(await prisma.catalogChange.count({ where: { entity: "company_contract", entityId: actual.id } })).toBe(1);
   });
 
@@ -82,13 +82,13 @@ describe("CompanyContractService (RX-86, test database)", () => {
       FROM information_schema.columns
       WHERE (table_name, column_name) IN (('company_contracts', 'grace_days'), ('company_contracts', 'cap_policy'),
         ('company_contracts', 'top_up_roles'), ('enterprise_bundle_versions', 'pool_credits_per_period'),
-        ('enterprise_bundle_versions', 'monthly_price_rupiah'))
+        ('enterprise_bundle_versions', 'monthly_price_usd_cents'))
       ORDER BY 1`;
     expect(actual).toEqual([
       { column: "company_contracts.cap_policy", fallback: null, nullable: "YES" },
       { column: "company_contracts.grace_days", fallback: null, nullable: "YES" },
       { column: "company_contracts.top_up_roles", fallback: null, nullable: "YES" },
-      { column: "enterprise_bundle_versions.monthly_price_rupiah", fallback: null, nullable: "YES" },
+      { column: "enterprise_bundle_versions.monthly_price_usd_cents", fallback: null, nullable: "YES" },
       { column: "enterprise_bundle_versions.pool_credits_per_period", fallback: null, nullable: "YES" },
     ]);
   });
