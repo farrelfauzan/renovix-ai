@@ -24,7 +24,10 @@
     "seed:offers": "bun prisma/seed-offers.ts",
     "seed:tier-rates": "bun prisma/seed-tier-rates.ts",
     "openapi:generate": "UPDATE_OPENAPI=1 nx run api:test --testPathPatterns=openapi-document --skip-nx-cache",
-    "check": "bun scripts/check.ts"
+    "check": "bun scripts/check.ts",
+    "design:generate": "bun scripts/generate-design-assets.ts",
+    "design:contrast": "bun scripts/check-design-contrast.ts",
+    "design:check": "bun scripts/generate-design-assets.ts --check"
   },
   "devDependencies": {
     "@nestjs/schematics": "^11.0.0",
@@ -111,6 +114,7 @@
     "exceljs": "^4.4.0",
     "fastify": "^5.8.4",
     "framer-motion": "^12.38.0",
+    "geist": "^1.8.2",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.14.0",
     "marked": "^18.0.3",

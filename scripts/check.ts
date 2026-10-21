@@ -230,6 +230,9 @@ const steps: Array<[string, () => Promise<boolean>]> = [
   ["helper rule", async () => (await run(["bun", "scripts/check-helper-rule.ts"])) === 0],
   ["prisma imports", async () => (await run(["bun", "scripts/check-prisma-imports.ts"])) === 0],
   ["request bodies", async () => (await run(["bun", "scripts/check-request-bodies.ts"])) === 0],
+  // RNX-74: the design tokens and logo assets in the three apps match design/tokens.json (defined once).
+  ["design assets", async () => (await run(["bun", "scripts/generate-design-assets.ts", "--check"])) === 0],
+  ["design contrast", async () => (await run(["bun", "scripts/check-design-contrast.ts"])) === 0],
   ["prisma generate", async () => (await run(["bun", "run", "prisma:generate"])) === 0],
   ["prisma validate", async () => (await run(["bunx", "prisma", "validate"])) === 0],
   ["api tests", testStep],
