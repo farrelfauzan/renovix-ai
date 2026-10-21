@@ -1,8 +1,8 @@
 import type { PolicyCheckResult } from "../service/memory-policy.service";
 
 const SENSITIVE_PATTERNS = [
-  // API keys
-  /\b(sk_live_|sk_test_|pk_live_|pk_test_)[a-zA-Z0-9]+/gi,
+  // API keys (RNX-18: ours are rnx_live_)
+  /\b(rnx_live_|sk_live_|sk_test_|pk_live_|pk_test_)[a-zA-Z0-9]+/gi,
   // Email addresses
   /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
   // Phone numbers

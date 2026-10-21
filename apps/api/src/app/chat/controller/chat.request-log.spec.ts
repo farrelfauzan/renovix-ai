@@ -15,7 +15,7 @@ import { AppLogger } from "../../../common/logger/app-logger";
 import { createFastifyAdapter } from "../../../common/utils/create-fastify-adapter";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import {
   blockOutbound,
@@ -37,7 +37,7 @@ jest.mock("../service/conversation.service", () => ({ ConversationService: class
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 
 const PRIMARY_KEY = "rnx17-marker-key-not-real-primary";
-const API_KEY = "sk_live_rnx17-test-key";
+const API_KEY = testApiKey("rnx17-test-key");
 
 /** Every line written to stdout or stderr while `act` runs (the writes are swallowed). */
 async function captureOutput(act: () => Promise<unknown>): Promise<string[]> {
@@ -133,7 +133,8 @@ describe("RNX-17 AC1: the log lines of one chat request carry its id, route and 
 
   it("the provider answers 400 → HTTP 500; every line of that request has its id, the route and the account id", async () => {
     primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 1);
     requestIds.length = 0;
     let status = 0;

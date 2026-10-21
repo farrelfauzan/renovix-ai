@@ -28,7 +28,6 @@ model User {
   locale        String?        @default("en")
 
   // Auth
-  apiKey        String         @unique @default(uuid())
   lastLoginAt   DateTime?      @map("last_login_at") @db.Timestamptz()
   lastLoginIp   String?        @map("last_login_ip")
 
@@ -60,8 +59,27 @@ model User {
   reminders       Reminder[]
   purchaseSnapshots PurchaseSnapshot[]
   creditAccounts  CreditAccount[]
+  apiKeys         ApiKey[]
 
   @@map("users")
+}
+
+/// A user's API key (RNX-18, D49, D50). The plaintext (`rnx_live_` + 76 hex characters) is shown once and never
+/// stored: only its prefix (the first 12 hex characters, the lookup) and its HMAC-SHA256 under API_KEY_HASH_SECRET.
+model ApiKey {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prefix     String    @unique
+  keyHash    String    @map("key_hash")
+  name       String
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz()
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz()
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz()
+
+  @@index([userId, createdAt])
+  @@map("api_keys")
 }
 
 model UsageLog {

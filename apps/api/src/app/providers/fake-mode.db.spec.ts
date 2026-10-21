@@ -30,9 +30,11 @@ import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import {
   createAgent,
+  createApiKey,
   createPlan,
   createSubscription,
   createUser,
+  testApiKey,
 } from "../../../test/factories";
 import { AgentLinkService } from "../agent/service/agent-link.service";
 import { WorkspaceQuotaService } from "../workspace/service/workspace-quota.service";
@@ -328,13 +330,14 @@ describe("RX-88: knowledge chunks are embedded locally with LLM_PROVIDER=fake", 
   afterAll(() => app?.close());
 
   it("AC5: POST /v1/knowledge/bases/:id/chunks stores a 1024-dim vector; same text, same vector", async () => {
-    const user = await createUser(prisma, { apiKey: "sk_live_rx88" });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: testApiKey("rx88") });
     const kb = await prisma.knowledgeBase.create({ data: { userId: user.id, name: "KB" } });
 
     const res = await app.inject({
       method: "POST",
       url: `/v1/knowledge/bases/${kb.id}/chunks`,
-      headers: { authorization: "Bearer sk_live_rx88" },
+      headers: { authorization: `Bearer ${testApiKey("rx88")}` },
       payload: { chunks: [{ content: "alpha" }, { content: "beta" }, { content: "alpha" }] },
     });
 

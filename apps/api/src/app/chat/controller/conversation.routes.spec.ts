@@ -8,7 +8,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 
 // RX-136: the conversation routes and conditions that the ownership suite (RX-15,
 // conversation.ownership.spec.ts) does not cover, written against the code before its queries moved
@@ -47,8 +47,10 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
 
   // Alice and Bob each have one conversation.
   const setup = async () => {
-    const alice = await createUser(prisma, { apiKey: "sk_live_alice" });
-    const bob = await createUser(prisma, { apiKey: "sk_live_bob" });
+    const alice = await createUser(prisma);
+    await createApiKey(prisma, alice.id, { apiKey: testApiKey("alice") });
+    const bob = await createUser(prisma);
+    await createApiKey(prisma, bob.id, { apiKey: testApiKey("bob") });
     const aliceConversation = await prisma.conversation.create({
       data: { userId: alice.id, model: "test-model", messages: { create: [{ role: "user", content: "Alice's secret" }] } },
     });
@@ -65,7 +67,7 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
       const res = await app.inject({
         method: "GET",
         url: `/conversations/${aliceConversation.id}`,
-        headers: key("sk_live_bob"),
+        headers: key(testApiKey("bob")),
       });
 
       expect(res.statusCode).toBe(404);
@@ -79,7 +81,7 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
       const res = await app.inject({
         method: "DELETE",
         url: `/conversations/${aliceConversation.id}`,
-        headers: key("sk_live_bob"),
+        headers: key(testApiKey("bob")),
       });
 
       expect(res.statusCode).toBe(404);
@@ -93,8 +95,8 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
       data: { userId: alice.id, model: "m2", title: "Older", updatedAt: new Date(Date.now() - 60_000) },
     });
 
-    const all = await app.inject({ method: "GET", url: "/conversations", headers: key("sk_live_alice") });
-    const page = await app.inject({ method: "GET", url: "/conversations?limit=1&offset=1", headers: key("sk_live_alice") });
+    const all = await app.inject({ method: "GET", url: "/conversations", headers: key(testApiKey("alice")) });
+    const page = await app.inject({ method: "GET", url: "/conversations?limit=1&offset=1", headers: key(testApiKey("alice")) });
 
     expect(all.statusCode).toBe(200);
     expect(all.json()).toMatchObject({ object: "list", total: 2, limit: 20, offset: 0 });
@@ -105,7 +107,8 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
   });
 
   it("GET /conversations/:id: the messages oldest first, a stored document rehydrated", async () => {
-    const alice = await createUser(prisma, { apiKey: "sk_live_alice" });
+    const alice = await createUser(prisma);
+    await createApiKey(prisma, alice.id, { apiKey: testApiKey("alice") });
     const conversation = await prisma.conversation.create({
       data: { userId: alice.id, model: "test-model", title: "Mine" },
     });
@@ -125,7 +128,7 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
     const stored = { format: "pdf", url: "https://files.invalid/a.pdf", filename: "a.pdf", expiresAt: "2026-12-01" };
     documentService.getDocumentFromStorage.mockResolvedValue(stored);
 
-    const res = await app.inject({ method: "GET", url: `/conversations/${conversation.id}`, headers: key("sk_live_alice") });
+    const res = await app.inject({ method: "GET", url: `/conversations/${conversation.id}`, headers: key(testApiKey("alice")) });
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ id: conversation.id, userId: alice.id, title: "Mine", model: "test-model" });

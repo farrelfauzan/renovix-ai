@@ -17,7 +17,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { TransactionService } from "../../prisma/transaction.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { createResolvableModel } from "../../../../test/provider-model";
@@ -42,7 +42,7 @@ jest.mock("../../document/service/document.service", () => ({ DocumentService: c
 
 const P1_KEY = "rnx179-marker-key-not-real-p1";
 const P2_KEY = "rnx179-marker-key-not-real-p2";
-const API_KEY = "sk_live_rnx179-test-key";
+const API_KEY = testApiKey("rnx179-test-key");
 const M_SLUG = "cc/x";
 const F_SLUG = "y";
 /** docs/credits.md tier rates (credits per 1,000,000 tokens: new / cached / output). */
@@ -127,7 +127,8 @@ describe("RNX-179: fallback models on POST /chat/completions (Fastify, test data
   };
 
   const fundedUser = async () => {
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 5);
     return user;
   };

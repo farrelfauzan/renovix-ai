@@ -7,7 +7,7 @@ import { SystemKnowledgeService } from "../service/system-knowledge.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 
 // RX-67: POST /v1/admin/system-kb/sync is removed; the startup and hourly
 // syncs stay. The real KnowledgeModule runs on the test database. Nothing
@@ -89,13 +89,13 @@ describe("RX-67: POST /v1/admin/system-kb/sync is removed (Fastify, test databas
       expect(sync).not.toHaveBeenCalled();
     });
 
-    it("AC2: a normal user's sk_live_ key gets 403 or 404 and sync never runs", async () => {
-      await createUser(prisma, { apiKey: "sk_live_normal-user" });
+    it("AC2: a normal user's API key (rnx_live_, RNX-18) gets 403 or 404 and sync never runs", async () => {
+      await createApiKey(prisma, (await createUser(prisma)).id, { apiKey: testApiKey("normal-user") });
 
       const res = await app.inject({
         method: "POST",
         url: ROUTE,
-        headers: { authorization: "Bearer sk_live_normal-user" },
+        headers: { authorization: `Bearer ${testApiKey("normal-user")}` },
       });
 
       expect([403, 404]).toContain(res.statusCode);

@@ -7,7 +7,7 @@ import { PortalGuard, PortalIdentity } from "./portal.guard";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { CreditService } from "../../billing/service/credit.service";
 
@@ -116,13 +116,22 @@ describe("PortalGuard (RX-15 characterization, test database)", () => {
   });
 
   it("an API key (wrong credential type) is skipped: anonymous, even when it is the user's real key", async () => {
-    await createUser(prisma, { apiKey: "sk_live_portal-key" });
+    await createApiKey(prisma, (await createUser(prisma)).id, { apiKey: testApiKey("portal-key") });
 
     const identity = await identityFor({
       "x-portal-session": SESSION,
-      authorization: "Bearer sk_live_portal-key",
+      authorization: `Bearer ${testApiKey("portal-key")}`,
     });
     expect(identity.user).toBeUndefined();
+  });
+
+  it("RNX-18: an rnx_live_ key is recognised as an API key and never tried as a JWT", async () => {
+    const verify = jest.spyOn(JwtService.prototype, "verify");
+
+    await identityFor({ "x-portal-session": SESSION, authorization: `Bearer ${testApiKey("portal-key")}` });
+
+    expect(verify).not.toHaveBeenCalled();
+    verify.mockRestore();
   });
 
   it("a valid JWT for a user that is not in the database: anonymous", async () => {

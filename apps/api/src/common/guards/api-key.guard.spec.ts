@@ -5,12 +5,15 @@ import { ApiKeyGuard } from "./api-key.guard";
 import { PrismaService } from "../../app/prisma/prisma.service";
 import { createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
-import { createUser } from "../../../test/factories";
+import { createApiKey, createUser, testApiKey } from "../../../test/factories";
 
 const contextFor = (request: { headers: Record<string, string>; user?: unknown }) =>
   ({ switchToHttp: () => ({ getRequest: () => request }) }) as unknown as ExecutionContext;
 
-describe("ApiKeyGuard (test database)", () => {
+const VALID_KEY = testApiKey("valid-key");
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+describe("ApiKeyGuard (RNX-18, test database)", () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let guard: ApiKeyGuard;
@@ -25,63 +28,84 @@ describe("ApiKeyGuard (test database)", () => {
 
   afterAll(() => moduleRef?.close());
 
-  it("allows a user's own API key and attaches the user", async () => {
-    const user = await createUser(prisma, { apiKey: "sk_live_valid-key" });
-    const request = { headers: { authorization: "Bearer sk_live_valid-key" } } as {
-      headers: Record<string, string>;
-      user?: unknown;
-    };
+  const requestWith = (authorization: string) =>
+    ({ headers: { authorization } }) as { headers: Record<string, string>; user?: unknown };
+  const check = (authorization: string) => guard.canActivate(contextFor(requestWith(authorization)));
+
+  it("control: allows a user's own key, attaches the user and records the key's last use", async () => {
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY });
+    const request = requestWith(`Bearer ${VALID_KEY}`);
 
     await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
-    expect(request.user).toMatchObject({ id: user.id, email: user.email });
+    expect(request.user).toEqual({ id: user.id, email: user.email });
+    expect((await prisma.apiKey.findFirstOrThrow()).lastUsedAt).toBeInstanceOf(Date);
+  });
+
+  it("AC2: denies a revoked key (and does not record a use)", async () => {
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY, revokedAt: new Date() });
+
+    await expect(check(`Bearer ${VALID_KEY}`)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect((await prisma.apiKey.findFirstOrThrow()).lastUsedAt).toBeNull();
+  });
+
+  it("AC3: denies a key past its expiry", async () => {
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY, expiresAt: new Date(Date.now() - 1000) });
+
+    await expect(check(`Bearer ${VALID_KEY}`)).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it("AC3 control: allows a key whose expiry is still ahead", async () => {
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY, expiresAt: new Date(Date.now() + DAY_MS) });
+
+    await expect(check(`Bearer ${VALID_KEY}`)).resolves.toBe(true);
+  });
+
+  it("AC4: denies a wrong key that carries a valid prefix (the hash compare decides)", async () => {
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY });
+    const samePrefixOtherSecret = `${VALID_KEY.slice(0, -1)}${VALID_KEY.endsWith("0") ? "1" : "0"}`;
+
+    await expect(check(`Bearer ${samePrefixOtherSecret}`)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect((await prisma.apiKey.findFirstOrThrow()).lastUsedAt).toBeNull();
   });
 
   it.each([
     ["no Authorization header", {}],
-    ["a key without the sk_live_ prefix", { authorization: "Bearer not-a-live-key" }],
-    ["an unknown key", { authorization: "Bearer sk_live_unknown" }],
+    ["the old sk_live_ format", { authorization: "Bearer sk_live_valid-key" }],
+    ["a key without the rnx_live_ prefix", { authorization: "Bearer not-a-live-key" }],
+    ["an unknown well-formed key", { authorization: `Bearer ${testApiKey("unknown")}` }],
+    ["a key that is too short", { authorization: `Bearer ${VALID_KEY.slice(0, -1)}` }],
+    ["a key in upper case", { authorization: `Bearer rnx_live_${VALID_KEY.slice(9).toUpperCase()}` }],
   ])("denies %s", async (_case, headers: Record<string, string>) => {
-    await createUser(prisma, { apiKey: "sk_live_valid-key" });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY });
 
-    await expect(guard.canActivate(contextFor({ headers }))).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(guard.canActivate(contextFor({ headers }))).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  // RX-15 characterization: wrong credential type, malformed header, and the
-  // closest thing to "expired" (API keys have no expiry; a replaced key is dead).
+  // RX-15 characterization: wrong credential type and malformed headers.
   it.each([
     ["a JWT (wrong credential type)", () => `Bearer ${jwt.sign({ userId: "u" }, "any-secret")}`],
-    ["a lowercase bearer scheme", () => "bearer sk_live_valid-key"],
-    ["a Basic scheme", () => "Basic sk_live_valid-key"],
-    ["the key without a scheme", () => "sk_live_valid-key"],
+    ["a lowercase bearer scheme", () => `bearer ${VALID_KEY}`],
+    ["a Basic scheme", () => `Basic ${VALID_KEY}`],
+    ["the key without a scheme", () => VALID_KEY],
   ])("denies %s", async (_case, header: () => string) => {
-    await createUser(prisma, { apiKey: "sk_live_valid-key" });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY });
 
-    await expect(
-      guard.canActivate(contextFor({ headers: { authorization: header() } })),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
-  });
-
-  it("denies a key after the user's key was replaced (no expiry field; rotation is the only way a key dies)", async () => {
-    const user = await createUser(prisma, { apiKey: "sk_live_old-key" });
-    await prisma.user.update({ where: { id: user.id }, data: { apiKey: "sk_live_new-key" } });
-
-    await expect(
-      guard.canActivate(contextFor({ headers: { authorization: "Bearer sk_live_old-key" } })),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(check(header())).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   // NOTE (RX-15): user.status ("active" | "suspended" | "deleted") is not read
   // by any guard or service today; a suspended user's key still works.
   it("allows the key of a user with status 'suspended' (status is not checked)", async () => {
-    const user = await createUser(prisma, { apiKey: "sk_live_suspended", status: "suspended" });
-    const request = { headers: { authorization: "Bearer sk_live_suspended" } } as {
-      headers: Record<string, string>;
-      user?: unknown;
-    };
+    const user = await createUser(prisma, { status: "suspended" });
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY });
 
-    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
-    expect(request.user).toMatchObject({ id: user.id });
+    await expect(check(`Bearer ${VALID_KEY}`)).resolves.toBe(true);
   });
 });

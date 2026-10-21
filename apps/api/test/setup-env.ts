@@ -24,4 +24,6 @@ process.env.ADMIN_ORIGIN = "http://admin.renovix.test";
 process.env.MCP_OAUTH_STATE_SECRET = "test-mcp-oauth-state-secret-not-a-real-secret";
 // Provider key encryption (RX-177): required, no fallback; an obviously fake 32-byte test key.
 process.env.LLM_KEY_ENCRYPTION_KEY = Buffer.alloc(32, 11).toString("hex");
+// API key hashing (RNX-18): required, no fallback; an obviously fake test value (createApiKey in factories.ts uses it).
+process.env.API_KEY_HASH_SECRET = "test-api-key-hash-secret-not-a-real-secret";
 jest.mock("../src/lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));

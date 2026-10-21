@@ -6,6 +6,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { API_KEY_FORMAT } from "../../auth/config/api-key-format";
 import { PortalUserService } from "../service/portal-user.service";
 import { auth } from "../../../lib/auth";
 
@@ -44,8 +45,8 @@ export class PortalGuard implements CanActivate {
 
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
-      // Skip if it looks like an API key
-      if (!token.startsWith("sk_live_")) {
+      // Skip if it looks like an API key (RNX-18: rnx_live_)
+      if (!token.startsWith(API_KEY_FORMAT.marker)) {
         try {
           const payload = this.jwtService.verify(token);
           const dbUser = await this.portalUsers.findPortalUser(

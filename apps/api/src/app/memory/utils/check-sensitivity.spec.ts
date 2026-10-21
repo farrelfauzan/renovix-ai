@@ -2,12 +2,17 @@ import { checkSensitivity } from "./check-sensitivity";
 
 const ALLOWED = { allowed: true };
 const SENSITIVE = { allowed: false, reason: "Contains sensitive data (credentials, PII, or tokens)" };
+/** RNX-18: a planted key in our format (rnx_live_ + 76 hex), built here so no key-shaped literal sits in the file. */
+const PLANTED_RNX_KEY = `rnx_live_${"0a1b".repeat(19)}`;
 
 describe("RX-130: checkSensitivity", () => {
   it.each([
     { rule: "API key", content: "my key is sk_live_abc123", expected: SENSITIVE },
     { rule: "API key, upper case prefix", content: "my key is PK_TEST_abc123", expected: SENSITIVE },
     { rule: "API key prefix with nothing after it", content: "the prefix sk_live_ alone", expected: ALLOWED },
+    { rule: "RNX-18: our API key (rnx_live_) in a memory", content: `remember my key ${PLANTED_RNX_KEY} please`, expected: SENSITIVE },
+    { rule: "RNX-18: our API key alone in a chat text", content: PLANTED_RNX_KEY, expected: SENSITIVE },
+    { rule: "RNX-18: our prefix with nothing after it", content: "keys start with rnx_live_ and hex", expected: ALLOWED },
     { rule: "email address", content: "write to budi@example.co.id please", expected: SENSITIVE },
     { rule: "email written out in words", content: "budi at example dot com", expected: ALLOWED },
     { rule: "phone number with dashes", content: "call me on 0812-345-6789", expected: SENSITIVE },

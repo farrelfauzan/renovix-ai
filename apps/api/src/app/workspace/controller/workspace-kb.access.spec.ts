@@ -31,6 +31,7 @@ import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import {
   createAgent,
+  createApiKey,
   createPlan,
   createSubscription,
   createUser,
@@ -120,7 +121,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
     "x-portal-session": SESSION,
     authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: user.email })}`,
   });
-  const apiKey = (user: { apiKey: string | null }) => ({ authorization: `Bearer ${user.apiKey}` });
+  const apiKey = (user: { apiKey: string }) => ({ authorization: `Bearer ${user.apiKey}` });
 
   const insertChunk = async (knowledgeBaseId: string, content: string) => {
     const id = randomUUID();
@@ -132,19 +133,22 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
 
   // An Enterprise owner's workspace (so only membership decides), with a base
   // created by a former admin whose member row has since been deleted.
-  /** A user whose paid wallet holds 5 credits on the ledger (RX-22: the portal reads the ledger, not User.balance). */
-  const fundedUser = async (data: Parameters<typeof createUser>[1] = {}) => {
-    const user = await createUser(prisma, data);
+  /**
+   * A user whose paid wallet holds 5 credits on the ledger (RX-22: the portal reads the ledger, not User.balance),
+   * with an API key (RNX-18: stored hashed by createApiKey; the plaintext is returned as `apiKey`).
+   */
+  const fundedUser = async () => {
+    const user = await createUser(prisma);
     await fundPaidWallet(prisma, user.id, 5);
-    return user;
+    return { ...user, apiKey: await createApiKey(prisma, user.id) };
   };
 
   const setup = async () => {
     const enterprise = await createPlan(prisma, { slug: "enterprise", maxWorkspaceUsers: 100 });
-    const owner = await fundedUser({ apiKey: `sk_live_${randomUUID()}` });
-    const admin = await fundedUser({ apiKey: `sk_live_${randomUUID()}` });
-    const member = await fundedUser({ apiKey: `sk_live_${randomUUID()}` });
-    const former = await fundedUser({ apiKey: `sk_live_${randomUUID()}` });
+    const owner = await fundedUser();
+    const admin = await fundedUser();
+    const member = await fundedUser();
+    const former = await fundedUser();
     await createSubscription(prisma, { userId: owner.id, planId: enterprise.id });
     const channel = await prisma.channel.create({ data: { userId: owner.id, name: "Team" } });
     const workspace = await createWorkspace(prisma, { ownerId: owner.id, channelId: channel.id });

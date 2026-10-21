@@ -10,7 +10,7 @@ import type { AdminRequest } from "../../app/admin-auth/types/admin-request";
 import { PrismaService } from "../../app/prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
-import { createUser } from "../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../test/factories";
 import { BACK_OFFICE_ORIGIN, seedAdminRoles } from "../../../test/admin-auth";
 
 // RX-96: the staff permissions of the global AccessGuard, through real HTTP (Fastify `inject`) with the
@@ -64,7 +64,7 @@ class ProductProbeController {
   }
 }
 
-const API_KEY = "sk_live_rx96-valid-key";
+const API_KEY = testApiKey("rx96-valid-key");
 const BETTER_AUTH_COOKIE = "better-auth.session_token=rx96";
 const ACCESS = "rx_admin_access";
 const ADJUST = "/admin/rbac-probe/credits/adjust";
@@ -89,7 +89,8 @@ describe("AccessGuard staff permissions (RX-96, Fastify, test database)", () => 
   beforeEach(async () => {
     await resetDatabase(prisma);
     await seedAdminRoles(prisma);
-    user = await createUser(prisma, { apiKey: API_KEY });
+    user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     writeAdjustment.mockReset();
     mockGetSession.mockReset();
     mockGetSession.mockResolvedValue(null);

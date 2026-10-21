@@ -1,6 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "@generated/prisma/client.js";
 import { ProviderKeyCryptoService } from "../src/app/admin-providers/service/provider-key-crypto.service";
+import { API_KEY_FORMAT } from "../src/app/auth/config/api-key-format";
+import { hashApiKey } from "../src/app/auth/utils/hash-api-key";
 import { ensureDefaultWorkspace } from "../src/app/workspace/repository/ensure-default-workspace";
 
 // Small factories for the test database: required fields only, unique values
@@ -15,6 +17,39 @@ export function createUser(
   return prisma.user.create({
     data: { email: `user-${unique()}@test.local`, ...data },
   });
+}
+
+/**
+ * A fixed, well-formed API key for a spec (RNX-18): `rnx_live_` + 76 hex characters derived from `seed`, so a spec
+ * can name its key in a constant. Different seeds give different prefixes. Store it with `createApiKey`.
+ */
+export function testApiKey(seed: string): string {
+  const hex = createHash("sha512").update(seed).digest("hex");
+  return `${API_KEY_FORMAT.marker}${hex.slice(0, API_KEY_FORMAT.randomBytes * 2)}`;
+}
+
+/**
+ * An API key of this user (RNX-18), stored as the API stores one: its prefix and its HMAC under the test
+ * API_KEY_HASH_SECRET (setup-env.ts), never the plaintext. Returns the plaintext: `apiKey` when given (e.g. from
+ * `testApiKey`), else a random key. `revokedAt`, `expiresAt` and `name` can be set.
+ */
+export async function createApiKey(
+  prisma: PrismaClient,
+  userId: string,
+  { apiKey, ...data }: Partial<Pick<Prisma.ApiKeyUncheckedCreateInput, "name" | "revokedAt" | "expiresAt">> & { apiKey?: string } = {},
+): Promise<string> {
+  const plaintext = apiKey ?? `${API_KEY_FORMAT.marker}${randomBytes(API_KEY_FORMAT.randomBytes).toString("hex")}`;
+  const prefixStart = API_KEY_FORMAT.marker.length;
+  await prisma.apiKey.create({
+    data: {
+      userId,
+      name: `key-${unique()}`,
+      prefix: plaintext.slice(prefixStart, prefixStart + API_KEY_FORMAT.prefixLength),
+      keyHash: hashApiKey(plaintext, process.env.API_KEY_HASH_SECRET as string),
+      ...data,
+    },
+  });
+  return plaintext;
 }
 
 export function createPlan(

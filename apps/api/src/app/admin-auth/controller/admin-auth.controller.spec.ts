@@ -6,7 +6,7 @@ import { PasswordService } from "../service/password.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import {
   accessCookie,
   ADMIN_PASSWORD,
@@ -29,7 +29,7 @@ jest.mock("../../../lib/auth", () => ({
   auth: { api: { getSession: (...args: unknown[]) => mockGetSession(...args) } },
 }));
 
-const API_KEY = "sk_live_rx94-controller-key";
+const API_KEY = testApiKey("rx94-controller-key");
 const GENERIC_401 = { statusCode: 401, message: "Invalid credentials", error: "Unauthorized" };
 
 describe("AdminAuthController (RX-94, Fastify, test database)", () => {
@@ -158,7 +158,8 @@ describe("AdminAuthController (RX-94, Fastify, test database)", () => {
     let user: { id: string; email: string };
 
     beforeEach(async () => {
-      user = await createUser(prisma, { apiKey: API_KEY });
+      user = await createUser(prisma);
+      await createApiKey(prisma, user.id, { apiKey: API_KEY });
     });
 
     const loginJwt = () => `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`;

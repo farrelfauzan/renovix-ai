@@ -7,7 +7,7 @@ import { Access } from "../decorators/access.decorator";
 import { PrismaService } from "../../app/prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
-import { createUser } from "../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../test/factories";
 import { fundPaidWallet } from "../../../test/credit-funding";
 
 // RX-114: the global AccessGuard through real HTTP (Fastify `inject`), with
@@ -136,7 +136,7 @@ class UndeclaredController {
 }
 
 const SESSION = "11111111-1111-4111-8111-111111111111";
-const API_KEY = "sk_live_rx114-valid-key";
+const API_KEY = testApiKey("rx114-valid-key");
 const COOKIE = "better-auth.session_token=rx114";
 
 describe("AccessGuard (RX-114, Fastify, test database)", () => {
@@ -145,6 +145,7 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
   let app: NestFastifyApplication;
   let user: { id: string; email: string };
   let userLookups: jest.SpyInstance;
+  let keyLookups: jest.SpyInstance;
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
@@ -155,15 +156,20 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    user = await createUser(prisma, { apiKey: API_KEY });
+    user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     // RX-22 (D202-2): the portal tier reads the ledger's paid wallet, so the portal user is funded there too.
     await fundPaidWallet(prisma, user.id, 5);
     mockGetSession.mockReset();
     mockGetSession.mockResolvedValue(null);
     userLookups = jest.spyOn(prisma.user, "findUnique");
+    keyLookups = jest.spyOn(prisma.apiKey, "findUnique");
   });
 
-  afterEach(() => userLookups.mockRestore());
+  afterEach(() => {
+    userLookups.mockRestore();
+    keyLookups.mockRestore();
+  });
 
   afterAll(() => app?.close());
 
@@ -199,7 +205,9 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       const res = await get("/probe/login", { authorization: `Bearer ${API_KEY}` });
 
       expect(res.statusCode).toBe(403);
-      expect(userLookups).toHaveBeenCalledTimes(1); // only after jwt and session failed
+      // RNX-18: the key is looked up in api_keys (with its user), not in users
+      expect(keyLookups).toHaveBeenCalledTimes(1); // only after jwt and session failed
+      expect(userLookups).toHaveBeenCalledTimes(0);
     });
 
     it("X-Portal-Session alone: 401 (an unverified id is not a signed-in user)", async () => {
@@ -213,7 +221,7 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       ["a garbage bearer", { authorization: "Bearer not.a.jwt" }],
       ["an expired login JWT", () => ({ authorization: loginJwt({ expiresIn: -60 }) })],
       ["a login JWT signed with another secret", { authorization: `Bearer ${jwt.sign({ userId: "u" }, "another-secret")}` }],
-      ["an unknown API key", { authorization: "Bearer sk_live_unknown" }],
+      ["an unknown API key", { authorization: `Bearer ${testApiKey("unknown")}` }],
       ["a cookie without a session", { cookie: COOKIE }],
     ])("%s: 401", async (_case, headers: Record<string, string> | (() => Record<string, string>)) => {
       const res = await get("/probe/login", typeof headers === "function" ? headers() : headers);
@@ -257,7 +265,8 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json().user).toEqual({ id: user.id, email: user.email });
-      expect(userLookups).toHaveBeenCalledTimes(1);
+      expect(keyLookups).toHaveBeenCalledTimes(1); // RNX-18: api_keys by prefix, with its user
+      expect(userLookups).toHaveBeenCalledTimes(0);
     });
 
     it("valid login JWT: 403", async () => {
@@ -278,7 +287,7 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       ["nothing", {}, "Missing or invalid Authorization header"],
       ["X-Portal-Session alone", { "x-portal-session": SESSION }, "Missing or invalid Authorization header"],
       ["a garbage bearer", { authorization: "Bearer not.a.jwt" }, "Invalid API key format"],
-      ["an unknown API key", { authorization: "Bearer sk_live_unknown" }, "Invalid API key"],
+      ["an unknown API key", { authorization: `Bearer ${testApiKey("unknown")}` }, "Invalid API key"],
     ])("%s: 401 with the API key check's own message", async (_case, headers: Record<string, string>, message) => {
       const res = await get("/probe/api-key", headers);
 

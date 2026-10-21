@@ -180,7 +180,7 @@ Local uploads do not work until RNX-65 replaces the MinIO images, which no longe
 
 Key variables:
 
-`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY`, `MCP_OAUTH_STATE_SECRET` and `LLM_KEY_ENCRYPTION_KEY` are required in every mode (RX-110, RX-151, RX-177, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` or `LLM_KEY_ENCRYPTION_KEY` that is not 32 bytes.
+`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY`, `MCP_OAUTH_STATE_SECRET`, `LLM_KEY_ENCRYPTION_KEY` and `API_KEY_HASH_SECRET` are required in every mode (RX-110, RX-151, RX-177, RNX-18, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` or `LLM_KEY_ENCRYPTION_KEY` that is not 32 bytes.
 
 | Variable | Required | Notes |
 |----------|----------|-------|
@@ -191,6 +191,7 @@ Key variables:
 | `ADMIN_TOTP_ENCRYPTION_KEY` | Yes | AES-256-GCM key for the back-office admins' TOTP secrets at rest (RX-94); no fallback. 32 bytes, base64; generate with `openssl rand -base64 32` |
 | `ADMIN_ORIGIN` | Yes | The back-office app's own origin (RX-156), e.g. `https://admin.renovix.id`; locally `http://localhost:4400`. Every `/admin` route answers 403 to any other `Origin` (the product apps' included) and to a POST/PUT/PATCH/DELETE without `Origin`. Exactly one origin (no path, no trailing slash); no fallback, the API does not start without it. Separate from `CORS_ORIGIN` (the product origins), but in production the API adds it to the CORS allow-list as well (D141) |
 | `IP_HASH_SECRET` | Yes | HMAC key for client IPs (free-tier caps); raw IPs are never stored |
+| `API_KEY_HASH_SECRET` | Yes | HMAC key of the users' API keys (RNX-18): a key is stored only as its prefix and its HMAC-SHA256, never in plain text. Generate with `openssl rand -base64 48`; changing it makes every stored key stop working |
 | `CLIENT_IP_HEADER` | Prod | Header carrying the client IP (e.g. `x-client-ip`); a trusted proxy in front of the API must set it and overwrite client copies. Unset locally (socket address). better-auth reads the same header (RNX-168); unset, it tracks no client IP (its limiter skips, the Nest throttler limits `/api/auth/better/*`) |
 | `ANON_DAILY_IP_CAP` / `ANON_DAILY_GLOBAL_CAP` | -- | Free-tier daily caps per IP / in total (defaults 60 / 2000, day in Asia/Jakarta) |
 | `OPENROUTER_API_KEY` | Yes* | No chat key is required (chat uses provider records since RX-178, RNX-192). It is the fallback for `EMBEDDING_API_KEY` and for the optional daily price refresh key; `OPENROUTER_APP_TITLE` / `OPENROUTER_APP_URL` are optional. *Required only when `EMBEDDING_API_KEY` is not set |

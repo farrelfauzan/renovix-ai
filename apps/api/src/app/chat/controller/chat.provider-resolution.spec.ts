@@ -20,7 +20,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { TransactionService } from "../../prisma/transaction.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { createResolvableModel } from "../../../../test/provider-model";
@@ -48,7 +48,7 @@ const RECORD_KEY = "rx178-marker-key-not-real-record";
 const ROTATED_KEY = "rx178-marker-key-not-real-rotated";
 const ENV_KEY = "rx178-marker-key-not-real-env";
 const FALLBACK_KEY = "rx178-marker-key-not-real-fallback";
-const API_KEY = "sk_live_rx178-test-key";
+const API_KEY = testApiKey("rx178-test-key");
 const SLUG = "fake/route-model";
 
 describe("RX-178: chat calls resolved from the slug to the provider record (Fastify, test database)", () => {
@@ -128,7 +128,8 @@ describe("RX-178: chat calls resolved from the slug to the provider record (Fast
   };
 
   const fundedUser = async () => {
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 5);
     return user;
   };

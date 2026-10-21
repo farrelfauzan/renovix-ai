@@ -12,7 +12,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createApiKey, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 
 // RNX-118 (PRD 10, D81; replaces RX-112's parent-owner suite): an agent's links ("Can call") are listed, added and
 // removed by the workspace owner of the agent only (RNX-203: workspace.ownerId). A collaborator, another user and
@@ -64,7 +64,8 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
       const plan = await createPlan(prisma, { slug: planSlug, maxAgents: 50 });
       const owner = await createUser(prisma);
       const collaborator = await createUser(prisma);
-      const outsider = await createUser(prisma, { apiKey: `sk_live_rnx118_${planSlug}_${Date.now()}` });
+      const outsiderUser = await createUser(prisma);
+      const outsider = { ...outsiderUser, apiKey: await createApiKey(prisma, outsiderUser.id) };
       await createSubscription(prisma, { userId: owner.id, planId: plan.id });
       await createSubscription(prisma, { userId: outsider.id, planId: plan.id });
       const workspace = await createWorkspace(prisma, { ownerId: owner.id });
@@ -138,7 +139,7 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
     const intruders = [
       ["a collaborator (admin member of the workspace)", (s: Seeded) => bearer(s.collaborator)],
       ["another user", (s: Seeded) => bearer(s.outsider)],
-      ["another user's API key", (s: Seeded) => apiKey(s.outsider.apiKey!)],
+      ["another user's API key", (s: Seeded) => apiKey(s.outsider.apiKey)],
     ] as const;
 
     it.each(intruders)("%s adding a link on A: 403, no link stored", async (_label, headersOf) => {
