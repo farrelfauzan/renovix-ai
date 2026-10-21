@@ -63,7 +63,7 @@ export class ChannelChatService {
     message: string,
     options?: { documentFormat?: string },
   ): Promise<ChannelChatResult> {
-    console.log(
+    this.logger.debug(
       `chat called with userId=${userId} channelId=${channelId} agentId=${agentId} message=${message.length} chars options=${JSON.stringify(options)}`,
     );
     // Resolve the channel agent (verifies access)
@@ -170,9 +170,9 @@ export class ChannelChatService {
 
     // When generating a document, instruct agent to research first
     if (options?.documentFormat) {
-      console.log(
+      this.logger.debug(
         `Injecting document generation instructions for format=${options.documentFormat}`,
-      ); // Debug log
+      );
       const formatLabel =
         { pdf: "PDF", docx: "Word document", xlsx: "Excel spreadsheet" }[
           options.documentFormat
@@ -203,9 +203,9 @@ export class ChannelChatService {
         },
       );
 
-      console.log(
+      this.logger.debug(
         `Initial chat setup complete. model=${modelEntry.slug} tools=${toolSchemas.length} messages=${currentMessages.length}`,
-      ); // Debug log
+      );
 
       // One run on the ledger (RX-22b): a new runId, one reservation, a usage entry per model call (root and
       // sub-agents) and a budget stop before each call (docs/credits.md section 13).
