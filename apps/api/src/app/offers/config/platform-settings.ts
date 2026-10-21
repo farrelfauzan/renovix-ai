@@ -48,4 +48,12 @@ export const PLATFORM_SETTINGS = {
   projectionMinSpendCredits: CREDIT_AMOUNT,
   /** Projection: a run-out further away than this many days shows "more than a year" (RX-30). */
   projectionMaxDays: AT_LEAST_ONE,
+  /** Anonymous free-tier chat requests per IP per Jakarta day (RNX-226). No value; the portal still reads ANON_DAILY_IP_CAP. */
+  anonymousRequestsPerIpPerDay: AT_LEAST_ONE,
+  /** Anonymous free-tier chat requests across all IPs per Jakarta day (RNX-226). No value; the portal still reads ANON_DAILY_GLOBAL_CAP. */
+  anonymousRequestsGlobalPerDay: AT_LEAST_ONE,
+  /** Enterprise grace period before freezing, in days, may be 0; the contract field has the same name (D27, open: no value). */
+  graceDays: COUNT,
+  /** High-severity guardrail violations within a fixed 7-day window that make a repeat offender (D59, PRD 09 F9; no value). */
+  repeatOffenderThreshold: AT_LEAST_ONE,
 } as const;

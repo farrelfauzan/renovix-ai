@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { Decimal } from "@prisma/client/runtime/client";
+import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
 import { CreateCodeDto } from "../dto/redeem-code.dto";
 import { InvitationCodeRepository } from "../repository/invitation-code.repository";
@@ -204,9 +205,10 @@ export class CodesService {
   }
 
   /**
-   * Admin: Create an invitation code
+   * Admin: Create an invitation code. `tx` (RNX-226): the admin route's audit transaction, so the code and its
+   * audit row commit together.
    */
-  async createCode(dto: CreateCodeDto, createdById?: string) {
+  async createCode(dto: CreateCodeDto, createdById?: string, tx?: DbTransaction) {
     const code = dto.code || this.generateCode();
 
     // Validate type-specific fields
@@ -241,7 +243,7 @@ export class CodesService {
       durationDays: dto.durationDays ?? null,
       maxRedemptions: dto.maxRedemptions,
       createdById: createdById ?? null,
-    });
+    }, tx);
 
     return { code: created };
   }
@@ -260,18 +262,19 @@ export class CodesService {
   }
 
   /**
-   * Admin: Update a code (deactivate, change max redemptions)
+   * Admin: Update a code (deactivate, change max redemptions). `tx` (RNX-226): the admin route's audit transaction.
    */
   async updateCode(
     id: string,
     data: { isActive?: boolean; maxRedemptions?: number },
+    tx?: DbTransaction,
   ) {
-    const code = await this.codes.findCodeById(id);
+    const code = await this.codes.findCodeById(id, tx);
     if (!code) {
       throw new NotFoundException("Code not found");
     }
 
-    const updated = await this.codes.updateCode(id, data);
+    const updated = await this.codes.updateCode(id, data, tx);
 
     return { code: updated };
   }

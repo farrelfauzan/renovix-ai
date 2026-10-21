@@ -29,6 +29,14 @@ export class CodeRedemptionRepository {
     });
   }
 
+  /** The redemptions of this code, newest first (RNX-226 admin view): who redeemed it, when, and what it granted. */
+  findRedemptionsByCode(codeId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).codeRedemption.findMany({
+      where: { codeId },
+      orderBy: { redeemedAt: "desc" },
+    });
+  }
+
   /** Writes the row that says this user redeemed this code, with what it granted. Only inside a transaction. */
   createRedemption(
     codeId: string,
