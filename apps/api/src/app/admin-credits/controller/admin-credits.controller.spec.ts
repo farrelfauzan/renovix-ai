@@ -3,6 +3,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { TestingModule } from "@nestjs/testing";
 import { AdminAuthModule } from "../../admin-auth/admin-auth.module";
 import { AdminSessionService } from "../../admin-auth/service/admin-session.service";
+import { AdminAuditLogRepository } from "../../admin-auth/repository/admin-audit-log.repository";
 import type { CreditAccountOwner } from "../../billing/types/credit-account-owner";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AdminCreditsModule } from "../admin-credits.module";
@@ -248,6 +249,23 @@ describe("Credit adjustments (RNX-227, Fastify, test database)", () => {
       expect(res.statusCode).toBe(402);
       await expectNothingWritten({ userId: user.id }, "5");
       expect(await assertCreditLedgerInvariants(prisma)).toBe(1);
+    });
+  });
+
+  describe("the entry and its audit row commit together (review round 1)", () => {
+    it("an audit write that fails rolls the adjustment back: 5xx, no entry, no balance change, no audit row; invariants hold", async () => {
+      const user = await createUser(prisma);
+      await fundPaidWallet(prisma, user.id, 5);
+      const { cookie } = await signedIn("finance");
+      const auditWrite = jest.spyOn(moduleRef.get(AdminAuditLogRepository), "create").mockRejectedValueOnce(new Error("audit write failed"));
+
+      const res = await adjust(cookie, bodyFor({ userId: user.id }));
+
+      expect(auditWrite).toHaveBeenCalledTimes(1);
+      expect(res.statusCode).toBeGreaterThanOrEqual(500);
+      await expectNothingWritten({ userId: user.id }, "5");
+      expect(await assertCreditLedgerInvariants(prisma)).toBe(1);
+      auditWrite.mockRestore();
     });
   });
 });
