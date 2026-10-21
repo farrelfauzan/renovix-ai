@@ -299,6 +299,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
         const isTimeout = err?.name === "TimeoutError";
 
         if (isTimeout || (status && [500, 502, 503, 429].includes(status))) {
+          if (attempt === maxRetries - 1) throw err;
           const delay =
             status === 429
               ? Math.min(5000 * 2 ** attempt, 60000)

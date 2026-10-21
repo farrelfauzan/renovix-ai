@@ -173,7 +173,7 @@ describe("RX-178 (D199-4): no env fallback on 502/503 (RX-160 AC3 / D156 pinned 
     await expect(makeAdapter(staleEnv()).chat(request())).rejects.toMatchObject({ status: 503 });
 
     expect(provider.requests).toHaveLength(6);
-    expect(retryDelays).toHaveLength(6);
+    expect(retryDelays).toHaveLength(5);
     expect(envStub.requests).toHaveLength(0);
   });
 
@@ -223,6 +223,51 @@ describe("RX-178 (D199-4): no env fallback on 502/503 (RX-160 AC3 / D156 pinned 
 
     expect(provider.requests).toHaveLength(1);
     expect(envStub.requests).toHaveLength(0);
+  });
+});
+
+describe("RX-191: no back-off wait after the last failed chat attempt", () => {
+  const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
+
+  it("503 on every attempt: 6 attempts, the wait is 2+4+8+15+15 = 44 s, the error reaches the caller", async () => {
+    answer503();
+
+    await expect(makeAdapter(staleEnv()).chat(request())).rejects.toMatchObject({ status: 503 });
+
+    expect(provider.requests).toHaveLength(6);
+    expect(sum(retryDelays)).toBe(44000);
+  });
+
+  it("429 on every attempt: the wait is 5+10+20+40+60 = 135 s", async () => {
+    provider.respond((_r, res) => sendJson(res, 429, {}));
+
+    await expect(makeAdapter(staleEnv()).chat(request())).rejects.toMatchObject({ status: 429 });
+
+    expect(provider.requests).toHaveLength(6);
+    expect(sum(retryDelays)).toBe(135000);
+  });
+
+  it("control: a 503 then a 200 waits once (2 s) and returns the answer", async () => {
+    let calls = 0;
+    provider.respond((_r, res) =>
+      ++calls === 1 ? sendJson(res, 503, {}) : sendJson(res, 200, chatCompletion("from provider")),
+    );
+
+    const res = await makeAdapter(staleEnv()).chat(request());
+
+    expect(res.choices[0].message.content).toBe("from provider");
+    expect(retryDelays).toEqual([2000]);
+  });
+
+  it("the log says \"Retrying\" on attempts 1 to 5 and not on the 6th", async () => {
+    const lines: string[] = [];
+    jest.spyOn(Logger.prototype, "warn").mockImplementation((message: unknown) => void lines.push(String(message)));
+    answer503();
+
+    await expect(makeAdapter(staleEnv()).chat(request())).rejects.toMatchObject({ status: 503 });
+
+    expect(lines.filter((l) => /Retrying/.test(l))).toHaveLength(5);
+    expect(lines.filter((l) => /Attempt 6\/6/.test(l) && /Retrying/.test(l))).toEqual([]);
   });
 });
 
