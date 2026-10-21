@@ -60,6 +60,7 @@ describe("RX-112: channel chat only uses the parent owner's sub-agents (test dat
                 _workspaceId?: string,
                 options?: { injectDelegation?: boolean },
               ) => (options?.injectDelegation ? [DELEGATE] : []),
+              cleanupMcpConnections: async () => undefined,
             },
           },
           {

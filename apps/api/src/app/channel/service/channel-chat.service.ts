@@ -13,6 +13,7 @@ import { RunBudgetStoppedError } from "../../agent/errors/run-budget-stopped.err
 import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
 import type { ChannelChatResult } from "../types/channel-chat-result";
 import type { ChannelToolLoop } from "../types/channel-tool-loop";
+import { createMcpRunSession } from "../../agent/utils/create-mcp-run-session";
 
 const MAX_TOOL_ITERATIONS = 30;
 
@@ -186,64 +187,72 @@ export class ChannelChatService {
       { role: "user", content: message },
     ];
 
-    // Build tool schemas including MCP tools (auto-inject delegation for parent agents)
+    // Build tool schemas including MCP tools (auto-inject delegation for parent agents). RNX-217: the MCP connections
+    // are this run's own (mcpSession), closed on every path (success, refusal, provider error, budget stop).
     const workspaceId = channelAgent.channel?.workspace?.id || undefined;
-    const toolSchemas = await this.toolService.buildToolSchemasWithMcp(
-      agent.tools,
-      agent.id,
-      userId,
-      workspaceId,
-      {
-        injectDelegation: agent.agentType === "parent" && subAgents.length > 0,
-      },
-    );
-
-    console.log(
-      `Initial chat setup complete. model=${modelEntry.slug} tools=${toolSchemas.length} messages=${currentMessages.length}`,
-    ); // Debug log
-
-    // One run on the ledger (RX-22b): a new runId, one reservation, a usage entry per model call (root and
-    // sub-agents) and a budget stop before each call (docs/credits.md section 13).
-    const loop: ChannelToolLoop = {
-      userId,
-      channelId,
-      agentId,
-      message,
-      channelAgent,
-      modelEntry,
-      connection,
-      currentMessages,
-      toolSchemas,
-      maxTokens: options?.documentFormat
-        ? Math.max(agent.maxTokens ?? 4096, 8192)
-        : (agent.maxTokens ?? 4096),
-    };
-    const metered = await this.meter.meterRun(
-      {
-        runnerUserId: userId,
-        firstCall: {
-          model: modelEntry.slug,
-          connection,
-          messages: currentMessages,
-          tools: toolSchemas,
-          max_tokens: loop.maxTokens,
+    const mcpSession = createMcpRunSession();
+    try {
+      const toolSchemas = await this.toolService.buildToolSchemasWithMcp(
+        agent.tools,
+        agent.id,
+        userId,
+        workspaceId,
+        {
+          injectDelegation: agent.agentType === "parent" && subAgents.length > 0,
+          mcpSession,
         },
-        linkedAgents: subAgents,
-      },
-      async (meteredRun) => {
-        // RNX-200: saved once the reservation holds; a refused message saves nothing.
-        await this.channelService.saveMessage(channelAgent.id, userId, { role: "user", content: message });
-        return this.runToolLoop(loop, meteredRun);
-      },
-    );
-    if (metered.status === "completed") return metered.value;
-    const stopContent = budgetStopMessage(metered.held);
-    const stopMessage = await this.channelService.saveMessage(
-      channelAgent.id,
-      userId,
-      { role: "assistant", content: stopContent },
-    );
-    return { content: stopContent, totalTokens: 0, assistantMessageId: stopMessage.id };
+      );
+
+      console.log(
+        `Initial chat setup complete. model=${modelEntry.slug} tools=${toolSchemas.length} messages=${currentMessages.length}`,
+      ); // Debug log
+
+      // One run on the ledger (RX-22b): a new runId, one reservation, a usage entry per model call (root and
+      // sub-agents) and a budget stop before each call (docs/credits.md section 13).
+      const loop: ChannelToolLoop = {
+        userId,
+        channelId,
+        agentId,
+        message,
+        channelAgent,
+        modelEntry,
+        connection,
+        currentMessages,
+        toolSchemas,
+        mcpSession,
+        maxTokens: options?.documentFormat
+          ? Math.max(agent.maxTokens ?? 4096, 8192)
+          : (agent.maxTokens ?? 4096),
+      };
+      const metered = await this.meter.meterRun(
+        {
+          runnerUserId: userId,
+          firstCall: {
+            model: modelEntry.slug,
+            connection,
+            messages: currentMessages,
+            tools: toolSchemas,
+            max_tokens: loop.maxTokens,
+          },
+          linkedAgents: subAgents,
+        },
+        async (meteredRun) => {
+          // RNX-200: saved once the reservation holds; a refused message saves nothing.
+          await this.channelService.saveMessage(channelAgent.id, userId, { role: "user", content: message });
+          return this.runToolLoop(loop, meteredRun);
+        },
+      );
+      if (metered.status === "completed") return metered.value;
+      const stopContent = budgetStopMessage(metered.held);
+      const stopMessage = await this.channelService.saveMessage(
+        channelAgent.id,
+        userId,
+        { role: "assistant", content: stopContent },
+      );
+      return { content: stopContent, totalTokens: 0, assistantMessageId: stopMessage.id };
+    } finally {
+      await this.toolService.cleanupMcpConnections(mcpSession);
+    }
   }
 
   /** The tool loop of one channel chat message, every model call metered on the run (RX-22b). */
@@ -252,7 +261,7 @@ export class ChannelChatService {
     meteredRun: AgentRunBudget,
   ): Promise<ChannelChatResult> {
     const { userId, channelId, agentId, message, channelAgent } = loop;
-    const { modelEntry, connection, currentMessages, toolSchemas } = loop;
+    const { modelEntry, connection, currentMessages, toolSchemas, mcpSession } = loop;
     const agent = channelAgent.agent;
 
     // Tool execution loop
@@ -319,6 +328,7 @@ export class ChannelChatService {
                 toolCall.function.name,
                 args,
                 agent,
+                mcpSession,
                 userId,
                 channelId,
               );

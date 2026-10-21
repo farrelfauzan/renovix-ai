@@ -9,6 +9,7 @@ import { AgentRunMeterService } from "../../agent/service/agent-run-meter.servic
 import { budgetStopMessage } from "../../agent/utils/budget-stop-message";
 import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
 import type { ReminderToolLoop } from "../types/reminder-tool-loop";
+import { createMcpRunSession } from "../../agent/utils/create-mcp-run-session";
 import { Prisma } from "@generated/prisma/client.js";
 
 const MAX_TOOL_ITERATIONS = 15;
@@ -142,49 +143,55 @@ export class ReminderScheduler {
       { role: "user", content: reminder.prompt },
     ];
 
-    // Build tool schemas
-    const toolSchemas = await this.toolService.buildToolSchemasWithMcp(
-      agent.tools,
-      agent.id,
-      reminder.userId,
-      agent.workspaceId || undefined,
-    );
+    // Build tool schemas. RNX-217: the MCP connections are this run's own (mcpSession), closed on every path.
+    const mcpSession = createMcpRunSession();
+    try {
+      const toolSchemas = await this.toolService.buildToolSchemasWithMcp(
+        agent.tools,
+        agent.id,
+        reminder.userId,
+        agent.workspaceId || undefined,
+        { mcpSession },
+      );
 
-    // One run on the ledger (RX-22b), paid by the reminder's owner: a new runId, one reservation, a usage entry per
-    // model call and a budget stop before each call (docs/credits.md section 13).
-    const metered = await this.meter.meterRun(
-      {
-        runnerUserId: reminder.userId,
-        firstCall: {
-          model: modelEntry.slug,
-          connection,
-          messages,
-          tools: toolSchemas,
-          max_tokens: agent.maxTokens ?? 4096,
+      // One run on the ledger (RX-22b), paid by the reminder's owner: a new runId, one reservation, a usage entry per
+      // model call and a budget stop before each call (docs/credits.md section 13).
+      const metered = await this.meter.meterRun(
+        {
+          runnerUserId: reminder.userId,
+          firstCall: {
+            model: modelEntry.slug,
+            connection,
+            messages,
+            tools: toolSchemas,
+            max_tokens: agent.maxTokens ?? 4096,
+          },
+          linkedAgents: [],
         },
-        linkedAgents: [],
-      },
-      (meteredRun) =>
-        this.runReminderLoop(
-          { reminder, chatRoom, modelEntry, connection, messages, toolSchemas },
-          meteredRun,
-        ),
-    );
-    if (metered.status === "completed") return;
-    await this.prisma.channelMessage.create({
-      data: {
-        chatRoomId: chatRoom.id,
-        agentId: agent.id,
-        role: "assistant",
-        content: budgetStopMessage(metered.held),
-        metadata: {
-          source: "reminder",
-          reminderId: reminder.id,
-          scheduledAt: reminder.nextRunAt.toISOString(),
-          error: "budget_stopped",
+        (meteredRun) =>
+          this.runReminderLoop(
+            { reminder, chatRoom, modelEntry, connection, messages, toolSchemas, mcpSession },
+            meteredRun,
+          ),
+      );
+      if (metered.status === "completed") return;
+      await this.prisma.channelMessage.create({
+        data: {
+          chatRoomId: chatRoom.id,
+          agentId: agent.id,
+          role: "assistant",
+          content: budgetStopMessage(metered.held),
+          metadata: {
+            source: "reminder",
+            reminderId: reminder.id,
+            scheduledAt: reminder.nextRunAt.toISOString(),
+            error: "budget_stopped",
+          },
         },
-      },
-    });
+      });
+    } finally {
+      await this.toolService.cleanupMcpConnections(mcpSession);
+    }
   }
 
   /** The tool loop of one reminder run, every model call metered on the run (RX-22b). */
@@ -192,7 +199,7 @@ export class ReminderScheduler {
     loop: ReminderToolLoop,
     meteredRun: AgentRunBudget,
   ): Promise<void> {
-    const { reminder, chatRoom, modelEntry, connection, messages, toolSchemas } = loop;
+    const { reminder, chatRoom, modelEntry, connection, messages, toolSchemas, mcpSession } = loop;
     const agent = reminder.agent;
 
     // Execute LLM call with tool loop
@@ -236,6 +243,7 @@ export class ReminderScheduler {
               toolCall.function.name,
               args,
               agent,
+              mcpSession,
               reminder.userId,
               reminder.channelId,
             );

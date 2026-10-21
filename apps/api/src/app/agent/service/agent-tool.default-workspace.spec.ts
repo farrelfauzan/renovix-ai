@@ -10,6 +10,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
+import { createMcpRunSession } from "../utils/create-mcp-run-session";
 
 // RNX-117 (answer 1, test database): an agent in its owner's default workspace gets no MCP discovery and no web
 // search, exactly like an agent without a workspace before every agent had one (agent-run and the reminder
@@ -72,7 +73,9 @@ describe("RNX-117: no MCP discovery and no web search for an agent in a default 
   it("discovers no MCP tools for an agent in its default workspace: only the built-in tools", async () => {
     const { user, inDefault } = await setup();
 
-    const schemas = await service.buildToolSchemasWithMcp(tools, inDefault.id, user.id, inDefault.workspaceId);
+    const schemas = await service.buildToolSchemasWithMcp(tools, inDefault.id, user.id, inDefault.workspaceId, {
+      mcpSession: createMcpRunSession(),
+    });
 
     expect(schemas).toEqual(service.buildToolSchemas(tools));
     expect(mcpUser.getUserConnectedProviders).not.toHaveBeenCalled();
@@ -81,7 +84,7 @@ describe("RNX-117: no MCP discovery and no web search for an agent in a default 
   it("control: discovers MCP tools in the agent's workspace when it is not a default one", async () => {
     const { user, team, inTeam } = await setup();
 
-    await service.buildToolSchemasWithMcp(tools, inTeam.id, user.id, inTeam.workspaceId);
+    await service.buildToolSchemasWithMcp(tools, inTeam.id, user.id, inTeam.workspaceId, { mcpSession: createMcpRunSession() });
 
     expect(mcpUser.getUserConnectedProviders).toHaveBeenCalledWith(user.id, team.id);
   });
