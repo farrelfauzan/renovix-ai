@@ -147,11 +147,32 @@ model AiModel {
   active           Boolean  @default(true)
   createdAt        DateTime @default(now()) @db.Timestamptz()
   updatedAt        DateTime @updatedAt @db.Timestamptz()
+  /// RNX-179: this model's fallback models, in order.
+  fallbacks        AiModelFallback[] @relation("ModelFallbacks")
+  /// RNX-179: the models that name this one as a fallback.
+  fallbackFor      AiModelFallback[] @relation("FallbackModel")
 
   @@index([tier])
   @@index([active, tier])
   @@index([providerRecordId])
   @@map("ai_models")
+}
+
+/// RNX-179 (D58, D149): one fallback model of a model, at its 0-based position in the model's ordered list. A call
+/// to the model that gets a 502 or 503 goes to the next fallback, with that model's own provider and slug. Set
+/// through PATCH /admin/providers/:id/models/:modelId (fallbackModelIds); a fallback is never the model itself and
+/// its tier is the model's or a lower one (checked on write; a fallback whose tier was raised later is skipped).
+model AiModelFallback {
+  modelId         String  @map("model_id")
+  model           AiModel @relation("ModelFallbacks", fields: [modelId], references: [id], onDelete: Cascade)
+  fallbackModelId String  @map("fallback_model_id")
+  fallbackModel   AiModel @relation("FallbackModel", fields: [fallbackModelId], references: [id], onDelete: Cascade)
+  position        Int
+
+  @@id([modelId, position])
+  @@unique([modelId, fallbackModelId])
+  @@index([fallbackModelId])
+  @@map("ai_model_fallbacks")
 }
 
 /// RX-21: the tier rate table, one row per tier. Each column holds the tier's rate for one

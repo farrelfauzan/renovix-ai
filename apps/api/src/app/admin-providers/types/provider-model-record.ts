@@ -14,4 +14,6 @@ export type ProviderModelRecord = {
   readonly active: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** RNX-179: the model's fallback models, in order. */
+  readonly fallbacks: readonly { readonly fallbackModelId: string }[];
 };

@@ -35,6 +35,8 @@ import { promptText } from "../../billing/utils/prompt-text";
 import { streamedCallTokens } from "../../billing/utils/streamed-call-tokens";
 import { ProviderRouter } from "../../providers/provider-router";
 import type { ChatUsage } from "../../providers/provider.interface";
+import type { ServedBy } from "../../providers/types/served-by";
+import { failedAttemptRecord } from "../../billing/utils/failed-attempt-record";
 import { readStreamError } from "../../providers/utils/read-stream-error";
 import { readUsage } from "../../providers/utils/read-usage";
 import { ProviderHttpError } from "../../providers/errors/provider-http-error";
@@ -720,6 +722,9 @@ export class PortalController {
     let reportedUsage: ChatUsage | undefined;
     let isBilled = false;
     let streamOpened = false;
+    // RNX-179: the last model tried (the one that answered, after any 502/503 before the first payload); each attempt
+    // that fell over is its own provider_error entry under this reservation (docs/credits.md section 3.1 rule 6).
+    let attempt: ServedBy = connection;
 
     try {
       // Emit status: understanding
@@ -741,14 +746,20 @@ export class PortalController {
         res.raw.write(`data: ${JSON.stringify({ status: "generating" })}\n\n`);
       }
 
-      const stream = this.providerRouter.chatStream({
-        signal: disconnected.signal,
-        model: body.model,
-        connection,
-        messages: tunedMessages,
-        temperature: body.temperature,
-        max_tokens: maxTokens,
-      });
+      const stream = this.providerRouter.chatStream(
+        {
+          signal: disconnected.signal,
+          model: body.model,
+          connection,
+          messages: tunedMessages,
+          temperature: body.temperature,
+          max_tokens: maxTokens,
+        },
+        {
+          onAttempt: (tried) => void (attempt = tried),
+          onAttemptFailed: async (failed) => void (await this.credits.recordUsage(failedAttemptRecord(call, failed))),
+        },
+      );
 
       for await (const chunk of stream) {
         streamOpened = true;
@@ -776,7 +787,7 @@ export class PortalController {
       // One usage entry for the call, then settle (docs/credits.md section 3.1 rules 4, 5 and 7): the provider's
       // reported tokens; without a usage chunk (client gone, or none sent) the local chars/4 count (D202-5, D205).
       const entry = await this.finishStreamedCall(
-        call,
+        { ...call, modelId: attempt.slug },
         streamedCallOutcome({ providerFailed: false, aborted: disconnected.signal.aborted, streamOpened }),
         { reportedUsage, sentPrompt, fullContent },
       );
@@ -828,12 +839,12 @@ export class PortalController {
       this.usage
         .logUsage({
           userId: user.id,
-          model: body.model,
+          model: attempt.slug,
           inputTokens: (entry.tokensNew ?? 0) + (entry.tokensCached ?? 0),
           outputTokens: entry.tokensOut ?? 0,
           cost: entry.amount.negated(),
           latencyMs,
-          provider: connection.providerName,
+          provider: attempt.providerName,
         })
         .catch((err) => this.logger.error("Failed to log usage", err));
 
@@ -880,7 +891,7 @@ export class PortalController {
         const providerFailed =
           error instanceof ProviderHttpError || error instanceof ProviderStreamError || !disconnected.signal.aborted;
         await this.finishStreamedCall(
-          call,
+          { ...call, modelId: attempt.slug },
           streamedCallOutcome({ providerFailed, aborted: disconnected.signal.aborted, streamOpened }),
           { reportedUsage, sentPrompt, fullContent },
         ).catch((err) => this.logger.error("Failed to record the failed call's usage", err));

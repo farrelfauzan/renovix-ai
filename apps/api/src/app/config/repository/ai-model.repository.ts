@@ -20,6 +20,7 @@ const PROVIDER_MODEL_FIELDS = {
   active: true,
   createdAt: true,
   updatedAt: true,
+  fallbacks: { select: { fallbackModelId: true }, orderBy: { position: "asc" } },
 } as const;
 const SLUG_TAKEN = "A model with this slug already exists";
 
@@ -77,6 +78,19 @@ export class AiModelRepository {
   /** RX-177: changes a model of a provider record (never its slug). */
   updateOnProviderRecord(id: string, providerRecordId: string, fields: ProviderModelFields, tx?: DbTransaction): Promise<ProviderModelRecord> {
     return (tx ?? this.prisma).aiModel.update({ where: { id, providerRecordId }, data: fields, select: PROVIDER_MODEL_FIELDS });
+  }
+
+  /** RNX-179: the id and tier of each of these models that exists, on any provider, active or not. */
+  findTiers(ids: readonly string[], tx?: DbTransaction): Promise<{ id: string; tier: string }[]> {
+    return (tx ?? this.prisma).aiModel.findMany({ where: { id: { in: [...ids] } }, select: { id: true, tier: true } });
+  }
+
+  /** RNX-179: replaces a model's fallback models with these, in this order (position 0 first). */
+  async replaceFallbacks(modelId: string, fallbackModelIds: readonly string[], tx: DbTransaction): Promise<void> {
+    await tx.aiModelFallback.deleteMany({ where: { modelId } });
+    await tx.aiModelFallback.createMany({
+      data: fallbackModelIds.map((fallbackModelId, position) => ({ modelId, fallbackModelId, position })),
+    });
   }
 
   /** Runs a write; the unique slug (P2002) becomes a 409. */

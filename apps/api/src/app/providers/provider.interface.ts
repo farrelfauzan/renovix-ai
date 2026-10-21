@@ -1,6 +1,7 @@
 import type { ProviderTestResult } from "./types/provider-test-result";
 import type { ProviderTestTarget } from "./types/provider-test-target";
 import type { ModelConnection } from "./types/model-connection";
+import type { ServedBy } from "./types/served-by";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -42,6 +43,11 @@ export interface ChatRequest {
   tool_choice?: string;
   /** chatStream only (RX-161): aborts the upstream request, e.g. when the client disconnects. Never sent. */
   signal?: AbortSignal;
+  /**
+   * RNX-179: set by ProviderRouter when a fallback model remains after this connection. A 502 or 503 then ends the
+   * call at once (no back-off, no Retry-After wait) so the router can move on. Never sent.
+   */
+  hasFallback?: boolean;
 }
 
 export interface ChatUsage {
@@ -63,6 +69,8 @@ export interface ChatResponse {
   model: string;
   choices: ChatChoice[];
   usage: ChatUsage;
+  /** RNX-179: set by ProviderRouter: the model and provider that answered (a fallback after a 502 or 503). */
+  servedBy?: ServedBy;
 }
 
 /** One model of the provider's GET /models list (RX-21). Prices are USD per token. */

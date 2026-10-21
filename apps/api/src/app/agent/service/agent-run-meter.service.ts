@@ -6,6 +6,8 @@ import { callRatesOf } from "../../billing/utils/call-rates-of";
 import { countPromptTokens } from "../../billing/utils/count-prompt-tokens";
 import { estimateCallCredits } from "../../billing/utils/estimate-call-credits";
 import { tokensFromUsage } from "../../billing/utils/tokens-from-usage";
+import { failedAttemptRecord } from "../../billing/utils/failed-attempt-record";
+import type { ServedBy } from "../../providers/types/served-by";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import type { CallRates } from "../../billing/types/call-rates";
@@ -108,12 +110,19 @@ export class AgentRunMeterService {
       rates,
     };
     const startedAt = Date.now();
-    const response = await this.providerRouter.chat(call.request).catch(async (err: unknown) => {
-      await this.credits.recordUsage({ ...usage, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" });
+    // RNX-179: each attempt that falls over to a fallback model is its own provider_error entry under the run's
+    // reservation (docs/credits.md section 3.1 rule 6); the call's entry names the last model tried.
+    let triedSlug = usage.modelId;
+    const hooks = {
+      onAttempt: (tried: ServedBy) => void (triedSlug = tried.slug),
+      onAttemptFailed: async (failed: ServedBy) => void (await this.credits.recordUsage(failedAttemptRecord(usage, failed))),
+    };
+    const response = await this.providerRouter.chat(call.request, hooks).catch(async (err: unknown) => {
+      await this.credits.recordUsage({ ...usage, modelId: triedSlug, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" });
       throw err;
     });
     const tokens = tokensFromUsage(response.usage.prompt_tokens, response.usage.cachedTokens ?? 0, response.usage.completion_tokens);
-    const entry = await this.credits.recordUsage({ ...usage, tokens, outcome: "completed" });
+    const entry = await this.credits.recordUsage({ ...usage, modelId: triedSlug, tokens, outcome: "completed" });
     run.spent = run.spent.plus(entry.amount.negated());
     await this.logCallUsage(run, call.request, response, { cost: entry.amount.negated(), latencyMs: Date.now() - startedAt });
     return { response, callId: usage.callId };
@@ -124,12 +133,12 @@ export class AgentRunMeterService {
     await this.usage
       .logUsage({
         userId: run.runnerUserId,
-        model: request.connection.slug,
+        model: (response.servedBy ?? request.connection).slug,
         inputTokens: response.usage.prompt_tokens,
         outputTokens: response.usage.completion_tokens,
         cost: charge.cost,
         latencyMs: charge.latencyMs,
-        provider: request.connection.providerName,
+        provider: (response.servedBy ?? request.connection).providerName,
       })
       .catch((err) => this.logger.error("Failed to log agent usage", err));
   }

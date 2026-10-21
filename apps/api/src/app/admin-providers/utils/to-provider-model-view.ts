@@ -17,5 +17,6 @@ export function toProviderModelView(record: ProviderModelRecord, providerRecordI
     active: record.active,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    fallbackModelIds: record.fallbacks.map((fallback) => fallback.fallbackModelId),
   };
 }
