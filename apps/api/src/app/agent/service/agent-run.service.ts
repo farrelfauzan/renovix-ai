@@ -114,23 +114,14 @@ export class AgentRunService {
     await this.assertAgentSubscription(userId);
     await this.credits.assertAvailable(userId, ONE_MICRO_CREDIT);
 
-    // Get or create run
-    const run = await this.getOrCreateRun(agentId, sessionId);
-
-    // Save user message
-    await this.prisma.agentMessage.create({
-      data: {
-        runId: run.id,
-        role: "user",
-        content: message,
-      },
-    });
+    // RNX-200: reads only until the run's reservation holds (runMessage); a new session gets its id now, its row later.
+    const runSessionId = sessionId || crypto.randomUUID();
 
     // Build context
     const context = await this.buildContext(agent, userId);
 
     // Get conversation history
-    const history = await this.getHistory(run.id);
+    const history = await this.getHistory(agentId, sessionId);
 
     // Retrieve knowledge context
     const knowledgeContext = await this.retrieveKnowledge(
@@ -155,52 +146,7 @@ export class AgentRunService {
       options?.documentFormat,
     );
 
-    // Build tool schemas including MCP tools (auto-inject delegation for parent agents)
-    const injectDelegation =
-      agent.agentType === "parent" && agent.subAgents?.length > 0;
-    const toolSchemas = await this.toolService.buildToolSchemasWithMcp(
-      agent.tools,
-      agentId,
-      userId,
-      agent.workspaceId || undefined,
-      { injectDelegation },
-    );
-
-    // Execute LLM with tool loop: one run on the ledger (RX-22b), a new runId per message, one reservation, a usage
-    // entry per model call (root and sub-agents) and a budget stop before each call (docs/credits.md section 13).
-    const metered = await this.meter.meterRun(
-      {
-        runnerUserId: userId,
-        firstCall: {
-          model: context.model,
-          connection: context.connection,
-          messages,
-          tools: toolSchemas,
-          max_tokens: context.maxTokens ?? 4096,
-        },
-        linkedAgents: injectDelegation ? agent.subAgents : [],
-      },
-      (meteredRun) =>
-        this.executeLLMLoop(context, messages, toolSchemas, run.id, agent, meteredRun),
-    );
-    const result =
-      metered.status === "completed"
-        ? metered.value
-        : { content: budgetStopMessage(metered.held), totalTokens: 0, totalCost: undefined };
-
-    // Save assistant message
-    await this.prisma.agentMessage.create({
-      data: {
-        runId: run.id,
-        role: "assistant",
-        content: result.content,
-        tokens: result.totalTokens,
-        cost: result.totalCost,
-      },
-    });
-
-    // Cleanup MCP connections
-    await this.toolService.cleanupMcpConnections();
+    const { run, result } = await this.runMessage(context, messages, agent, runSessionId, message);
 
     // Extract and store memory asynchronously
     this.memoryService
@@ -282,6 +228,75 @@ export class AgentRunService {
   }
 
   // ─── Private Helpers ───
+
+  /**
+   * RNX-200: one agent message as one metered run. Tool schemas include MCP tools (delegation auto-injected for a
+   * parent agent); the LLM tool loop runs as one run on the ledger (RX-22b): a new runId per message, one reservation,
+   * a usage entry per model call (root and sub-agents) and a budget stop before each call (docs/credits.md section
+   * 13). The run row (for a new session) and the user message are written only once the reservation holds, so a
+   * refused message writes neither; the MCP connections opened for the run are closed on every path (success,
+   * refusal, provider error, budget stop).
+   */
+  private async runMessage(context: AgentContext, messages: any[], agent: any, sessionId: string, message: string) {
+    const injectDelegation = agent.agentType === "parent" && agent.subAgents?.length > 0;
+    try {
+      const toolSchemas = await this.toolService.buildToolSchemasWithMcp(
+        agent.tools,
+        context.agentId,
+        context.userId,
+        agent.workspaceId || undefined,
+        { injectDelegation },
+      );
+      const metered = await this.meter.meterRun(
+        {
+          runnerUserId: context.userId,
+          firstCall: {
+            model: context.model,
+            connection: context.connection,
+            messages,
+            tools: toolSchemas,
+            max_tokens: context.maxTokens ?? 4096,
+          },
+          linkedAgents: injectDelegation ? agent.subAgents : [],
+        },
+        async (meteredRun) => {
+          const run = await this.saveUserMessage(context.agentId, sessionId, message);
+          return { run, ...(await this.executeLLMLoop(context, messages, toolSchemas, run.id, agent, meteredRun)) };
+        },
+      );
+      const { run, ...result } =
+        metered.status === "completed"
+          ? metered.value
+          : {
+              run: await this.getOrCreateRun(context.agentId, sessionId),
+              content: budgetStopMessage(metered.held),
+              totalTokens: 0,
+              totalCost: undefined,
+            };
+      // Save assistant message
+      await this.prisma.agentMessage.create({
+        data: {
+          runId: run.id,
+          role: "assistant",
+          content: result.content,
+          tokens: result.totalTokens,
+          cost: result.totalCost,
+        },
+      });
+      return { run, result };
+    } finally {
+      await this.toolService.cleanupMcpConnections();
+    }
+  }
+
+  /** RNX-200: the run (created for a new session) and the user message, written once the run's reservation holds. */
+  private async saveUserMessage(agentId: string, sessionId: string, message: string) {
+    const run = await this.getOrCreateRun(agentId, sessionId);
+    await this.prisma.agentMessage.create({
+      data: { runId: run.id, role: "user", content: message },
+    });
+    return run;
+  }
 
   private async executeLLMLoop(
     context: AgentContext,
@@ -515,16 +530,31 @@ export class AgentRunService {
   }
 
   /**
-   * RX-178 (review B1): the connection of the agent's model, checked before any work on the chat route (the classifier
-   * call, the SSE headers, the quota, the run and the message). 404 for an agent the user cannot run comes first, then
-   * the fixed 400 (ModelUnavailableException) for a model that cannot be resolved.
+   * The refusals of an agent message, checked before any work on the chat route (the classifier call, the SSE
+   * headers, the run and the message), reads only. RX-178 (review B1): 404 for an agent the user cannot run, then the
+   * fixed 400 (ModelUnavailableException) for a model that cannot be resolved. RNX-200: then 403 without an active
+   * subscription (D192) and the run's own pre-checks (the 400 for a model without credit rates, 402 RUN_CAP_EXCEEDED,
+   * 402 CREDITS_EXHAUSTED) on a lower bound of the first call: the agent's system prompt, the message and max_tokens.
    */
-  async resolveAgentConnection(userId: string, agentId: string): Promise<ModelConnection> {
+  async assertRunCanStart(userId: string, agentId: string, message: string): Promise<void> {
     const agent = await this.agents.findRunnableAgent(agentId, userId);
     if (!agent) throw new NotFoundException("Agent not found");
     const modelConfig = await this.registry.resolveModel(agent.model);
     if (!modelConfig) throw new ModelUnavailableException();
-    return this.registry.resolveConnection(modelConfig.slug);
+    const connection = await this.registry.resolveConnection(modelConfig.slug);
+    await this.assertAgentSubscription(userId);
+    await this.meter.assertRunCanStart({
+      runnerUserId: userId,
+      firstCall: {
+        model: agent.model,
+        connection,
+        messages: [
+          { role: "system", content: agent.systemPrompt },
+          { role: "user", content: message },
+        ],
+        max_tokens: agent.maxTokens ?? 4096,
+      },
+    });
   }
 
   private async buildContext(
@@ -700,16 +730,19 @@ export class AgentRunService {
     return messages;
   }
 
-  private async getHistory(runId: string) {
-    const messages = await this.prisma.agentMessage.findMany({
-      where: { runId, role: { in: ["user", "assistant"] } },
+  /**
+   * The session's earlier messages, none for a new session. RNX-200: read before the current message is saved, so
+   * `take: 19` returns what `take: 20` minus the then-saved current message returned before.
+   */
+  private async getHistory(agentId: string, sessionId?: string) {
+    const run = sessionId ? await this.findActiveRun(agentId, sessionId) : null;
+    if (!run) return [];
+    return this.prisma.agentMessage.findMany({
+      where: { runId: run.id, role: { in: ["user", "assistant"] } },
       orderBy: { createdAt: "asc" },
-      take: 20,
+      take: 19,
       select: { role: true, content: true },
     });
-
-    // Exclude the last user message (it's the current one)
-    return messages.slice(0, -1);
   }
 
   private async retrieveKnowledge(
@@ -759,9 +792,7 @@ export class AgentRunService {
 
   private async getOrCreateRun(agentId: string, sessionId?: string) {
     if (sessionId) {
-      const existing = await this.prisma.agentRun.findFirst({
-        where: { agentId, sessionId, status: "active" },
-      });
+      const existing = await this.findActiveRun(agentId, sessionId);
       if (existing) return existing;
     }
 
@@ -773,6 +804,12 @@ export class AgentRunService {
         channelType: "web",
         status: "active",
       },
+    });
+  }
+
+  private findActiveRun(agentId: string, sessionId: string) {
+    return this.prisma.agentRun.findFirst({
+      where: { agentId, sessionId, status: "active" },
     });
   }
 

@@ -74,6 +74,20 @@ export class AgentRunMeterService {
   }
 
   /**
+   * RNX-200: the refusals of a run answered before its stream opens and before any model call (docs/credits.md
+   * sections 13.2 and 13.3), on `firstCall`, a lower bound of the root agent's first request (the real one only adds
+   * prompt): the 400 for a model without credit rates, RunCapExceededException when that call alone is over the cap,
+   * and 402 CREDITS_EXHAUSTED when the paid wallet cannot cover it. A run that `meterRun` would reserve passes it.
+   * Reads only.
+   */
+  async assertRunCanStart(start: Omit<RunStart, "linkedAgents">): Promise<void> {
+    const cap = await this.readRunCap();
+    const rootCall = this.estimateCall(start.firstCall, (await this.ratesOf(start.firstCall.connection.slug)).rates);
+    if (rootCall.greaterThan(cap)) throw new RunCapExceededException(cap);
+    await this.credits.assertAvailable(start.runnerUserId, rootCall);
+  }
+
+  /**
    * One model call of a run (docs/credits.md sections 3.1 and 13.4): RunBudgetStoppedError, without calling, when
    * spent + E_call would exceed the hold; otherwise calls the provider and writes the call's usage entry (and its
    * usage row). A provider error is charged 0 (outcome provider_error) and rethrown.
@@ -122,12 +136,7 @@ export class AgentRunMeterService {
 
   /** Reserves the run's hold after the pre-run checks (docs/credits.md sections 13.2 and 13.3). */
   private async openRun(start: RunStart): Promise<AgentRunBudget> {
-    const [capSetting, floorSetting, agentCallSetting] = await Promise.all([
-      this.settings.getSetting("perRunCreditCap"),
-      this.settings.getSetting("perRunCreditCapFloor"),
-      this.settings.getSetting("peerRunMaxAgentCalls"),
-    ]);
-    const cap = Decimal.max(capSetting ?? DEFAULT_RUN_CAP_CREDITS, floorSetting ?? DEFAULT_RUN_CAP_FLOOR_CREDITS);
+    const [cap, agentCallSetting] = await Promise.all([this.readRunCap(), this.settings.getSetting("peerRunMaxAgentCalls")]);
     const rootCall = this.estimateCall(start.firstCall, (await this.ratesOf(start.firstCall.connection.slug)).rates);
     if (rootCall.greaterThan(cap)) throw new RunCapExceededException(cap);
     const linkedCalls = await Promise.all(start.linkedAgents.map((agent) => this.estimateLinkedCall(agent)));
@@ -135,6 +144,15 @@ export class AgentRunMeterService {
     const runId = randomUUID();
     const reservation = await this.credits.reserveRun({ userId: start.runnerUserId, runId, cap, minimum: Decimal.min(estimate, cap) });
     return { runId, reservationId: reservation.id, runnerUserId: start.runnerUserId, held: reservation.amountHeld, spent: NO_CREDITS };
+  }
+
+  /** The per-run cap (docs/credits.md section 13.2): the platform setting, never below its floor. */
+  private async readRunCap(): Promise<Decimal> {
+    const [capSetting, floorSetting] = await Promise.all([
+      this.settings.getSetting("perRunCreditCap"),
+      this.settings.getSetting("perRunCreditCapFloor"),
+    ]);
+    return Decimal.max(capSetting ?? DEFAULT_RUN_CAP_CREDITS, floorSetting ?? DEFAULT_RUN_CAP_FLOOR_CREDITS);
   }
 
   /** E_call of one request (docs/credits.md section 3.1 rule 1): its counted prompt and tools, and the max_tokens the adapter sends. */

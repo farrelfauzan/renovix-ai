@@ -38,7 +38,7 @@ describe("RNX-171: the agent run stream guard (Fastify, real socket)", () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentRunController, HealthController],
       providers: [
-        { provide: AgentRunService, useValue: { resolveAgentConnection: async () => ({ apiKey: MARKER_KEY }), chat: async () => ({}) } },
+        { provide: AgentRunService, useValue: { assertRunCanStart: async () => undefined, chat: async () => ({}) } },
         { provide: AgentToolService, useValue: { clearLastDocumentResult: () => undefined, getLastDocumentResult: () => null } },
         { provide: DocumentService, useValue: {} },
         { provide: ProviderRouter, useValue: { chat: async () => ({ choices: [{ message: { content: "none" } }] }) } },

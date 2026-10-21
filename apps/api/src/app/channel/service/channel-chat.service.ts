@@ -2,7 +2,6 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ModelUnavailableException } from "../../config/errors/model-unavailable.exception";
-import type { ModelConnection } from "../../providers/types/model-connection";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
@@ -32,15 +31,28 @@ export class ChannelChatService {
   ) {}
 
   /**
-   * RX-178 (review B1): the connection of the room agent's model, checked before any work on the chat route (the SSE
-   * headers, the classifier call, the message). The room access check (403/404) comes first, then the fixed 400
-   * (ModelUnavailableException) for a model that cannot be resolved.
+   * The refusals of a channel chat message, checked before any work on the chat route (the SSE headers, the classifier
+   * call, the message), reads only. RX-178 (review B1): the room access check (403/404), then the fixed 400
+   * (ModelUnavailableException) for a model that cannot be resolved. RNX-200: then the run's own pre-checks (the 400
+   * for a model without credit rates, 402 RUN_CAP_EXCEEDED, 402 CREDITS_EXHAUSTED) on a lower bound of the first
+   * call: the agent's system prompt, the message and max_tokens (a document format only raises it).
    */
-  async resolveAgentConnection(userId: string, channelId: string, agentId: string): Promise<ModelConnection> {
-    const channelAgent = await this.channelService.resolveChannelAgent(userId, channelId, agentId);
-    const modelEntry = await this.registry.resolveModel(channelAgent.agent.model);
+  async assertRunCanStart(userId: string, channelId: string, agentId: string, message: string): Promise<void> {
+    const { agent } = await this.channelService.resolveChannelAgent(userId, channelId, agentId);
+    const modelEntry = await this.registry.resolveModel(agent.model);
     if (!modelEntry) throw new ModelUnavailableException();
-    return this.registry.resolveConnection(modelEntry.slug);
+    await this.meter.assertRunCanStart({
+      runnerUserId: userId,
+      firstCall: {
+        model: modelEntry.slug,
+        connection: await this.registry.resolveConnection(modelEntry.slug),
+        messages: [
+          { role: "system", content: agent.systemPrompt || "You are a helpful assistant." },
+          { role: "user", content: message },
+        ],
+        max_tokens: agent.maxTokens ?? 4096,
+      },
+    });
   }
 
   async chat(
@@ -110,12 +122,6 @@ export class ChannelChatService {
           )
         : [];
 
-    // Save user message
-    await this.channelService.saveMessage(channelAgent.id, userId, {
-      role: "user",
-      content: message,
-    });
-
     // Build context
     const modelEntry = await this.registry.resolveModel(agent.model);
     if (!modelEntry) throw new ModelUnavailableException();
@@ -125,13 +131,15 @@ export class ChannelChatService {
     const chatRoom = await this.channelService.getOrCreateChatRoom(
       channelAgent.channelId,
     );
+    // RNX-200: read before the user message is saved (once the run's reservation holds), so the 19 newest earlier
+    // messages and this one make the 20 the prompt had before.
     const history = await this.prisma.channelMessage.findMany({
       where: {
         chatRoomId: chatRoom.id,
         agentId: channelAgent.agentId,
       },
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: 19,
     });
     history.reverse();
 
@@ -175,6 +183,7 @@ export class ChannelChatService {
     const currentMessages: any[] = [
       { role: "system", content: systemContent },
       ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user", content: message },
     ];
 
     // Build tool schemas including MCP tools (auto-inject delegation for parent agents)
@@ -221,7 +230,11 @@ export class ChannelChatService {
         },
         linkedAgents: subAgents,
       },
-      (meteredRun) => this.runToolLoop(loop, meteredRun),
+      async (meteredRun) => {
+        // RNX-200: saved once the reservation holds; a refused message saves nothing.
+        await this.channelService.saveMessage(channelAgent.id, userId, { role: "user", content: message });
+        return this.runToolLoop(loop, meteredRun);
+      },
     );
     if (metered.status === "completed") return metered.value;
     const stopContent = budgetStopMessage(metered.held);
