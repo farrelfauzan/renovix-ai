@@ -1,10 +1,10 @@
 # Product role and permission matrix
 
-- Source: spec v2, https://claude.ai/artifact/QEerixnDkavEQKMViBq53n (Draft 2, 2026-10-21; drafted by the Researcher, on the Orchestrator's handoff)
+- Source: spec v2, https://claude.ai/artifact/QEerixnDkavEQKMViBq53n (Draft 2.1, 2026-10-21; drafted by the Researcher, on the Orchestrator's handoff)
 - Status: approved by the Tech Lead as recommended, point B narrowed (D237, 2026-10-21); draft 2 records the decisions
 - Code read at main `36d9e26`
 - Ticket: RNX-111 (RX-111)
-- Summary: 2 workspace roles (owner, collaborator); 3 company roles (owner, billing admin, member); 29 product permissions named in section 3 (the spec's summary tile says 27; the table is authoritative); decided in D237: D18 A, no viewer, A, B, C
+- Summary: 2 workspace roles (owner, collaborator); 3 company roles (owner, billing admin, member); 29 product permissions named (section 3); decided in D237: D18 A, no viewer, A, B, C
 
 Who may do what in the Renovix AI product, at the workspace level and at the company level, with every permission named `resource:action` so each route can declare it in `@Access` (D66, D67, RX-114) and the policy service of RX-41 can answer record-level questions with the same names. The back-office roles (PRD 09, RX-94 to RX-97) are a separate set and are not in this document.
 
