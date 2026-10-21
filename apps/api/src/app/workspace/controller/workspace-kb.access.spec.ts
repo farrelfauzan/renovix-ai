@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { WorkspaceChannelController } from "./workspace-channel.controller";
 import { WorkspaceService } from "../service/workspace.service";
 import { WorkspaceMemberService } from "../service/workspace-member.service";
@@ -38,6 +37,7 @@ import {
   createWorkspace,
 } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-113 (D63): a workspace knowledge base belongs to the workspace and access
 // follows CURRENT membership. Only the owner adds a base; the personal routes
@@ -54,8 +54,6 @@ jest.mock("../../document/service/document.service", () => ({ DocumentService: c
 jest.mock("../../email/service/email-job.service", () => ({ EmailJobService: class {} }));
 jest.mock("../../knowledge/service/embedding.service", () => ({ EmbeddingService: class {} }));
 jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }));
-
-process.env.JWT_SECRET = "rx113-test-jwt-secret";
 
 const SESSION = "11111111-1111-4111-8111-111111111111";
 const SECRET = "team secret written by another member";
@@ -114,9 +112,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
 
   afterAll(() => app?.close());
 
-  const jwtAuth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const sessionAuth = (user: { id: string; email: string }) => asSessionUser(user);
   const portal = (user: { id: string; email: string }) => ({
     "x-portal-session": SESSION,
     authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: user.email })}`,
@@ -196,7 +192,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
       const res = await app.inject({
         method: "POST",
         url: `/channels/${ctx.channel.id}/workspace/knowledge`,
-        headers: jwtAuth(ctx[actor]),
+        headers: sessionAuth(ctx[actor]),
         payload: { name: `by ${actor}` },
       });
 
@@ -210,7 +206,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
       const res = await app.inject({
         method: "POST",
         url: `/channels/${ctx.channel.id}/workspace/knowledge`,
-        headers: jwtAuth(ctx.owner),
+        headers: sessionAuth(ctx.owner),
         payload: { name: "Owner KB" },
       });
 
@@ -250,15 +246,15 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
       ["GET /chat/portal/knowledge/:id/chunks", { method: "GET", url: (c) => `/chat/portal/knowledge/${c.kb.id}/chunks`, headers: (c) => portal(c.former) }],
       ["DELETE /chat/portal/knowledge/:id/chunks/:chunkId", { method: "DELETE", url: (c) => `/chat/portal/knowledge/${c.kb.id}/chunks/${c.chunkId}`, headers: (c) => portal(c.former) }],
       // workspace routes (/channels/:channelId/workspace/knowledge)
-      ["GET workspace knowledge (list)", { method: "GET", url: ws, headers: (c) => jwtAuth(c.former) }],
-      ["DELETE workspace knowledge/:kbId", { method: "DELETE", url: (c) => `${ws(c)}/${c.kb.id}`, headers: (c) => jwtAuth(c.former) }],
-      ["GET workspace knowledge/:kbId/chunks", { method: "GET", url: (c) => `${ws(c)}/${c.kb.id}/chunks`, headers: (c) => jwtAuth(c.former) }],
-      ["POST workspace knowledge/:kbId/chunks", { method: "POST", url: (c) => `${ws(c)}/${c.kb.id}/chunks`, headers: (c) => jwtAuth(c.former), payload: () => ({ chunks: [{ content: "planted" }] }) }],
-      ["DELETE workspace knowledge/:kbId/chunks/:chunkId", { method: "DELETE", url: (c) => `${ws(c)}/${c.kb.id}/chunks/${c.chunkId}`, headers: (c) => jwtAuth(c.former) }],
-      ["POST workspace knowledge/search", { method: "POST", url: (c) => `${ws(c)}/search`, headers: (c) => jwtAuth(c.former), payload: () => ({ query: "secret" }) }],
+      ["GET workspace knowledge (list)", { method: "GET", url: ws, headers: (c) => sessionAuth(c.former) }],
+      ["DELETE workspace knowledge/:kbId", { method: "DELETE", url: (c) => `${ws(c)}/${c.kb.id}`, headers: (c) => sessionAuth(c.former) }],
+      ["GET workspace knowledge/:kbId/chunks", { method: "GET", url: (c) => `${ws(c)}/${c.kb.id}/chunks`, headers: (c) => sessionAuth(c.former) }],
+      ["POST workspace knowledge/:kbId/chunks", { method: "POST", url: (c) => `${ws(c)}/${c.kb.id}/chunks`, headers: (c) => sessionAuth(c.former), payload: () => ({ chunks: [{ content: "planted" }] }) }],
+      ["DELETE workspace knowledge/:kbId/chunks/:chunkId", { method: "DELETE", url: (c) => `${ws(c)}/${c.kb.id}/chunks/${c.chunkId}`, headers: (c) => sessionAuth(c.former) }],
+      ["POST workspace knowledge/search", { method: "POST", url: (c) => `${ws(c)}/search`, headers: (c) => sessionAuth(c.former), payload: () => ({ query: "secret" }) }],
       // attaching to an agent
-      ["POST /agents/:id/knowledge-bases (their agent in the workspace)", { method: "POST", url: (c) => `/agents/${c.formerWorkspaceAgent.id}/knowledge-bases`, headers: (c) => jwtAuth(c.former), payload: (c) => ({ knowledgeBaseId: c.kb.id }) }],
-      ["POST /agents/:id/knowledge-bases (their personal agent)", { method: "POST", url: (c) => `/agents/${c.formerPersonalAgent.id}/knowledge-bases`, headers: (c) => jwtAuth(c.former), payload: (c) => ({ knowledgeBaseId: c.kb.id }) }],
+      ["POST /agents/:id/knowledge-bases (their agent in the workspace)", { method: "POST", url: (c) => `/agents/${c.formerWorkspaceAgent.id}/knowledge-bases`, headers: (c) => sessionAuth(c.former), payload: (c) => ({ knowledgeBaseId: c.kb.id }) }],
+      ["POST /agents/:id/knowledge-bases (their personal agent)", { method: "POST", url: (c) => `/agents/${c.formerPersonalAgent.id}/knowledge-bases`, headers: (c) => sessionAuth(c.former), payload: (c) => ({ knowledgeBaseId: c.kb.id }) }],
     ];
 
     it.each(routes)("%s → refused, nothing leaks or changes", async (_name, route) => {
@@ -289,12 +285,12 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
       const ctx = await setup();
       const base = `/channels/${ctx.channel.id}/workspace/knowledge`;
 
-      const list = await app.inject({ method: "GET", url: base, headers: jwtAuth(ctx.member) });
-      const chunks = await app.inject({ method: "GET", url: `${base}/${ctx.kb.id}/chunks`, headers: jwtAuth(ctx.member) });
+      const list = await app.inject({ method: "GET", url: base, headers: sessionAuth(ctx.member) });
+      const chunks = await app.inject({ method: "GET", url: `${base}/${ctx.kb.id}/chunks`, headers: sessionAuth(ctx.member) });
       const search = await app.inject({
         method: "POST",
         url: `${base}/search`,
-        headers: jwtAuth(ctx.member),
+        headers: sessionAuth(ctx.member),
         payload: { query: "secret" },
       });
 
@@ -311,7 +307,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
       app.inject({
         method: "POST",
         url: `/agents/${agentId}/knowledge-bases`,
-        headers: jwtAuth(user),
+        headers: sessionAuth(user),
         payload: { knowledgeBaseId },
       });
 

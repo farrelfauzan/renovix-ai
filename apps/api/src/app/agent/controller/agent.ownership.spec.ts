@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentLinkController } from "./agent-link.controller";
 import { AgentService } from "../service/agent.service";
@@ -18,13 +17,12 @@ import {
   createSubscription,
   createUser,
 } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-15 characterization: agent ownership through the real controller and
-// service (CombinedAuthGuard JWT path, test database). The routes used here
+// service (CombinedAuthGuard session path, test database). The routes used here
 // never call a model, so ProviderRouter is an empty stub.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-
-process.env.JWT_SECRET = "rx15-test-jwt-secret";
 
 describe("Agents: ownership (RX-15, Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -44,9 +42,7 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   const setup = async () => {
     const alice = await createUser(prisma);

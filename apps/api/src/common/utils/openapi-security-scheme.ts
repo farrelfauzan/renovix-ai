@@ -14,7 +14,7 @@ export type OpenApiSecuritySchemes = Readonly<Record<string, OpenApiSecuritySche
 
 /**
  * The name of the OpenAPI security scheme a route's accepted methods map to: `public` → none;
- * `apiKey` → BearerApiKey; `portal` → PortalSession; `jwt`/`session` → JwtOrSession; `staff` →
+ * `apiKey` → BearerApiKey; `portal` → PortalSession; `session` → JwtOrSession; `staff` →
  * BackOfficeSession.
  */
 export function openApiSecuritySchemeName(access: AccessOptions | undefined): string | undefined {
@@ -23,6 +23,6 @@ export function openApiSecuritySchemeName(access: AccessOptions | undefined): st
   if (auth.includes("apiKey")) return "BearerApiKey";
   if (auth.includes("portal")) return "PortalSession";
   if (auth.includes("staff")) return "BackOfficeSession";
-  if (auth.includes("jwt") || auth.includes("session")) return "JwtOrSession";
+  if (auth.includes("session")) return "JwtOrSession";
   return undefined;
 }

@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentLinkController } from "./agent-link.controller";
 import { AgentService } from "../service/agent.service";
@@ -13,6 +12,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createApiKey, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-118 (PRD 10, D81; replaces RX-112's parent-owner suite): an agent's links ("Can call") are listed, added and
 // removed by the workspace owner of the agent only (RNX-203: workspace.ownerId). A collaborator, another user and
@@ -21,8 +21,6 @@ import { createAgent, createApiKey, createPlan, createSubscription, createUser, 
 // Enterprise (D64), so on Starter and Pro the member row is written straight to the database. Real controllers and
 // services, test database.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-
-process.env.JWT_SECRET = "rnx118-test-jwt-secret";
 
 type User = { id: string; email: string };
 
@@ -49,9 +47,7 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
   beforeEach(() => resetDatabase(prisma));
   afterAll(() => app?.close());
 
-  const bearer = (user: User) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const bearer = (user: User) => asSessionUser(user);
   const apiKey = (key: string) => ({ authorization: `Bearer ${key}` });
   const links = () => prisma.agentLink.findMany({ select: { callerAgentId: true, calleeAgentId: true } });
 

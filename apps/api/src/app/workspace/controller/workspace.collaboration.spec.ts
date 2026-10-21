@@ -1,7 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { WorkspaceController } from "./workspace.controller";
 import { WorkspaceInviteController } from "./workspace-invite.controller";
 import { WorkspaceChannelController } from "./workspace-channel.controller";
@@ -17,6 +16,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-113 (D64, extends D44): only Enterprise collaborates. On Starter, Pro or
 // without an active subscription a workspace is owner-only: invites (create,
@@ -29,8 +29,6 @@ jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => n
 jest.mock("../../email/service/email-job.service", () => ({ EmailJobService: class {} }));
 jest.mock("../../knowledge/service/embedding.service", () => ({ EmbeddingService: class {} }));
 jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }));
-
-process.env.JWT_SECRET = "rx113-test-jwt-secret";
 
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -78,9 +76,7 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   // A workspace (on the owner's channel) whose owner has `plan`, with an
   // admin and a member row inserted directly, a removed member, a pending

@@ -4,7 +4,6 @@ import { AddressInfo } from "node:net";
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { ChannelController } from "./channel.controller";
 import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
@@ -40,6 +39,7 @@ import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
 import { AgentLinkService } from "../../agent/service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-169: POST /channels/:id/agents/:agentId/chat answers the client over SSE,
 // but calls the provider without streaming (ProviderRouter.chat). A provider
@@ -180,12 +180,12 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
       const agent = await createAgent(prisma, { userId: user.id, model: slug });
       const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
       await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: agent.id } });
-      const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+      const session = asSessionUser(user);
 
       const res = await send({
         method: "POST",
         url: `${appUrl}/channels/${channel.id}/agents/${agent.id}/chat`,
-        headers: { authorization: `Bearer ${token}` },
+        headers: session,
         body: { message: "Hi" },
       });
 
@@ -208,12 +208,12 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
     await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: agent.id } });
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+    const session = asSessionUser(user);
 
     const res = await send({
       method: "POST",
       url: `${appUrl}/channels/${channel.id}/agents/${agent.id}/chat`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: session,
       body: { message: "Hi" },
     });
 
@@ -248,12 +248,12 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
     await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: agent.id } });
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+    const session = asSessionUser(user);
 
     const res = await send({
       method: "POST",
       url: `${appUrl}/channels/${channel.id}/agents/${agent.id}/chat`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: session,
       body: { message: "Hi" },
     });
 

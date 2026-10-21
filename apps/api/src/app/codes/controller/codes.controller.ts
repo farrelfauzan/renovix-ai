@@ -16,7 +16,7 @@ export class CodesController {
   constructor(private readonly codesService: CodesService) {}
 
   @Post("redeem")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   async redeemCode(@Req() req: any, @Body() body: unknown) {
     const parsed = RedeemCodeDto.safeParse(body);
@@ -27,7 +27,7 @@ export class CodesController {
   }
 
   @Get("history")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async getHistory(@Req() req: any) {
     return this.codesService.getHistory(req.user.userId);
   }

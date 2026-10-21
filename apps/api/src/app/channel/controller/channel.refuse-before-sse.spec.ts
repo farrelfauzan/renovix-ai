@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { ChannelController } from "./channel.controller";
 import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
@@ -30,6 +29,7 @@ import { requestOverSocket } from "../../../../test/sse-client";
 import { AgentLinkService } from "../../agent/service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-200: POST /channels/:id/agents/:agentId/chat answers its refusals (no credits, a first call over the per-run
 // cap) as real HTTP 402 answers with their JSON body and code, before the SSE headers and the document-intent
@@ -112,7 +112,7 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
     await app?.close();
   });
 
-  /** A user funded with `credits` (none for "0"), an agent in their channel, and a token. */
+  /** A user funded with `credits` (none for "0"), an agent in their channel, and a session cookie. */
   const seed = async (credits: string) => {
     const user = await createUser(prisma);
     // RNX-119: channel chat applies the D192 subscription gate to the runner.
@@ -121,15 +121,15 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
     await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: agent.id } });
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
-    return { user, agent, channel, token };
+    const session = asSessionUser(user);
+    return { user, agent, channel, session };
   };
 
-  const postChat = (channelId: string, agentId: string, token: string) =>
+  const postChat = (channelId: string, agentId: string, session: { cookie: string }) =>
     requestOverSocket(app, {
       method: "POST",
       path: `/channels/${channelId}/agents/${agentId}/chat`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: session,
       body: { message: "Hi" },
     });
 
@@ -140,10 +140,10 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
   });
 
   it("AC1: a user with 0 ledger credits → HTTP 402 CREDITS_EXHAUSTED, no SSE header, no model call (classifier included), no message", async () => {
-    const { agent, channel, token } = await seed("0");
+    const { agent, channel, session } = await seed("0");
     const providerChat = jest.spyOn(moduleRef.get(ProviderRouter), "chat");
 
-    const res = await postChat(channel.id, agent.id, token);
+    const res = await postChat(channel.id, agent.id, session);
 
     expect([res.statusCode, res.contentType]).toEqual([402, expect.stringContaining("application/json")]);
     expect(JSON.parse(res.body)).toEqual({ statusCode: 402, code: "CREDITS_EXHAUSTED", message: "Not enough credits" });
@@ -153,11 +153,11 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
   });
 
   it("AC2: a first call over the per-run cap → HTTP 402 RUN_CAP_EXCEEDED naming the cap, no SSE header, no model call, no message", async () => {
-    const { agent, channel, token } = await seed("1");
+    const { agent, channel, session } = await seed("1");
     await setRunCap(prisma, 0.001);
     const providerChat = jest.spyOn(moduleRef.get(ProviderRouter), "chat");
 
-    const res = await postChat(channel.id, agent.id, token);
+    const res = await postChat(channel.id, agent.id, session);
 
     expect([res.statusCode, res.contentType]).toEqual([402, expect.stringContaining("application/json")]);
     expect(JSON.parse(res.body)).toEqual({
@@ -171,11 +171,11 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
   });
 
   it("AC3: a refusal after the SSE headers (the run's reservation refused, forced) → the SSE error event carries CREDITS_EXHAUSTED; no message", async () => {
-    const { agent, channel, token } = await seed("1");
+    const { agent, channel, session } = await seed("1");
     fake.enqueue({ content: "none" }); // the document-intent classifier
     jest.spyOn(moduleRef.get(CreditService), "reserveRun").mockRejectedValueOnce(new CreditsExhaustedException());
 
-    const res = await postChat(channel.id, agent.id, token);
+    const res = await postChat(channel.id, agent.id, session);
 
     expect([res.statusCode, res.contentType, res.ended]).toEqual([200, "text/event-stream", true]);
     expect(sseErrors(res.body)).toEqual([{ code: "CREDITS_EXHAUSTED", message: "Not enough credits" }]);
@@ -185,10 +185,10 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
   });
 
   it("AC5: a funded user → 200 SSE with the reply, the classifier then the run, one settled reservation, both messages saved", async () => {
-    const { user, agent, channel, token } = await seed("1");
+    const { user, agent, channel, session } = await seed("1");
     fake.enqueue({ content: "none" }, { content: "Hello there", usage: { prompt_tokens: 10, completion_tokens: 5 } });
 
-    const res = await postChat(channel.id, agent.id, token);
+    const res = await postChat(channel.id, agent.id, session);
 
     expect([res.statusCode, res.contentType, res.ended]).toEqual([200, "text/event-stream", true]);
     expect(res.body).toContain(JSON.stringify({ choices: [{ delta: { content: "Hello there" } }] }));

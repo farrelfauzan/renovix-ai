@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { WebSearchController } from "./web-search.controller";
 import { WebSearchService } from "../service/web-search.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
@@ -9,6 +8,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-117 (D219 a): the web search integration routes that check the caller's workspace membership answer
 // 404 "Workspace not found" for the caller's default workspace and change nothing; the owner's normal
@@ -17,8 +17,6 @@ import { createAgent, createUser, createWorkspace } from "../../../../test/facto
 // nothing" is: no service call and no workspace row changed.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 jest.mock("../service/web-search.service", () => ({ WebSearchService: class {} }));
-
-process.env.JWT_SECRET = "rnx117-web-search-test-jwt-secret";
 
 type Route = {
   method: "GET" | "PUT" | "DELETE";
@@ -65,9 +63,7 @@ describe("RNX-117: web search routes hide the default workspace (Fastify, test d
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   const readRows = () =>
     Promise.all([prisma.workspace.findMany({ orderBy: { id: "asc" } }), prisma.workspaceMember.findMany({ orderBy: { id: "asc" } }), prisma.appConfig.findMany()]);

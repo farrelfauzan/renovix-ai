@@ -2,7 +2,6 @@ import { Controller, Get, Logger } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AuthModule } from "../auth.module";
 import { ApiKeyRepository } from "../repository/api-key.repository";
@@ -10,6 +9,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createApiKey, createUser } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // better-auth is ESM-only; BetterAuthController and the guards import it.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
@@ -26,7 +26,6 @@ class ApiKeyProbeController {
 
 const KEY_SHAPE = /^rnx_live_[0-9a-f]{76}$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PASSWORD = "correct-horse-battery";
 
 describe("API keys (RNX-18, Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -47,9 +46,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
 
   afterAll(() => app?.close());
 
-  const signedIn = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET as string)}`,
-  });
+  const signedIn = (user: { id: string; email: string }) => asSessionUser(user);
   const probe = (apiKey: string) =>
     app.inject({ method: "GET", url: "/api-key-probe", headers: { authorization: `Bearer ${apiKey}` } });
   const createKey = (user: { id: string; email: string }, payload: object) =>
@@ -228,28 +225,6 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
 
       expect((await probe(wrong)).statusCode).toBe(401);
       expect((await probe(apiKey)).statusCode).toBe(200);
-    });
-  });
-
-  describe("AC6: sign-up creates no key", () => {
-    it("register answers no key and stores none; GET /auth/me has no apiKey", async () => {
-      const registered = await app.inject({
-        method: "POST",
-        url: "/auth/register",
-        payload: { email: "no-key@test.local", password: PASSWORD },
-      });
-      const me = await app.inject({
-        method: "GET",
-        url: "/auth/me",
-        headers: { authorization: `Bearer ${registered.json().token}` },
-      });
-
-      expect([registered.statusCode, me.statusCode]).toEqual([201, 200]);
-      expect(registered.json().user).not.toHaveProperty("apiKey");
-      expect(registered.json()).not.toHaveProperty("apiKeyWarning");
-      expect(registered.body).not.toContain("rnx_live_");
-      expect(me.json()).not.toHaveProperty("apiKey");
-      expect(await prisma.apiKey.count()).toBe(0);
     });
   });
 

@@ -1,19 +1,17 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { ReminderController } from "./reminder.controller";
 import { ReminderService } from "../service/reminder.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-184: the reminder request schemas live in reminder/dto/reminder.dto.ts; an invalid body is
 // refused with 400 on both routes that parse one, and nothing is stored or changed. Real controller
 // and ReminderService, test database.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-
-process.env.JWT_SECRET = "rx184-test-jwt-secret";
 
 describe("RX-184: reminder routes, invalid body (Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -32,9 +30,7 @@ describe("RX-184: reminder routes, invalid body (Fastify, test database)", () =>
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   // Alice owns a channel with a linked agent, a room and one active reminder.
   const setup = async () => {

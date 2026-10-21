@@ -1,7 +1,6 @@
 import { ConfigService } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { McpUserController } from "./mcp-user.controller";
 import { WebSearchController } from "./web-search.controller";
 import { McpUserService } from "../service/mcp-user.service";
@@ -13,6 +12,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-206: the four routes that take a workspace id and had no membership check (web search status, MCP
 // connect, list and delete credentials) refuse exactly like GET /integrations/web-search/policy, through
@@ -104,9 +104,7 @@ describe("RNX-206: workspace membership on the MCP credential and web search sta
 
   afterAll(() => app?.close());
 
-  const auth = (user: Actor) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: Actor) => asSessionUser(user);
 
   const call = (route: Route, actor: Actor, wsId: string) =>
     app.inject({ method: route.method, url: route.url(wsId), headers: auth(actor), payload: route.payload?.(wsId) });

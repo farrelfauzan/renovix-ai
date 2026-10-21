@@ -1,7 +1,6 @@
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
@@ -16,6 +15,7 @@ import { blockOutbound, OutboundBlocker, pointLlmAtStubs, sendJson, startStubHtt
 import { createResolvableModel } from "../../../../test/provider-model";
 import { captureOutput } from "../../../../test/capture-output";
 import { plantedProviderSecret } from "../../../../test/planted-provider-secret";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-190 (D197, D208): a non-stream chat call on a route that does not catch its error (POST /agents/generate-prompt,
 // ProviderRouter.chat), answered 401 with a body that echoes the key's last characters and its SHA-256 (RX-174).
@@ -67,13 +67,13 @@ describe("RNX-190: provider error body on the agent prompt-generation route (Fas
   it("AC1: the provider answers 401 with a planted key suffix and SHA-256 → neither is in any output line or in the response", async () => {
     provider.respond((_r, res) => sendJson(res, 401, plantedProviderSecret.body));
     const user = await createUser(prisma);
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+    const session = asSessionUser(user);
     const output = captureOutput();
 
     const res = await app.inject({
       method: "POST",
       url: "/agents/generate-prompt",
-      headers: { authorization: `Bearer ${token}` },
+      headers: session,
       payload: { name: "Helper" },
     });
 

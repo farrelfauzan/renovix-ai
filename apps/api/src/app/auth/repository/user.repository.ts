@@ -8,37 +8,6 @@ import { PrismaService } from "../../prisma/prisma.service";
 export class UserRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** The user with this email, if there is one (the whole row, password hash included). */
-  findUserByEmail(email: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).user.findUnique({
-      where: { email },
-    });
-  }
-
-  /** Creates an email and password user; returns the fields the sign-up answers with. */
-  createUser(
-    data: Pick<Prisma.UserCreateInput, "email" | "password" | "name">,
-    tx?: DbTransaction,
-  ) {
-    return (tx ?? this.prisma).user.create({
-      data,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true,
-      },
-    });
-  }
-
-  /** Sets this user's last sign-in time to now. */
-  updateLastLogin(userId: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).user.update({
-      where: { id: userId },
-      data: { lastLoginAt: new Date() },
-    });
-  }
-
   /** This user's profile fields; Prisma's not-found error (P2025) when there is no such user, as before RX-138. */
   findProfileOrThrow(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).user.findUniqueOrThrow({

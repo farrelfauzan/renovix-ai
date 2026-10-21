@@ -2,7 +2,6 @@ import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { McpUserController } from "./mcp-user.controller";
 import { McpUserService } from "../service/mcp-user.service";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -12,6 +11,7 @@ import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-defaul
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-151: the public OAuth callback stores a provider credential only for a state the server signed,
 // that has not expired, is used once, and whose user is still a member of its workspace. The provider
@@ -128,9 +128,7 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
 
   afterAll(() => app?.close());
 
-  const auth = (user: Actor) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: Actor) => asSessionUser(user);
 
   const start = (user: Actor, wsId: string = workspaceId) =>
     app.inject({

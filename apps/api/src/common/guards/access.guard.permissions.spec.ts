@@ -52,7 +52,7 @@ class RbacProbeController {
 @Controller("product-probe")
 class ProductProbeController {
   @Get("login")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   login() {
     return { ok: true };
   }

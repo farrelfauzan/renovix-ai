@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { ChannelController } from "./channel.controller";
 import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
@@ -15,6 +14,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser } from "../../../../test/factories";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-136: the channel routes and conditions that the ownership suite (RX-15, channel.ownership.spec.ts)
 // does not cover, written against the code before its queries moved into repositories. Each test
@@ -27,8 +27,6 @@ jest.mock("../service/channel-chat.service", () => ({ ChannelChatService: class 
 jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }));
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
-
-process.env.JWT_SECRET = "rx136-test-jwt-secret";
 
 describe("RX-136: channel routes (Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -56,9 +54,7 @@ describe("RX-136: channel routes (Fastify, test database)", () => {
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   const createChannel = (userId: string, name: string) => prisma.channel.create({ data: { userId, name } });
   const link = (channelId: string, agentId: string) => prisma.channelAgent.create({ data: { channelId, agentId } });

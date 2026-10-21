@@ -29,20 +29,8 @@ const seen = (request: ProbeRequest) => ({
 @Controller("probe")
 class ProbeController {
   @Get("login")
-  @Access({ auth: ["jwt", "session"] })
-  login(@Req() request: ProbeRequest) {
-    return seen(request);
-  }
-
-  @Get("jwt-only")
-  @Access({ auth: ["jwt"] })
-  jwtOnly(@Req() request: ProbeRequest) {
-    return seen(request);
-  }
-
-  @Get("session-only")
   @Access({ auth: ["session"] })
-  sessionOnly(@Req() request: ProbeRequest) {
+  login(@Req() request: ProbeRequest) {
     return seen(request);
   }
 
@@ -76,31 +64,31 @@ class ProbeController {
   }
 
   @Get("no-permissions")
-  @Access({ auth: ["jwt"], permissions: [] })
+  @Access({ auth: ["session"], permissions: [] })
   noPermissions(@Req() request: ProbeRequest) {
     return seen(request);
   }
 
   @Get("staff")
-  @Access({ auth: ["jwt", "staff"] })
+  @Access({ auth: ["session", "staff"] })
   staff(@Req() request: ProbeRequest) {
     return seen(request);
   }
 
   @Get("permissions")
-  @Access({ auth: ["jwt"], permissions: ["codes.manage"] })
+  @Access({ auth: ["session"], permissions: ["codes.manage"] })
   permissions(@Req() request: ProbeRequest) {
     return seen(request);
   }
 
   @Get("plan")
-  @Access({ auth: ["jwt"], plan: "enterprise" })
+  @Access({ auth: ["session"], plan: "enterprise" })
   plan(@Req() request: ProbeRequest) {
     return seen(request);
   }
 
   @Get("reauth")
-  @Access({ auth: ["jwt"], reauth: true })
+  @Access({ auth: ["session"], reauth: true })
   reauth(@Req() request: ProbeRequest) {
     return seen(request);
   }
@@ -121,7 +109,7 @@ class ClassLevelController {
   }
 
   @Get("overrides")
-  @Access({ auth: ["jwt"] })
+  @Access({ auth: ["session"] })
   overrides(@Req() request: ProbeRequest) {
     return seen(request);
   }
@@ -177,15 +165,21 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
     `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!, options)}`;
   const withValidSession = () =>
     mockGetSession.mockResolvedValue({ user: { id: user.id, email: user.email }, session: { id: "s" } });
+  /** The headers of a request with a valid session (the session lookup now answers the user). */
+  const validSession = (): Record<string, string> => {
+    withValidSession();
+    return { cookie: COOKIE };
+  };
   const get = (url: string, headers: Record<string, string> = {}) =>
     app.inject({ method: "GET", url, headers });
 
-  describe("a route that accepts jwt and session", () => {
-    it("valid login JWT: 200, req.user = { userId, email }, no database lookup", async () => {
+  describe("a route that accepts a session", () => {
+    // RNX-225: the login JWT is retired as an access method: no credential, so 401 (was 200 on a jwt/session route).
+    it("valid login JWT: 401, nothing attached, no database or session lookup", async () => {
       const res = await get("/probe/login", { authorization: loginJwt() });
 
-      expect(res.statusCode).toBe(200);
-      expect(res.json().user).toEqual({ userId: user.id, email: user.email });
+      expect(res.statusCode).toBe(401);
+      expect(res.json().message).toBe("Authentication required");
       expect(userLookups).toHaveBeenCalledTimes(0);
       expect(mockGetSession).not.toHaveBeenCalled();
     });
@@ -206,7 +200,7 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
 
       expect(res.statusCode).toBe(403);
       // RNX-18: the key is looked up in api_keys (with its user), not in users
-      expect(keyLookups).toHaveBeenCalledTimes(1); // only after jwt and session failed
+      expect(keyLookups).toHaveBeenCalledTimes(1); // only after the session failed
       expect(userLookups).toHaveBeenCalledTimes(0);
     });
 
@@ -238,26 +232,6 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
     });
   });
 
-  describe("a route that lists only one of jwt and session", () => {
-    it("jwt only: a valid login JWT is 200, a valid session is 403", async () => {
-      const withJwt = await get("/probe/jwt-only", { authorization: loginJwt() });
-      withValidSession();
-      const withSession = await get("/probe/jwt-only", { cookie: COOKIE });
-
-      expect(withJwt.statusCode).toBe(200);
-      expect(withSession.statusCode).toBe(403);
-    });
-
-    it("session only: a valid session is 200, a valid login JWT is 403", async () => {
-      const withJwt = await get("/probe/session-only", { authorization: loginJwt() });
-      withValidSession();
-      const withSession = await get("/probe/session-only", { cookie: COOKIE });
-
-      expect(withSession.statusCode).toBe(200);
-      expect(withJwt.statusCode).toBe(403);
-    });
-  });
-
   describe("a route that accepts an API key", () => {
     // RNX-186: was { id, email, balance } (User.balance is gone).
     it("valid API key: 200, req.user = { id, email }, one database lookup", async () => {
@@ -269,10 +243,11 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       expect(userLookups).toHaveBeenCalledTimes(0);
     });
 
-    it("valid login JWT: 403", async () => {
+    it("valid login JWT: 401 (RNX-225: no credential; was 403)", async () => {
       const res = await get("/probe/api-key", { authorization: loginJwt() });
 
-      expect(res.statusCode).toBe(403);
+      expect(res.statusCode).toBe(401);
+      expect(res.json().message).toBe("Invalid API key format");
     });
 
     it("valid session cookie: 403", async () => {
@@ -346,7 +321,7 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
   describe("deny by default", () => {
     const credentials: [string, () => Record<string, string>][] = [
       ["nothing", () => ({})],
-      ["a valid login JWT", () => ({ authorization: loginJwt() })],
+      ["a valid session", () => validSession()],
       ["a valid API key", () => ({ authorization: `Bearer ${API_KEY}` })],
       ["X-Portal-Session", () => ({ "x-portal-session": SESSION })],
     ];
@@ -363,16 +338,16 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       expect(res.statusCode).toBe(403);
     });
 
-    it("@Access({}) accepts no method: 403 with a valid login JWT", async () => {
-      const res = await get("/probe/empty", { authorization: loginJwt() });
+    it("@Access({}) accepts no method: 403 with a valid session", async () => {
+      const res = await get("/probe/empty", validSession());
 
       expect(res.statusCode).toBe(403);
     });
 
     it.each(["staff", "permissions", "plan", "reauth", "webhook"])(
-      "a route that declares %s (nothing checks it yet): 403, with a valid login JWT and with nothing",
+      "a route that declares %s (nothing checks it yet): 403, with a valid session and with nothing",
       async (route) => {
-        const signedIn = await get(`/probe/${route}`, { authorization: loginJwt() });
+        const signedIn = await get(`/probe/${route}`, validSession());
         const anonymous = await get(`/probe/${route}`);
 
         expect(signedIn.statusCode).toBe(403);
@@ -380,8 +355,8 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       },
     );
 
-    it("permissions: [] is the default (none needed): 200 with a valid login JWT", async () => {
-      const res = await get("/probe/no-permissions", { authorization: loginJwt() });
+    it("permissions: [] is the default (none needed): 200 with a valid session", async () => {
+      const res = await get("/probe/no-permissions", validSession());
 
       expect(res.statusCode).toBe(200);
     });
@@ -401,19 +376,19 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
   });
 
   describe("a declaration on the controller and one on the handler", () => {
-    it("a handler without its own takes the controller's (API key 200, login JWT 403)", async () => {
+    it("a handler without its own takes the controller's (API key 200, session 403)", async () => {
       const withKey = await get("/by-class/inherits", { authorization: `Bearer ${API_KEY}` });
-      const withJwt = await get("/by-class/inherits", { authorization: loginJwt() });
+      const withSession = await get("/by-class/inherits", validSession());
 
       expect(withKey.statusCode).toBe(200);
-      expect(withJwt.statusCode).toBe(403);
+      expect(withSession.statusCode).toBe(403);
     });
 
-    it("the handler's declaration replaces the controller's (login JWT 200, API key 403)", async () => {
+    it("the handler's declaration replaces the controller's (session 200, API key 403)", async () => {
       const withKey = await get("/by-class/overrides", { authorization: `Bearer ${API_KEY}` });
-      const withJwt = await get("/by-class/overrides", { authorization: loginJwt() });
+      const withSession = await get("/by-class/overrides", validSession());
 
-      expect(withJwt.statusCode).toBe(200);
+      expect(withSession.statusCode).toBe(200);
       expect(withKey.statusCode).toBe(403);
     });
   });

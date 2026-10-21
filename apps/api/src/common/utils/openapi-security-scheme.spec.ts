@@ -6,8 +6,6 @@ describe("openApiSecuritySchemeName", () => {
     expect(openApiSecuritySchemeName({ auth: ["apiKey"] })).toBe("BearerApiKey");
     expect(openApiSecuritySchemeName({ auth: ["portal"] })).toBe("PortalSession");
     expect(openApiSecuritySchemeName({ auth: ["staff"] })).toBe("BackOfficeSession");
-    expect(openApiSecuritySchemeName({ auth: ["jwt", "session"] })).toBe("JwtOrSession");
-    expect(openApiSecuritySchemeName({ auth: ["jwt"] })).toBe("JwtOrSession");
     expect(openApiSecuritySchemeName({ auth: ["session"] })).toBe("JwtOrSession");
   });
 
@@ -17,7 +15,7 @@ describe("openApiSecuritySchemeName", () => {
   });
 
   it("prefers apiKey over the others when several are accepted (it is the header the caller must set)", () => {
-    const mixed: AccessOptions = { auth: ["jwt", "session", "apiKey"] };
+    const mixed: AccessOptions = { auth: ["session", "apiKey"] };
     expect(openApiSecuritySchemeName(mixed)).toBe("BearerApiKey");
   });
 });

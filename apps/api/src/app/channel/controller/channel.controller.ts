@@ -36,7 +36,7 @@ import {
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("channels")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class ChannelController {
   private readonly logger = new Logger(ChannelController.name);
 

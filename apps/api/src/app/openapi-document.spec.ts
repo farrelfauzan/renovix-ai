@@ -139,7 +139,7 @@ describe("RX-170: two generated OpenAPI documents", () => {
     const portalOperations = documentOperations(portal);
     expect(portalOperations).toContain("POST /api/v1/chat/completions");
     expect(portalOperations).toContain("POST /api/v1/chat/portal/completions");
-    expect(portalOperations).toContain("POST /api/v1/auth/login");
+    expect(portalOperations).toContain("GET /api/v1/auth/me");
     // The knowledge controller composes @Controller("v1/knowledge") under the global /api/v1: the
     // real path is /api/v1/v1/knowledge — documented as it is, not "fixed".
     expect(portalOperations).toContain("GET /api/v1/v1/knowledge/bases");

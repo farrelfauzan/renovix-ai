@@ -25,7 +25,7 @@ import { codedRefusalOf } from "../../../common/utils/coded-refusal-of";
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("agents")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class AgentRunController {
   private readonly logger = new Logger(AgentRunController.name);
 
