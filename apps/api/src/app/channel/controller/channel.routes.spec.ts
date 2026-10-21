@@ -180,7 +180,7 @@ describe("RX-136: channel routes (Fastify, test database)", () => {
         method: "POST",
         url: `/channels/${channelA.id}/agents`,
         headers: auth(alice),
-        payload: { agentId: own.id, role: "sub" },
+        payload: { agentId: own.id, role: "primary" },
       });
 
       expect(res.statusCode).toBe(201);
@@ -188,10 +188,25 @@ describe("RX-136: channel routes (Fastify, test database)", () => {
         id: expect.any(String),
         channelId: channelA.id,
         agentId: own.id,
-        role: "sub",
+        role: "primary",
         createdAt: expect.any(String),
         agent: { id: own.id, name: own.name, avatar: "a.png", avatarColor: "#111111", status: "draft" },
       });
+    });
+
+    it('RNX-118: the role "sub" is refused: 400, the agent not added', async () => {
+      const { alice, channelA } = await setup();
+      const own = await createAgent(prisma, { userId: alice.id });
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/channels/${channelA.id}/agents`,
+        headers: auth(alice),
+        payload: { agentId: own.id, role: "sub" },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(await prisma.channelAgent.count({ where: { agentId: own.id } })).toBe(0);
     });
 
     it("the role defaults to primary", async () => {

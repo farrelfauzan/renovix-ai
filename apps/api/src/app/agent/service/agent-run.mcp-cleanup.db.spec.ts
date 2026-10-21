@@ -22,6 +22,8 @@ import { createResolvableModel } from "../../../../test/provider-model";
 import { setRunCap } from "../../../../test/run-cap";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
+import { AgentLinkService } from "./agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RNX-200 AC4: the MCP connections opened for an agent run (buildToolSchemasWithMcp) are closed exactly once on every
 // path: success, a refusal once the tools are built (the per-run cap on the real prompt, the reservation refused), a
@@ -31,16 +33,16 @@ jest.mock("./agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
-const DELEGATE = {
+const CALL_AGENT = {
   type: "function",
-  function: { name: "delegate_to_subagent", description: "Delegate", parameters: {} },
+  function: { name: "call_agent", description: "Call", parameters: {} },
 };
 
 describe("RNX-200 AC4: an agent run closes its MCP connections on every path (test database, fake provider)", () => {
   const fake = new FakeProviderAdapter();
   const buildToolSchemasWithMcp = jest.fn(
-    async (_tools: unknown, _agentId: string, _userId?: string, _workspaceId?: string, options?: { injectDelegation?: boolean }) =>
-      options?.injectDelegation ? [DELEGATE] : [],
+    async (_tools: unknown, _agentId: string, _userId?: string, _workspaceId?: string, options?: { injectCallAgent?: boolean }) =>
+      options?.injectCallAgent ? [CALL_AGENT] : [],
   );
   const cleanupMcpConnections = jest.fn(async () => undefined);
   let moduleRef: TestingModule;
@@ -53,6 +55,8 @@ describe("RNX-200 AC4: an agent run closes its MCP connections on every path (te
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           AgentRunMeterService,
           CreditService,
           PlatformSettingsService,
@@ -91,19 +95,14 @@ describe("RNX-200 AC4: an agent run closes its MCP connections on every path (te
 
   afterAll(() => moduleRef?.close());
 
-  /** Bob, subscribed and funded with `credits`, with a parent agent and his own sub-agent under it. */
+  /** Bob, subscribed and funded with `credits`, with an agent linked to his own helper (RNX-118). */
   const seed = async (credits: string) => {
     const bob = await createUser(prisma);
     await createSubscription(prisma, { userId: bob.id, planId: (await createPlan(prisma)).id });
     await fundPaidWallet(prisma, bob.id, credits);
-    const parent = await createAgent(prisma, { userId: bob.id, agentType: "parent", status: "active" });
-    const sub = await createAgent(prisma, {
-      userId: bob.id,
-      name: "Bob helper",
-      agentType: "sub_agent",
-      status: "active",
-      parentAgentId: parent.id,
-    });
+    const parent = await createAgent(prisma, { userId: bob.id, status: "active" });
+    const sub = await createAgent(prisma, { userId: bob.id, name: "Bob helper", status: "active" });
+    await prisma.agentLink.create({ data: { callerAgentId: parent.id, calleeAgentId: sub.id } });
     return { bob, parent, sub };
   };
 
@@ -167,7 +166,7 @@ describe("RNX-200 AC4: an agent run closes its MCP connections on every path (te
     await setRunCap(prisma, 0.01);
     // 9,500 + 10 micro-credits: the sub-agent's E_call (its prompt + max_tokens 4,096) no longer fits under 0.01.
     fake.enqueue({
-      toolCalls: [{ name: "delegate_to_subagent", arguments: { subAgentId: sub.id, task: "do it" } }],
+      toolCalls: [{ name: "call_agent", arguments: { agent: sub.id, task: "do it" } }],
       usage: { prompt_tokens: 9_500, completion_tokens: 10 },
     });
 

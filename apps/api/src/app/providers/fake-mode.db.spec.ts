@@ -34,6 +34,8 @@ import {
   createSubscription,
   createUser,
 } from "../../../test/factories";
+import { AgentLinkService } from "../agent/service/agent-link.service";
+import { WorkspaceQuotaService } from "../workspace/service/workspace-quota.service";
 
 // RX-88: the API with LLM_PROVIDER=fake, no OPENROUTER_API_KEY and every
 // outbound HTTP client blocked. These collaborators load ESM-only packages
@@ -196,6 +198,8 @@ describe("RX-88: agent runs (chat, tool call) with LLM_PROVIDER=fake", () => {
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
       providers: [
         AgentRunService,
+        AgentLinkService,
+        WorkspaceQuotaService,
         AgentRunMeterService,
         CreditService,
         PlatformSettingsService,

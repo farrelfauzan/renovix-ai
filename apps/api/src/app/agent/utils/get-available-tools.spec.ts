@@ -6,12 +6,11 @@ const EXPECTED_TOOLS = [
   { type: "calculator", name: "Calculator", description: "Evaluate mathematical expressions", configRequired: false },
   { type: "api_call", name: "API Call", description: "Call external HTTP APIs", configRequired: true },
   { type: "memory_store", name: "Memory Store", description: "Store facts about the conversation user", configRequired: false },
-  { type: "delegate_to_subagent", name: "Delegate to Sub-Agent", description: "Delegate a task to a sub-agent", configRequired: true },
   { type: "create_reminder", name: "Create Reminder", description: "Schedule automated messages on a recurring basis", configRequired: false },
 ];
 
 describe("RX-131: getAvailableTools (the tool catalog offered to agents)", () => {
-  it("lists the seven tools in this order", async () => {
+  it("lists the six tools in this order (RNX-118: delegate_to_subagent removed)", async () => {
     const actual = await getAvailableTools();
 
     expect(actual).toEqual(EXPECTED_TOOLS);

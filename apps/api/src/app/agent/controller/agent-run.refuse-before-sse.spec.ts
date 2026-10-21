@@ -27,6 +27,8 @@ import { setRunCap } from "../../../../test/run-cap";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { requestOverSocket } from "../../../../test/sse-client";
+import { AgentLinkService } from "../service/agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RNX-200: POST /agents/:id/chat answers its refusals (no subscription, no credits, a first call over the per-run cap)
 // as real HTTP answers with their JSON body and code, before the document-intent classifier call and the SSE headers;
@@ -60,6 +62,8 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
         controllers: [AgentRunController],
         providers: [
           AgentRunService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           AgentRunMeterService,
           CreditService,
           PlatformSettingsService,

@@ -28,6 +28,8 @@ import { blockOutbound, OutboundBlocker, pointLlmAtStubs, sendJson, startStubHtt
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
+import { AgentLinkService } from "../service/agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-178 review B1: POST /agents/:id/chat answers 400 with the fixed text for an agent whose model cannot be resolved
 // (an old slug with no model row, or a model on an inactive provider), BEFORE the document-intent classifier call, the
@@ -92,6 +94,8 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
       controllers: [AgentRunController],
       providers: [
         AgentRunService,
+        AgentLinkService,
+        WorkspaceQuotaService,
         AgentRunMeterService,
         CreditService,
         PlatformSettingsService,

@@ -23,6 +23,8 @@ import { setRunCap } from "../../../../test/run-cap";
 import { MODEL_UNAVAILABLE_MESSAGE } from "../../config/errors/model-unavailable.exception";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
+import { AgentLinkService } from "./agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-22b (RNX-193): agent runs on the credit ledger (docs/credits.md section 13). One reservation per agent message
 // with a new runId, one usage entry per model call (root and sub-agent hops) attributed to the agent, the run and the
@@ -32,9 +34,9 @@ jest.mock("./agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
-const DELEGATE = {
+const CALL_AGENT = {
   type: "function",
-  function: { name: "delegate_to_subagent", description: "Delegate", parameters: {} },
+  function: { name: "call_agent", description: "Call", parameters: {} },
 };
 
 describe("RX-22b: agent runs on the credit ledger (test database, fake provider)", () => {
@@ -49,6 +51,8 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           AgentRunMeterService,
           CreditService,
           PlatformSettingsService,
@@ -62,8 +66,8 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
                 _agentId: string,
                 _userId?: string,
                 _workspaceId?: string,
-                options?: { injectDelegation?: boolean },
-              ) => (options?.injectDelegation ? [DELEGATE] : []),
+                options?: { injectCallAgent?: boolean },
+              ) => (options?.injectCallAgent ? [CALL_AGENT] : []),
               cleanupMcpConnections: async () => undefined,
             },
           },
@@ -100,26 +104,25 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
 
   afterAll(() => moduleRef?.close());
 
-  /** Bob, subscribed and funded with `credits` (none for "0"), with a parent agent and his own sub-agent under it. */
+  /** Bob, subscribed and funded with `credits` (none for "0"), with an agent linked to his own helper (RNX-118). */
   const seed = async (credits: string) => {
     const plan = await createPlan(prisma);
     const bob = await createUser(prisma);
     await createSubscription(prisma, { userId: bob.id, planId: plan.id });
     if (new Decimal(credits).greaterThan(0)) await fundPaidWallet(prisma, bob.id, credits);
-    const parent = await createAgent(prisma, { userId: bob.id, agentType: "parent", status: "active" });
+    const parent = await createAgent(prisma, { userId: bob.id, status: "active" });
     const sub = await createAgent(prisma, {
       userId: bob.id,
       name: "Bob helper",
       systemPrompt: "BOB SUB PROMPT",
-      agentType: "sub_agent",
       status: "active",
-      parentAgentId: parent.id,
     });
+    await prisma.agentLink.create({ data: { callerAgentId: parent.id, calleeAgentId: sub.id } });
     return { bob, parent, sub };
   };
 
   const delegateTurn = (subAgentId: string, usage: { prompt_tokens: number; completion_tokens: number }) => ({
-    toolCalls: [{ name: "delegate_to_subagent", arguments: { subAgentId, task: "do it" } }],
+    toolCalls: [{ name: "call_agent", arguments: { agent: subAgentId, task: "do it" } }],
     usage,
   });
 
@@ -160,37 +163,28 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
       await assertCreditLedgerInvariants(prisma);
     });
 
-    it("forced delegation: the sub-agent hop is metered with the root call as its parent", async () => {
-      const { bob, parent, sub } = await seed("1");
-      fake.enqueue(
-        { content: "I will not call the tool", usage: { prompt_tokens: 100, completion_tokens: 10 } },
-        { content: "Sub answer", usage: { prompt_tokens: 50, completion_tokens: 20 } },
-      );
-
-      await service.chat(bob.id, parent.id, "Please delegate this");
-
-      const entries = await usageEntriesOf(bob.id);
-      expect(entries.map((e) => [e.agentId, e.parentCallId])).toEqual([
-        [parent.id, null],
-        [sub.id, entries[0].callId],
-      ]);
-      await assertCreditLedgerInvariants(prisma);
-    });
-
-    it("RX-178 review N3: forced delegation to a sub-agent whose model is not available answers the fixed text; the root call is charged and settled", async () => {
+    it("RX-178 review N3: a call to an agent whose model is not available answers the fixed text; the root calls are charged and settled", async () => {
       const { bob, parent, sub } = await seed("1");
       await prisma.agent.update({ where: { id: sub.id }, data: { model: "vendor/old-slug-without-a-row" } });
-      fake.enqueue({ content: "I will not call the tool", usage: { prompt_tokens: 100, completion_tokens: 10 } });
+      fake.enqueue(
+        delegateTurn(sub.id, { prompt_tokens: 100, completion_tokens: 10 }),
+        { content: "Parent final", usage: { prompt_tokens: 200, completion_tokens: 30 } },
+      );
 
-      const result = await service.chat(bob.id, parent.id, "Please delegate this");
+      const result = await service.chat(bob.id, parent.id, "Hi");
 
-      expect(result.message.content).toContain(`Error: ${MODEL_UNAVAILABLE_MESSAGE}`);
-      expect(result.message.content).not.toContain("vendor/old-slug-without-a-row");
-      expect(fake.requests).toHaveLength(1);
+      expect(result.message.content).toBe("Parent final");
+      expect(fake.requests).toHaveLength(2);
+      const toolResult = JSON.stringify(fake.requests[1].messages.filter((m: any) => m.role === "tool"));
+      expect(toolResult).toContain(`Error: ${MODEL_UNAVAILABLE_MESSAGE}`);
+      expect(toolResult).not.toContain("vendor/old-slug-without-a-row");
       const entries = await usageEntriesOf(bob.id);
-      expect(entries.map((e) => [e.agentId, e.outcome, e.amount.toFixed(6)])).toEqual([[parent.id, "completed", "-0.000110"]]);
+      expect(entries.map((e) => [e.agentId, e.outcome, e.amount.toFixed(6)])).toEqual([
+        [parent.id, "completed", "-0.000110"],
+        [parent.id, "completed", "-0.000230"],
+      ]);
       const [reservation] = await prisma.creditReservation.findMany();
-      expect([reservation.status, reservation.consumed.toFixed(6)]).toEqual(["settled", "0.000110"]);
+      expect([reservation.status, reservation.consumed.toFixed(6)]).toEqual(["settled", "0.000340"]);
       await assertCreditLedgerInvariants(prisma);
     });
 

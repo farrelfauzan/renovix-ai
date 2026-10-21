@@ -31,7 +31,6 @@ const publicAgents = [
 
 Always be organized, concise, and action-oriented. Ask clarifying questions before creating tickets.`,
     temperature: 0.4,
-    agentType: "standalone",
     tools: [
       "jira_create_ticket",
       "jira_search_tickets",
@@ -55,7 +54,6 @@ Always be organized, concise, and action-oriented. Ask clarifying questions befo
 
 Be thorough but respectful. Prioritize critical issues over style preferences.`,
     temperature: 0.3,
-    agentType: "standalone",
     tools: ["github_create_issue", "web_search"],
   },
   {
@@ -73,7 +71,6 @@ Be thorough but respectful. Prioritize critical issues over style preferences.`,
 
 Be thorough and objective. Present multiple perspectives when relevant.`,
     temperature: 0.5,
-    agentType: "standalone",
     tools: [
       "web_search",
       "memory_store",
@@ -96,7 +93,6 @@ Be thorough and objective. Present multiple perspectives when relevant.`,
 
 Be efficient and respect people's time. Always confirm details before scheduling.`,
     temperature: 0.3,
-    agentType: "standalone",
     tools: [
       "calendar_schedule_meeting",
       "calendar_find_availability",
@@ -118,7 +114,6 @@ Be efficient and respect people's time. Always confirm details before scheduling
 
 Be friendly, patient, and solution-oriented. Never guess — if unsure, say so and offer to escalate.`,
     temperature: 0.4,
-    agentType: "standalone",
     tools: [
       "knowledge_retrieval",
       "memory_store",
@@ -141,7 +136,6 @@ Be friendly, patient, and solution-oriented. Never guess — if unsure, say so a
 
 Write clearly and engagingly. Use active voice. Break content into scannable sections.`,
     temperature: 0.7,
-    agentType: "standalone",
     tools: ["web_search", "notion_create_page", "knowledge_retrieval"],
   },
   {
@@ -159,7 +153,6 @@ Write clearly and engagingly. Use active voice. Break content into scannable sec
 
 Be precise and technical. Include relevant metrics and timestamps in alerts.`,
     temperature: 0.2,
-    agentType: "standalone",
     tools: [
       "api_call",
       "slack_send_message",
@@ -181,8 +174,7 @@ Be precise and technical. Include relevant metrics and timestamps in alerts.`,
 
 Think step-by-step about which sub-agent is best suited for each task. Combine results coherently.`,
     temperature: 0.4,
-    agentType: "parent",
-    tools: ["delegate_to_subagent", "memory_store", "slack_send_message"],
+    tools: ["memory_store", "slack_send_message"],
   },
 ];
 
@@ -264,7 +256,6 @@ async function main() {
         temperature: agentData.temperature,
         status: "active",
         isPublic: true,
-        agentType: agentData.agentType,
       },
     });
 

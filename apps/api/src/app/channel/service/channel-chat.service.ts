@@ -7,7 +7,8 @@ import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
 import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
-import { ownSubAgents } from "../../agent/utils/own-sub-agents";
+import { AgentLinkService } from "../../agent/service/agent-link.service";
+import type { CallableAgent } from "../../agent/types/callable-agent";
 import { budgetStopMessage } from "../../agent/utils/budget-stop-message";
 import { RunBudgetStoppedError } from "../../agent/errors/run-budget-stopped.error";
 import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
@@ -29,6 +30,7 @@ export class ChannelChatService {
     private readonly memoryService: AgentMemoryService,
     private readonly guardrail: GuardrailService,
     private readonly meter: AgentRunMeterService,
+    private readonly links: AgentLinkService,
   ) {}
 
   /**
@@ -101,28 +103,8 @@ export class ChannelChatService {
       };
     }
 
-    // Load sub-agents if this is a parent agent
-    const subAgents =
-      agent.agentType === "parent"
-        ? ownSubAgents(
-            agent,
-            await this.prisma.agent.findMany({
-              where: { parentAgentId: agent.id, status: "active" },
-              select: {
-                id: true,
-                name: true,
-                description: true,
-                status: true,
-                model: true,
-                userId: true,
-                workspaceId: true,
-                systemPrompt: true,
-                maxTokens: true,
-              },
-            }),
-            this.logger,
-          )
-        : [];
+    // RNX-118: the linked agents it may call, none when the caller is outside the agent's workspace (R17)
+    const callableAgents = await this.links.listCallableAgents(agent, userId);
 
     // Build context
     const modelEntry = await this.registry.resolveModel(agent.model);
@@ -145,7 +127,7 @@ export class ChannelChatService {
     });
     history.reverse();
 
-    // Build system prompt with sub-agent info
+    // Build system prompt with the callable agents
     let systemContent = agent.systemPrompt || "You are a helpful assistant.";
 
     // Inject workspace memories
@@ -159,14 +141,14 @@ export class ChannelChatService {
     // Memory instruction
     systemContent += `\n\n## Memory Policy\nAfter completing an important task (creating documents, spreadsheets, setting up resources, etc.), use the memory_store tool to save key details (IDs, URLs, names, structure) so you can reference them in future conversations.`;
 
-    if (subAgents.length > 0) {
-      const subAgentList = subAgents
+    if (callableAgents.length > 0) {
+      const callableList = callableAgents
         .map(
-          (sa) =>
-            `- ${sa.name} (id: ${sa.id})${sa.description ? `: ${sa.description}` : ""}`,
+          (callee) =>
+            `- ${callee.name} (id: ${callee.id})${callee.description ? `: ${callee.description}` : ""}`,
         )
         .join("\n");
-      systemContent += `\n\n## Available Sub-Agents\n${subAgentList}\n\nDelegation policy:\n- Use delegate_to_subagent tool to delegate tasks.\n- Execute delegation immediately, do not ask confirmation.\n- Never invent sub-agent names or IDs not in this list.`;
+      systemContent += `\n\n## Callable Agents\n${callableList}\n\nCall policy:\n- Use the call_agent tool to give one of these agents a task.\n- Never invent agent names or IDs not in this list.`;
     }
 
     // When generating a document, instruct agent to research first
@@ -178,7 +160,7 @@ export class ChannelChatService {
         { pdf: "PDF", docx: "Word document", xlsx: "Excel spreadsheet" }[
           options.documentFormat
         ] || options.documentFormat;
-      systemContent += `\n\n## Document Generation Mode\nThe user wants a ${formatLabel} document. Follow these steps:\n1. If you have tools available (web_search, delegate_to_subagent), USE THEM FIRST to research the topic thoroughly before writing.\n2. Write comprehensive, well-structured markdown content with proper headings, sections, and details.\n3. The markdown you produce will be automatically converted to ${formatLabel}. Focus on quality content.`;
+      systemContent += `\n\n## Document Generation Mode\nThe user wants a ${formatLabel} document. Follow these steps:\n1. If you have tools available (web_search, call_agent), USE THEM FIRST to research the topic thoroughly before writing.\n2. Write comprehensive, well-structured markdown content with proper headings, sections, and details.\n3. The markdown you produce will be automatically converted to ${formatLabel}. Focus on quality content.`;
     }
 
     // Build messages
@@ -188,7 +170,7 @@ export class ChannelChatService {
       { role: "user", content: message },
     ];
 
-    // Build tool schemas including MCP tools (auto-inject delegation for parent agents). RNX-217: the MCP connections
+    // Build tool schemas including MCP tools (RNX-118: call_agent with callable agents). RNX-217: the MCP connections
     // are this run's own (mcpSession), closed on every path (success, refusal, provider error, budget stop).
     const workspaceId = channelAgent.channel?.workspace?.id || undefined;
     const mcpSession = createMcpRunSession();
@@ -199,7 +181,7 @@ export class ChannelChatService {
         userId,
         workspaceId,
         {
-          injectDelegation: agent.agentType === "parent" && subAgents.length > 0,
+          injectCallAgent: callableAgents.length > 0,
           mcpSession,
         },
       );
@@ -221,6 +203,7 @@ export class ChannelChatService {
         currentMessages,
         toolSchemas,
         mcpSession,
+        callableAgents,
         maxTokens: options?.documentFormat
           ? Math.max(agent.maxTokens ?? 4096, 8192)
           : (agent.maxTokens ?? 4096),
@@ -235,7 +218,7 @@ export class ChannelChatService {
             tools: toolSchemas,
             max_tokens: loop.maxTokens,
           },
-          linkedAgents: subAgents,
+          linkedAgents: callableAgents,
         },
         async (meteredRun) => {
           // RNX-200: saved once the reservation holds; a refused message saves nothing.
@@ -267,7 +250,7 @@ export class ChannelChatService {
     meteredRun: AgentRunBudget,
   ): Promise<ChannelChatResult> {
     const { userId, channelId, agentId, message, channelAgent } = loop;
-    const { modelEntry, connection, currentMessages, toolSchemas, mcpSession } = loop;
+    const { modelEntry, connection, currentMessages, toolSchemas, mcpSession, callableAgents } = loop;
     const agent = channelAgent.agent;
 
     // Tool execution loop
@@ -327,8 +310,8 @@ export class ChannelChatService {
             const args = JSON.parse(toolCall.function.arguments);
             let result: string;
 
-            if (toolCall.function.name === "delegate_to_subagent") {
-              result = await this.executeSubAgent(agent, args, meteredRun, metered.callId);
+            if (toolCall.function.name === "call_agent") {
+              result = await this.executeSubAgent(agent, callableAgents, args, meteredRun, metered.callId);
             } else {
               result = await this.toolService.executeTool(
                 toolCall.function.name,
@@ -444,39 +427,34 @@ export class ChannelChatService {
     };
   }
 
-  /** One hop (RX-22b): the sub-agent's model call is metered on the run, with the calling model call as its parent. */
+  /**
+   * One hop (RX-22b), behind call_agent (RNX-118): the called agent's model call is metered on the run, with the
+   * calling model call as its parent. Only an agent of `callableAgents` (a linked callee in the caller's workspace,
+   * none for a caller outside it) is called; any other name is refused and nothing runs.
+   */
   private async executeSubAgent(
     parentAgent: any,
+    callableAgents: CallableAgent[],
     args: any,
     meteredRun: AgentRunBudget,
     parentCallId: string,
   ): Promise<string> {
-    const rawIdentifier = [args?.subAgentId, args?.subAgentName]
-      .find((v) => typeof v === "string" && v.trim().length > 0)
-      ?.trim();
+    const rawIdentifier = typeof args?.agent === "string" ? args.agent.trim() : "";
     const task = typeof args?.task === "string" ? args.task.trim() : "";
+    const taskContext = typeof args?.context === "string" ? args.context.trim() : "";
 
-    if (!rawIdentifier) return "Error: Missing sub-agent identifier.";
-    if (!task) return "Error: Missing task for sub-agent.";
+    if (!rawIdentifier) return "Error: Missing agent.";
+    if (!task) return "Error: Missing task for the called agent.";
 
-    const subAgent = await this.prisma.agent.findFirst({
-      where: {
-        parentAgentId: parentAgent.id,
-        workspaceId: parentAgent.workspaceId,
-        agentType: "sub_agent",
-        OR: [
-          { id: rawIdentifier },
-          { name: { equals: rawIdentifier, mode: "insensitive" } },
-        ],
-      },
-      include: { tools: { where: { enabled: true } } },
-    });
+    const subAgent = callableAgents.find(
+      (callee) => callee.id === rawIdentifier || callee.name.toLowerCase() === rawIdentifier.toLowerCase(),
+    );
 
     if (!subAgent) {
       this.logger.warn(
-        `[executeSubAgent] Not found: "${rawIdentifier}" under parent ${parentAgent.id}`,
+        `[executeSubAgent] Not callable: "${rawIdentifier}" for caller ${parentAgent.id}`,
       );
-      return "Error: Sub-agent not found.";
+      return "Error: Agent not found or not linked.";
     }
 
     const modelEntry = await this.registry.resolveModel(subAgent.model);
@@ -494,11 +472,11 @@ export class ChannelChatService {
       },
       {
         role: "user",
-        content: `Task delegated from "${parentAgent.name}": ${task}`,
+        content: `Task from agent "${parentAgent.name}": ${task}${taskContext ? `\n\nContext: ${taskContext}` : ""}`,
       },
     ];
 
-    // Don't pass tools to sub-agent during delegation — it should respond with text only
+    // Don't pass tools to the called agent — it should respond with text only
     const startTime = Date.now();
     const connection = await this.registry.resolveConnection(modelEntry.slug);
     const { response } = await this.meter.callModel(meteredRun, {

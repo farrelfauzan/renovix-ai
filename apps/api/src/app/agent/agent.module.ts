@@ -1,7 +1,9 @@
 import { Module } from "@nestjs/common";
 import { AgentController } from "./controller/agent.controller";
 import { AgentRunController } from "./controller/agent-run.controller";
+import { AgentLinkController } from "./controller/agent-link.controller";
 import { AgentService } from "./service/agent.service";
+import { AgentLinkService } from "./service/agent-link.service";
 import { AgentRunService } from "./service/agent-run.service";
 import { AgentRunMeterService } from "./service/agent-run-meter.service";
 import { AgentToolService } from "./service/agent-tool.service";
@@ -28,9 +30,10 @@ import { OffersModule } from "../offers/offers.module";
     WorkspaceModule,
     OffersModule,
   ],
-  controllers: [AgentController, AgentRunController],
+  controllers: [AgentController, AgentRunController, AgentLinkController],
   providers: [
     AgentService,
+    AgentLinkService,
     AgentRunService,
     AgentRunMeterService,
     AgentToolService,
@@ -38,6 +41,7 @@ import { OffersModule } from "../offers/offers.module";
   ],
   exports: [
     AgentService,
+    AgentLinkService,
     AgentRunService,
     AgentRunMeterService,
     AgentToolService,

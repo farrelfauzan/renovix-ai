@@ -140,27 +140,6 @@ export class AgentToolService {
         },
       },
     },
-    delegate_to_subagent: {
-      type: "function",
-      function: {
-        name: "delegate_to_subagent",
-        description: "Delegate a specific task to a sub-agent",
-        parameters: {
-          type: "object",
-          properties: {
-            subAgentId: {
-              type: "string",
-              description: "The ID of the sub-agent to delegate to",
-            },
-            task: {
-              type: "string",
-              description: "Description of the task to delegate",
-            },
-          },
-          required: ["subAgentId", "task"],
-        },
-      },
-    },
     create_reminder: {
       type: "function",
       function: {
@@ -227,9 +206,39 @@ export class AgentToolService {
     },
   };
 
+  /**
+   * RNX-118: call one of the agents this agent may call (its links). Never from a tool row: offered only when the run
+   * passes `injectCallAgent` (the agent has callable links and the runner is a member of its workspace).
+   */
+  private readonly callAgentTool: ToolSchema = {
+    type: "function",
+    function: {
+      name: "call_agent",
+      description: "Call another agent you are linked to and get its answer",
+      parameters: {
+        type: "object",
+        properties: {
+          agent: {
+            type: "string",
+            description: "The name or the id of the agent to call, from the callable agents list",
+          },
+          task: {
+            type: "string",
+            description: "The task for the agent",
+          },
+          context: {
+            type: "string",
+            description: "Optional context the agent needs for the task",
+          },
+        },
+        required: ["agent", "task"],
+      },
+    },
+  };
+
   buildToolSchemas(
     agentTools: any[],
-    options?: { injectDelegation?: boolean },
+    options?: { injectCallAgent?: boolean },
   ): ToolSchema[] {
     const schemas: ToolSchema[] = [];
 
@@ -240,12 +249,9 @@ export class AgentToolService {
       }
     }
 
-    // Auto-inject delegate_to_subagent for parent agents with sub-agents
-    if (
-      options?.injectDelegation &&
-      !schemas.some((s) => s.function.name === "delegate_to_subagent")
-    ) {
-      schemas.push(this.toolDefinitions["delegate_to_subagent"]);
+    // RNX-118: call_agent only for a run whose agent may call linked agents
+    if (options?.injectCallAgent) {
+      schemas.push(this.callAgentTool);
     }
 
     // Auto-inject create_document for all agents (core platform feature)
@@ -268,7 +274,7 @@ export class AgentToolService {
     agentId: string,
     executingUserId: string | undefined,
     workspaceId: string | undefined,
-    options: { injectDelegation?: boolean; mcpSession: McpRunSession },
+    options: { injectCallAgent?: boolean; mcpSession: McpRunSession },
   ): Promise<ToolSchema[]> {
     // 1. Built-in tools
     const schemas = this.buildToolSchemas(agentTools, options);

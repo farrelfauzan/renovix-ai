@@ -29,6 +29,7 @@ import { AgentChatSchema, AttachToolSchema, AttachIntegrationSchema, DeployChann
 import { CreateAgentSchema } from "../../app/agent/dto/create-agent.dto";
 import { CloneAgentSchema } from "../../app/agent/dto/clone-agent.dto";
 import { UpdateAgentSchema } from "../../app/agent/dto/update-agent.dto";
+import { CreateAgentLinkSchema } from "../../app/agent/dto/create-agent-link.dto";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
 import { ApiChatCompletionRequestSchema, ChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
 import { RedeemCodeDto } from "../../app/codes/dto/redeem-code.dto";
@@ -79,6 +80,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /agents/:id/channels", DeployChannelSchema],
   ["PATCH /agents/:id/channels/:channelId", z.record(z.string(), z.unknown())],
   ["POST /agents/:id/chat", AgentChatSchema],
+  ["POST /agents/:id/links", CreateAgentLinkSchema],
   // ─── channels and their workspaces ───
   ["POST /channels", CreateChannelSchema],
   ["PATCH /channels/:id", UpdateChannelSchema],

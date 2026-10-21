@@ -15,7 +15,6 @@ export const AttachToolSchema = z.object({
     "api_call",
     "knowledge_retrieval",
     "memory_store",
-    "delegate_to_subagent",
     "create_reminder",
     "create_document",
   ]),

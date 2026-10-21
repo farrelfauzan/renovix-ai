@@ -349,9 +349,6 @@ model Agent {
   id              String          @id @default(uuid())
   userId          String
   user            User            @relation(fields: [userId], references: [id])
-  parentAgentId   String?         @map("parent_agent_id")
-  parentAgent     Agent?          @relation("SubAgents", fields: [parentAgentId], references: [id], onDelete: SetNull)
-  subAgents       Agent[]         @relation("SubAgents")
   workspaceId     String          @map("workspace_id")
   workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
   name            String
@@ -365,7 +362,6 @@ model Agent {
   maxTokens       Int?            @map("max_tokens")
   status          String          @default("draft") // "draft" | "active" | "archived"
   isPublic        Boolean         @default(false) @map("is_public")
-  agentType       String          @default("standalone") @map("agent_type") // "standalone" | "parent" | "sub_agent"
   tools           AgentTool[]
   integrations    AgentIntegration[]
   knowledgeBases  AgentKnowledgeBase[]
@@ -375,12 +371,14 @@ model Agent {
   guardrailViolations GuardrailViolation[]
   guardrailConfig     GuardrailConfig?
   reminders       Reminder[]
+  /// RNX-118: the agents this agent may call ("Can call"), and the agents that may call it.
+  calleeLinks     AgentLink[]     @relation("AgentLinkCaller")
+  callerLinks     AgentLink[]     @relation("AgentLinkCallee")
   createdAt       DateTime        @default(now()) @db.Timestamptz()
   updatedAt       DateTime        @updatedAt @db.Timestamptz()
 
   @@unique([userId, slug])
   @@index([userId, status])
-  @@index([parentAgentId])
   @@index([isPublic])
   @@index([workspaceId, status])
   @@map("agents")
@@ -400,6 +398,21 @@ model AgentIntegration {
   @@unique([agentId, provider])
   @@index([agentId])
   @@map("agent_integrations")
+}
+
+/// RNX-118 (PRD 10, D81): "Can call". The caller agent may call the callee agent in a run (the call_agent tool). Both
+/// agents are in one workspace (checked by AgentLinkService, the only writer); an agent never links to itself (a CHECK
+/// in the migration, which Prisma does not model). Deleting either agent removes the link.
+model AgentLink {
+  callerAgentId String   @map("caller_agent_id")
+  callerAgent   Agent    @relation("AgentLinkCaller", fields: [callerAgentId], references: [id], onDelete: Cascade)
+  calleeAgentId String   @map("callee_agent_id")
+  calleeAgent   Agent    @relation("AgentLinkCallee", fields: [calleeAgentId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@id([callerAgentId, calleeAgentId])
+  @@index([calleeAgentId])
+  @@map("agent_links")
 }
 
 model AgentTool {
@@ -656,7 +669,7 @@ model ChannelAgent {
   channel   Channel          @relation(fields: [channelId], references: [id], onDelete: Cascade)
   agentId   String           @map("agent_id")
   agent     Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  role      String           @default("primary") // "primary" | "sub"
+  role      String           @default("primary") // "primary" (RNX-118: the API no longer accepts "sub")
   createdAt DateTime         @default(now()) @db.Timestamptz()
 
   @@unique([channelId, agentId])

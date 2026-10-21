@@ -19,17 +19,19 @@ import { createAgent, createPlan, createSubscription, createUser, createWorkspac
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { AgentLinkService } from "./agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RNX-203: the runs of an agent (chat and the run history) belong to its workspace owner, not its creator, and a
-// delegation only loads sub-agents in the parent's workspace. Rows where the creator and the workspace owner differ
-// are written straight to the database. These collaborators load ESM-only packages and are stubbed.
+// call_agent (RNX-118: was a delegation) only runs a linked agent in the caller's workspace. Rows where the creator
+// and the workspace owner differ are written straight to the database. These collaborators load ESM-only packages and are stubbed.
 jest.mock("./agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
-const DELEGATE = {
+const CALL_AGENT = {
   type: "function",
-  function: { name: "delegate_to_subagent", description: "Delegate", parameters: {} },
+  function: { name: "call_agent", description: "Call", parameters: {} },
 };
 
 describe("RNX-203: agent runs through the workspace owner (test database, fake provider)", () => {
@@ -44,12 +46,14 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           AgentRunMeterService,
           CreditService,
           PlatformSettingsService,
           ModelRegistryService,
           {
-            // Same delegation rule as AgentToolService.buildToolSchemas
+            // Same call_agent rule as AgentToolService.buildToolSchemas
             provide: AgentToolService,
             useValue: {
               buildToolSchemasWithMcp: async (
@@ -57,8 +61,8 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
                 _agentId: string,
                 _userId?: string,
                 _workspaceId?: string,
-                options?: { injectDelegation?: boolean },
-              ) => (options?.injectDelegation ? [DELEGATE] : []),
+                options?: { injectCallAgent?: boolean },
+              ) => (options?.injectCallAgent ? [CALL_AGENT] : []),
               cleanupMcpConnections: async () => undefined,
             },
           },
@@ -169,31 +173,30 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
     });
   });
 
-  describe("delegation", () => {
+  describe("call_agent (RNX-118: was delegation)", () => {
     /**
-     * The caller's parent agent in their default workspace with a sub-agent there, and a second sub-agent under the
-     * same parent by the same creator but in another workspace of the caller.
+     * The caller's agent in their default workspace, linked to a helper there and (written straight to the database)
+     * to a helper of the same creator in another workspace of the caller.
      */
-    const seedSubAgents = async () => {
+    const seedLinks = async () => {
       const caller = await payingUser();
-      const parent = await createAgent(prisma, { userId: caller.id, agentType: "parent", status: "active" });
+      const parent = await createAgent(prisma, { userId: caller.id, status: "active" });
       const sameWorkspaceSub = await createAgent(prisma, {
         userId: caller.id,
         name: "Same workspace helper",
         systemPrompt: "SAME WORKSPACE SUB PROMPT",
-        agentType: "sub_agent",
         status: "active",
-        parentAgentId: parent.id,
       });
       const otherWorkspace = await createWorkspace(prisma, { ownerId: caller.id });
       const otherWorkspaceSub = await createAgent(prisma, {
         userId: caller.id,
         name: "Other workspace helper",
         systemPrompt: "OTHER WORKSPACE SUB PROMPT",
-        agentType: "sub_agent",
         status: "active",
-        parentAgentId: parent.id,
         workspaceId: otherWorkspace.id,
+      });
+      await prisma.agentLink.createMany({
+        data: [sameWorkspaceSub, otherWorkspaceSub].map((callee) => ({ callerAgentId: parent.id, calleeAgentId: callee.id })),
       });
       return { caller, parent, sameWorkspaceSub, otherWorkspaceSub };
     };
@@ -203,8 +206,8 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
         .filter((m) => m.role === "tool")
         .map((m) => m.content);
 
-    it("a sub-agent of the parent's creator in another workspace is not listed in the prompt", async () => {
-      const { caller, parent, sameWorkspaceSub, otherWorkspaceSub } = await seedSubAgents();
+    it("a linked agent of the caller's creator in another workspace is not listed in the prompt", async () => {
+      const { caller, parent, sameWorkspaceSub, otherWorkspaceSub } = await seedLinks();
       fake.enqueue({ content: "Hello" });
 
       await service.chat(caller.id, parent.id, "Hi");
@@ -214,24 +217,24 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
       expect(prompt).not.toContain(otherWorkspaceSub.id);
     });
 
-    it("delegating to a sub-agent of the parent's creator in another workspace is refused and it never runs", async () => {
-      const { caller, parent, otherWorkspaceSub } = await seedSubAgents();
+    it("calling a linked agent of the caller's creator in another workspace is refused and it never runs", async () => {
+      const { caller, parent, otherWorkspaceSub } = await seedLinks();
       fake.enqueue(
-        { toolCalls: [{ name: "delegate_to_subagent", arguments: { subAgentId: otherWorkspaceSub.id, task: "do it" } }] },
+        { toolCalls: [{ name: "call_agent", arguments: { agent: otherWorkspaceSub.id, task: "do it" } }] },
         { content: "Done" },
       );
 
       await service.chat(caller.id, parent.id, "Hi");
 
       expect(fake.requests).toHaveLength(2);
-      expect(lastToolResult()).toEqual(["Error: Sub-agent not found or not authorized."]);
+      expect(lastToolResult()).toEqual(["Error: Agent not found or not linked."]);
       expect(JSON.stringify(fake.requests)).not.toContain("OTHER WORKSPACE SUB PROMPT");
     });
 
-    it("delegating to the sub-agent in the parent's workspace loads and runs it (control)", async () => {
-      const { caller, parent, sameWorkspaceSub } = await seedSubAgents();
+    it("calling the linked agent in the caller's workspace loads and runs it (control)", async () => {
+      const { caller, parent, sameWorkspaceSub } = await seedLinks();
       fake.enqueue(
-        { toolCalls: [{ name: "delegate_to_subagent", arguments: { subAgentId: sameWorkspaceSub.id, task: "do it" } }] },
+        { toolCalls: [{ name: "call_agent", arguments: { agent: sameWorkspaceSub.id, task: "do it" } }] },
         { content: "Sub-agent answer" },
         { content: "Parent final" },
       );

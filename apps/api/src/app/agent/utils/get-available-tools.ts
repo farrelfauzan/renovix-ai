@@ -31,12 +31,6 @@ export async function getAvailableTools() {
       configRequired: false,
     },
     {
-      type: "delegate_to_subagent",
-      name: "Delegate to Sub-Agent",
-      description: "Delegate a task to a sub-agent",
-      configRequired: true,
-    },
-    {
       type: "create_reminder",
       name: "Create Reminder",
       description: "Schedule automated messages on a recurring basis",

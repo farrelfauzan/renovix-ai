@@ -1,5 +1,12 @@
 # Agent + Sub-Agent Simple Interaction Test
 
+> **Obsolete since RNX-118.** Parent and sub-agents (`agentType`, `parentAgentId`), the `delegate_to_subagent` tool and
+> forced delegation by keyword were removed. An agent now calls the agents it is linked to ("Can call",
+> `POST /agents/:id/links`, workspace owner only) with the `call_agent` tool, offered only when the runner is the
+> workspace owner or a current collaborator; a message saying "delegate" or "delegasikan" no longer forces a call.
+> The automated checks are `apps/api/src/app/agent/service/agent-run.agent-links.spec.ts` and
+> `apps/api/src/app/channel/service/channel-chat.agent-links.spec.ts`. The steps below describe the old behaviour.
+
 ## Goal
 Verify that a parent agent can delegate a task to a linked sub-agent and return the result.
 
