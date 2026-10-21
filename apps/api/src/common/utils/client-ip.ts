@@ -1,5 +1,6 @@
 import { Logger } from "@nestjs/common";
 import type { ClientIpRequest } from "../types/client-ip-request";
+import { readClientIpHeader } from "./client-ip-header";
 
 const clientIpLogger = new Logger("clientIp");
 let warnedMissingIpHeader = false;
@@ -11,7 +12,7 @@ let warnedMissingIpHeader = false;
  * tests) the socket address. Never X-Forwarded-For or request.ip.
  */
 export function clientIp(req: ClientIpRequest): string {
-  const headerName = process.env.CLIENT_IP_HEADER?.trim().toLowerCase();
+  const headerName = readClientIpHeader();
   if (headerName) {
     const value = req.headers[headerName];
     const ip = (Array.isArray(value) ? value[0] : value)?.split(",")[0].trim();

@@ -5,9 +5,11 @@ import { PrismaClient } from "@generated/prisma/client.js";
 import crypto from "crypto";
 import { getCookieDomain } from "./cookie-domain";
 import { readRequiredSecret } from "../common/utils/read-required-secret";
+import { readClientIpHeader } from "../common/utils/client-ip-header";
 import { ensureDefaultWorkspace } from "../app/workspace/repository/ensure-default-workspace";
 
 const isProduction = process.env.NODE_ENV === "production";
+const clientIpHeader = readClientIpHeader();
 
 let prismaInstance: PrismaClient | null = null;
 
@@ -57,6 +59,12 @@ export const auth = betterAuth({
     },
   },
   advanced: {
+    // RNX-168 (D48, D148): the client IP for better-auth's rate limiter and the session's ipAddress is
+    // CLIENT_IP_HEADER only, never X-Forwarded-For. Without it no IP is tracked: better-auth's limiter
+    // then skips its checks and the Nest throttler (RX-155) limits /api/auth/better/* per socket address.
+    ipAddress: clientIpHeader
+      ? { ipAddressHeaders: [clientIpHeader] }
+      : { disableIpTracking: true },
     database: {
       generateId: () => crypto.randomUUID(),
     },
