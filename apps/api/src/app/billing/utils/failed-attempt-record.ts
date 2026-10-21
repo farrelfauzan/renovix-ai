@@ -8,7 +8,15 @@ import { tokensFromUsage } from "./tokens-from-usage";
  * moved on to a fallback model. It is its own model call under the request's reservation: a new callId, the failed
  * model's slug, no tokens (the provider reported none), outcome provider_error, so it is charged 0 and nothing is
  * uncharged. The caller writes it with CreditService.recordUsage, which does not close the reservation.
+ * RNX-162: its model_call_costs row is priced from the failed model's cost basis (the call's workspace kept).
  */
 export function failedAttemptRecord(call: Omit<UsageRecord, "tokens" | "outcome">, failed: ServedBy): UsageRecord {
-  return { ...call, callId: randomUUID(), modelId: failed.slug, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" };
+  return {
+    ...call,
+    callId: randomUUID(),
+    modelId: failed.slug,
+    tokens: tokensFromUsage(0, 0, 0),
+    outcome: "provider_error",
+    cost: { servedBy: failed, workspaceId: call.cost?.workspaceId },
+  };
 }

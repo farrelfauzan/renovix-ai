@@ -159,6 +159,7 @@ export class ReminderScheduler {
       const metered = await this.meter.meterRun(
         {
           runnerUserId: reminder.userId,
+          workspaceId: agent.workspaceId || undefined,
           firstCall: {
             model: modelEntry.slug,
             connection,

@@ -30,6 +30,7 @@ import { CodesModule } from "./codes/codes.module";
 import { AdminAuthModule } from "./admin-auth/admin-auth.module";
 import { OffersModule } from "./offers/offers.module";
 import { ExchangeRatesModule } from "./exchange-rates/exchange-rates.module";
+import { ModelCallCostsModule } from "./model-call-costs/model-call-costs.module";
 import { AdminAuditModule } from "./admin-auth/admin-audit.module";
 import { AdminProvidersModule } from "./admin-providers/admin-providers.module";
 import { AdminCreditsModule } from "./admin-credits/admin-credits.module";
@@ -79,6 +80,7 @@ import { clientIp } from "../common/utils/client-ip";
     AdminAuthModule,
     OffersModule,
     ExchangeRatesModule,
+    ModelCallCostsModule,
     AdminAuditModule,
     AdminProvidersModule,
     AdminCreditsModule,

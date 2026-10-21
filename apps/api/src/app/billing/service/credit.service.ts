@@ -3,6 +3,7 @@ import { Decimal } from "@prisma/client/runtime/client";
 import type { CreditLedgerEntry, CreditReservation, CreditReservationStatus } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
+import { ModelCallCostService } from "../../model-call-costs/service/model-call-cost.service";
 import { CreditsExhaustedException } from "../errors/credits-exhausted.exception";
 import { CreditAccountRepository } from "../repository/credit-account.repository";
 import { CreditLedgerEntryRepository } from "../repository/credit-ledger-entry.repository";
@@ -34,6 +35,7 @@ export class CreditService {
     private readonly accounts: CreditAccountRepository,
     private readonly entries: CreditLedgerEntryRepository,
     private readonly reservations: CreditReservationRepository,
+    private readonly callCosts: ModelCallCostService,
   ) {}
 
   /**
@@ -109,10 +111,14 @@ export class CreditService {
    * from the available balance, and the rest is `uncharged` (the balance never goes below 0, I5). A provider error is
    * charged 0 with its credits in `uncharged`. The callId is the idempotency key: a replay of the same call returns
    * the first entry; another call under that callId (other tokens, rates, model or outcome) is a 409, nothing written.
+   * RNX-162: once the entry has committed, the call's model_call_costs row (`record.cost`), outside the entry's
+   * transaction: its failure is logged and never fails the call (ModelCallCostService.record does not throw).
    */
   async recordUsage(record: UsageRecord): Promise<CreditLedgerEntry> {
     const { accountId } = await this.reservations.findReservation(record.reservationId);
-    return this.transactions.run((tx) => this.appendUsageToLockedAccount(accountId, record, tx));
+    const entry = await this.transactions.run((tx) => this.appendUsageToLockedAccount(accountId, record, tx));
+    await this.callCosts.record({ entry, record });
+    return entry;
   }
 
   /**

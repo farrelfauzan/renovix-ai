@@ -253,6 +253,7 @@ export class AgentRunService {
       const metered = await this.meter.meterRun(
         {
           runnerUserId: context.userId,
+          workspaceId: agent.workspaceId || undefined,
           firstCall: {
             model: context.model,
             connection: context.connection,

@@ -43,4 +43,15 @@ describe("RNX-196: readCompletionDelta (what one provider stream payload adds to
     expect(actual).toBeInstanceOf(ProviderStreamError);
     expect(actual).toMatchObject({ status: 429, message: "Provider stream error" });
   });
+
+  it("RNX-162: the usage chunk's reported cost and reasoning tokens", () => {
+    const inputPayload = JSON.stringify({
+      choices: [],
+      usage: { prompt_tokens: 40, completion_tokens: 6, total_tokens: 46, cost: 0.00042, completion_tokens_details: { reasoning_tokens: 4 } },
+    });
+
+    const actual = readCompletionDelta(inputPayload).usage;
+
+    expect([actual?.costUsd?.toString(), actual?.reasoningTokens]).toEqual(["0.00042", 4]);
+  });
 });
