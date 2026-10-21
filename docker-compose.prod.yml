@@ -51,10 +51,38 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       PORT: 3000
       HOST: 0.0.0.0
-      JWT_SECRET: ${JWT_SECRET}
-      IP_HASH_SECRET: ${IP_HASH_SECRET}
-      ADMIN_ORIGIN: ${ADMIN_ORIGIN}
-      MCP_OAUTH_STATE_SECRET: ${MCP_OAUTH_STATE_SECRET}
+      # RNX-165: every variable the API needs; the list and how to generate each secret are in AGENTS.md
+      # ("Production compose stack"). Required: compose refuses to start when one is unset or empty.
+      # Secrets come from the environment or an env file outside the repo, never from this file.
+      JWT_SECRET: ${JWT_SECRET:?}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      IP_HASH_SECRET: ${IP_HASH_SECRET:?}
+      MCP_ENCRYPTION_KEY: ${MCP_ENCRYPTION_KEY:?}
+      MCP_OAUTH_STATE_SECRET: ${MCP_OAUTH_STATE_SECRET:?}
+      LLM_KEY_ENCRYPTION_KEY: ${LLM_KEY_ENCRYPTION_KEY:?}
+      API_KEY_HASH_SECRET: ${API_KEY_HASH_SECRET:?}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:?}
+      ADMIN_TOTP_ENCRYPTION_KEY: ${ADMIN_TOTP_ENCRYPTION_KEY:?}
+      CORS_ORIGIN: ${CORS_ORIGIN:?}
+      ADMIN_ORIGIN: ${ADMIN_ORIGIN:?}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:?}
+      CHAT_APP_URL: ${CHAT_APP_URL:?}
+      APP_BASE_URL: ${APP_BASE_URL:?}
+      # Must be set, may be empty (empty keeps signed download URLs as they are).
+      S3_CDN_DOMAIN: ${S3_CDN_DOMAIN?}
+      # Optional: passed only when set; unset, the API uses its default.
+      CLIENT_IP_HEADER:
+      COOKIE_DOMAIN:
+      MCP_OAUTH_STATE_TTL_SECONDS:
+      LLM_PROVIDER:
+      LLM_BASE_URL:
+      LLM_API_KEY:
+      LLM_DEFAULT_MAX_TOKENS:
+      LLM_KEY_VERSION:
+      EMBEDDING_BASE_URL:
+      EMBEDDING_API_KEY:
+      EMBEDDING_MODEL:
+      EMBEDDING_DIMENSIONS:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
