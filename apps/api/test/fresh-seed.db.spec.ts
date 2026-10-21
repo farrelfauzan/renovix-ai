@@ -18,7 +18,7 @@ import { FAKE_REPLY } from "../src/app/providers/fake.adapter";
 import { PrismaService } from "../src/app/prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "./test-module";
 import { resetDatabase, testDatabaseUrl } from "./test-database";
-import { createUser } from "./factories";
+import { createApiKey, createUser } from "./factories";
 import { fundPaidWallet } from "./credit-funding";
 import { createResolvableModel } from "./provider-model";
 import { startStubHttpServer, StubHttpServer } from "./llm-stub";
@@ -33,7 +33,6 @@ jest.mock("../src/app/chat/service/conversation.service", () => ({ ConversationS
 jest.mock("../src/app/document/service/document.service", () => ({ DocumentService: class {} }));
 
 const ROOT = resolve(__dirname, "../../..");
-const API_KEY = "sk_live_rnx91-test-key";
 const SLUG = "fake/seed-smoke-model";
 const SEEDED_ONLY_BY_AGENT_STEP = ["agents", "agent_tools"];
 /** The three legacy plans exactly as main's prisma/seed.ts (d4a8d59) wrote them. */
@@ -160,12 +159,13 @@ describe("RNX-91: bun run seed on an empty test database", () => {
     const third = await runSeed();
     const afterThird = await countRows();
     const coordinator = await prisma.agent.findFirstOrThrow({ where: { slug: "team-coordinator" }, include: { workspace: true } });
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    const apiKey = await createApiKey(prisma, user.id);
     await fundPaidWallet(prisma, user.id, 5);
     const chat = await app.inject({
       method: "POST",
       url: "/chat/completions",
-      headers: { authorization: `Bearer ${API_KEY}` },
+      headers: { authorization: `Bearer ${apiKey}` },
       payload: { model: SLUG, messages: [{ role: "user", content: "Hi" }] },
     });
 
