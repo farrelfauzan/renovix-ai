@@ -45,8 +45,9 @@ bun run build:landing
 # Prisma (MUST run generate before building API)
 bun run prisma:generate  # Outputs to apps/api/src/generated/prisma (gitignored)
 bun run prisma:migrate   # Dev migrations
-bun run prisma:reset     # Reset + re-seed
-bun run prisma:seed      # Seed configs, prompts, plans, codes (no providers or models: RX-177, created through /admin/providers)
+bun run seed             # RNX-91: fresh-environment seed, idempotent: tier rates, agent templates (skipped until an admin has entered a model), system prompts, offer catalog + plans, system-knowledge sync. Refuses NODE_ENV=production without --allow-production (Tech Lead only). SEED_OPERATOR=<name> names the change records (default "seed").
+bun run prisma:reset     # Reset (drops all data); then run `bun run seed`
+bun run prisma:seed      # Only the system prompt and prompt templates (prisma/seed.ts); use `bun run seed` for everything
 SEED_OPERATOR=<name> bun run seed:offers  # Offer catalog + platform settings from prisma/offers.seed.json (RX-86)
 SEED_OPERATOR=<name> bun run seed:tier-rates  # Tier credit rates from prisma/tier-rates.seed.json (RX-21); run after prisma:reset
 # RX-90: prisma/migrations is one baseline (20261014200000_baseline); migrations insert no plans,
