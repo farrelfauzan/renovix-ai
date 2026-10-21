@@ -1,4 +1,5 @@
 import { GitBranch, MessageCircle } from 'lucide-react';
+import { RenovixLogo } from '@/components/renovix-logo';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -10,10 +11,7 @@ export function Footer() {
           {/* Brand */}
           <div className="sm:col-span-2 lg:col-span-1">
             <div className="mb-4 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
-                <span className="text-sm font-bold text-white">R</span>
-              </div>
-              <span className="text-lg font-bold text-white">Renovix AI</span>
+              <RenovixLogo tone="on-dark" size={32} />
             </div>
             <p className="max-w-xs text-sm text-gray-400 leading-relaxed">
               Your intelligent AI chat platform. Chat with powerful models,

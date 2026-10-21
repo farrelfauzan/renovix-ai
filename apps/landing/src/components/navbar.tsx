@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { RenovixLogo } from '@/components/renovix-logo';
 
 const navLinks = [
   { href: '#services', label: 'Features' },
@@ -34,10 +35,7 @@ export function Navbar() {
       <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         {/* Logo */}
         <a href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
-            <span className="text-sm font-bold text-white">R</span>
-          </div>
-          <span className="text-lg font-bold text-white">Renovix AI</span>
+          <RenovixLogo tone="on-dark" size={32} />
         </a>
 
         {/* Desktop links */}
