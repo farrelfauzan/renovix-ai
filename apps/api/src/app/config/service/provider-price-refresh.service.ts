@@ -5,34 +5,24 @@ import { CatalogChangeRepository } from "../../offers/repository/catalog-change.
 import { AiModelRepository } from "../repository/ai-model.repository";
 import { AppConfigRepository } from "../repository/app-config.repository";
 import { TierRateRepository } from "../../offers/repository/tier-rate.repository";
-
-/**
- * The per-model cost of one credit's worth of input tokens under the tier rates (RX-21 planning
- * figure): price per token x input credits-per-token. When a tier's actual credits-per-credit cost
- * exceeds this, the tier is being sold below plan and the job alerts.
- */
-// Planning defaults (dollars per credit served, docs/credits.md: "about $0.12 per credit" planned
-// for Standard; higher tiers planned higher per the PRD 02 package table). Overrides:
-// AppConfig key tier_planning_cost_per_credit_<tier>.
-const PLANNING_COST_PER_CREDIT: Record<string, string> = {
-  standard: "0.12",
-  advanced: "0.12",
-  premium: "0.15",
-  frontier: "0.20",
-};
-const DEFAULT_PLANNING_COST_PER_CREDIT = new Decimal("0.25");
+import { TIER_PLANNING_COST_PER_CREDIT } from "../../offers/config/tier-planning-cost-per-credit";
+import { computeMixCostPerCredit } from "../utils/compute-mix-cost-per-credit";
+import type { TokenKindValues } from "../types/token-kind-values";
 
 /**
  * AppConfig keys the price refresh reads (RX-21). Both live in the app_configs table like
  * markup_multiplier, read here directly (the registry caches only model and tier-rate rows):
  * - `price_refresh_alert_ratio` (number, default 0.2): alert when a provider price moves by more
  *   than this fraction of the stored price, up or down.
- * - `tier_planning_cost_per_credit_<tier>` (number, USD): overrides the code default for a tier's
- *   planning cost; when a tier's credits-per-credit cost (price x input rate) exceeds it, alert.
+ * - `tier_planning_cost_per_credit_<tier>` (positive dollar amount): replaces the tier's planning cost
+ *   per credit from TIER_PLANNING_COST_PER_CREDIT (D237). Any other value is logged as an error and
+ *   ignored (RNX-185: no fallback default).
  */
 const ALERT_RATIO_CONFIG_KEY = "price_refresh_alert_ratio";
 const PLANNING_COST_CONFIG_PREFIX = "tier_planning_cost_per_credit_";
 const DEFAULT_ALERT_RATIO = new Decimal("0.2");
+const POSITIVE_DOLLAR_AMOUNT = /^\d+(\.\d+)?$/;
+const COST_DISPLAY_DECIMALS = 6;
 
 /** The result of one price-refresh check (RX-21): what the run updated and alerted about. */
 export interface PriceRefreshResult {
@@ -59,8 +49,8 @@ export class ProviderPriceRefreshService {
    * The price-refresh check (RX-21), callable directly (the scheduler calls it on its cron; a test
    * calls it without waiting). Fetches the provider's model list, updates every matching AiModel
    * row's input/output/cached prices and priceUpdatedAt, and alerts — Logger.error plus a
-   * catalog_changes row — when a price moved more than `price_refresh_alert_ratio` or a tier's
-   * cost-per-credit exceeds its planning cost. No email (D50).
+   * catalog_changes row — when a price moved more than `price_refresh_alert_ratio` or a model's
+   * cost per credit at the token mix exceeds its tier's planning cost (RNX-185). No email (D50).
    */
   async checkProviderPrices(
     provider = "openrouter",
@@ -81,7 +71,7 @@ export class ProviderPriceRefreshService {
       const fresh = listedById.get(row.providerId);
       if (!fresh) continue;
       result.checked += 1;
-    const changes = await this.collectChanges(row, fresh, alertRatio, planningCosts);
+    const changes = await this.collectChanges(row, fresh, alertRatio, planningCosts, provider);
       const changed =
         changes.input !== null || changes.output !== null || changes.cachedChanged;
       const mustAlert = changes.alerts.length > 0;
@@ -143,6 +133,7 @@ export class ProviderPriceRefreshService {
     },
     alertRatio: Decimal,
     planningCosts: Map<string, Decimal>,
+    provider: string,
   ): Promise<{
     input: Decimal | null;
     output: Decimal | null;
@@ -168,21 +159,20 @@ export class ProviderPriceRefreshService {
         `Model ${row.providerId} (${row.modelName}, tier ${row.tier}): price moved more than ${alertRatio} of the stored price (input ${row.inputPrice} -> ${input ?? "unchanged"}, output ${row.outputPrice} -> ${output ?? "unchanged"})`,
       );
     }
-    const planningCost = planningCosts.get(row.tier);
-    if (input !== null && planningCost !== undefined) {
-      // Dollars per credit: the rate is credits per 1,000,000 tokens (docs/credits.md section 1),
-      // so one credit buys 1,000,000/rate input tokens, each costing `input` dollars:
-      // the provider cost of a credit is input x 1,000,000 / rate.
-      const inputRate = await this.readTierInputRate(row.tier);
-      if (inputRate.greaterThan(0)) {
-        const costPerCredit = input.mul(1_000_000).div(inputRate);
-        if (costPerCredit.greaterThan(planningCost)) {
-          alerts.push(
-            `Tier ${row.tier}: model ${row.providerId} costs ${costPerCredit.toFixed()} dollars per credit (input price / tier credits-per-token), above the planning cost ${planningCost.toFixed()}`,
-          );
-        }
-      }
-    }
+    // The prices the row holds after this run: the provider's list price, the stored one where the
+    // provider lists none; no cached price at all prices the cached share at the new-input price.
+    const newInputPrice = input ?? row.inputPrice;
+    const planningAlert = await this.findPlanningAlert(
+      row,
+      {
+        newInput: newInputPrice,
+        cachedInput: cachedPrice ?? row.cachedInputPrice ?? newInputPrice,
+        output: output ?? row.outputPrice,
+      },
+      planningCosts,
+      provider,
+    );
+    if (planningAlert !== null) alerts.push(planningAlert);
     return {
       input: inputChanged ? input : null,
       output: outputChanged ? output : null,
@@ -192,12 +182,47 @@ export class ProviderPriceRefreshService {
     };
   }
 
-  /** The dollars-per-credit figure needs the tier's input rate; read from the tier_rates table. */
-  private async readTierInputRate(tier: string): Promise<Decimal> {
+  /**
+   * The planning-cost alert (RNX-185, docs/credits.md section 14.5): the model's cost per credit at the
+   * token mix against its tier's planning cost, or null when it is not above it. A tier with no planning
+   * cost, or whose rates blend to 0, logs an error naming the tier and gets no check (no default, D237).
+   */
+  private async findPlanningAlert(
+    row: { providerId: string; modelName: string; tier: string },
+    pricesPerToken: TokenKindValues,
+    planningCosts: Map<string, Decimal>,
+    provider: string,
+  ): Promise<string | null> {
+    const planningCost = planningCosts.get(row.tier);
+    if (planningCost === undefined) {
+      this.logger.error(
+        `RNX-185: tier ${row.tier} has no planning cost per credit; planning-cost check skipped for model ${row.providerId}`,
+      );
+      return null;
+    }
+    const ratesPerMillionTokens = await this.readTierRates(row.tier);
+    const costPerCredit = computeMixCostPerCredit({ pricesPerToken, ratesPerMillionTokens });
+    if (!costPerCredit.isFinite()) {
+      // The tier's rates blend to 0 at the mix: x / 0 is Infinity and 0 / 0 is NaN, neither a cost to compare.
+      this.logger.error(
+        `RNX-185: tier ${row.tier} has rates that blend to 0 at the token mix; planning-cost check skipped for model ${row.providerId}`,
+      );
+      return null;
+    }
+    if (!costPerCredit.greaterThan(planningCost)) return null;
+    return `Model ${row.providerId} (${row.modelName}), tier ${row.tier}: costs ${costPerCredit.toFixed(COST_DISPLAY_DECIMALS)} dollars per credit, above the tier's planning cost ${planningCost.toFixed()} (price basis: ${provider} list price at the token mix 0.36 new input / 0.54 cached input / 0.10 output, over the tier rates blended at the same mix)`;
+  }
+
+  /** The tier's three rates (credits per 1,000,000 tokens) from the tier_rates table. */
+  private async readTierRates(tier: string): Promise<TokenKindValues> {
     const rate = await this.rates.findRate(tier);
-    // No seeded rate row: 1 credit per token (the most expensive reading) so a missing tier rate
-    // alerts rather than silently passing — the seed (bun run seed:tier-rates) always sets rows.
-    return rate?.inputCreditsPerToken ?? new Decimal(1);
+    // No seeded rate row: 1 credit per 1,000,000 tokens of every kind (the most expensive reading) so a
+    // missing tier rate alerts rather than silently passing; the seed (bun run seed:tier-rates) always sets rows.
+    return {
+      newInput: rate?.inputCreditsPerToken ?? new Decimal(1),
+      cachedInput: rate?.cachedCreditsPerToken ?? new Decimal(1),
+      output: rate?.outputCreditsPerToken ?? new Decimal(1),
+    };
   }
 
   /** Writes the update (if any price changed) and the alert's catalog_changes row, in one transaction. */
@@ -256,17 +281,23 @@ export class ProviderPriceRefreshService {
     return value !== null ? new Decimal(value) : DEFAULT_ALERT_RATIO;
   }
 
+  /** Each tier's planning cost per credit: the D237 table, replaced per tier by a valid AppConfig row. */
   private async readPlanningCosts(): Promise<Map<string, Decimal>> {
     const rows = await this.appConfig.findValuesByKeyPrefix(PLANNING_COST_CONFIG_PREFIX);
     const costs = new Map<string, Decimal>();
-    for (const [tier, cost] of Object.entries(PLANNING_COST_PER_CREDIT)) {
+    for (const [tier, cost] of Object.entries(TIER_PLANNING_COST_PER_CREDIT)) {
       costs.set(tier, new Decimal(cost));
     }
-    // An unknown tier has no code default; a config row may give it (or override a known tier's) one.
     for (const row of rows) {
       const tier = row.key.slice(PLANNING_COST_CONFIG_PREFIX.length);
-      const cost = new Decimal(row.value);
-      costs.set(tier, cost.greaterThan(0) ? cost : DEFAULT_PLANNING_COST_PER_CREDIT);
+      const value = row.value.trim();
+      if (!POSITIVE_DOLLAR_AMOUNT.test(value) || new Decimal(value).isZero()) {
+        this.logger.error(
+          `RNX-185: AppConfig ${row.key} = "${row.value}" is not a positive dollar amount and is ignored; tier ${tier} keeps ${costs.get(tier)?.toFixed() ?? "no planning cost"}`,
+        );
+        continue;
+      }
+      costs.set(tier, new Decimal(value));
     }
     return costs;
   }

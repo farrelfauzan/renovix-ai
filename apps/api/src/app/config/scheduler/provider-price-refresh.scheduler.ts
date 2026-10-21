@@ -7,7 +7,7 @@ import { ProviderPriceRefreshService } from "../service/provider-price-refresh.s
  * The daily provider price refresh (RX-21): every day at 02:00 Asia/Jakarta it asks the provider
  * adapter for its model list and updates the matching AiModel rows' prices, alerting (Logger.error
  * plus a catalog_changes row, no email — D50) on a price that moved more than the alert ratio or a
- * tier whose cost-per-credit exceeds its planning cost. The check itself is
+ * model whose cost per credit at the token mix exceeds its tier's planning cost (RNX-185). The check itself is
  * ProviderPriceRefreshService.checkProviderPrices, callable directly by a test.
  */
 @Injectable()

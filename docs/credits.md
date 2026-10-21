@@ -647,6 +647,23 @@ The two methods disagree because they protect different baselines. The report's 
 
 The tier table in section 1.4 shows the proposed rates with PRD 02's beside them until the Tech Lead decides (open item 1). His approval of this document settles the Frontier rate, and RX-21 seeds what he approves; if he keeps 17 / 17 / 25, only the Frontier rows and the Frontier example in section 1.5 change. R-5 also notes that GLM 5.3 Prime (18.2) is above the Premium blend (15.5); Premium is not recomputed here because D112 asks only for Frontier.
 
+### 14.5 The daily price job's planning-cost alert (RNX-185, D237)
+
+The daily price refresh (RX-21, `apps/api/src/app/config/service/provider-price-refresh.service.ts`) checks every listed model's cost per credit with the method of section 14.2, per model instead of per tier:
+
+```
+mix cost      = 0.36 × new-input price + 0.54 × cached-input price + 0.10 × output price   (dollars per 1,000,000 tokens)
+blended rate  = 0.36 × new rate + 0.54 × cached rate + 0.10 × output rate                   (the model's tier, tier_rates)
+cost per credit = mix cost ÷ blended rate
+```
+
+- **Price basis:** the provider list price the job reads (OpenRouter only, D126); where the list gives no price for a kind, the price the row already holds. A model with no cached price at all has its cached share priced at its new-input price. Computed with exact decimals (`config/utils/compute-mix-cost-per-credit.ts`).
+- **Thresholds (D237):** $0.14 per credit for each of Standard, Advanced, Premium and Frontier (`offers/config/tier-planning-cost-per-credit.ts`), just above the Standard baseline credit of $0.1202 (section 14.2). There is no default: a model whose tier has no threshold gets no check, and the job logs an error naming the tier and goes on with the other models.
+- **Override:** the AppConfig row `tier_planning_cost_per_credit_<tier>` replaces a tier's threshold when its value is a positive dollar amount; any other value is logged as an error and ignored.
+- **Alert:** a cost per credit above the threshold is logged (Logger.error) and recorded as a `catalog_changes` row (RX-21, no email: D50). The text names the model, the tier, the cost per credit, the threshold and the price basis.
+
+Examples: GLM 5.3 Flash (0.15 / 0.03 / 0.50) on Standard 1 / 1 / 1 costs $0.1202, no alert. Opus 5.5 (4 / 0.20 / 20) on Frontier 29 / 29 / 42 costs 3.548 ÷ 30.3 = $0.1171, no alert; the old input-only formula (4 ÷ 29 = $0.1379) ignored the output and cached prices. DeepSeek V4.1 Flash at peak (0.30 / 0.03 / 1.20) on Standard costs $0.2442 and alerts.
+
 ---
 
 ## Sources
