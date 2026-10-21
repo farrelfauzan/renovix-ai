@@ -36,7 +36,10 @@ export const ChatCompletionRequestSchema = z.object({
     .max(100),
   temperature: z.number().min(0).max(2).optional(),
   max_tokens: z.number().int().min(1).max(128000).optional(),
-  reasoning_effort: z.enum(["low", "medium", "high"]).optional(),
+  reasoning_effort: z
+    .enum(["low", "medium", "high"])
+    .describe("Reasoning effort sent to the model. Ignored (not sent, not refused) for models without reasoning support.")
+    .optional(),
   conversation_id: z.string().uuid().optional(),
   store: z.boolean().default(false),
   response_format: ResponseFormatSchema.optional(),

@@ -275,6 +275,8 @@ export class ChatService {
       messages: tunedMessages,
       temperature: body.temperature,
       max_tokens: body.max_tokens,
+      response_format: body.response_format,
+      reasoning_effort: body.reasoning_effort,
     };
     return { connection, request, matchedTemplate, call };
   }
