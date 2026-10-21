@@ -164,15 +164,15 @@ Be precise and technical. Include relevant metrics and timestamps in alerts.`,
     name: "Team Coordinator",
     slug: "team-coordinator",
     description:
-      "A parent agent that delegates tasks to specialized sub-agents for project management, code review, and communication.",
+      "A coordinator that plans and organises your work: it answers by itself, breaks a goal into steps, and keeps progress and status clear.",
     avatar: "👥",
-    systemPrompt: `You are a team coordinator AI that orchestrates work across specialized sub-agents. Your responsibilities:
-- Understand user requests and delegate to the appropriate sub-agent
-- Coordinate between sub-agents for complex multi-step tasks
-- Summarize results from delegated tasks
+    systemPrompt: `You are a team coordinator AI that plans and organises work, and answers by yourself. Your responsibilities:
+- Understand the user's goal and break it into clear, ordered steps
+- Work through multi-step tasks yourself and summarize outcomes along the way
 - Track overall progress and report status
+- When this agent has linked agents, you may call them with call_agent; otherwise do the work yourself
 
-Think step-by-step about which sub-agent is best suited for each task. Combine results coherently.`,
+Think step-by-step about the order of the work and what is blocking it. Keep plans and updates concise and actionable.`,
     temperature: 0.4,
     tools: ["memory_store", "slack_send_message"],
   },
@@ -182,10 +182,11 @@ Think step-by-step about which sub-agent is best suited for each task. Combine r
  * RX-177 (D148): models are created by an admin, never seeded. The agents use the model slug given as
  * the first argument (`npx tsx prisma/seed-agents.ts <slug>`), or else the cheapest active standard
  * model; either way only an active model on an active, live provider record (never a legacy row with no
- * record). The seed stops when there is none.
+ * record). The seed stops when there is none, unless it runs with --skip-without-model (RNX-91, `bun run
+ * seed`): then, with no slug given, it reports the skip and exits 0 so the other steps still run.
  */
-async function resolveAgentModel(): Promise<string> {
-  const slug = process.argv[2];
+async function resolveAgentModel(): Promise<string | null> {
+  const slug = process.argv.slice(2).find((arg) => !arg.startsWith("--"));
   const usable = { active: true, providerRecord: { status: "active" as const, deletedAt: null } };
   const model = await prisma.aiModel.findFirst({
     where: slug ? { slug, ...usable } : { tier: "standard", ...usable },
@@ -193,6 +194,7 @@ async function resolveAgentModel(): Promise<string> {
     select: { slug: true },
   });
   if (model) return model.slug;
+  if (!slug && process.argv.includes("--skip-without-model")) return null;
   throw new Error(
     slug
       ? `No active model with slug "${slug}" on an active provider. Create it through /admin/providers/:id/models and activate its provider first.`
@@ -203,6 +205,10 @@ async function resolveAgentModel(): Promise<string> {
 async function main() {
   console.log("🤖 Seeding public AI agents...\n");
   const model = await resolveAgentModel();
+  if (!model) {
+    console.log("  SKIPPED: no active standard model on an active provider; run the command again after the admin has entered models.");
+    return;
+  }
   console.log(`  Model: ${model}`);
 
   // Ensure system user exists

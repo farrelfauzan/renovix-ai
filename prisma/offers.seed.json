@@ -38,5 +38,55 @@
     { "name": "Top-up 100 credits", "active": true, "version": { "creditsGranted": 100, "priceUsdCents": 2000 } },
     { "name": "Top-up 200 credits", "active": true, "version": { "creditsGranted": 200, "priceUsdCents": 3600 } }
   ],
-  "enterpriseBundles": []
+  "enterpriseBundles": [],
+  "subscriptionPlans": [
+    {
+      "slug": "starter",
+      "name": "Starter",
+      "description": "For individuals getting started with AI agents",
+      "maxAgents": 3,
+      "maxIntegrations": 1,
+      "maxWorkspaceUsers": 3,
+      "maxTokensPerMonth": 1000000,
+      "allowedChannels": [
+        "web"
+      ],
+      "priceMonthly": 19,
+      "priceCurrency": "USD",
+      "displayOrder": 1
+    },
+    {
+      "slug": "pro",
+      "name": "Pro",
+      "description": "For professionals and small teams",
+      "maxAgents": 10,
+      "maxIntegrations": 3,
+      "maxWorkspaceUsers": 10,
+      "maxTokensPerMonth": 10000000,
+      "allowedChannels": [
+        "web",
+        "api"
+      ],
+      "priceMonthly": 49,
+      "priceCurrency": "USD",
+      "displayOrder": 2
+    },
+    {
+      "slug": "enterprise",
+      "name": "Enterprise",
+      "description": "For large teams with unlimited needs",
+      "maxAgents": 999,
+      "maxIntegrations": 999,
+      "maxWorkspaceUsers": 100,
+      "maxTokensPerMonth": 100000000,
+      "allowedChannels": [
+        "web",
+        "api",
+        "whatsapp"
+      ],
+      "priceMonthly": 149,
+      "priceCurrency": "USD",
+      "displayOrder": 3
+    }
+  ]
 }
