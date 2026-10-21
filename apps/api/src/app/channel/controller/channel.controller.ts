@@ -26,6 +26,7 @@ import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 import { guardSseStream } from "../../../common/utils/guard-sse-stream";
+import { codedRefusalOf } from "../../../common/utils/coded-refusal-of";
 import {
   CreateChannelSchema,
   UpdateChannelSchema,
@@ -281,9 +282,9 @@ export class ChannelController {
     const userId = req.user.userId;
     const origin = req.headers.origin || req.headers.Origin || "*";
 
-    // RX-178 (review B1): the room access check, then the fixed 400 for an unusable model, before the SSE headers and
-    // the classifier call.
-    await this.chatService.resolveAgentConnection(userId, id, agentId);
+    // RX-178 (review B1), RNX-200: the room access check, the fixed 400 for an unusable model and the run's 402s
+    // (credits, per-run cap) are real HTTP answers, before the SSE headers and the classifier call.
+    await this.chatService.assertRunCanStart(userId, id, agentId, parsed.data.message);
 
     // Setup SSE streaming
     res.raw.writeHead(200, {
@@ -415,7 +416,9 @@ export class ChannelController {
       clearInterval(heartbeat);
       this.logger.error(`Channel chat error: ${error.message}`, error.stack);
 
-      if (!res.raw.headersSent) {
+      // RNX-200: a refusal with a code (402 CREDITS_EXHAUSTED, RUN_CAP_EXCEEDED) goes to the stream guard, which
+      // sends its code in the error event.
+      if (!res.raw.headersSent || codedRefusalOf(error)) {
         throw error;
       }
 

@@ -41,7 +41,7 @@ describe("RNX-171: the channel chat stream guard (Fastify, real socket)", () => 
       controllers: [ChannelController, HealthController],
       providers: [
         { provide: ChannelService, useValue: {} },
-        { provide: ChannelChatService, useValue: { resolveAgentConnection: async () => ({ apiKey: MARKER_KEY }), chat: async () => ({}) } },
+        { provide: ChannelChatService, useValue: { assertRunCanStart: async () => undefined, chat: async () => ({}) } },
         { provide: S3Service, useValue: {} },
         { provide: DocumentService, useValue: {} },
         { provide: AgentToolService, useValue: { clearLastDocumentResult: () => undefined, getLastDocumentResult: () => null } },

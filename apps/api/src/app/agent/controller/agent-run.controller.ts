@@ -23,6 +23,7 @@ import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 import { guardSseStream } from "../../../common/utils/guard-sse-stream";
+import { codedRefusalOf } from "../../../common/utils/coded-refusal-of";
 
 @Controller("agents")
 @Access({ auth: ["jwt", "session"] })
@@ -65,8 +66,9 @@ export class AgentRunController {
     const { message, sessionId, output_format } = parsed.data;
     const userId = req.user.userId;
 
-    // RX-178 (review B1): 404 or the fixed 400 for an unusable model, before the classifier call and the SSE headers.
-    await this.runService.resolveAgentConnection(userId, id);
+    // RX-178 (review B1), RNX-200: 404, the fixed 400 for an unusable model, 403 without a subscription and the run's
+    // 402s (credits, per-run cap) are real HTTP answers, before the classifier call and the SSE headers.
+    await this.runService.assertRunCanStart(userId, id, message);
 
     // Classify document intent via LLM
     const detectedFormat =
@@ -170,7 +172,9 @@ export class AgentRunController {
     } catch (error: any) {
       this.logger.error(`Agent chat error: ${error.message}`, error.stack);
 
-      if (!res.raw.headersSent) {
+      // RNX-200: a refusal with a code (402 CREDITS_EXHAUSTED, RUN_CAP_EXCEEDED) goes to the stream guard, which
+      // sends its code in the error event.
+      if (!res.raw.headersSent || codedRefusalOf(error)) {
         throw error;
       }
 

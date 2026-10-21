@@ -1,6 +1,7 @@
 import type { LoggerService } from "@nestjs/common";
 import type { ServerResponse } from "node:http";
 import { errorName } from "./error-name";
+import { codedRefusalOf } from "./coded-refusal-of";
 
 const STREAM_FAILED_EVENT = `data: ${JSON.stringify({ error: { message: "The response failed. Please try again." } })}\n\n`;
 
@@ -9,7 +10,8 @@ const STREAM_FAILED_EVENT = `data: ${JSON.stringify({ error: { message: "The res
  * route wrote its headers is rethrown (Nest answers it as before), and an error after the headers ends only that
  * stream: it is logged by its name only (never its message, which may carry provider text or a secret), the fixed
  * error event is written while the socket can still take it, and the response is ended. Nothing is handed back to
- * Fastify, which would write the headers a second time.
+ * Fastify, which would write the headers a second time. RNX-200: a refusal of ours with a code (402
+ * CREDITS_EXHAUSTED, RUN_CAP_EXCEEDED) is sent with its own message and code instead of the fixed text.
  */
 export async function guardSseStream({
   response,
@@ -26,7 +28,8 @@ export async function guardSseStream({
     if (!response.headersSent) throw error;
     logger.error(`SSE stream ended by an error after its headers were sent (${errorName(error)})`);
     if (response.writableEnded) return;
-    if (!response.destroyed) response.write(STREAM_FAILED_EVENT);
+    const refusal = codedRefusalOf(error);
+    if (!response.destroyed) response.write(refusal ? `data: ${JSON.stringify({ error: refusal })}\n\n` : STREAM_FAILED_EVENT);
     response.end();
   }
 }
