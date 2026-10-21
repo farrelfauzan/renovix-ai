@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../../admin-auth/decorator/admin-audit.decorator";
 import type { AuditedAdminRequest } from "../../admin-auth/types/audited-admin-request";
@@ -6,6 +6,7 @@ import { CreateProviderModelDto } from "../dto/create-provider-model.dto";
 import { UpdateProviderModelDto } from "../dto/update-provider-model.dto";
 import { AdminProviderModelsService } from "../service/admin-provider-models.service";
 import type { ProviderModelView } from "../types/provider-model-view";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * The models of a provider record (RX-177, D149), nested as the back office shows them. Reads need
@@ -28,7 +29,7 @@ export class AdminProviderModelsController {
   @AdminAudit({ resource: "ai_model", action: "create" })
   async create(@Param("providerId") providerId: string, @Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<ProviderModelView> {
     const parsed = CreateProviderModelDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.models.create(providerId, parsed.data, req.audit.tx);
     req.audit.record(change);
     return result;
@@ -45,7 +46,7 @@ export class AdminProviderModelsController {
     @Req() req: AuditedAdminRequest,
   ): Promise<ProviderModelView> {
     const parsed = UpdateProviderModelDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.models.update(providerId, modelId, parsed.data, req.audit.tx);
     req.audit.record(change);
     return result;

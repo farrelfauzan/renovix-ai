@@ -21,6 +21,7 @@ import {
   AddChunksSchema,
   SearchChunksSchema,
 } from "../dto/knowledge.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("v1/knowledge")
 @Access({ auth: ["apiKey"] })
@@ -33,7 +34,7 @@ export class KnowledgeController {
   async createKnowledgeBase(@Req() req: any, @Body() body: unknown) {
     const parsed = CreateKnowledgeBaseSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+      throw createInvalidBodyException(parsed.error);
     }
     return this.knowledgeService.createKnowledgeBase(req.user.id, parsed.data);
   }
@@ -59,7 +60,7 @@ export class KnowledgeController {
   ) {
     const parsed = UpdateKnowledgeBaseSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+      throw createInvalidBodyException(parsed.error);
     }
     return this.knowledgeService.updateKnowledgeBase(
       req.user.id,
@@ -115,7 +116,7 @@ export class KnowledgeController {
   ) {
     const parsed = AddChunksSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+      throw createInvalidBodyException(parsed.error);
     }
     return this.knowledgeService.addChunks(req.user.id, id, parsed.data.chunks);
   }
@@ -150,7 +151,7 @@ export class KnowledgeController {
   async searchChunks(@Req() req: any, @Body() body: unknown) {
     const parsed = SearchChunksSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+      throw createInvalidBodyException(parsed.error);
     }
     return this.knowledgeService.searchChunks(req.user.id, parsed.data.query, {
       knowledgeBaseId: parsed.data.knowledgeBaseId,

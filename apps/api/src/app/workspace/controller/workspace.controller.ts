@@ -9,7 +9,6 @@ import {
   Req,
   HttpCode,
   ParseUUIDPipe,
-  BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
@@ -21,6 +20,7 @@ import { CreateWorkspaceSchema } from "../dto/create-workspace.dto";
 import { UpdateWorkspaceSchema } from "../dto/update-workspace.dto";
 import { InviteMemberSchema } from "../dto/invite-member.dto";
 import { UpdateMemberSchema } from "../dto/update-member.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("workspaces")
 @Access({ auth: ["jwt", "session"] })
@@ -38,13 +38,7 @@ export class WorkspaceController {
   async create(@Body() body: unknown, @Req() req: any) {
     const parsed = CreateWorkspaceSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.workspaceService.create(req.user.userId, parsed.data);
   }
@@ -67,13 +61,7 @@ export class WorkspaceController {
   ) {
     const parsed = UpdateWorkspaceSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.workspaceService.update(id, req.user.userId, parsed.data);
   }
@@ -112,13 +100,7 @@ export class WorkspaceController {
     ]);
     const parsed = UpdateMemberSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.memberService.updateMember(id, memberId, parsed.data);
   }
@@ -161,13 +143,7 @@ export class WorkspaceController {
     ]);
     const parsed = InviteMemberSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.inviteService.createInvite(id, req.user.userId, parsed.data);
   }

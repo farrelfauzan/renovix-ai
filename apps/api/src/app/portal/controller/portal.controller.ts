@@ -51,18 +51,14 @@ import { ConversationService } from "../../chat/service/conversation.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { DocumentService } from "../../document/service/document.service";
-import {
-  ChatCompletionRequest,
-  ChatCompletionRequestSchema,
-} from "../../chat/dto/chat-completion.dto";
+import { ChatCompletionRequest } from "../../chat/dto/chat-completion.dto";
+import { PortalCompletionSchema } from "../dto/portal-completion.dto";
+import { CreatePortalKnowledgeBaseSchema } from "../dto/create-portal-knowledge-base.dto";
 import { randomUUID } from "node:crypto";
 import { Access } from "../../../common/decorators/access.decorator";
 import { resolveMaxTokens } from "../utils/resolve-max-tokens";
 import { extractProviderError } from "../utils/extract-provider-error";
-
-const PortalCompletionSchema = ChatCompletionRequestSchema.extend({
-  model: ChatCompletionRequestSchema.shape.model.optional(),
-});
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 const FREE_CAP_MESSAGES: Record<Exclude<FreeReservation, "ok">, string> = {
   free_limit_reached:
@@ -101,13 +97,7 @@ export class PortalController {
 
     const parsed = PortalCompletionSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
 
     const requestData = parsed.data as ChatCompletionRequest;
@@ -283,17 +273,12 @@ export class PortalController {
       );
     }
 
-    const { name, description } = body as {
-      name?: string;
-      description?: string;
-    };
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      throw new BadRequestException("Name is required");
-    }
+    const parsed = CreatePortalKnowledgeBaseSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
 
     return this.knowledge.createKnowledgeBase(identity.user.id, {
-      name: name.trim(),
-      description: description?.trim(),
+      name: parsed.data.name,
+      description: parsed.data.description?.trim(),
     });
   }
 

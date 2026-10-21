@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../../admin-auth/decorator/admin-audit.decorator";
 import type { AdminRequest } from "../../admin-auth/types/admin-request";
@@ -9,6 +9,7 @@ import { UpdateProviderDto } from "../dto/update-provider.dto";
 import { AdminProvidersService } from "../service/admin-providers.service";
 import type { ProviderTestOutcome } from "../types/provider-test-outcome";
 import type { ProviderView } from "../types/provider-view";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Provider records (RX-177, D148, D149), API only (the screen is RX-102). Under /api/v1/admin/providers.
@@ -40,7 +41,7 @@ export class AdminProvidersController {
   @AdminAudit({ resource: "provider", action: "create" })
   async create(@Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<ProviderView> {
     const parsed = CreateProviderDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.providers.create(req.admin.adminId, parsed.data, req.audit.tx);
     req.audit.record(change);
     return result;
@@ -52,7 +53,7 @@ export class AdminProvidersController {
   @AdminAudit({ resource: "provider", action: "update" })
   async update(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<ProviderView> {
     const parsed = UpdateProviderDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.providers.update(req.admin.adminId, id, parsed.data, req.audit.tx);
     req.audit.record(change);
     return result;
@@ -65,7 +66,7 @@ export class AdminProvidersController {
   @AdminAudit({ exempt: true, reason: "the provider call must run outside a transaction; the handler writes its own audit row" })
   async test(@Param("id") id: string, @Body() body: unknown, @Req() req: AdminRequest): Promise<ProviderTestOutcome> {
     const parsed = TestProviderDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     return this.providers.test(req.admin.adminId, id, parsed.data.slug, req.id);
   }
 

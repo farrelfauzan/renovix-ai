@@ -9,7 +9,6 @@ import {
   Req,
   HttpCode,
   ParseUUIDPipe,
-  BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
@@ -18,12 +17,16 @@ import { getAvailableTools } from "../utils/get-available-tools";
 import { CreateAgentSchema } from "../dto/create-agent.dto";
 import { UpdateAgentSchema } from "../dto/update-agent.dto";
 import { CloneAgentSchema } from "../dto/clone-agent.dto";
+import { GeneratePromptSchema } from "../dto/generate-prompt.dto";
+import { UpdateAgentStatusSchema } from "../dto/update-agent-status.dto";
+import { UpdateAgentChannelSchema } from "../dto/update-agent-channel.dto";
 import {
   AttachToolSchema,
   AttachIntegrationSchema,
   DeployChannelSchema,
   AttachKnowledgeBaseSchema,
 } from "../dto/agent-chat.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("agents")
 @Access({ auth: ["jwt", "session"] })
@@ -36,13 +39,7 @@ export class AgentController {
   async create(@Body() body: unknown, @Req() req: any) {
     const parsed = CreateAgentSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.agentService.create(req.user.userId, parsed.data);
   }
@@ -66,17 +63,9 @@ export class AgentController {
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 20 } })
   async generatePrompt(@Body() body: unknown, @Req() req: any) {
-    const name = (body as any)?.name;
-    const description = (body as any)?.description;
-    if (!name || typeof name !== "string") {
-      throw new BadRequestException({
-        error: {
-          message: "Agent name is required to generate a prompt",
-          type: "invalid_request_error",
-        },
-      });
-    }
-    return this.agentService.generatePrompt(name, description);
+    const parsed = GeneratePromptSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    return this.agentService.generatePrompt(parsed.data.name, parsed.data.description);
   }
 
   @Post("clone/:templateId")
@@ -89,13 +78,7 @@ export class AgentController {
   ) {
     const parsed = CloneAgentSchema.safeParse(body ?? {});
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.agentService.cloneFromTemplate(
       req.user.userId,
@@ -122,13 +105,7 @@ export class AgentController {
   ) {
     const parsed = UpdateAgentSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.agentService.update(req.user.userId, id, parsed.data);
   }
@@ -145,16 +122,9 @@ export class AgentController {
     @Body() body: unknown,
     @Req() req: any,
   ) {
-    const status = (body as any)?.status;
-    if (!status || !["active", "draft", "archived"].includes(status)) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid status. Must be one of: active, draft, archived",
-          type: "invalid_request_error",
-        },
-      });
-    }
-    return this.agentService.updateStatus(req.user.userId, id, status);
+    const parsed = UpdateAgentStatusSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    return this.agentService.updateStatus(req.user.userId, id, parsed.data.status);
   }
 
   @Post(":id/publish")
@@ -174,13 +144,7 @@ export class AgentController {
   ) {
     const parsed = AttachToolSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.agentService.attachTool(
       req.user.userId,
@@ -212,13 +176,7 @@ export class AgentController {
   ) {
     const parsed = AttachIntegrationSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.agentService.attachIntegration(
       req.user.userId,
@@ -254,13 +212,7 @@ export class AgentController {
   ) {
     const parsed = AttachKnowledgeBaseSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.agentService.attachKnowledgeBase(
       req.user.userId,
@@ -290,13 +242,7 @@ export class AgentController {
   ) {
     const parsed = DeployChannelSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.agentService.deployChannel(
       req.user.userId,
@@ -313,12 +259,13 @@ export class AgentController {
     @Body() body: unknown,
     @Req() req: any,
   ) {
-    const config = body as Record<string, any>;
+    const parsed = UpdateAgentChannelSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     return this.agentService.updateChannel(
       req.user.userId,
       id,
       channelId,
-      config,
+      parsed.data,
     );
   }
 

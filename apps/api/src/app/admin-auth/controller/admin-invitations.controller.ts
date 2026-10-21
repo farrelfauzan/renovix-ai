@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Header, HttpCode, Inject, Param, Post, Req, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Header, HttpCode, Inject, Param, Post, Req, Res } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Access } from "../../../common/decorators/access.decorator";
@@ -13,6 +13,7 @@ import { AdminSessionService } from "../service/admin-session.service";
 import type { AdminAuthConfig } from "../types/admin-auth-config";
 import type { AuditedAdminRequest } from "../types/audited-admin-request";
 import { buildSessionCookies } from "../utils/build-session-cookies";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /** Only Owners hold it among the built-in roles (RX-96). */
 const ADMIN_WRITE = ["admins:write"];
@@ -41,7 +42,7 @@ export class AdminInvitationsController {
   @Header("Cache-Control", "no-store")
   async create(@Body() body: unknown, @Req() req: AuditedAdminRequest) {
     const parsed = CreateInvitationDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     if (parsed.data.role === BUILT_IN_ROLES.owner) await this.sessions.assertRecentReauth(req.admin.sessionId, req.audit.tx);
     const { invitation, link, change } = await this.invitations.create(req.admin.adminId, parsed.data, req.audit.tx);
     req.audit.record(change);
@@ -81,7 +82,7 @@ export class AdminInvitationsController {
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   async preview(@Body() body: unknown) {
     const parsed = InvitationTokenDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     return this.invitations.preview(parsed.data.token);
   }
 
@@ -97,7 +98,7 @@ export class AdminInvitationsController {
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   async accept(@Body() body: unknown, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
     const parsed = AcceptInvitationDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const session = await this.invitations.accept(parsed.data, req.id, req.headers["user-agent"]);
     reply.header("set-cookie", buildSessionCookies(session, this.settings.accessTokenSeconds, new Date()));
     return { scope: session.scope };

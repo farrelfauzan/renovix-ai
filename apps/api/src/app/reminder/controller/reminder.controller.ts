@@ -9,13 +9,13 @@ import {
   Req,
   HttpCode,
   ParseUUIDPipe,
-  BadRequestException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
 import { ReminderService } from "../service/reminder.service";
 import { ReminderStatus } from "@generated/prisma/client.js";
 import { CreateReminderSchema, UpdateReminderSchema } from "../dto/reminder.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("reminders")
 @Access({ auth: ["jwt", "session"] })
@@ -28,13 +28,7 @@ export class ReminderController {
   async create(@Body() body: unknown, @Req() req: any) {
     const parsed = CreateReminderSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.reminderService.create(req.user.userId, parsed.data);
   }
@@ -57,13 +51,7 @@ export class ReminderController {
   ) {
     const parsed = UpdateReminderSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
 
     const data: any = { ...parsed.data };

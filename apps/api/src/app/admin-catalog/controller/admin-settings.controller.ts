@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, Put, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, Put, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../../admin-auth/decorator/admin-audit.decorator";
 import type { AuditedAdminRequest } from "../../admin-auth/types/audited-admin-request";
 import { SaveSettingBodyDto } from "../dto/save-setting-body.dto";
 import { AdminSettingsService } from "../service/admin-settings.service";
 import type { SettingView } from "../types/setting-view";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Typed platform settings (RNX-226), API only (the screens are RNX-98). Under /api/v1/admin/settings. Reads need
@@ -27,7 +28,7 @@ export class AdminSettingsController {
   @AdminAudit({ resource: "platform_setting", action: "update" })
   async save(@Param("name") name: string, @Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<SettingView> {
     const parsed = SaveSettingBodyDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.settings.save({ id: name, body: parsed.data, adminId: req.admin.adminId }, req.audit.tx);
     req.audit.record(change);
     return result;

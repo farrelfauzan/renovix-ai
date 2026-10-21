@@ -9,20 +9,20 @@ import {
   Res,
   HttpCode,
   ParseUUIDPipe,
-  BadRequestException,
   Logger,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
 import type { FastifyReply } from "fastify";
 import { AgentRunService } from "../service/agent-run.service";
-import { AgentChatSchema } from "../dto/agent-chat.dto";
+import { type AgentChatDto, AgentChatSchema } from "../dto/agent-chat.dto";
 import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 import { guardSseStream } from "../../../common/utils/guard-sse-stream";
 import { codedRefusalOf } from "../../../common/utils/coded-refusal-of";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("agents")
 @Access({ auth: ["jwt", "session"] })
@@ -45,23 +45,16 @@ export class AgentRunController {
     @Req() req: any,
     @Res() res: FastifyReply,
   ) {
-    // RNX-171: an error after the SSE headers ends that stream, not the process.
-    return guardSseStream({ response: res.raw, logger: this.logger, stream: () => this.streamChat(id, body, req, res) });
-  }
-
-  private async streamChat(id: string, body: unknown, req: any, res: FastifyReply) {
     const parsed = AgentChatSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
+    // RNX-171: an error after the SSE headers ends that stream, not the process.
+    return guardSseStream({ response: res.raw, logger: this.logger, stream: () => this.streamChat(id, parsed.data, req, res) });
+  }
 
-    const { message, sessionId, output_format } = parsed.data;
+  private async streamChat(id: string, input: AgentChatDto, req: any, res: FastifyReply) {
+    const { message, sessionId, output_format } = input;
     const userId = req.user.userId;
 
     // RX-178 (review B1), RNX-200: 404, the fixed 400 for an unusable model, 403 without a subscription and the run's

@@ -76,7 +76,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 ## API Architecture
 
 - 21 modules (`*.module.ts`) in `apps/api/src/app/`, plus the root `AppModule`; `AppModule` imports 20 of them, `MemoryModule` is imported by `ChatModule` and `PortalModule`
-- Request validation: Zod schemas parsed manually with `safeParse` in the controllers; `nestjs-zod` is used by the OpenAPI generator (its zod→OpenAPI 3.0 schema rewrite, RX-170)
+- Request validation: Zod schemas parsed manually with `safeParse` in the controllers; `nestjs-zod` is used by the OpenAPI generator (its zod→OpenAPI 3.0 schema rewrite, RX-170). A request body is a `@Body() body: unknown` parameter parsed with the module's `dto/` schema; an invalid body is refused with `createInvalidBodyException(parsed.error)` (`apps/api/src/common/utils`), the one 400 shape `{ error: { message: "Invalid request body", type: "invalid_request_error", details } }` (RNX-28). `bun run check` enforces it (step "request bodies", `scripts/check-request-bodies.ts`)
 - Path alias: `@generated/prisma` -> `./src/generated/prisma`
 - OpenAI-compatible endpoint: `POST /api/v1/chat/completions` (API key auth via `ApiKeyGuard`)
 - SSE streaming for chat completions and document generation

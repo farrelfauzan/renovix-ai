@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../decorator/admin-audit.decorator";
 import { CreateRoleDto } from "../dto/create-role.dto";
 import { UpdateRoleDto } from "../dto/update-role.dto";
 import { AdminRoleService } from "../service/admin-role.service";
 import type { AuditedAdminRequest } from "../types/audited-admin-request";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Back-office roles (RNX-187) under /api/v1/admin/roles. The list needs `roles:read`; every write needs
@@ -30,7 +31,7 @@ export class AdminRolesController {
   @HttpCode(204)
   async create(@Body() body: unknown, @Req() req: AuditedAdminRequest) {
     const parsed = CreateRoleDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     req.audit.record(await this.roles.create(parsed.data, req.audit.tx));
   }
 
@@ -41,7 +42,7 @@ export class AdminRolesController {
   @HttpCode(204)
   async update(@Param("name") name: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
     const parsed = UpdateRoleDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     req.audit.record(await this.roles.update(name, parsed.data, req.audit.tx));
   }
 

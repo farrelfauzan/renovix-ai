@@ -7,7 +7,6 @@
  * (an entry that matches no scanned route fails the generator, so stale entries cannot linger).
  */
 import type { ZodType } from "zod";
-import { z } from "zod";
 import { SignInDto } from "../../app/admin-auth/dto/sign-in.dto";
 import { ReauthDto } from "../../app/admin-auth/dto/reauth.dto";
 import { ChangePasswordDto } from "../../app/admin-auth/dto/change-password.dto";
@@ -39,9 +38,21 @@ import { CreateAgentSchema } from "../../app/agent/dto/create-agent.dto";
 import { CloneAgentSchema } from "../../app/agent/dto/clone-agent.dto";
 import { UpdateAgentSchema } from "../../app/agent/dto/update-agent.dto";
 import { CreateAgentLinkSchema } from "../../app/agent/dto/create-agent-link.dto";
+import { GeneratePromptSchema } from "../../app/agent/dto/generate-prompt.dto";
+import { UpdateAgentStatusSchema } from "../../app/agent/dto/update-agent-status.dto";
+import { UpdateAgentChannelSchema } from "../../app/agent/dto/update-agent-channel.dto";
+import { CreateCheckoutSchema } from "../../app/billing/dto/create-checkout.dto";
+import { ConnectMcpTokenSchema } from "../../app/mcp/dto/connect-mcp-token.dto";
+import { WebSearchKeySchema } from "../../app/mcp/dto/web-search-key.dto";
+import { UpdateWebSearchPolicySchema } from "../../app/mcp/dto/update-web-search-policy.dto";
+import { PortalCompletionSchema } from "../../app/portal/dto/portal-completion.dto";
+import { CreatePortalKnowledgeBaseSchema } from "../../app/portal/dto/create-portal-knowledge-base.dto";
+import { CreateWorkspaceKnowledgeBaseSchema } from "../../app/workspace/dto/create-workspace-knowledge-base.dto";
+import { AddWorkspaceChunksSchema } from "../../app/workspace/dto/add-workspace-chunks.dto";
+import { SearchWorkspaceKnowledgeSchema } from "../../app/workspace/dto/search-workspace-knowledge.dto";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
 import { CreateApiKeyDto } from "../../app/auth/dto/create-api-key.dto";
-import { ApiChatCompletionRequestSchema, ChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
+import { ApiChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
 import { CreateCodeDto, RedeemCodeDto } from "../../app/codes/dto/redeem-code.dto";
 import { ExportRequestSchema } from "../../app/document/dto/export-request.dto";
 import { CreateKnowledgeBaseSchema, UpdateKnowledgeBaseSchema, AddChunksSchema, SearchChunksSchema } from "../../app/knowledge/dto/knowledge.dto";
@@ -53,11 +64,6 @@ import { AcceptInviteSchema } from "../../app/workspace/dto/accept-invite.dto";
 
 import { CreateChannelSchema, UpdateChannelSchema, AddAgentSchema, ChatMessageSchema } from "../../app/channel/dto/channel.dto";
 import { CreateReminderSchema, UpdateReminderSchema } from "../../app/reminder/dto/reminder.dto";
-
-/** The portal completion body: the chat completion schema with the model optional (portal.controller.ts). */
-const PORTAL_COMPLETION_SCHEMA: ZodType = ChatCompletionRequestSchema.extend({
-  model: ChatCompletionRequestSchema.shape.model.optional(),
-});
 
 /** `METHOD /controller-path[/handler-path]` → the Zod schema its controller parses the request body with. */
 export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, ZodType>([
@@ -92,13 +98,13 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /agents", CreateAgentSchema],
   ["POST /agents/clone/:templateId", CloneAgentSchema],
   ["PATCH /agents/:id", UpdateAgentSchema],
-  ["POST /agents/generate-prompt", z.object({ name: z.string().min(1), description: z.string().optional() })],
-  ["PATCH /agents/:id/status", z.object({ status: z.enum(["active", "draft", "archived"]) })],
+  ["POST /agents/generate-prompt", GeneratePromptSchema],
+  ["PATCH /agents/:id/status", UpdateAgentStatusSchema],
   ["POST /agents/:id/tools", AttachToolSchema],
   ["POST /agents/:id/integrations", AttachIntegrationSchema],
   ["POST /agents/:id/knowledge-bases", AttachKnowledgeBaseSchema],
   ["POST /agents/:id/channels", DeployChannelSchema],
-  ["PATCH /agents/:id/channels/:channelId", z.record(z.string(), z.unknown())],
+  ["PATCH /agents/:id/channels/:channelId", UpdateAgentChannelSchema],
   ["POST /agents/:id/chat", AgentChatSchema],
   ["POST /agents/:id/links", CreateAgentLinkSchema],
   // ─── channels and their workspaces ───
@@ -108,6 +114,9 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /channels/:id/agents/:agentId/chat", ChatMessageSchema],
   ["PATCH /channels/:channelId/workspace/members/:memberId", UpdateMemberSchema],
   ["POST /channels/:channelId/workspace/invites", InviteMemberSchema],
+  ["POST /channels/:channelId/workspace/knowledge", CreateWorkspaceKnowledgeBaseSchema],
+  ["POST /channels/:channelId/workspace/knowledge/:kbId/chunks", AddWorkspaceChunksSchema],
+  ["POST /channels/:channelId/workspace/knowledge/search", SearchWorkspaceKnowledgeSchema],
   // ─── workspaces ───
   ["POST /workspaces", CreateWorkspaceSchema],
   ["PATCH /workspaces/:id", UpdateWorkspaceSchema],
@@ -115,7 +124,8 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /workspaces/:id/invites", InviteMemberSchema],
   ["POST /workspace-invites/accept", AcceptInviteSchema],
   // ─── portal ───
-  ["POST /chat/portal/completions", PORTAL_COMPLETION_SCHEMA],
+  ["POST /chat/portal/completions", PortalCompletionSchema],
+  ["POST /chat/portal/knowledge", CreatePortalKnowledgeBaseSchema],
   // ─── the rest of the product API ───
   ["POST /auth/register", RegisterDto],
   ["POST /auth/login", LoginDto],
@@ -129,7 +139,11 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /v1/knowledge/search", SearchChunksSchema],
   ["POST /reminders", CreateReminderSchema],
   ["PATCH /reminders/:id", UpdateReminderSchema],
-  // The workspace-channel knowledge routes write with plain-object bodies (no Zod schema there).
+  ["POST /billing/checkout", CreateCheckoutSchema],
+  ["POST /mcp/user/connect", ConnectMcpTokenSchema],
+  ["PUT /integrations/web-search/brave/key", WebSearchKeySchema],
+  ["PUT /integrations/web-search/policy", UpdateWebSearchPolicySchema],
+  ["PUT /integrations/web-search/providers/:provider/key", WebSearchKeySchema],
 ]);
 
 /** The query schemas of the routes whose controller parses a Zod DTO from the query string. */

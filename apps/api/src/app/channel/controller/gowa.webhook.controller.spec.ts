@@ -187,6 +187,18 @@ describe("RX-115: GOWA webhook refuses unsigned calls (Fastify, test database)",
     expect(sendMessage).toHaveBeenCalledWith(FROM, "Agent reply", expect.objectContaining({ phoneNumber: TO }));
   });
 
+  it("RNX-28: a signed event other than message.received (no from, no message) is skipped with 200, nothing processed", async () => {
+    await withSecret();
+    const raw = JSON.stringify({ event: "message.ack", to: TO, ack: { id: "wamid-1", status: "read" } });
+
+    const res = await post(raw, signed(SECRET, raw));
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, skipped: true });
+    expect(runService.chat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["the victim's channel was saved first", true],
     ["another tenant saved the same number first", false],

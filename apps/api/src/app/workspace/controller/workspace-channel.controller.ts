@@ -9,7 +9,6 @@ import {
   Req,
   HttpCode,
   ParseUUIDPipe,
-  BadRequestException,
   NotFoundException,
   ForbiddenException,
 } from "@nestjs/common";
@@ -23,6 +22,10 @@ import { WorkspaceQuotaService } from "../service/workspace-quota.service";
 import { InviteMemberSchema } from "../dto/invite-member.dto";
 import { UpdateMemberSchema } from "../dto/update-member.dto";
 import { WorkspaceKnowledgeService } from "../service/workspace-knowledge.service";
+import { CreateWorkspaceKnowledgeBaseSchema } from "../dto/create-workspace-knowledge-base.dto";
+import { AddWorkspaceChunksSchema } from "../dto/add-workspace-chunks.dto";
+import { SearchWorkspaceKnowledgeSchema } from "../dto/search-workspace-knowledge.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("channels/:channelId/workspace")
 @Access({ auth: ["jwt", "session"] })
@@ -209,12 +212,7 @@ export class WorkspaceChannelController {
 
     const parsed = UpdateMemberSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.memberService.updateMember(workspace.id, memberId, parsed.data);
   }
@@ -273,12 +271,7 @@ export class WorkspaceChannelController {
 
     const parsed = InviteMemberSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.inviteService.createInvite(
       workspace.id,
@@ -355,7 +348,7 @@ export class WorkspaceChannelController {
   @HttpCode(201)
   async createKnowledgeBase(
     @Param("channelId", ParseUUIDPipe) channelId: string,
-    @Body() body: { name: string; description?: string },
+    @Body() body: unknown,
     @Req() req: any,
   ) {
     const { workspace } = await this.requireWorkspace(
@@ -366,10 +359,12 @@ export class WorkspaceChannelController {
     await this.workspaceService.requireRole(workspace.id, req.user.userId, [
       "owner",
     ]);
+    const parsed = CreateWorkspaceKnowledgeBaseSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     return this.knowledgeService.createKnowledgeBase(
       workspace.id,
       req.user.userId,
-      body,
+      parsed.data,
     );
   }
 
@@ -409,8 +404,7 @@ export class WorkspaceChannelController {
   async addChunks(
     @Param("channelId", ParseUUIDPipe) channelId: string,
     @Param("kbId", ParseUUIDPipe) kbId: string,
-    @Body()
-    body: { chunks: { content: string; metadata?: Record<string, unknown> }[] },
+    @Body() body: unknown,
     @Req() req: any,
   ) {
     const { workspace } = await this.requireWorkspace(
@@ -422,11 +416,13 @@ export class WorkspaceChannelController {
       "admin",
       "member",
     ]);
+    const parsed = AddWorkspaceChunksSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     return this.knowledgeService.addChunks(
       workspace.id,
       kbId,
       req.user.userId,
-      body.chunks,
+      parsed.data.chunks,
     );
   }
 
@@ -453,17 +449,19 @@ export class WorkspaceChannelController {
   @HttpCode(200)
   async searchKnowledge(
     @Param("channelId", ParseUUIDPipe) channelId: string,
-    @Body() body: { query: string; topK?: number },
+    @Body() body: unknown,
     @Req() req: any,
   ) {
     const { workspace } = await this.requireWorkspace(
       channelId,
       req.user.userId,
     );
+    const parsed = SearchWorkspaceKnowledgeSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     return this.knowledgeService.searchWorkspaceKnowledge(
       workspace.id,
-      body.query,
-      body.topK,
+      parsed.data.query,
+      parsed.data.topK,
     );
   }
 }

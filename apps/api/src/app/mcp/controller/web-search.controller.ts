@@ -12,6 +12,9 @@ import {
 import { Access } from "../../../common/decorators/access.decorator";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WebSearchService } from "../service/web-search.service";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
+import { WebSearchKeySchema } from "../dto/web-search-key.dto";
+import { UpdateWebSearchPolicySchema } from "../dto/update-web-search-policy.dto";
 
 @Controller("integrations/web-search")
 @Access({ auth: ["jwt", "session"] })
@@ -36,23 +39,17 @@ export class WebSearchController {
   }
 
   @Put("brave/key")
-  async upsertBraveKey(
-    @Req() req: any,
-    @Body() body: { workspaceId: string; apiKey: string },
-  ) {
-    if (!body.workspaceId) {
-      throw new BadRequestException("workspaceId is required");
-    }
-    if (!body.apiKey) {
-      throw new BadRequestException("apiKey is required");
-    }
+  async upsertBraveKey(@Req() req: any, @Body() body: unknown) {
+    const parsed = WebSearchKeySchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    const { workspaceId, apiKey } = parsed.data;
 
-    await this.workspaceService.requireMembership(body.workspaceId, req.user.userId);
+    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
 
     return this.webSearchService.upsertBraveApiKey(
       req.user.userId,
-      body.workspaceId,
-      body.apiKey,
+      workspaceId,
+      apiKey,
     );
   }
 
@@ -78,54 +75,39 @@ export class WebSearchController {
   }
 
   @Put("policy")
-  async updatePolicy(
-    @Req() req: any,
-    @Body()
-    body: {
-      workspaceId: string;
-      allowedProviders?: Array<"brave-search" | "duckduckgo">;
-      preferredProvider?: "brave-search" | "duckduckgo";
-      maxResults?: number;
-      dailyLimitPerUser?: number;
-    },
-  ) {
-    if (!body.workspaceId) {
-      throw new BadRequestException("workspaceId is required");
-    }
+  async updatePolicy(@Req() req: any, @Body() body: unknown) {
+    const parsed = UpdateWebSearchPolicySchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    const { workspaceId, ...policy } = parsed.data;
 
-    await this.workspaceService.requireRole(body.workspaceId, req.user.userId, [
+    await this.workspaceService.requireRole(workspaceId, req.user.userId, [
       "owner",
       "admin",
     ]);
 
-    return this.webSearchService.updatePolicy(body.workspaceId, {
-      allowedProviders: body.allowedProviders,
-      preferredProvider: body.preferredProvider,
-      maxResults: body.maxResults,
-      dailyLimitPerUser: body.dailyLimitPerUser,
-    });
+    return this.webSearchService.updatePolicy(workspaceId, policy);
   }
 
   @Put("providers/:provider/key")
   async upsertProviderKey(
     @Req() req: any,
     @Param("provider") provider: string,
-    @Body() body: { workspaceId: string; apiKey: string },
+    @Body() body: unknown,
   ) {
     if (provider !== "brave-search") {
       throw new BadRequestException("Only brave-search supports user API key setup");
     }
 
-    if (!body.workspaceId || !body.apiKey) {
-      throw new BadRequestException("workspaceId and apiKey are required");
-    }
+    const parsed = WebSearchKeySchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    const { workspaceId, apiKey } = parsed.data;
 
-    await this.workspaceService.requireMembership(body.workspaceId, req.user.userId);
+    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
 
     return this.webSearchService.upsertBraveApiKey(
       req.user.userId,
-      body.workspaceId,
-      body.apiKey,
+      workspaceId,
+      apiKey,
     );
   }
 }

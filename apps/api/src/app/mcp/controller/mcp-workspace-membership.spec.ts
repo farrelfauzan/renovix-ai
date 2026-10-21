@@ -172,7 +172,9 @@ describe("RNX-206: workspace membership on the MCP credential and web search sta
       const res = await app.inject({ method: "POST", url: "/mcp/user/connect", headers: auth(owner), payload: payload(workspaceId) });
 
       expect(res.statusCode).toBe(400);
-      expect(res.json()).toHaveProperty(field);
+      // RNX-28: the one invalid-body shape, the field named in error.details.
+      expect(res.json()).toMatchObject({ error: { message: "Invalid request body", type: "invalid_request_error" } });
+      expect(res.json().error.details).toHaveProperty(field);
       expect(mcpUser.connectWithToken).not.toHaveBeenCalled();
       expect(await credentialRows()).toEqual([]);
     });

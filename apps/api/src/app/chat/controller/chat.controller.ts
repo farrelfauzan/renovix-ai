@@ -4,7 +4,6 @@ import {
   Body,
   Req,
   Res,
-  BadRequestException,
   HttpCode,
   Logger,
 } from "@nestjs/common";
@@ -17,6 +16,7 @@ import {
   ChatCompletionRequest,
   ApiChatCompletionRequestSchema,
 } from "../dto/chat-completion.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("chat")
 export class ChatController {
@@ -31,13 +31,7 @@ export class ChatController {
   async createCompletion(@Body() body: unknown, @Req() req: any, @Res() res: FastifyReply) {
     const parsed = ApiChatCompletionRequestSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
 
     if (!parsed.data.stream) {
