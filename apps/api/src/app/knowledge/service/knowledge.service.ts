@@ -81,10 +81,6 @@ export class KnowledgeService {
       throw new BadRequestException("Only .md files are supported");
     }
 
-    // Upload original file to S3
-    const s3Key = this.s3Service.buildKey(userId, kb.id, file.filename);
-    await this.s3Service.upload(s3Key, file.buffer, "text/markdown");
-
     // Parse and chunk the markdown
     const content = file.buffer.toString("utf-8");
     const chunks = chunkMarkdown(content, file.filename);
@@ -97,16 +93,26 @@ export class KnowledgeService {
     const texts = chunks.map((c) => c.content);
     const embeddings = await this.embeddingService.embed(texts);
 
-    // Insert chunks with embeddings
-    const created = await this.knowledgeChunks.insertChunks(
-      kb.id,
-      chunks.map((chunk, i) => ({
-        content: chunk.content,
-        metadata: { ...chunk.metadata, s3Key },
-        embedding: embeddings[i].embedding,
-        tokenCount: embeddings[i].tokenCount,
-      })),
-    );
+    // Upload the original file only now, so a failed chunk or embedding leaves nothing in S3
+    const s3Key = this.s3Service.buildKey(userId, kb.id, file.filename);
+    await this.s3Service.upload(s3Key, file.buffer, "text/markdown");
+
+    // Insert chunks with embeddings; a failed insert removes the file just uploaded
+    let created: Awaited<ReturnType<KnowledgeChunkRepository["insertChunks"]>>;
+    try {
+      created = await this.knowledgeChunks.insertChunks(
+        kb.id,
+        chunks.map((chunk, i) => ({
+          content: chunk.content,
+          metadata: { ...chunk.metadata, s3Key },
+          embedding: embeddings[i].embedding,
+          tokenCount: embeddings[i].tokenCount,
+        })),
+      );
+    } catch (err) {
+      await this.deleteUploadedFile(s3Key);
+      throw err;
+    }
 
     this.logger.log(
       `Uploaded ${file.filename} → ${created.length} chunks for KB ${kb.id}`,
@@ -117,6 +123,15 @@ export class KnowledgeService {
       s3Key,
       chunksInserted: created.length,
     };
+  }
+
+  /** Best effort: logs the key only when the delete fails, so the caller still gets the original error. */
+  private async deleteUploadedFile(s3Key: string): Promise<void> {
+    try {
+      await this.s3Service.delete(s3Key);
+    } catch {
+      this.logger.error(`Could not delete ${s3Key} from S3 after a failed upload`);
+    }
   }
 
   async addChunks(
