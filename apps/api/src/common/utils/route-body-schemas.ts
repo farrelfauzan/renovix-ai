@@ -26,6 +26,14 @@ import { UpdateProviderDto } from "../../app/admin-providers/dto/update-provider
 import { TestProviderDto } from "../../app/admin-providers/dto/test-provider.dto";
 import { CreateProviderModelDto } from "../../app/admin-providers/dto/create-provider-model.dto";
 import { UpdateProviderModelDto } from "../../app/admin-providers/dto/update-provider-model.dto";
+import { PackageVersionBodyDto } from "../../app/admin-catalog/dto/package-version-body.dto";
+import { UpdatePackageBodyDto } from "../../app/admin-catalog/dto/update-package-body.dto";
+import { TopUpPackVersionBodyDto } from "../../app/admin-catalog/dto/top-up-pack-version-body.dto";
+import { EnterpriseBundleVersionBodyDto } from "../../app/admin-catalog/dto/enterprise-bundle-version-body.dto";
+import { UpdateActiveBodyDto } from "../../app/admin-catalog/dto/update-active-body.dto";
+import { DeactivateCodeBodyDto } from "../../app/admin-catalog/dto/deactivate-code-body.dto";
+import { ListCodesQueryDto } from "../../app/admin-catalog/dto/list-codes-query.dto";
+import { SaveSettingBodyDto } from "../../app/admin-catalog/dto/save-setting-body.dto";
 import { AgentChatSchema, AttachToolSchema, AttachIntegrationSchema, DeployChannelSchema, AttachKnowledgeBaseSchema } from "../../app/agent/dto/agent-chat.dto";
 import { CreateAgentSchema } from "../../app/agent/dto/create-agent.dto";
 import { CloneAgentSchema } from "../../app/agent/dto/clone-agent.dto";
@@ -33,7 +41,7 @@ import { UpdateAgentSchema } from "../../app/agent/dto/update-agent.dto";
 import { CreateAgentLinkSchema } from "../../app/agent/dto/create-agent-link.dto";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
 import { ApiChatCompletionRequestSchema, ChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
-import { RedeemCodeDto } from "../../app/codes/dto/redeem-code.dto";
+import { CreateCodeDto, RedeemCodeDto } from "../../app/codes/dto/redeem-code.dto";
 import { ExportRequestSchema } from "../../app/document/dto/export-request.dto";
 import { CreateKnowledgeBaseSchema, UpdateKnowledgeBaseSchema, AddChunksSchema, SearchChunksSchema } from "../../app/knowledge/dto/knowledge.dto";
 import { CreateWorkspaceSchema } from "../../app/workspace/dto/create-workspace.dto";
@@ -69,6 +77,15 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /admin/providers/:providerId/models", CreateProviderModelDto],
   ["PATCH /admin/providers/:providerId/models/:modelId", UpdateProviderModelDto],
   ["POST /admin/credits/adjustments", CreditAdjustmentDto],
+  ["PATCH /admin/packages/:id", UpdatePackageBodyDto],
+  ["POST /admin/packages/:id/versions", PackageVersionBodyDto],
+  ["PATCH /admin/top-up-packs/:id", UpdateActiveBodyDto],
+  ["POST /admin/top-up-packs/:id/versions", TopUpPackVersionBodyDto],
+  ["PATCH /admin/enterprise-bundles/:id", UpdateActiveBodyDto],
+  ["POST /admin/enterprise-bundles/:id/versions", EnterpriseBundleVersionBodyDto],
+  ["POST /admin/codes", CreateCodeDto],
+  ["PATCH /admin/codes/:id", DeactivateCodeBodyDto],
+  ["PUT /admin/settings/:name", SaveSettingBodyDto],
   // ─── chat and agents ───
   ["POST /chat/completions", ApiChatCompletionRequestSchema],
   ["POST /agents", CreateAgentSchema],
@@ -117,4 +134,5 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
 export const ROUTE_QUERY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, ZodType>([
   ["GET /admin/audit-log", AuditLogQueryDto],
   ["GET /admin/audit-log/export", AuditLogExportQueryDto],
+  ["GET /admin/codes", ListCodesQueryDto],
 ]);

@@ -23,6 +23,16 @@ export class PackageRepository {
     return (tx ?? this.prisma).package.update({ where: { id }, data });
   }
 
+  /** Every packages in display order, each with all its versions, newest first (RNX-226 admin list). */
+  findAllWithVersions() {
+    return this.prisma.package.findMany({ orderBy: { displayOrder: "asc" }, include: { versions: { orderBy: { versionNumber: "desc" } } } });
+  }
+
+  /** The package with this id, with all its versions, newest first. */
+  findByIdWithVersions(id: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).package.findUnique({ where: { id }, include: { versions: { orderBy: { versionNumber: "desc" } } } });
+  }
+
   /** The package's version with the highest number, if it has one. */
   findLatestVersion(packageId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).packageVersion.findFirst({ where: { packageId }, orderBy: { versionNumber: "desc" } });

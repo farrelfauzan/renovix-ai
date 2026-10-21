@@ -23,6 +23,16 @@ export class EnterpriseBundleRepository {
     return (tx ?? this.prisma).enterpriseBundle.update({ where: { id }, data });
   }
 
+  /** Every Enterprise bundles by name, each with all its versions, newest first (RNX-226 admin list). */
+  findAllWithVersions() {
+    return this.prisma.enterpriseBundle.findMany({ orderBy: { name: "asc" }, include: { versions: { orderBy: { versionNumber: "desc" } } } });
+  }
+
+  /** The Enterprise bundle with this id, with all its versions, newest first. */
+  findByIdWithVersions(id: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).enterpriseBundle.findUnique({ where: { id }, include: { versions: { orderBy: { versionNumber: "desc" } } } });
+  }
+
   /** The bundle's version with the highest number, if it has one. */
   findLatestVersion(bundleId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).enterpriseBundleVersion.findFirst({ where: { bundleId }, orderBy: { versionNumber: "desc" } });

@@ -23,6 +23,16 @@ export class TopUpPackRepository {
     return (tx ?? this.prisma).topUpPack.update({ where: { id }, data });
   }
 
+  /** Every top-up packs by name, each with all its versions, newest first (RNX-226 admin list). */
+  findAllWithVersions() {
+    return this.prisma.topUpPack.findMany({ orderBy: { name: "asc" }, include: { versions: { orderBy: { versionNumber: "desc" } } } });
+  }
+
+  /** The top-up pack with this id, with all its versions, newest first. */
+  findByIdWithVersions(id: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).topUpPack.findUnique({ where: { id }, include: { versions: { orderBy: { versionNumber: "desc" } } } });
+  }
+
   /** The pack's version with the highest number, if it has one. */
   findLatestVersion(packId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).topUpPackVersion.findFirst({ where: { packId }, orderBy: { versionNumber: "desc" } });
