@@ -69,8 +69,9 @@ describe("RX-21 AC2: the price refresh alerts on a provider price rise (test dat
 
   it("alerts on a price move alone, when the price stays under the tier's planning cost", async () => {
     // 0.00000005 -> 0.0000001 per token is a 100% move (above the 0.2 default ratio). At 0.0000001
-    // the standard tier's cost per credit is 0.0000001 x 1,000,000 / 1 = 0.10, under its 0.12
-    // planning cost, so only the price-moved alert can fire here.
+    // input (no cached price, so cached at the input price) and 0.0000002 output, the standard tier's
+    // cost per credit at the token mix is (0.36 x 0.1 + 0.54 x 0.1 + 0.10 x 0.2) / 1 = 0.11, under
+    // its 0.14 planning cost (RNX-185), so only the price-moved alert can fire here.
     const model = await createModel("0.00000005");
     const errorSpy = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
     refresh.setListModeler(async () => [
