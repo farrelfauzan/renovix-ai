@@ -44,4 +44,31 @@ describe("readUsage", () => {
       cachedTokens: 10,
     });
   });
+
+  // RNX-162: OpenRouter's reported cost (USD) and reasoning tokens, on the JSON answer and the stream's usage chunk alike.
+  it("maps the reported cost (as a Decimal) and the reasoning tokens", () => {
+    const actual = readUsage({ prompt_tokens: 10, completion_tokens: 50, total_tokens: 60, cost: 0.1, completion_tokens_details: { reasoning_tokens: 30 } });
+
+    expect(actual?.costUsd?.toString()).toBe("0.1");
+    expect(actual?.reasoningTokens).toBe(30);
+  });
+
+  it("a reported cost of 0 is kept", () => {
+    expect(readUsage({ prompt_tokens: 1, completion_tokens: 1, cost: 0 })?.costUsd?.toString()).toBe("0");
+  });
+
+  it.each([
+    ["a negative cost", { cost: -0.1 }],
+    ["a string cost", { cost: "0.1" }],
+    ["a NaN cost", { cost: NaN }],
+    ["fractional reasoning tokens", { completion_tokens_details: { reasoning_tokens: 1.5 } }],
+    ["string reasoning tokens", { completion_tokens_details: { reasoning_tokens: "3" } }],
+  ])("%s is left out, the token counts kept", (_case, extra) => {
+    expect(readUsage({ prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, ...extra })).toStrictEqual({
+      prompt_tokens: 3,
+      completion_tokens: 2,
+      total_tokens: 5,
+      cachedTokens: 0,
+    });
+  });
 });

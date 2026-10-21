@@ -38,6 +38,7 @@ import { ExchangeRateRepository } from "../exchange-rates/repository/exchange-ra
 import { KnowledgeBaseRepository } from "../knowledge/repository/knowledge-base.repository";
 import { KnowledgeChunkRepository } from "../knowledge/repository/knowledge-chunk.repository";
 import { McpOAuthStateRepository } from "../mcp/repository/mcp-oauth-state.repository";
+import { ModelCallCostRepository } from "../model-call-costs/repository/model-call-cost.repository";
 import { UserMemoryRepository } from "../memory/repository/user-memory.repository";
 import { CatalogChangeRepository } from "../offers/repository/catalog-change.repository";
 import { CompanyContractRepository } from "../offers/repository/company-contract.repository";
@@ -93,6 +94,7 @@ const REPOSITORIES = [
   KnowledgeBaseRepository,
   KnowledgeChunkRepository,
   McpOAuthStateRepository,
+  ModelCallCostRepository,
   UserMemoryRepository,
   CatalogChangeRepository,
   CompanyContractRepository,

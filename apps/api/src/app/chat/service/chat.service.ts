@@ -67,7 +67,13 @@ export class ChatService {
       providerResponse = await this.providerRouter.chat(request, this.attemptHooks(call, (tried) => (attempt = tried)));
     } catch (error: any) {
       // A provider error is charged 0 and releases the hold (docs/credits.md section 3.1 rule 6).
-      await this.credits.finishCall({ ...call, modelId: attempt.slug, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" });
+      await this.credits.finishCall({
+        ...call,
+        modelId: attempt.slug,
+        tokens: tokensFromUsage(0, 0, 0),
+        outcome: "provider_error",
+        cost: { servedBy: attempt },
+      });
       this.logger.error(`Provider call failed: ${error.message}`, error.stack);
       // RNX-190 (D199): a typed upstream error gives the client its fixed text; the status code stays 500.
       const isTyped = error instanceof ProviderHttpError || error instanceof ProviderTimeoutError;
@@ -85,6 +91,7 @@ export class ChatService {
       modelId: attempt.slug,
       tokens: tokensFromUsage(usage.prompt_tokens, usage.cachedTokens ?? 0, usage.completion_tokens),
       outcome: "completed",
+      cost: { servedBy: attempt, usage },
     });
     const actualCost = entry.amount.negated();
 
@@ -203,11 +210,12 @@ export class ChatService {
         received.usage = delta.usage ?? received.usage;
       }
     } catch (error) {
-      const call = { ...opened.call, modelId: attempt.slug };
+      const call = { ...opened.call, modelId: attempt.slug, cost: { servedBy: attempt, usage: received.usage } };
       return this.endFailedStream(error, { call, sentPrompt, received, aborted: disconnected.signal.aborted, response });
     }
     const outcome = streamedCallOutcome({ providerFailed: false, aborted: disconnected.signal.aborted, streamOpened: received.isOpened });
-    const entry = await this.finishStreamedCall({ ...opened.call, modelId: attempt.slug }, outcome, { sentPrompt, ...received });
+    const call = { ...opened.call, modelId: attempt.slug, cost: { servedBy: attempt, usage: received.usage } };
+    const entry = await this.finishStreamedCall(call, outcome, { sentPrompt, ...received });
     this.usage
       .logUsage({
         userId: user.id,

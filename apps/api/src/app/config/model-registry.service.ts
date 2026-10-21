@@ -68,7 +68,18 @@ export class ModelRegistryService implements OnModuleInit {
       where: { active: true },
       include: {
         providerRecord: {
-          select: { id: true, name: true, baseUrl: true, status: true, deletedAt: true, apiKeyCiphertext: true },
+          select: {
+            id: true,
+            name: true,
+            baseUrl: true,
+            status: true,
+            deletedAt: true,
+            apiKeyCiphertext: true,
+            costMultiplier: true,
+            perCallFloorUsd: true,
+            highCaseFactor: true,
+            highCaseTokenThreshold: true,
+          },
         },
         fallbacks: { orderBy: { position: "asc" }, select: { fallbackModel: { select: { slug: true } } } },
       },
@@ -90,6 +101,10 @@ export class ModelRegistryService implements OnModuleInit {
           providerName: record.name,
           baseUrl: record.baseUrl,
           apiKeyCiphertext: record.apiKeyCiphertext,
+          costMultiplier: record.costMultiplier,
+          perCallFloorUsd: record.perCallFloorUsd,
+          highCaseFactor: record.highCaseFactor,
+          highCaseTokenThreshold: record.highCaseTokenThreshold,
         });
       }
       map.set(m.slug, {
@@ -153,14 +168,31 @@ export class ModelRegistryService implements OnModuleInit {
     return { ...this.toConnection(slug, cached), fallbacks };
   }
 
-  /** RX-178, RNX-179: the call's connection of one cached provider record (its key opened for this call), with the record id for its breaker. */
+  /**
+   * RX-178, RNX-179: the call's connection of one cached provider record (its key opened for this call), with the
+   * record id for its breaker. RNX-162: and the cost basis of its model_call_costs row, from this cache (no query).
+   */
   private toConnection(slug: string, cached: CachedConnection): ModelConnection {
+    const model = this.models.get(slug);
+    const { providerRecordId, costMultiplier, perCallFloorUsd, highCaseFactor, highCaseTokenThreshold } = cached;
     return {
       slug,
       baseUrl: cached.baseUrl,
       apiKey: this.openKey(cached, slug),
       providerName: cached.providerName,
-      providerRecordId: cached.providerRecordId,
+      providerRecordId,
+      ...(model && {
+        costBasis: {
+          providerRecordId,
+          inputPrice: model.inputPrice,
+          cachedInputPrice: model.cachedInputPrice,
+          outputPrice: model.outputPrice,
+          costMultiplier,
+          perCallFloorUsd,
+          highCaseFactor,
+          highCaseTokenThreshold,
+        },
+      }),
     };
   }
 

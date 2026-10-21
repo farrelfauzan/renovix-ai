@@ -1,4 +1,5 @@
 import type { CreditCallOutcome } from "@generated/prisma/client.js";
+import type { CallCostSource } from "./call-cost-source";
 import type { CallRates } from "./call-rates";
 import type { CallTokens } from "./call-tokens";
 
@@ -6,7 +7,8 @@ import type { CallTokens } from "./call-tokens";
  * One model call to record against a reservation (docs/credits.md sections 2.1 and 3.1): the usage entry's fields.
  * `callId` is also the entry's idempotency key; `modelId` is the model's slug. In an agent run (section 13) the call
  * also names the run, the agent that made it and the caller's model call that started this hop (null for the root
- * agent's calls); outside a run they are left out.
+ * agent's calls); outside a run they are left out. RNX-162: `cost` is what the call's model_call_costs row is written
+ * from (not part of the entry); without it no row is written.
  */
 export type UsageRecord = {
   readonly reservationId: string;
@@ -21,4 +23,5 @@ export type UsageRecord = {
   readonly runId?: string;
   readonly agentId?: string;
   readonly parentCallId?: string | null;
+  readonly cost?: CallCostSource;
 };

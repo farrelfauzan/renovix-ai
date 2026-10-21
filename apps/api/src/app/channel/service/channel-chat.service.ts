@@ -211,6 +211,7 @@ export class ChannelChatService {
       const metered = await this.meter.meterRun(
         {
           runnerUserId: userId,
+          workspaceId,
           firstCall: {
             model: modelEntry.slug,
             connection,

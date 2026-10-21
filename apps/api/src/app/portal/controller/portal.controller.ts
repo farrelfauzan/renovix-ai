@@ -791,7 +791,7 @@ export class PortalController {
       // One usage entry for the call, then settle (docs/credits.md section 3.1 rules 4, 5 and 7): the provider's
       // reported tokens; without a usage chunk (client gone, or none sent) the local chars/4 count (D202-5, D205).
       const entry = await this.finishStreamedCall(
-        { ...call, modelId: attempt.slug },
+        { ...call, modelId: attempt.slug, cost: { servedBy: attempt, usage: reportedUsage } },
         streamedCallOutcome({ providerFailed: false, aborted: disconnected.signal.aborted, streamOpened }),
         { reportedUsage, sentPrompt, fullContent },
       );
@@ -895,7 +895,7 @@ export class PortalController {
         const providerFailed =
           error instanceof ProviderHttpError || error instanceof ProviderStreamError || !disconnected.signal.aborted;
         await this.finishStreamedCall(
-          { ...call, modelId: attempt.slug },
+          { ...call, modelId: attempt.slug, cost: { servedBy: attempt, usage: reportedUsage } },
           streamedCallOutcome({ providerFailed, aborted: disconnected.signal.aborted, streamOpened }),
           { reportedUsage, sentPrompt, fullContent },
         ).catch((err) => this.logger.error("Failed to record the failed call's usage", err));
