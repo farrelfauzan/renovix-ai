@@ -274,7 +274,7 @@ describe("RX-88: agent runs (chat, tool call) with LLM_PROVIDER=fake", () => {
     const res = await service.chat(user.id, agent.id, `Use a tool ${FAKE_TOOL_KEYWORD}`);
 
     expect(executeTool).toHaveBeenCalledTimes(1);
-    expect(executeTool).toHaveBeenCalledWith("echo", {}, expect.anything(), user.id);
+    expect(executeTool).toHaveBeenCalledWith("echo", {}, expect.anything(), expect.anything(), user.id);
     expect(res.message.content).toBe(FAKE_REPLY);
   });
 });

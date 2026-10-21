@@ -24,6 +24,8 @@ import { UserSubscriptionRepository } from "../../billing/repository/user-subscr
 import { CreditService } from "../../billing/service/credit.service";
 import { RunBudgetStoppedError } from "../errors/run-budget-stopped.error";
 import type { AgentRunBudget } from "../types/agent-run-budget";
+import type { McpRunSession } from "../types/mcp-run-session";
+import { createMcpRunSession } from "../utils/create-mcp-run-session";
 
 const MAX_TOOL_ITERATIONS = 15;
 /** Chunks taken from each attached knowledge base for the run's knowledge context. */
@@ -235,17 +237,19 @@ export class AgentRunService {
    * a usage entry per model call (root and sub-agents) and a budget stop before each call (docs/credits.md section
    * 13). The run row (for a new session) and the user message are written only once the reservation holds, so a
    * refused message writes neither; the MCP connections opened for the run are closed on every path (success,
-   * refusal, provider error, budget stop).
+   * refusal, provider error, budget stop). RNX-217: they are this run's own (mcpSession); closing them closes no
+   * other run's.
    */
   private async runMessage(context: AgentContext, messages: any[], agent: any, sessionId: string, message: string) {
     const injectDelegation = agent.agentType === "parent" && agent.subAgents?.length > 0;
+    const mcpSession = createMcpRunSession();
     try {
       const toolSchemas = await this.toolService.buildToolSchemasWithMcp(
         agent.tools,
         context.agentId,
         context.userId,
         agent.workspaceId || undefined,
-        { injectDelegation },
+        { injectDelegation, mcpSession },
       );
       const metered = await this.meter.meterRun(
         {
@@ -261,7 +265,10 @@ export class AgentRunService {
         },
         async (meteredRun) => {
           const run = await this.saveUserMessage(context.agentId, sessionId, message);
-          return { run, ...(await this.executeLLMLoop(context, messages, toolSchemas, run.id, agent, meteredRun)) };
+          return {
+            run,
+            ...(await this.executeLLMLoop(context, messages, toolSchemas, run.id, agent, meteredRun, mcpSession)),
+          };
         },
       );
       const { run, ...result } =
@@ -285,7 +292,7 @@ export class AgentRunService {
       });
       return { run, result };
     } finally {
-      await this.toolService.cleanupMcpConnections();
+      await this.toolService.cleanupMcpConnections(mcpSession);
     }
   }
 
@@ -305,6 +312,7 @@ export class AgentRunService {
     runId: string,
     agent: any,
     meteredRun: AgentRunBudget,
+    mcpSession: McpRunSession,
   ) {
     let iterations = 0;
     let currentMessages = [...messages];
@@ -380,6 +388,7 @@ export class AgentRunService {
                 toolCall.function.name,
                 args,
                 agent,
+                mcpSession,
                 context.userId,
               );
             }

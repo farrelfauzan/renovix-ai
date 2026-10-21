@@ -1,6 +1,7 @@
 import { AgentToolService } from "./agent-tool.service";
 import { AttachToolSchema } from "../dto/agent-chat.dto";
 import { getAvailableTools } from "../utils/get-available-tools";
+import { createMcpRunSession } from "../utils/create-mcp-run-session";
 
 // With emitDecoratorMetadata (main's tsconfig.spec.json) constructor types are
 // really imported, and those modules load the generated Prisma client and ESM
@@ -49,6 +50,7 @@ describe("RX-1: code_exec tool is removed", () => {
       "code_exec",
       { language: "javascript", code: `globalThis.${marker} = true; return 1;` },
       { id: "agent-1" },
+      createMcpRunSession(),
     );
     expect(result).toContain('Tool "code_exec" is not available');
     expect((globalThis as any)[marker]).toBe(false);

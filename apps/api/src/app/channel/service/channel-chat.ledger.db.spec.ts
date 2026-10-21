@@ -51,7 +51,11 @@ describe("RX-22b: channel chat on the credit ledger (test database, fake provide
           UsageService,
           {
             provide: AgentToolService,
-            useValue: { buildToolSchemasWithMcp: async () => [ECHO], executeTool: async () => "echo result" },
+            useValue: {
+              buildToolSchemasWithMcp: async () => [ECHO],
+              executeTool: async () => "echo result",
+              cleanupMcpConnections: async () => undefined,
+            },
           },
           {
             provide: AgentMemoryService,

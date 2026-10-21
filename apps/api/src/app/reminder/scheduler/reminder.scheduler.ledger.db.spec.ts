@@ -31,6 +31,8 @@ const ECHO = { type: "function", function: { name: "echo", description: "Echo", 
 
 describe("RX-22b: reminder runs on the credit ledger (test database, fake provider)", () => {
   const fake = new FakeProviderAdapter();
+  const buildToolSchemasWithMcp = jest.fn(async (..._args: unknown[]) => [ECHO]);
+  const cleanupMcpConnections = jest.fn(async (_session: unknown) => undefined);
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let scheduler: ReminderScheduler;
@@ -49,7 +51,7 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
           { provide: ReminderService, useValue: {} },
           {
             provide: AgentToolService,
-            useValue: { buildToolSchemasWithMcp: async () => [ECHO], executeTool: async () => "echo result" },
+            useValue: { buildToolSchemasWithMcp, executeTool: async () => "echo result", cleanupMcpConnections },
           },
           { provide: AgentMemoryService, useValue: { getWorkspaceMemoryContext: async () => "" } },
         ],
@@ -62,6 +64,8 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
   beforeEach(async () => {
     await resetDatabase(prisma);
     fake.requests.length = 0;
+    buildToolSchemasWithMcp.mockClear();
+    cleanupMcpConnections.mockClear();
     await createResolvableModel(prisma, { slug: "test-model", modelName: "test-model", maxTokens: 8192 });
     await prisma.tierRate.create({
       data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
@@ -121,5 +125,19 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
 
     expect(fake.requests).toHaveLength(0);
     expect(await prisma.channelMessage.count()).toBe(0);
+  });
+
+  it("RNX-217: a reminder run closes the MCP session its tools were built into, exactly once (success and refusal)", async () => {
+    const funded = await seedReminder("1");
+    fake.enqueue({ content: "Here is your summary", usage: { prompt_tokens: 60, completion_tokens: 8 } });
+    await executeReminder(funded.reminder);
+    const unfunded = await seedReminder(null);
+    await expect(executeReminder(unfunded.reminder)).rejects.toThrow(CreditsExhaustedException);
+
+    const builtSessions = buildToolSchemasWithMcp.mock.calls.map((call) => (call[4] as { mcpSession?: unknown })?.mcpSession);
+    expect([builtSessions.length, cleanupMcpConnections.mock.calls.length]).toEqual([2, 2]);
+    expect(builtSessions.every((session) => session !== undefined)).toBe(true);
+    expect(cleanupMcpConnections.mock.calls[0][0]).toBe(builtSessions[0]);
+    expect(cleanupMcpConnections.mock.calls[1][0]).toBe(builtSessions[1]);
   });
 });

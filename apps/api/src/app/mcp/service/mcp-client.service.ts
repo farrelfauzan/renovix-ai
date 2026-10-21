@@ -4,6 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import type { McpConnection } from "../types/mcp-connection";
 
 export interface McpServerConfig {
   id: string;
@@ -24,91 +25,61 @@ export interface McpToolSchema {
 @Injectable()
 export class McpClientService {
   private readonly logger = new Logger(McpClientService.name);
-  private clients = new Map<string, Client>();
-  private credentialDirs = new Map<string, string>(); // serverId → temp dir path
 
-  async connectServer(config: McpServerConfig): Promise<void> {
-    // Skip if already connected
-    if (this.clients.has(config.id)) return;
-
+  /**
+   * RNX-217: opens a new connection (its own client and child process; for a Google package its own credential temp
+   * dir) and hands it to the caller, who closes it with close(). Nothing is kept here: two runs never share a
+   * connection, also two runs of one user on the same provider.
+   */
+  async connect(config: McpServerConfig): Promise<McpConnection> {
     const client = new Client({
       name: "renovix-agent",
       version: "1.0.0",
     });
 
-    if (config.transport === "stdio") {
-      if (!config.command) {
-        throw new Error(
-          `MCP server ${config.name}: command is required for stdio transport`,
-        );
-      }
-
-      // Prepare env — for Google MCP packages, write credential files
-      const env = { ...process.env, ...(config.env || {}) } as Record<
-        string,
-        string
-      >;
-      await this.prepareGoogleCredentials(config, env);
-
-      const transport = new StdioClientTransport({
-        command: config.command,
-        args: config.args || [],
-        env,
-      });
-
-      await client.connect(transport);
-    } else {
+    if (config.transport !== "stdio") {
       throw new Error(
         `Transport "${config.transport}" not supported. Use stdio.`,
       );
     }
+    if (!config.command) {
+      throw new Error(
+        `MCP server ${config.name}: command is required for stdio transport`,
+      );
+    }
 
-    this.clients.set(config.id, client);
+    // Prepare env — for Google MCP packages, write credential files
+    const env = { ...process.env, ...(config.env || {}) } as Record<
+      string,
+      string
+    >;
+    const credentialDir = await this.prepareGoogleCredentials(config, env);
+
+    const transport = new StdioClientTransport({
+      command: config.command,
+      args: config.args || [],
+      env,
+    });
+
+    try {
+      await client.connect(transport);
+    } catch (err) {
+      this.cleanupCredentialFiles(credentialDir);
+      throw err;
+    }
+
     this.logger.log(`Connected to MCP server: ${config.name} (${config.id})`);
+    return { serverId: config.id, client, credentialDir };
   }
 
-  async listTools(serverId: string): Promise<McpToolSchema[]> {
-    const client = this.clients.get(serverId);
-    if (!client) {
-      throw new Error(`MCP server ${serverId} not connected`);
+  /** RNX-217: closes one connection and removes its credential temp dir, also when closing the client fails. */
+  async close(connection: McpConnection): Promise<void> {
+    try {
+      await connection.client.close();
+    } finally {
+      this.cleanupCredentialFiles(connection.credentialDir);
     }
-
-    const { tools } = await client.listTools();
-    return tools as McpToolSchema[];
-  }
-
-  async callTool(
-    serverId: string,
-    toolName: string,
-    args: Record<string, any>,
-  ): Promise<any> {
-    const client = this.clients.get(serverId);
-    if (!client) {
-      throw new Error(`MCP server ${serverId} not connected`);
-    }
-
-    const result = await client.callTool({ name: toolName, arguments: args });
-    return result;
-  }
-
-  async disconnectServer(serverId: string): Promise<void> {
-    const client = this.clients.get(serverId);
-    if (client) {
-      await client.close();
-      this.clients.delete(serverId);
-      this.cleanupCredentialFiles(serverId);
-      this.logger.log(`Disconnected MCP server: ${serverId}`);
-    }
-  }
-
-  async disconnectAll(): Promise<void> {
-    for (const [id] of this.clients) {
-      await this.disconnectServer(id);
-    }
-  }
-
-  isConnected(serverId: string): boolean {
-    return this.clients.has(serverId);
+    this.logger.log(`Disconnected MCP server: ${connection.serverId}`);
   }
 
   /**
@@ -117,17 +88,18 @@ export class McpClientService {
    * - google-gmail: needs credential files (web format)
    * - google-calendar: needs credential files (flat format)
    * Pre-refreshes the access token so packages see a valid session.
+   * Returns the credential temp dir it created (RNX-217: a new one per connection), or null.
    */
   private async prepareGoogleCredentials(
     config: McpServerConfig,
     env: Record<string, string>,
-  ): Promise<void> {
-    if (!config.name.startsWith("google-")) return;
+  ): Promise<string | null> {
+    if (!config.name.startsWith("google-")) return null;
 
     const clientId = env.GOOGLE_CLIENT_ID;
     const clientSecret = env.GOOGLE_CLIENT_SECRET;
     const refreshToken = env.GOOGLE_REFRESH_TOKEN;
-    if (!clientId || !clientSecret || !refreshToken) return;
+    if (!clientId || !clientSecret || !refreshToken) return null;
 
     // Pre-refresh: exchange refresh_token for a fresh access_token
     let accessToken = "";
@@ -170,13 +142,11 @@ export class McpClientService {
       this.logger.log(
         `Prepared Google access token for server ${config.name} (${config.id})`,
       );
-      return;
+      return null;
     }
 
-    // Other Google packages need credential files on disk
-    const credDir = path.join(os.tmpdir(), `mcp-google-${config.id}`);
-    fs.mkdirSync(credDir, { recursive: true, mode: 0o700 });
-    this.credentialDirs.set(config.id, credDir);
+    // Other Google packages need credential files on disk, in a new dir per connection (mode 0700)
+    const credDir = fs.mkdtempSync(path.join(os.tmpdir(), `mcp-google-${config.id}-`));
 
     // gcp-oauth.keys.json — OAuth client credentials
     // Gmail package expects {"web": {...}}, Calendar accepts flat format
@@ -224,18 +194,17 @@ export class McpClientService {
     this.logger.log(
       `Prepared ephemeral Google credentials at ${credDir} for server ${config.name} (${config.id})`,
     );
+    return credDir;
   }
 
   /**
-   * Remove ephemeral credential files for a disconnected server.
+   * Remove the ephemeral credential files of one connection.
    */
-  private cleanupCredentialFiles(serverId: string): void {
-    const credDir = this.credentialDirs.get(serverId);
+  private cleanupCredentialFiles(credDir: string | null): void {
     if (!credDir) return;
 
     try {
       fs.rmSync(credDir, { recursive: true, force: true });
-      this.credentialDirs.delete(serverId);
       this.logger.log(`Cleaned up credential files at ${credDir}`);
     } catch (err: any) {
       this.logger.warn(
