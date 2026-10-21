@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -19,7 +18,6 @@ import {
   WHATSAPP_WEBHOOK_SECRET_REQUIRED,
   WhatsappChannelConfigSchema,
 } from "../dto/agent-chat.dto";
-import { ownSubAgents } from "../utils/own-sub-agents";
 import { slugify } from "../../../common/utils/slugify";
 import { AgentRepository } from "../repository/agent.repository";
 import { AgentToolRepository } from "../repository/agent-tool.repository";
@@ -27,10 +25,11 @@ import { AgentIntegrationRepository } from "../repository/agent-integration.repo
 import { AgentKnowledgeBaseRepository } from "../repository/agent-knowledge-base.repository";
 import { AgentChannelRepository } from "../repository/agent-channel.repository";
 
+/** RNX-118: the tool type that call_agent replaced; a template row of it is not cloned. */
+const REMOVED_DELEGATE_TOOL = "delegate_to_subagent";
+
 @Injectable()
 export class AgentService {
-  private readonly logger = new Logger(AgentService.name);
-
   constructor(
     private readonly agents: AgentRepository,
     private readonly agentTools: AgentToolRepository,
@@ -73,25 +72,6 @@ export class AgentService {
     // workspace (RNX-117), created here for an account without one (RNX-203).
     const workspaceId = await this.resolveTargetWorkspace(userId, dto.workspaceId);
 
-    // A parentAgentId is only allowed on a sub-agent and must be one of the
-    // caller's own parent agents (RX-112), in the new sub-agent's workspace (RNX-203)
-    if (dto.parentAgentId) {
-      if (dto.agentType !== "sub_agent") {
-        throw new BadRequestException(
-          "Only a sub-agent can have a parentAgentId",
-        );
-      }
-      const parent = await this.agents.findUserAgent(dto.parentAgentId, userId);
-      if (!parent || parent.workspaceId !== workspaceId) {
-        throw new BadRequestException("Parent agent not found");
-      }
-      if (parent.agentType !== "parent") {
-        throw new BadRequestException(
-          "Parent agent must have agent type 'parent'",
-        );
-      }
-    }
-
     const slug = await this.generateUniqueSlug(userId, dto.name);
 
     return this.agents.createAgent(userId, {
@@ -105,17 +85,11 @@ export class AgentService {
       temperature: dto.temperature ?? 0.7,
       maxTokens: dto.maxTokens,
       isPublic: dto.isPublic ?? false,
-      agentType: dto.agentType ?? "standalone",
-      parentAgentId: dto.parentAgentId,
     });
   }
 
   async list(userId: string) {
-    const agents = await this.agents.listTopLevelAgents(userId);
-    return agents.map((agent) => ({
-      ...agent,
-      subAgents: ownSubAgents(agent, agent.subAgents, this.logger),
-    }));
+    return this.agents.listOwnedAgents(userId);
   }
 
   async findById(userId: string, agentId: string) {
@@ -125,7 +99,6 @@ export class AgentService {
       throw new NotFoundException("Agent not found");
     }
 
-    agent.subAgents = ownSubAgents(agent, agent.subAgents, this.logger);
     return agent;
   }
 
@@ -138,38 +111,6 @@ export class AgentService {
 
     const data: Record<string, any> = {};
 
-    const nextAgentType = dto.agentType ?? agent.agentType;
-    const nextParentAgentId =
-      dto.parentAgentId !== undefined ? dto.parentAgentId : agent.parentAgentId;
-
-    if (nextAgentType !== "sub_agent" && dto.parentAgentId) {
-      throw new BadRequestException(
-        "Only a sub-agent can have a parentAgentId",
-      );
-    }
-    if (nextAgentType === "sub_agent") {
-      if (!nextParentAgentId) {
-        throw new BadRequestException("Sub-agent must have a parentAgentId");
-      }
-      if (nextParentAgentId === agentId) {
-        throw new BadRequestException("Agent cannot be its own parent");
-      }
-
-      const parent = await this.agents.findUserAgentType(
-        nextParentAgentId,
-        userId,
-      );
-
-      // RNX-203: the parent must be in this agent's workspace
-      if (!parent || parent.workspaceId !== agent.workspaceId) {
-        throw new BadRequestException("Parent agent not found");
-      }
-      if (parent.agentType !== "parent") {
-        throw new BadRequestException(
-          "Parent agent must have agent type 'parent'",
-        );
-      }
-    }
     if (dto.name !== undefined) {
       data.name = dto.name;
       // The slug is unique per creator (RNX-203: the caller may own the workspace without being the creator)
@@ -183,11 +124,6 @@ export class AgentService {
     if (dto.maxTokens !== undefined) data.maxTokens = dto.maxTokens;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.isPublic !== undefined) data.isPublic = dto.isPublic;
-    if (dto.agentType !== undefined) data.agentType = dto.agentType;
-    if (dto.parentAgentId !== undefined) data.parentAgentId = dto.parentAgentId;
-    if (dto.agentType !== undefined && dto.agentType !== "sub_agent") {
-      data.parentAgentId = null;
-    }
 
     return this.agents.updateAgent(agentId, data);
   }
@@ -255,15 +191,14 @@ export class AgentService {
       temperature: template.temperature,
       maxTokens: template.maxTokens,
       isPublic: false,
-      agentType:
-        template.agentType === "parent" ? "standalone" : template.agentType,
     });
 
-    // Clone tools
-    if (template.tools.length > 0) {
+    // Clone tools; RNX-118: never the old delegate_to_subagent row, and a clone gets no links
+    const tools = template.tools.filter((t) => t.toolType !== REMOVED_DELEGATE_TOOL);
+    if (tools.length > 0) {
       await this.agentTools.createAgentTools(
         agent.id,
-        template.tools.map((t) => ({
+        tools.map((t) => ({
           toolType: t.toolType,
           config: t.config ?? undefined,
           enabled: t.enabled,

@@ -113,8 +113,6 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
         slug: "my-agent",
         temperature: 0.7,
         isPublic: false,
-        agentType: "standalone",
-        parentAgentId: null,
         status: "draft",
         tools: [],
         integrations: [],
@@ -229,7 +227,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(res.statusCode).toBe(200);
       expect(res.json().map((a: { id: string }) => a.id)).toEqual([newer.id, older.id]);
       expect(Object.keys(res.json()[0]).sort()).toEqual(
-        ["_count", "agentType", "avatar", "description", "id", "model", "name", "slug", "user"].sort(),
+        ["_count", "avatar", "description", "id", "model", "name", "slug", "user"].sort(),
       );
       expect(res.json()[0]).toMatchObject({ user: { email: user.email }, _count: { runs: 0 } });
     });
@@ -243,7 +241,6 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
         name: "Template",
         isPublic: true,
         status: "active",
-        agentType: "parent",
         temperature: 0.3,
         ...data,
       });
@@ -275,7 +272,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(res.statusCode).toBe(403);
     });
 
-    it("copies the template and its tools; a parent becomes standalone, the copy is private", async () => {
+    it("copies the template and its tools; the copy is private", async () => {
       const { user } = await subscribed();
       const tpl = await template();
 
@@ -288,7 +285,6 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
         slug: "template",
         temperature: 0.3,
         isPublic: false,
-        agentType: "standalone",
         integrations: [],
         knowledgeBases: [],
         channels: [],

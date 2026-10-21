@@ -21,6 +21,8 @@ import { createResolvableModel } from "../../../../test/provider-model";
 import { setRunCap } from "../../../../test/run-cap";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
+import { AgentLinkService } from "../../agent/service/agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-22b (RNX-193) AC4: a channel chat is one agent run on the credit ledger (docs/credits.md section 13): one
 // reservation, a usage entry per model call attributed to the agent, the run and the caller who runs it (RNX-186 removed
@@ -43,6 +45,8 @@ describe("RX-22b: channel chat on the credit ledger (test database, fake provide
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           ChannelService,
           AgentRunMeterService,
           CreditService,

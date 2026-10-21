@@ -27,6 +27,8 @@ import { setRunCap } from "../../../../test/run-cap";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { requestOverSocket } from "../../../../test/sse-client";
+import { AgentLinkService } from "../../agent/service/agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RNX-200: POST /channels/:id/agents/:agentId/chat answers its refusals (no credits, a first call over the per-run
 // cap) as real HTTP 402 answers with their JSON body and code, before the SSE headers and the document-intent
@@ -60,6 +62,8 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
         providers: [
           ChannelService,
           ChannelChatService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           AgentRunMeterService,
           CreditService,
           PlatformSettingsService,

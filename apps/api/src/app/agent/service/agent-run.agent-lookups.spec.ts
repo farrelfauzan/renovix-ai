@@ -25,18 +25,20 @@ import {
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { AgentLinkService } from "./agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-134: each condition of the agent lookups of a run (the run's agent, the
-// sub-agent of a delegation, the agent of the run history routes) decides a
-// case on its own. Written before the lookups moved to AgentRepository and run
-// unchanged after. These collaborators load ESM-only packages and are stubbed.
+// called agent of a call_agent (RNX-118: was the sub-agent of a delegation), the
+// agent of the run history routes) decides a case on its own. Written before the
+// lookups moved to AgentRepository and run unchanged after. These collaborators load ESM-only packages and are stubbed.
 jest.mock("./agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
-const DELEGATE = {
+const CALL_AGENT = {
   type: "function",
-  function: { name: "delegate_to_subagent", description: "Delegate", parameters: {} },
+  function: { name: "call_agent", description: "Call", parameters: {} },
 };
 
 const UNKNOWN_ID = "00000000-0000-4000-8000-000000000000";
@@ -54,12 +56,14 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           AgentRunMeterService,
           CreditService,
           PlatformSettingsService,
           ModelRegistryService,
           {
-            // Records the tools of the agent; same delegation rule as AgentToolService.buildToolSchemas
+            // Records the tools of the agent; same call_agent rule as AgentToolService.buildToolSchemas
             provide: AgentToolService,
             useValue: {
               buildToolSchemasWithMcp: async (
@@ -67,10 +71,10 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
                 _agentId: string,
                 _userId?: string,
                 _workspaceId?: string,
-                options?: { injectDelegation?: boolean },
+                options?: { injectCallAgent?: boolean },
               ) => {
                 toolsOffered.push(tools);
-                return options?.injectDelegation ? [DELEGATE] : [];
+                return options?.injectCallAgent ? [CALL_AGENT] : [];
               },
               cleanupMcpConnections: async () => undefined,
             },
@@ -214,22 +218,13 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
       expect(toolsOffered[0].map((t) => t.toolType)).toEqual(["calculator"]);
     });
 
-    it("only the active sub-agents are listed (subAgents: status decides)", async () => {
+    it("only the active linked callees are listed (RNX-118: the callee's status decides)", async () => {
       const { bob } = await seedUsers();
-      const parent = await createAgent(prisma, { userId: bob.id, agentType: "parent", status: "active" });
-      const active = await createAgent(prisma, {
-        userId: bob.id,
-        name: "Bob active helper",
-        agentType: "sub_agent",
-        status: "active",
-        parentAgentId: parent.id,
-      });
-      const draft = await createAgent(prisma, {
-        userId: bob.id,
-        name: "Bob draft helper",
-        agentType: "sub_agent",
-        status: "draft",
-        parentAgentId: parent.id,
+      const parent = await createAgent(prisma, { userId: bob.id, status: "active" });
+      const active = await createAgent(prisma, { userId: bob.id, name: "Bob active helper", status: "active" });
+      const draft = await createAgent(prisma, { userId: bob.id, name: "Bob draft helper", status: "draft" });
+      await prisma.agentLink.createMany({
+        data: [active, draft].map((callee) => ({ callerAgentId: parent.id, calleeAgentId: callee.id })),
       });
       fake.enqueue({ content: "Hello" });
 
@@ -256,26 +251,25 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
     expect(loaded!.integrations.map((i: { provider: string }) => i.provider)).toEqual(["jira"]);
   });
 
-  describe("the sub-agent of a delegation (sync run)", () => {
-    /** Bob's parent agent with his own sub-agent, so the delegation tool is offered. */
+  describe("the called agent of a call_agent (sync run, RNX-118)", () => {
+    /** Bob's agent with a link to his own helper, so call_agent is offered. */
     const seedParent = async () => {
       const users = await seedUsers();
-      const parent = await createAgent(prisma, { userId: users.bob.id, agentType: "parent", status: "active" });
+      const parent = await createAgent(prisma, { userId: users.bob.id, status: "active" });
       const ownSub = await createAgent(prisma, {
         userId: users.bob.id,
         name: "Bob own helper",
         systemPrompt: "BOB OWN SUB PROMPT",
-        agentType: "sub_agent",
         status: "active",
-        parentAgentId: parent.id,
       });
+      await prisma.agentLink.create({ data: { callerAgentId: parent.id, calleeAgentId: ownSub.id } });
       return { ...users, parent, ownSub };
     };
 
-    /** Two turns: the delegation, then the parent's answer to a refusal (no turn is left over for the next test). */
-    const delegateTo = (subAgentId: string) =>
+    /** Two turns: the call, then the caller's answer to a refusal (no turn is left over for the next test). */
+    const delegateTo = (agent: string) =>
       fake.enqueue(
-        { toolCalls: [{ name: "delegate_to_subagent", arguments: { subAgentId, task: "do it" } }] },
+        { toolCalls: [{ name: "call_agent", arguments: { agent, task: "do it" } }] },
         { content: "Done" },
       );
 
@@ -284,50 +278,47 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
         .filter((m) => m.role === "tool")
         .map((m) => m.content);
 
-    it("the caller's sub-agent under another of their parent agents is refused (parentAgentId decides)", async () => {
+    it("the caller's agent linked from another of their agents is refused (the link's caller decides)", async () => {
       const { bob, parent } = await seedParent();
-      const otherParent = await createAgent(prisma, { userId: bob.id, agentType: "parent", status: "active" });
+      const otherParent = await createAgent(prisma, { userId: bob.id, status: "active" });
       const otherSub = await createAgent(prisma, {
         userId: bob.id,
         name: "Bob other parent's helper",
         systemPrompt: "OTHER PARENT SUB PROMPT",
-        agentType: "sub_agent",
         status: "active",
-        parentAgentId: otherParent.id,
       });
+      await prisma.agentLink.create({ data: { callerAgentId: otherParent.id, calleeAgentId: otherSub.id } });
       delegateTo(otherSub.id);
 
       await service.chat(bob.id, parent.id, "Hi");
 
-      expect(lastToolResult()).toEqual(["Error: Sub-agent not found or not authorized."]);
+      expect(lastToolResult()).toEqual(["Error: Agent not found or not linked."]);
       expect(JSON.stringify(fake.requests)).not.toContain("OTHER PARENT SUB PROMPT");
     });
 
-    it("the caller's agent under this parent that is not a sub_agent is refused (agentType decides)", async () => {
+    it("an active agent of the same workspace that is not linked is refused (the link decides)", async () => {
       const { bob, parent } = await seedParent();
-      const standalone = await createAgent(prisma, {
+      const unlinked = await createAgent(prisma, {
         userId: bob.id,
-        name: "Bob standalone under parent",
-        systemPrompt: "STANDALONE PROMPT",
-        agentType: "standalone",
+        name: "Bob unlinked agent",
+        systemPrompt: "UNLINKED PROMPT",
         status: "active",
-        parentAgentId: parent.id,
       });
-      delegateTo(standalone.id);
+      delegateTo(unlinked.name);
 
       await service.chat(bob.id, parent.id, "Hi");
 
-      expect(lastToolResult()).toEqual(["Error: Sub-agent not found or not authorized."]);
-      expect(JSON.stringify(fake.requests)).not.toContain("STANDALONE PROMPT");
+      expect(lastToolResult()).toEqual(["Error: Agent not found or not linked."]);
+      expect(JSON.stringify(fake.requests)).not.toContain("UNLINKED PROMPT");
     });
 
-    it("an identifier that names no sub-agent is refused; the parent's own sub-agent is not run instead (id/name decides)", async () => {
+    it("an identifier that names no linked agent is refused; the linked callee is not run instead (id/name decides)", async () => {
       const { bob, parent } = await seedParent();
       delegateTo(UNKNOWN_ID);
 
       await service.chat(bob.id, parent.id, "Hi");
 
-      expect(lastToolResult()).toEqual(["Error: Sub-agent not found or not authorized."]);
+      expect(lastToolResult()).toEqual(["Error: Agent not found or not linked."]);
       expect(JSON.stringify(fake.requests)).not.toContain("BOB OWN SUB PROMPT");
     });
   });

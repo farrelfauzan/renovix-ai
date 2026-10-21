@@ -161,6 +161,10 @@ No "new conversation" button — it's always the same room per agent.
 
 **API:** Already exists (`parentAgentId` relation). Just needs UI.
 
+> **Obsolete since RNX-118.** The `parentAgentId` relation and agent types were replaced by agent links ("Can call"):
+> `GET /agents/:id/links`, `POST /agents/:id/links` (`{ calleeAgentId }`, same workspace) and
+> `DELETE /agents/:id/links/:calleeAgentId`, for the workspace owner only. The links UI is RX-122.
+
 ---
 
 ## 11. Agent Avatar Upload / Color Picker

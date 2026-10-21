@@ -17,6 +17,8 @@ import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-pro
 import type { PrismaService } from "../../prisma/prisma.service";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { AgentLinkService } from "./agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-21 review B2 (test database, real UsageService and ModelRegistryService, fake provider): an agent
 // run writes usage_logs.cost = tokens x tier rate / 1,000,000 (docs/credits.md section 1.3). Without
@@ -45,6 +47,8 @@ describe("RX-21: usage_logs.cost of an agent run (test database)", () => {
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           AgentRunMeterService,
           CreditService,
           PlatformSettingsService,

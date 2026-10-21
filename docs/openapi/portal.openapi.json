@@ -206,20 +206,6 @@
                     "default": false,
                     "type": "boolean"
                   },
-                  "agentType": {
-                    "default": "standalone",
-                    "type": "string",
-                    "enum": [
-                      "standalone",
-                      "parent",
-                      "sub_agent"
-                    ]
-                  },
-                  "parentAgentId": {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                  },
                   "workspaceId": {
                     "type": "string",
                     "format": "uuid",
@@ -358,20 +344,6 @@
                   },
                   "isPublic": {
                     "type": "boolean"
-                  },
-                  "agentType": {
-                    "type": "string",
-                    "enum": [
-                      "standalone",
-                      "parent",
-                      "sub_agent"
-                    ]
-                  },
-                  "parentAgentId": {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                    "nullable": true
                   }
                 }
               }
@@ -868,6 +840,129 @@
         ]
       }
     },
+    "/api/v1/agents/:id/links": {
+      "get": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "JwtOrSession": []
+          }
+        ],
+        "tags": [
+          "agents"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "calleeAgentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "calleeAgentId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "JwtOrSession": []
+          }
+        ],
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agents/:id/links/:calleeAgentId": {
+      "delete": {
+        "parameters": [
+          {
+            "name": "calleeAgentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success (no content)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "JwtOrSession": []
+          }
+        ],
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/api/v1/agents/:id/publish": {
       "post": {
         "parameters": [
@@ -1093,7 +1188,6 @@
                       "api_call",
                       "knowledge_retrieval",
                       "memory_store",
-                      "delegate_to_subagent",
                       "create_reminder",
                       "create_document"
                     ]
@@ -2512,8 +2606,7 @@
                     "default": "primary",
                     "type": "string",
                     "enum": [
-                      "primary",
-                      "sub"
+                      "primary"
                     ]
                   }
                 },

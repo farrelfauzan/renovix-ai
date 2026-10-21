@@ -36,6 +36,8 @@ import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { setRunCap } from "../../../../test/run-cap";
 import { requestOverSocket } from "../../../../test/sse-client";
+import { AgentLinkService } from "../service/agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RNX-222: the document a run's `create_document` call generates belongs to that run. Two users' runs overlap; the
 // agent and channel chat routes are called over a real socket, so each controller's read of the document is part of
@@ -93,6 +95,8 @@ describe("RNX-222: the generated document belongs to its run (agent and channel 
         providers: [
           AgentRunService,
           ChannelChatService,
+          AgentLinkService,
+          WorkspaceQuotaService,
           ChannelService,
           AgentToolService,
           McpClientService,

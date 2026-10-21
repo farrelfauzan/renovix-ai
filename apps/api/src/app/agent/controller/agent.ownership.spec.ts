@@ -2,7 +2,9 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
+import { AgentLinkController } from "./agent-link.controller";
 import { AgentService } from "../service/agent.service";
+import { AgentLinkService } from "../service/agent-link.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
@@ -31,9 +33,9 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
-      controllers: [AgentController],
+      controllers: [AgentController, AgentLinkController],
       // RX-113: attaching a workspace knowledge base checks the workspace role
-      providers: [AgentService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, AgentLinkService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -126,60 +128,47 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
     expect(await prisma.agentTool.count({ where: { agentId: agent.id } })).toBe(0);
   });
 
-  // Was HOLE (RX-15), fixed by RX-112: PATCH /agents/:id only checked
-  // parentAgentId against the caller's agents when the agent ended up as
-  // "sub_agent". With agentType left out on a standalone agent, Bob could point
-  // his agent at Alice's parent agent; it then showed up in Alice's subAgents
-  // and was offered to her agent for delegation.
-  it(
-    "another user cannot hang their agent under someone else's parent agent (PATCH parentAgentId)",
-    async () => {
-      const { alice, bob } = await setup();
-      const aliceParent = await createAgent(prisma, { userId: alice.id, agentType: "parent" });
-      const bobAgent = await createAgent(prisma, { userId: bob.id });
+  // Was HOLE (RX-15), fixed by RX-112 (parentAgentId); RNX-118 replaced parent and sub-agents with links. Bob could
+  // point his agent at Alice's parent agent, which then offered it to her agent. Now a link is made by the workspace
+  // owner of the calling agent, to an agent of the same workspace.
+  it("another user cannot make their agent callable by someone else's agent (POST /agents/:id/links on Alice's agent)", async () => {
+    const { alice, bob, agent } = await setup();
+    const bobAgent = await createAgent(prisma, { userId: bob.id });
 
-      const res = await app.inject({
-        method: "PATCH",
-        url: `/agents/${bobAgent.id}`,
-        headers: auth(bob),
-        payload: { parentAgentId: aliceParent.id },
-      });
+    const res = await app.inject({
+      method: "POST",
+      url: `/agents/${agent.id}/links`,
+      headers: auth(bob),
+      payload: { calleeAgentId: bobAgent.id },
+    });
 
-      const aliceView = await app.inject({
-        method: "GET",
-        url: `/agents/${aliceParent.id}`,
-        headers: auth(alice),
-      });
-      expect(aliceView.json().subAgents).toEqual([]);
-      expect([400, 404]).toContain(res.statusCode);
-    },
-  );
+    expect(res.statusCode).toBe(403);
+    expect(await prisma.agentLink.count()).toBe(0);
+    expect(alice.id).not.toBe(bob.id);
+  });
 
-  // Was HOLE (RX-15), fixed by RX-112: same gap on create. POST /agents only
-  // checked parentAgentId when agentType was "sub_agent"; with agentType
-  // "standalone" (the default) the new agent was created under Alice's parent agent.
-  it(
-    "another user cannot create an agent under someone else's parent agent (POST parentAgentId)",
-    async () => {
-      const { alice, bob } = await setup();
-      const plan = await createPlan(prisma);
-      await createSubscription(prisma, { userId: bob.id, planId: plan.id });
-      const aliceParent = await createAgent(prisma, { userId: alice.id, agentType: "parent" });
+  // Was HOLE (RX-15), fixed by RX-112: the same gap on create (POST /agents with parentAgentId). RNX-118: the field
+  // is ignored now, and linking his own agent to Alice's agent is refused (another workspace).
+  it("another user cannot link their own agent to someone else's agent (POST parentAgentId, then POST /agents/:id/links)", async () => {
+    const { bob, agent } = await setup();
+    const plan = await createPlan(prisma);
+    await createSubscription(prisma, { userId: bob.id, planId: plan.id });
 
-      const res = await app.inject({
-        method: "POST",
-        url: "/agents",
-        headers: auth(bob),
-        payload: {
-          name: "Bob helper",
-          systemPrompt: "Bob's prompt",
-          model: "test-model",
-          parentAgentId: aliceParent.id,
-        },
-      });
+    const created = await app.inject({
+      method: "POST",
+      url: "/agents",
+      headers: auth(bob),
+      payload: { name: "Bob helper", systemPrompt: "Bob's prompt", model: "test-model", parentAgentId: agent.id },
+    });
+    const linked = await app.inject({
+      method: "POST",
+      url: `/agents/${created.json().id}/links`,
+      headers: auth(bob),
+      payload: { calleeAgentId: agent.id },
+    });
 
-      expect(await prisma.agent.count({ where: { parentAgentId: aliceParent.id } })).toBe(0);
-      expect([400, 404]).toContain(res.statusCode);
-    },
-  );
+    expect(created.statusCode).toBe(201);
+    expect(linked.statusCode).toBe(403);
+    expect(await prisma.agentLink.count()).toBe(0);
+  });
 });

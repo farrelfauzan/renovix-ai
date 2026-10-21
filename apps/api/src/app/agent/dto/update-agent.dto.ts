@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+/** The body of PATCH /agents/:id. RNX-118: not strict, so the removed `agentType` and `parentAgentId` are stripped. */
 export const UpdateAgentSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional().nullable(),
@@ -11,8 +12,6 @@ export const UpdateAgentSchema = z.object({
   maxTokens: z.number().int().min(1).max(128000).optional().nullable(),
   status: z.enum(["draft", "active", "archived"]).optional(),
   isPublic: z.boolean().optional(),
-  agentType: z.enum(["standalone", "parent", "sub_agent"]).optional(),
-  parentAgentId: z.string().uuid().optional().nullable(),
 });
 
 export type UpdateAgentDto = z.infer<typeof UpdateAgentSchema>;

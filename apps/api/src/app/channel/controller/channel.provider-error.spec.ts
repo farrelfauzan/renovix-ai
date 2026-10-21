@@ -37,6 +37,8 @@ import {
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
+import { AgentLinkService } from "../../agent/service/agent-link.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-169: POST /channels/:id/agents/:agentId/chat answers the client over SSE,
 // but calls the provider without streaming (ProviderRouter.chat). A provider
@@ -106,6 +108,8 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
       providers: [
         ChannelService,
         ChannelChatService,
+        AgentLinkService,
+        WorkspaceQuotaService,
         AgentRunMeterService,
         CreditService,
         PlatformSettingsService,

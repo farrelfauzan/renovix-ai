@@ -16,9 +16,10 @@ export const UpdateChannelSchema = z.object({
 
 export type UpdateChannelDto = z.infer<typeof UpdateChannelSchema>;
 
+/** The body of POST /channels/:id/agents. RNX-118: "sub" is no longer a role (400); agents call each other by links. */
 export const AddAgentSchema = z.object({
   agentId: z.string().uuid(),
-  role: z.enum(["primary", "sub"]).optional().default("primary"),
+  role: z.enum(["primary"]).optional().default("primary"),
 });
 
 export type AddAgentDto = z.infer<typeof AddAgentSchema>;

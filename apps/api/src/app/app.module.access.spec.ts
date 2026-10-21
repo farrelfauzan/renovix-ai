@@ -286,6 +286,20 @@ describe("RX-114: every route of AppModule declares its access", () => {
     expect(labels(others.filter((route) => !declares(route, ["jwt", "session"])))).toEqual([]);
   });
 
+  // RNX-118: the agent link routes are product routes (jwt/session); the owner-only rule is in AgentLinkService.
+  const AGENT_LINK_ROUTES = [
+    "DELETE /agents/:id/links/:calleeAgentId (AgentLinkController.removeLink)",
+    "GET /agents/:id/links (AgentLinkController.listLinks)",
+    "POST /agents/:id/links (AgentLinkController.addLink)",
+  ];
+
+  it("RNX-118: the agent link routes exist and declare jwt/session", () => {
+    expect(labels(routes.filter((route) => route.path.startsWith("/agents/:id/links")))).toEqual(AGENT_LINK_ROUTES);
+    expect(labels(routes.filter((route) => AGENT_LINK_ROUTES.includes(route.label) && declares(route, ["jwt", "session"])))).toEqual(
+      AGENT_LINK_ROUTES,
+    );
+  });
+
   // RX-96 criterion 4: the back office is /admin, and /admin is the back office.
   const isAdminPath = (route: Route) => /^\/admin(\/|$)/.test(route.path);
   const listsStaff = (route: Route) => !route.access?.public && route.access?.auth?.includes("staff") === true;

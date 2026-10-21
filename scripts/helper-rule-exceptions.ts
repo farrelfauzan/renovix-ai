@@ -32,9 +32,6 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
 
   // Owned by a named ticket
   [`${SRC}/auth/service/auth.service.ts AuthService.maskApiKey`]: "RX-18",
-  [`${SRC}/agent/service/agent-run.service.ts AgentRunService.getLastUserMessage`]: "RX-23..25 (sub-agent delegation)",
-  [`${SRC}/agent/service/agent-run.service.ts AgentRunService.chooseSubAgentForDelegation`]: "RX-23..25 (sub-agent delegation)",
-  [`${SRC}/agent/service/agent-run.service.ts AgentRunService.shouldForceDelegation`]: "RX-23..25 (sub-agent delegation)",
   [`${SRC}/agent/service/agent-run.service.ts AgentRunService.buildMessages`]: "RX-23..25",
 
   // Functions outside a class
