@@ -167,7 +167,7 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 ## Environment
 
-Copy `.env.example` to `.env` and keep all six `S3_*` keys in it: the API stops at boot with "Configuration key S3_BUCKET does not exist" when one is missing. Empty values boot, but uploads fail. `.env.example` points them at the local MinIO of `docker-compose.yml` (development only, never put real keys there):
+Copy `.env.example` to `.env` and keep all six `S3_*` keys in it: the API stops at boot with "Configuration key S3_BUCKET does not exist" when one is missing. Empty values boot, except `S3_REGION`, which must not be empty ('Region is missing'); uploads fail with empty values. `.env.example` points them at the local MinIO of `docker-compose.yml` (development only, never put real keys there):
 
 - `S3_BUCKET`: the bucket that stores uploaded files (`performa-ai`, created by `minio-init`).
 - `S3_REGION`: the bucket's region (`ap-southeast-1`).
@@ -205,10 +205,58 @@ Key variables:
 | `LLM_KEY_VERSION` | -- | Version stamped on each sealed provider key (`credential_key_version`), a positive integer; default 1 |
 | `MCP_OAUTH_STATE_SECRET` | Yes | HMAC key that signs the state of the MCP OAuth flows (RX-151); no fallback, no flow starts without it. At least 32 characters; generate with `openssl rand -base64 48` |
 | `MCP_OAUTH_STATE_TTL_SECONDS` | -- | How long a started MCP OAuth flow stays valid (default 600); its one-time value is in `mcp_oauth_states` |
-| `CORS_ORIGIN` | Prod | Comma-separated allowed origins (not in `.env.example`) |
+| `CORS_ORIGIN` | Prod | Comma-separated allowed origins of the product apps; unset, every origin is accepted. Required by the production compose stack |
 | `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |
 
 API logs (RNX-17, `apps/api/src/common/logger/app-logger.ts`): `NODE_ENV` sets both level and format, no other variable. With `development` every level is logged in Nest's readable format. Any other value logs errors and warnings only, as one JSON object per line. A line written while a request is handled carries `requestId` (the Fastify request id), `route` (the route pattern, not the URL) and `accountId` (or `adminId` on a back-office route) once a guard has accepted the caller. Every line is masked centrally, whatever the call site passes: authorization and cookie headers, API and provider keys, passwords, tokens, Bearer credentials, JWTs and connection-string passwords become `[REDACTED]`, in strings, objects and errors. Every JSON line also carries `severity` (RNX-233: Cloud Logging's field, mapped from `level`: fatal CRITICAL, error ERROR, warn WARNING, log INFO, debug and verbose DEBUG; `level` is kept), and a startup failure is logged through the same logger (`handleFatalStart`, exit code 1), so it is masked and, outside development, one JSON line. No `console.*` call is left in `apps/api/src` outside specs, so none bypasses this logger.
+
+### Production compose stack (`docker-compose.prod.yml`)
+
+The `api` service of `docker-compose.prod.yml` passes every variable below (RNX-165); it sets `NODE_ENV=production` itself. Keep the values in the environment or in an env file outside the repo and name it: `docker compose --env-file /path/outside/the/repo/prod.env -f docker-compose.prod.yml up -d` (`--env-file` also stops compose from reading the repo's own `.env`). The compose file holds no value or default for any secret. Store each secret without a trailing newline (write it with `printf '%s'`, not `echo`): `MCP_ENCRYPTION_KEY` and `LLM_KEY_ENCRYPTION_KEY` must be stored without one, and the API refuses to start otherwise ("MCP_ENCRYPTION_KEY must decode to exactly 32 bytes (64 hex or 44 base64 characters)"); in the other secrets a newline would silently become part of the value.
+
+Required: compose refuses to start (`${NAME:?}`) when one is unset or empty.
+
+| Variable | Format, and how to generate a secret |
+|----------|--------------------------------------|
+| `JWT_SECRET` | At least 32 characters: `openssl rand -base64 48` |
+| `BETTER_AUTH_SECRET` | At least 32 characters: `openssl rand -base64 48` |
+| `IP_HASH_SECRET` | At least 32 characters: `openssl rand -base64 48` |
+| `MCP_ENCRYPTION_KEY` | 32 bytes as 64 hex characters, or 44 base64 characters ending in `=`: `openssl rand -hex 32` |
+| `MCP_OAUTH_STATE_SECRET` | At least 32 characters: `openssl rand -base64 48` |
+| `LLM_KEY_ENCRYPTION_KEY` | 32 bytes as 64 hex characters, or 44 base64 characters ending in `=`: `openssl rand -hex 32` |
+| `API_KEY_HASH_SECRET` | At least 32 characters: `openssl rand -base64 48`. Changing it makes every stored API key stop working (RNX-18) |
+| `ADMIN_JWT_SECRET` | At least 32 characters, and different from `JWT_SECRET`: `openssl rand -base64 48` |
+| `ADMIN_TOTP_ENCRYPTION_KEY` | Base64 of 32 bytes: `openssl rand -base64 32` |
+| `CORS_ORIGIN` | Comma-separated origins of the product apps (`ADMIN_ORIGIN` is added to the list by the API) |
+| `ADMIN_ORIGIN` | The back-office origin, e.g. `https://admin.renovix.id` (no path, no trailing slash) |
+| `API_PUBLIC_URL` | The API's public URL, e.g. `https://api.renovix.id` (the code's default is `http://localhost:3000`) |
+| `CHAT_APP_URL` | The chat app's URL: MCP OAuth redirects and a trusted auth origin (the code's default is `http://localhost:4201`) |
+| `APP_BASE_URL` | The base URL of the links in emails, and a trusted auth origin (the code's defaults are `https://chat.performa.ai` and `http://localhost:3000`) |
+
+Must be set, may be empty (`${S3_CDN_DOMAIN?}`): `S3_CDN_DOMAIN`; empty keeps signed download URLs as they are.
+
+Optional: passed to the container only when set; unset (or empty), the API uses its default.
+
+| Variable | Default when unset |
+|----------|--------------------|
+| `CLIENT_IP_HEADER` | None: the client IP is the socket address |
+| `COOKIE_DOMAIN` | Derived from `API_PUBLIC_URL` (`api.renovix.id` gives `.renovix.id`) |
+| `MCP_OAUTH_STATE_TTL_SECONDS` | 600 |
+| `LLM_PROVIDER` | `openrouter` (`fake` is refused in production) |
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
+| `LLM_API_KEY` | `OPENROUTER_API_KEY`; with neither, the daily price refresh is skipped |
+| `LLM_DEFAULT_MAX_TOKENS` | 4096 |
+| `LLM_KEY_VERSION` | 1 |
+| `EMBEDDING_BASE_URL` | `https://openrouter.ai/api/v1` |
+| `EMBEDDING_API_KEY` | `OPENROUTER_API_KEY` |
+| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-large-instruct` |
+| `EMBEDDING_DIMENSIONS` | 1024 |
+
+The stack also reads, as before, `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`, the `S3_*` keys above, `OPENROUTER_API_KEY` (needed for embeddings when `EMBEDDING_API_KEY` is not set), `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` and `DASHBOARD_URL`.
+
+`CLIENT_IP_HEADER` is optional for compose, but must be set whenever the API runs behind a proxy. Unset, better-auth's own sign-in limiter is off (RNX-168, D148), and the Nest throttler keys on the socket address, which behind a proxy is the proxy's, so all clients share one bucket.
+
+Besides the configured provider, embedding and S3 endpoints, the API needs outbound HTTPS to `api.frankfurter.dev` (the USD to IDR rate source, RNX-53). If it is blocked, purchases and the public price endpoint answer 503 once the last stored rate is older than 7 days, and at once when no rate has been stored yet (a fresh database).
 
 Frontend apps need `NEXT_PUBLIC_API_URL` (build-time Docker ARG for chat).
