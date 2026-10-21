@@ -3,6 +3,7 @@ import type { ModelConnection } from "../../providers/types/model-connection";
 import type { ChannelService } from "../service/channel.service";
 import type { McpRunSession } from "../../agent/types/mcp-run-session";
 import type { CallableAgent } from "../../agent/types/callable-agent";
+import type { RunScope } from "../../agent/types/run-scope";
 
 /**
  * What the tool loop of one channel chat message works on (RX-22b): the caller, the channel agent, its model, the
@@ -22,5 +23,7 @@ export type ChannelToolLoop = {
   readonly mcpSession: McpRunSession;
   /** RNX-118: the agents the channel agent may call (call_agent); none for a caller outside its workspace (R17). */
   readonly callableAgents: CallableAgent[];
+  /** RNX-119: inside or outside the agent's workspace (the run policy); an outside run writes no workspace memory. */
+  readonly scope: RunScope;
   readonly maxTokens: number;
 };

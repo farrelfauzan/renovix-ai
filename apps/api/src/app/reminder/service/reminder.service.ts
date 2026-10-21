@@ -203,6 +203,15 @@ export class ReminderService {
     });
   }
 
+  /**
+   * RNX-119: a fire the run policy refused (the agent is no longer runnable by the reminder's owner, or the owner has
+   * no active subscription) is skipped: only the next fire time is set. It is not a run and not a failure.
+   */
+  async markSkipped(id: string, cronExpression: string, timezone: string) {
+    const nextRunAt = CronExpressionParser.parse(cronExpression, { tz: timezone }).next().toDate();
+    return this.prisma.reminder.update({ where: { id }, data: { nextRunAt } });
+  }
+
   async markFailed(id: string, error: string, consecutiveFailures: number) {
     const maxRetries = 3;
     const update: any = {

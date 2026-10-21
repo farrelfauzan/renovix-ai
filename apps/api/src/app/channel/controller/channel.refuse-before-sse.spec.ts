@@ -20,7 +20,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createUser } from "../../../../test/factories";
+import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { setRunCap } from "../../../../test/run-cap";
@@ -29,6 +29,7 @@ import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-inv
 import { requestOverSocket } from "../../../../test/sse-client";
 import { AgentLinkService } from "../../agent/service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 
 // RNX-200: POST /channels/:id/agents/:agentId/chat answers its refusals (no credits, a first call over the per-run
 // cap) as real HTTP 402 answers with their JSON body and code, before the SSE headers and the document-intent
@@ -61,6 +62,7 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
         controllers: [ChannelController],
         providers: [
           ChannelService,
+          AgentRunPolicyService,
           ChannelChatService,
           AgentLinkService,
           WorkspaceQuotaService,
@@ -113,6 +115,8 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
   /** A user funded with `credits` (none for "0"), an agent in their channel, and a token. */
   const seed = async (credits: string) => {
     const user = await createUser(prisma);
+    // RNX-119: channel chat applies the D192 subscription gate to the runner.
+    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
     if (credits !== "0") await fundPaidWallet(prisma, user.id, credits);
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });

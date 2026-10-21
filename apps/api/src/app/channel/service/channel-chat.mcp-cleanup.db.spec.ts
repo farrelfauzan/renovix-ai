@@ -23,6 +23,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { AgentLinkService } from "../../agent/service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 
 // RNX-217 AC3: the MCP connections a channel run opened (buildToolSchemasWithMcp, into the run's own session) are
 // closed exactly once, that session and no other, on every path: success, a refusal once the tools are built (the
@@ -47,6 +48,7 @@ describe("RNX-217 AC3: a channel run closes its own MCP connections exactly once
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,
           ChannelService,

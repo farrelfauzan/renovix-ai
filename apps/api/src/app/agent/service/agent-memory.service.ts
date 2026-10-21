@@ -5,6 +5,7 @@ import { WorkspaceRepository } from "../../workspace/repository/workspace.reposi
 import { AgentRepository } from "../repository/agent.repository";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import type { RunScope } from "../types/run-scope";
 
 @Injectable()
 export class AgentMemoryService {
@@ -19,9 +20,13 @@ export class AgentMemoryService {
     private readonly registry: ModelRegistryService,
   ) {}
 
-  async getMemoryContext(agentId: string, userId: string): Promise<string> {
+  /**
+   * The memory put into an agent chat prompt: the workspace's memories, then the runner's own. RNX-119 (R17): a run
+   * outside the workspace (an outsider on a public agent) reads no workspace memory.
+   */
+  async getMemoryContext(agentId: string, userId: string, scope: RunScope): Promise<string> {
     // Resolve workspace from agent
-    const workspaceId = await this.findSharedWorkspaceId(agentId);
+    const workspaceId = scope === "inside" ? await this.findSharedWorkspaceId(agentId) : null;
 
     const parts: string[] = [];
 
@@ -46,9 +51,11 @@ export class AgentMemoryService {
   }
 
   /**
-   * Get only workspace-scoped memories for agent chat (no user memories).
+   * Get only workspace-scoped memories for agent chat (no user memories). RNX-119 (R17): none for a run outside the
+   * workspace.
    */
-  async getWorkspaceMemoryContext(agentId: string): Promise<string> {
+  async getWorkspaceMemoryContext(agentId: string, scope: RunScope): Promise<string> {
+    if (scope !== "inside") return "";
     const workspaceId = await this.findSharedWorkspaceId(agentId);
 
     if (!workspaceId) return "";
@@ -63,13 +70,19 @@ export class AgentMemoryService {
     return memories.map((m) => `- [${m.type}] ${m.content}`).join("\n");
   }
 
+  /**
+   * Extracts facts about the user from one exchange and stores them (the workspace's memory, else the user's). RNX-119
+   * (R17): a run outside the workspace writes nothing, and makes no extraction call.
+   */
   async extractAndStore(
     agentId: string,
     userId: string,
     userMessage: string,
     assistantResponse: string,
+    scope: RunScope,
     channelId?: string,
   ): Promise<void> {
+    if (scope !== "inside") return;
     try {
       const cheapestModel = await this.registry.getCheapestModel();
       if (!cheapestModel) return;

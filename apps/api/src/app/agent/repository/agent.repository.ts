@@ -59,33 +59,17 @@ export class AgentRepository {
   }
 
   /**
-   * The agent with this id that this user may run (one in a workspace they own, RNX-203, or any public active one),
-   * with its enabled tools, its knowledge bases and its connected integrations (RX-134). RNX-118: the agents it may
-   * call come from AgentLinkService.
+   * The agent with this id, with its enabled tools, its knowledge bases and its connected integrations (RX-134), for
+   * a run. RNX-119: who may run it is decided by AgentRunPolicyService, not here. RNX-118: the agents it may call come
+   * from AgentLinkService.
    */
-  findRunnableAgent(agentId: string, userId: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).agent.findFirst({
-      where: {
-        id: agentId,
-        OR: [{ workspace: { ownerId: userId } }, { isPublic: true, status: "active" }],
-      },
+  findAgentForRun(agentId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.findUnique({
+      where: { id: agentId },
       include: {
         tools: { where: { enabled: true } },
         knowledgeBases: true,
         integrations: { where: { status: "connected" } },
-      },
-    });
-  }
-
-  /**
-   * The agent with this id if this user may add it to a channel: one in a workspace they own (RNX-203), or any
-   * public active one (RX-136).
-   */
-  findUsableAgent(agentId: string, userId: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).agent.findFirst({
-      where: {
-        id: agentId,
-        OR: [{ workspace: { ownerId: userId } }, { isPublic: true, status: "active" }],
       },
     });
   }

@@ -13,6 +13,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 
 // RX-15 characterization: channel ownership through the real controller and
 // ChannelService (CombinedAuthGuard JWT path, test database). The chat, upload
@@ -36,6 +38,8 @@ describe("Channels: ownership (RX-15, Fastify, test database)", () => {
       controllers: [ChannelController],
       providers: [
         ChannelService,
+        AgentRunPolicyService,
+        WorkspaceQuotaService,
         { provide: ChannelChatService, useValue: {} },
         { provide: S3Service, useValue: {} },
         { provide: DocumentService, useValue: {} },

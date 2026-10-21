@@ -1,6 +1,8 @@
 import { NotFoundException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { ChannelService } from "./channel.service";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
+import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -16,7 +18,7 @@ describe("RX-136: ChannelService (test database)", () => {
   let service: ChannelService;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ providers: [ChannelService] }));
+    ({ moduleRef, prisma } = await createTestModule({ providers: [ChannelService, AgentRunPolicyService, WorkspaceQuotaService] }));
     service = moduleRef.get(ChannelService);
   });
 

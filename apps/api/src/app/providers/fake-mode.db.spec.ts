@@ -38,6 +38,7 @@ import {
 } from "../../../test/factories";
 import { AgentLinkService } from "../agent/service/agent-link.service";
 import { WorkspaceQuotaService } from "../workspace/service/workspace-quota.service";
+import { AgentRunPolicyService } from "../agent/service/agent-run-policy.service";
 
 // RX-88: the API with LLM_PROVIDER=fake, no OPENROUTER_API_KEY and every
 // outbound HTTP client blocked. These collaborators load ESM-only packages
@@ -200,6 +201,7 @@ describe("RX-88: agent runs (chat, tool call) with LLM_PROVIDER=fake", () => {
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
       providers: [
         AgentRunService,
+        AgentRunPolicyService,
         AgentLinkService,
         WorkspaceQuotaService,
         AgentRunMeterService,
@@ -280,7 +282,7 @@ describe("RX-88: agent runs (chat, tool call) with LLM_PROVIDER=fake", () => {
     const res = await service.chat(user.id, agent.id, `Use a tool ${FAKE_TOOL_KEYWORD}`);
 
     expect(executeTool).toHaveBeenCalledTimes(1);
-    expect(executeTool).toHaveBeenCalledWith("echo", {}, expect.anything(), expect.anything(), user.id);
+    expect(executeTool).toHaveBeenCalledWith("echo", {}, expect.anything(), expect.anything(), "inside", user.id);
     expect(res.message.content).toBe(FAKE_REPLY);
   });
 });

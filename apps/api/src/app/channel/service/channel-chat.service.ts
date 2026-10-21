@@ -8,6 +8,7 @@ import { AgentMemoryService } from "../../agent/service/agent-memory.service";
 import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { AgentLinkService } from "../../agent/service/agent-link.service";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import type { CallableAgent } from "../../agent/types/callable-agent";
 import { budgetStopMessage } from "../../agent/utils/budget-stop-message";
 import { RunBudgetStoppedError } from "../../agent/errors/run-budget-stopped.error";
@@ -31,24 +32,30 @@ export class ChannelChatService {
     private readonly guardrail: GuardrailService,
     private readonly meter: AgentRunMeterService,
     private readonly links: AgentLinkService,
+    private readonly policy: AgentRunPolicyService,
   ) {}
 
   /**
    * The refusals of a channel chat message, checked before any work on the chat route (the SSE headers, the classifier
-   * call, the message), reads only. RX-178 (review B1): the room access check (403/404), then the fixed 400
-   * (ModelUnavailableException) for a model that cannot be resolved. RNX-200: then the run's own pre-checks (the 400
-   * for a model without credit rates, 402 RUN_CAP_EXCEEDED, 402 CREDITS_EXHAUSTED) on a lower bound of the first
-   * call: the agent's system prompt, the message and max_tokens (a document format only raises it).
+   * call, the message), reads only. RX-178 (review B1): the room access check (403/404), RNX-119: then the run policy
+   * on this run (404 "Agent not found" when the caller may no longer run the agent), then the fixed 400
+   * (ModelUnavailableException) for a model that cannot be resolved, RNX-119: then 403 without an active subscription
+   * (D192). RNX-200: then the run's own pre-checks (the 400 for a model without credit rates, 402 RUN_CAP_EXCEEDED,
+   * 402 CREDITS_EXHAUSTED) on a lower bound of the first call: the agent's system prompt, the message and max_tokens
+   * (a document format only raises it).
    */
   async assertRunCanStart(userId: string, channelId: string, agentId: string, message: string): Promise<void> {
     const { agent } = await this.channelService.resolveChannelAgent(userId, channelId, agentId);
+    await this.policy.assertRunScope(agent, userId);
     const modelEntry = await this.registry.resolveModel(agent.model);
     if (!modelEntry) throw new ModelUnavailableException();
+    const connection = await this.registry.resolveConnection(modelEntry.slug);
+    await this.policy.assertActiveSubscription(userId);
     await this.meter.assertRunCanStart({
       runnerUserId: userId,
       firstCall: {
         model: modelEntry.slug,
-        connection: await this.registry.resolveConnection(modelEntry.slug),
+        connection,
         messages: [
           { role: "system", content: agent.systemPrompt || "You are a helpful assistant." },
           { role: "user", content: message },
@@ -58,7 +65,11 @@ export class ChannelChatService {
     });
   }
 
-  /** One channel chat message as one run; RNX-222: the result carries the document its own `create_document` made. */
+  /**
+   * One channel chat message as one run; RNX-222: the result carries the document its own `create_document` made.
+   * RNX-119: the run policy and the subscription gate (D192) are checked on every message, not only when the agent was
+   * added; the caller runs and pays (their own paid wallet).
+   */
   async chat(
     userId: string,
     channelId: string,
@@ -76,6 +87,8 @@ export class ChannelChatService {
       agentId,
     );
     const agent = channelAgent.agent;
+    const scope = await this.policy.assertRunScope(agent, userId);
+    await this.policy.assertActiveSubscription(userId);
 
     // Input guardrail check — soft decline, returns a polite message
     const inputCheck = await this.guardrail.checkInput(
@@ -104,7 +117,7 @@ export class ChannelChatService {
     }
 
     // RNX-118: the linked agents it may call, none when the caller is outside the agent's workspace (R17)
-    const callableAgents = await this.links.listCallableAgents(agent, userId);
+    const callableAgents = await this.links.listCallableAgents(agent, scope);
 
     // Build context
     const modelEntry = await this.registry.resolveModel(agent.model);
@@ -130,9 +143,10 @@ export class ChannelChatService {
     // Build system prompt with the callable agents
     let systemContent = agent.systemPrompt || "You are a helpful assistant.";
 
-    // Inject workspace memories
+    // Inject workspace memories (RNX-119, R17: none for a run outside the workspace)
     const memoryContext = await this.memoryService.getWorkspaceMemoryContext(
       agent.id,
+      scope,
     );
     if (memoryContext) {
       systemContent += `\n\n## Workspace Memory\nHere are important facts you should remember:\n${memoryContext}`;
@@ -204,6 +218,7 @@ export class ChannelChatService {
         toolSchemas,
         mcpSession,
         callableAgents,
+        scope,
         maxTokens: options?.documentFormat
           ? Math.max(agent.maxTokens ?? 4096, 8192)
           : (agent.maxTokens ?? 4096),
@@ -251,7 +266,7 @@ export class ChannelChatService {
     meteredRun: AgentRunBudget,
   ): Promise<ChannelChatResult> {
     const { userId, channelId, agentId, message, channelAgent } = loop;
-    const { modelEntry, connection, currentMessages, toolSchemas, mcpSession, callableAgents } = loop;
+    const { modelEntry, connection, currentMessages, toolSchemas, mcpSession, callableAgents, scope } = loop;
     const agent = channelAgent.agent;
 
     // Tool execution loop
@@ -319,6 +334,7 @@ export class ChannelChatService {
                 args,
                 agent,
                 mcpSession,
+                scope,
                 userId,
                 channelId,
               );
@@ -394,7 +410,7 @@ export class ChannelChatService {
 
         // Extract and store memory asynchronously
         this.memoryService
-          .extractAndStore(agent.id, userId, message, fullContent, channelId)
+          .extractAndStore(agent.id, userId, message, fullContent, scope, channelId)
           .catch((err: any) =>
             this.logger.error(`Memory extraction failed: ${err.message}`),
           );

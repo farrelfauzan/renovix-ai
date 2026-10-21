@@ -51,6 +51,7 @@ describe("RX-1: code_exec tool is removed", () => {
       { language: "javascript", code: `globalThis.${marker} = true; return 1;` },
       { id: "agent-1" },
       createMcpRunSession(),
+      "inside",
     );
     expect(result).toContain('Tool "code_exec" is not available');
     expect((globalThis as any)[marker]).toBe(false);
@@ -108,7 +109,7 @@ describe("RNX-118: call_agent replaces delegate_to_subagent", () => {
   it("a call_agent the model makes outside a run's loop is not a tool here (the run handles it)", async () => {
     const service = buildService();
 
-    const result = await service.executeTool("call_agent", { agent: "x", task: "y" }, { id: "agent-1" }, createMcpRunSession());
+    const result = await service.executeTool("call_agent", { agent: "x", task: "y" }, { id: "agent-1" }, createMcpRunSession(), "inside");
 
     expect(result).toContain('Tool "call_agent" is not available');
   });

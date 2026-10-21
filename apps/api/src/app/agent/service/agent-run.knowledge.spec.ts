@@ -30,6 +30,7 @@ import {
   createWorkspace,
 } from "../../../../test/factories";
 import { AgentLinkService } from "./agent-link.service";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 // RX-113 regression: retrieveKnowledge skips a base the caller cannot search
 // instead of dropping the knowledge context of every attached base. RX-116
@@ -67,6 +68,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
         imports: [ProvidersModule],
         providers: [
           AgentRunService,
+          AgentRunPolicyService,
           AgentLinkService,
           AgentRunMeterService,
           CreditService,

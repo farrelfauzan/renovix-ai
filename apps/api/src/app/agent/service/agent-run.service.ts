@@ -2,7 +2,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -19,7 +18,6 @@ import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { Decimal } from "@prisma/client/runtime/client";
 import { budgetStopMessage } from "../utils/budget-stop-message";
 import { AgentRepository } from "../repository/agent.repository";
-import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
 import { CreditService } from "../../billing/service/credit.service";
 import { RunBudgetStoppedError } from "../errors/run-budget-stopped.error";
 import type { AgentRunBudget } from "../types/agent-run-budget";
@@ -27,6 +25,9 @@ import type { McpRunSession } from "../types/mcp-run-session";
 import { createMcpRunSession } from "../utils/create-mcp-run-session";
 import { AgentLinkService } from "./agent-link.service";
 import type { CallableAgent } from "../types/callable-agent";
+import type { RunScope } from "../types/run-scope";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
+import { assertOwnRun } from "../utils/assert-own-run";
 
 const MAX_TOOL_ITERATIONS = 15;
 /** Chunks taken from each attached knowledge base for the run's knowledge context. */
@@ -47,6 +48,8 @@ interface AgentContext {
   knowledgeBaseIds: string[];
   /** RNX-118: the agents this run's agent may call (call_agent); none for a runner outside its workspace (R17). */
   callableAgents: CallableAgent[];
+  /** RNX-119: inside or outside the agent's workspace (the run policy); its tools get it (no workspace memory outside). */
+  scope: RunScope;
 }
 
 @Injectable()
@@ -61,15 +64,19 @@ export class AgentRunService {
     private readonly knowledge: KnowledgeService,
     private readonly guardrail: GuardrailService,
     private readonly agents: AgentRepository,
-    private readonly subscriptions: UserSubscriptionRepository,
     private readonly credits: CreditService,
     private readonly meter: AgentRunMeterService,
     private readonly knowledgeBases: KnowledgeBaseRepository,
     private readonly workspaceKnowledge: WorkspaceKnowledgeService,
     private readonly links: AgentLinkService,
+    private readonly policy: AgentRunPolicyService,
   ) {}
 
-  /** One agent message as one run; RNX-222: the result carries the document its own `create_document` made. */
+  /**
+   * One agent message as one run; RNX-222: the result carries the document its own `create_document` made. RNX-119:
+   * the run policy decides who may run it (404 otherwise) and whether the run is inside the workspace; the run belongs
+   * to the runner, who pays.
+   */
   async chat(
     userId: string,
     agentId: string,
@@ -77,12 +84,10 @@ export class AgentRunService {
     sessionId?: string,
     options?: { documentFormat?: string },
   ) {
-    // Verify agent access
-    const agent = await this.agents.findRunnableAgent(agentId, userId);
-
-    if (!agent) {
-      throw new NotFoundException("Agent not found");
-    }
+    // Verify agent access (RNX-119: the run policy)
+    const agent = await this.agents.findAgentForRun(agentId);
+    if (!agent) throw new NotFoundException("Agent not found");
+    const scope = await this.policy.assertRunScope(agent, userId);
 
     // Input guardrail check — soft decline, never blocks the user
     const inputCheck = await this.guardrail.checkInput(
@@ -91,7 +96,7 @@ export class AgentRunService {
       agentId,
     );
     if (inputCheck.blocked) {
-      const run = await this.getOrCreateRun(agentId, sessionId);
+      const run = await this.getOrCreateRun(agentId, userId, sessionId);
       await this.prisma.agentMessage.create({
         data: { runId: run.id, role: "user", content: message },
       });
@@ -110,17 +115,17 @@ export class AgentRunService {
 
     // Subscription gate (D192), then what is left of the old overage gate, read from the ledger: 402 before any
     // write when the paid wallet has nothing available. The run's reservation is the real check (RX-22b).
-    await this.assertAgentSubscription(userId);
+    await this.policy.assertActiveSubscription(userId);
     await this.credits.assertAvailable(userId, ONE_MICRO_CREDIT);
 
     // RNX-200: reads only until the run's reservation holds (runMessage); a new session gets its id now, its row later.
     const runSessionId = sessionId || crypto.randomUUID();
 
     // Build context; RNX-118: the linked agents it may call, for this runner
-    const context = await this.buildContext(agent, userId, await this.links.listCallableAgents(agent, userId));
+    const context = await this.buildContext(agent, userId, scope, await this.links.listCallableAgents(agent, scope));
 
     // Get conversation history
-    const history = await this.getHistory(agentId, sessionId);
+    const history = await this.getHistory(agentId, userId, sessionId);
 
     // Retrieve knowledge context
     const knowledgeContext = await this.retrieveKnowledge(
@@ -129,10 +134,11 @@ export class AgentRunService {
       message,
     );
 
-    // Retrieve agent memory
+    // Retrieve agent memory (RNX-119, R17: no workspace memory for a run outside the workspace)
     const memoryContext = await this.memoryService.getMemoryContext(
       agentId,
       userId,
+      scope,
     );
 
     // Build messages array
@@ -149,7 +155,7 @@ export class AgentRunService {
 
     // Extract and store memory asynchronously
     this.memoryService
-      .extractAndStore(agentId, userId, message, result.content)
+      .extractAndStore(agentId, userId, message, result.content, scope)
       .catch((err: any) =>
         this.logger.error(`Memory extraction failed: ${err.message}`),
       );
@@ -179,13 +185,12 @@ export class AgentRunService {
     };
   }
 
+  /** RNX-119: the caller's own runs of the agent; 404 for anyone outside its workspace. */
   async listRuns(userId: string, agentId: string) {
-    // Verify access
-    const agent = await this.agents.findUserAgent(agentId, userId);
-    if (!agent) throw new NotFoundException("Agent not found");
+    await this.assertInsideAgentWorkspace(userId, agentId);
 
     return this.prisma.agentRun.findMany({
-      where: { agentId },
+      where: { agentId, userId },
       orderBy: { updatedAt: "desc" },
       take: 50,
       include: {
@@ -199,9 +204,9 @@ export class AgentRunService {
     });
   }
 
+  /** RNX-119: one of the caller's own runs; 404 outside the workspace or for no such run, 403 for another person's. */
   async getRun(userId: string, agentId: string, runId: string) {
-    const agent = await this.agents.findUserAgent(agentId, userId);
-    if (!agent) throw new NotFoundException("Agent not found");
+    await this.assertInsideAgentWorkspace(userId, agentId);
 
     const run = await this.prisma.agentRun.findFirst({
       where: { id: runId, agentId },
@@ -210,24 +215,32 @@ export class AgentRunService {
       },
     });
 
-    if (!run) throw new NotFoundException("Run not found");
+    assertOwnRun(run, userId);
     return run;
   }
 
+  /** RNX-119: deletes one of the caller's own runs; 404 outside the workspace or for no such run, 403 for another person's. */
   async deleteRun(userId: string, agentId: string, runId: string) {
-    const agent = await this.agents.findUserAgent(agentId, userId);
-    if (!agent) throw new NotFoundException("Agent not found");
+    await this.assertInsideAgentWorkspace(userId, agentId);
 
     const run = await this.prisma.agentRun.findFirst({
       where: { id: runId, agentId },
     });
-    if (!run) throw new NotFoundException("Run not found");
+    assertOwnRun(run, userId);
 
     await this.prisma.agentRun.delete({ where: { id: runId } });
     return { deleted: true };
   }
 
   // ─── Private Helpers ───
+
+  /** RNX-119: 404 "Agent not found" unless the agent exists and the caller is inside its workspace (run policy). */
+  private async assertInsideAgentWorkspace(userId: string, agentId: string): Promise<void> {
+    const agent = await this.agents.findAgentWorkspaceId(agentId);
+    if (!agent || !(await this.policy.isInsideWorkspace(agent.workspaceId, userId))) {
+      throw new NotFoundException("Agent not found");
+    }
+  }
 
   /**
    * RNX-200: one agent message as one metered run. Tool schemas include MCP tools (RNX-118: call_agent when the agent
@@ -264,7 +277,7 @@ export class AgentRunService {
           linkedAgents: context.callableAgents,
         },
         async (meteredRun) => {
-          const run = await this.saveUserMessage(context.agentId, sessionId, message);
+          const run = await this.saveUserMessage(context.agentId, context.userId, sessionId, message);
           return {
             run,
             ...(await this.executeLLMLoop(context, messages, toolSchemas, run.id, agent, meteredRun, mcpSession)),
@@ -275,7 +288,7 @@ export class AgentRunService {
         metered.status === "completed"
           ? metered.value
           : {
-              run: await this.getOrCreateRun(context.agentId, sessionId),
+              run: await this.getOrCreateRun(context.agentId, context.userId, sessionId),
               content: budgetStopMessage(metered.held),
               totalTokens: 0,
               totalCost: undefined,
@@ -297,8 +310,8 @@ export class AgentRunService {
   }
 
   /** RNX-200: the run (created for a new session) and the user message, written once the run's reservation holds. */
-  private async saveUserMessage(agentId: string, sessionId: string, message: string) {
-    const run = await this.getOrCreateRun(agentId, sessionId);
+  private async saveUserMessage(agentId: string, userId: string, sessionId: string, message: string) {
+    const run = await this.getOrCreateRun(agentId, userId, sessionId);
     await this.prisma.agentMessage.create({
       data: { runId: run.id, role: "user", content: message },
     });
@@ -378,6 +391,7 @@ export class AgentRunService {
                 args,
                 agent,
                 mcpSession,
+                context.scope,
                 context.userId,
               );
             }
@@ -462,7 +476,8 @@ export class AgentRunService {
     // RX-178 review N3: a sub-agent whose model cannot be resolved is a failed hop (the fixed text), not a failed run.
     let context: AgentContext;
     try {
-      context = await this.buildContext(subAgent, agent.userId);
+      // RNX-119: a called agent runs without tools, and only in a run inside the workspace (callable agents are none outside)
+      context = await this.buildContext(subAgent, agent.userId, "inside");
     } catch (err) {
       if (!(err instanceof ModelUnavailableException)) throw err;
       this.logger.warn(`[executeSubAgent] sub-agent ${subAgent.id}: model not available`);
@@ -517,18 +532,20 @@ export class AgentRunService {
 
   /**
    * The refusals of an agent message, checked before any work on the chat route (the classifier call, the SSE
-   * headers, the run and the message), reads only. RX-178 (review B1): 404 for an agent the user cannot run, then the
-   * fixed 400 (ModelUnavailableException) for a model that cannot be resolved. RNX-200: then 403 without an active
-   * subscription (D192) and the run's own pre-checks (the 400 for a model without credit rates, 402 RUN_CAP_EXCEEDED,
-   * 402 CREDITS_EXHAUSTED) on a lower bound of the first call: the agent's system prompt, the message and max_tokens.
+   * headers, the run and the message), reads only. RX-178 (review B1): 404 for an agent the user cannot run (RNX-119:
+   * the run policy), then the fixed 400 (ModelUnavailableException) for a model that cannot be resolved. RNX-200: then
+   * 403 without an active subscription (D192) and the run's own pre-checks (the 400 for a model without credit rates,
+   * 402 RUN_CAP_EXCEEDED, 402 CREDITS_EXHAUSTED) on a lower bound of the first call: the agent's system prompt, the
+   * message and max_tokens.
    */
   async assertRunCanStart(userId: string, agentId: string, message: string): Promise<void> {
-    const agent = await this.agents.findRunnableAgent(agentId, userId);
+    const agent = await this.agents.findAgentForRun(agentId);
     if (!agent) throw new NotFoundException("Agent not found");
+    await this.policy.assertRunScope(agent, userId);
     const modelConfig = await this.registry.resolveModel(agent.model);
     if (!modelConfig) throw new ModelUnavailableException();
     const connection = await this.registry.resolveConnection(modelConfig.slug);
-    await this.assertAgentSubscription(userId);
+    await this.policy.assertActiveSubscription(userId);
     await this.meter.assertRunCanStart({
       runnerUserId: userId,
       firstCall: {
@@ -546,6 +563,7 @@ export class AgentRunService {
   private async buildContext(
     agent: any,
     userId: string,
+    scope: RunScope,
     callableAgents: CallableAgent[] = [],
   ): Promise<AgentContext> {
     const modelConfig = await this.registry.resolveModel(agent.model);
@@ -564,6 +582,7 @@ export class AgentRunService {
         (kb: any) => kb.knowledgeBaseId,
       ),
       callableAgents,
+      scope,
     };
   }
 
@@ -621,10 +640,11 @@ export class AgentRunService {
 
   /**
    * The session's earlier messages, none for a new session. RNX-200: read before the current message is saved, so
-   * `take: 19` returns what `take: 20` minus the then-saved current message returned before.
+   * `take: 19` returns what `take: 20` minus the then-saved current message returned before. RNX-119: only the
+   * runner's own run.
    */
-  private async getHistory(agentId: string, sessionId?: string) {
-    const run = sessionId ? await this.findActiveRun(agentId, sessionId) : null;
+  private async getHistory(agentId: string, userId: string, sessionId?: string) {
+    const run = sessionId ? await this.findActiveRun(agentId, userId, sessionId) : null;
     if (!run) return [];
     return this.prisma.agentMessage.findMany({
       where: { runId: run.id, role: { in: ["user", "assistant"] } },
@@ -679,9 +699,10 @@ export class AgentRunService {
     });
   }
 
-  private async getOrCreateRun(agentId: string, sessionId?: string) {
+  /** RNX-119: the runner's active run of this session, or a new run that belongs to the runner. */
+  private async getOrCreateRun(agentId: string, userId: string, sessionId?: string) {
     if (sessionId) {
-      const existing = await this.findActiveRun(agentId, sessionId);
+      const existing = await this.findActiveRun(agentId, userId, sessionId);
       if (existing) return existing;
     }
 
@@ -689,6 +710,7 @@ export class AgentRunService {
     return this.prisma.agentRun.create({
       data: {
         agentId,
+        userId,
         sessionId: newSessionId,
         channelType: "web",
         status: "active",
@@ -696,20 +718,10 @@ export class AgentRunService {
     });
   }
 
-  private findActiveRun(agentId: string, sessionId: string) {
+  /** RNX-119: the active run of this session that belongs to this runner (never another person's). */
+  private findActiveRun(agentId: string, userId: string, sessionId: string) {
     return this.prisma.agentRun.findFirst({
-      where: { agentId, sessionId, status: "active" },
+      where: { agentId, userId, sessionId, status: "active" },
     });
-  }
-
-  /**
-   * The agent subscription gate (D192, D202 item 8): an active subscription is required to run an agent. A read only:
-   * no counter is written (RX-22b, D190); credits are charged through the run's reservation.
-   */
-  private async assertAgentSubscription(userId: string): Promise<void> {
-    const subscription = await this.subscriptions.findSubscriptionByUserId(userId);
-    if (!subscription || subscription.status !== "active") {
-      throw new ForbiddenException("Active subscription required to use AI Agents.");
-    }
   }
 }
