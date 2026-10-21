@@ -6,7 +6,6 @@ import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
-import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { HealthController } from "../../health/controller/health.controller";
@@ -44,7 +43,6 @@ describe("RNX-171: the channel chat stream guard (Fastify, real socket)", () => 
         { provide: ChannelChatService, useValue: { assertRunCanStart: async () => undefined, chat: async () => ({}) } },
         { provide: S3Service, useValue: {} },
         { provide: DocumentService, useValue: {} },
-        { provide: AgentToolService, useValue: { clearLastDocumentResult: () => undefined, getLastDocumentResult: () => null } },
         { provide: ProviderRouter, useValue: { chat: async () => ({ choices: [{ message: { content: "none" } }] }) } },
         { provide: ModelRegistryService, useValue: { resolveCheapestConnection: async () => ({ slug: "standard-cheap", apiKey: MARKER_KEY }) } },
       ],

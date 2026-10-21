@@ -21,7 +21,6 @@ import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
-import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
@@ -44,7 +43,6 @@ export class ChannelController {
     private readonly chatService: ChannelChatService,
     private readonly s3Service: S3Service,
     private readonly documentService: DocumentService,
-    private readonly toolService: AgentToolService,
     private readonly providerRouter: ProviderRouter,
     private readonly registry: ModelRegistryService,
   ) {}
@@ -320,9 +318,6 @@ export class ChannelController {
         );
       }
 
-      // Clear any previous document result before running
-      this.toolService.clearLastDocumentResult();
-
       const result = await this.chatService.chat(
         userId,
         id,
@@ -331,9 +326,8 @@ export class ChannelController {
         detectedFormat ? { documentFormat: detectedFormat } : undefined,
       );
 
-      // Check if create_document tool was called during the run
-      const toolDocumentResult = this.toolService.getLastDocumentResult();
-      this.toolService.clearLastDocumentResult();
+      // RNX-222: the document this run's own create_document call generated, if it was called
+      const toolDocumentResult = result.document;
 
       if (toolDocumentResult) {
         // Document generated via tool call

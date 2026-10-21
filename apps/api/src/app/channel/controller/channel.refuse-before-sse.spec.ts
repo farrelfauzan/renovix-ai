@@ -70,8 +70,6 @@ describe("RNX-200: the channel chat route refuses before the SSE headers (Fastif
             useValue: {
               buildToolSchemasWithMcp: async () => [],
               cleanupMcpConnections: async () => undefined,
-              clearLastDocumentResult: () => undefined,
-              getLastDocumentResult: () => null,
             },
           },
           { provide: AgentMemoryService, useValue: { getWorkspaceMemoryContext: async () => "", extractAndStore: async () => undefined } },

@@ -3,7 +3,6 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import * as jwt from "jsonwebtoken";
 import { AgentRunController } from "./agent-run.controller";
 import { AgentRunService } from "../service/agent-run.service";
-import { AgentToolService } from "../service/agent-tool.service";
 import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -39,7 +38,6 @@ describe("RNX-171: the agent run stream guard (Fastify, real socket)", () => {
       controllers: [AgentRunController, HealthController],
       providers: [
         { provide: AgentRunService, useValue: { assertRunCanStart: async () => undefined, chat: async () => ({}) } },
-        { provide: AgentToolService, useValue: { clearLastDocumentResult: () => undefined, getLastDocumentResult: () => null } },
         { provide: DocumentService, useValue: {} },
         { provide: ProviderRouter, useValue: { chat: async () => ({ choices: [{ message: { content: "none" } }] }) } },
         { provide: ModelRegistryService, useValue: { resolveCheapestConnection: async () => ({ slug: "standard-cheap", apiKey: MARKER_KEY }) } },

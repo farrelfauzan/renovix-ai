@@ -56,6 +56,7 @@ export class ChannelChatService {
     });
   }
 
+  /** One channel chat message as one run; RNX-222: the result carries the document its own `create_document` made. */
   async chat(
     userId: string,
     channelId: string,
@@ -242,14 +243,19 @@ export class ChannelChatService {
           return this.runToolLoop(loop, meteredRun);
         },
       );
-      if (metered.status === "completed") return metered.value;
+      if (metered.status === "completed") return { ...metered.value, document: mcpSession.document };
       const stopContent = budgetStopMessage(metered.held);
       const stopMessage = await this.channelService.saveMessage(
         channelAgent.id,
         userId,
         { role: "assistant", content: stopContent },
       );
-      return { content: stopContent, totalTokens: 0, assistantMessageId: stopMessage.id };
+      return {
+        content: stopContent,
+        totalTokens: 0,
+        assistantMessageId: stopMessage.id,
+        document: mcpSession.document,
+      };
     } finally {
       await this.toolService.cleanupMcpConnections(mcpSession);
     }

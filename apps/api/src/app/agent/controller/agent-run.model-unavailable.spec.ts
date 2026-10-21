@@ -101,8 +101,6 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
           useValue: {
             buildToolSchemasWithMcp: async () => [],
             cleanupMcpConnections: async () => undefined,
-            clearLastDocumentResult: () => undefined,
-            getLastDocumentResult: () => null,
           },
         },
         { provide: AgentMemoryService, useValue: { getMemoryContext: async () => "" } },
