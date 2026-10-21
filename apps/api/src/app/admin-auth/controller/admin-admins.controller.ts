@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Put, Req } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../decorator/admin-audit.decorator";
 import { AssignRoleDto } from "../dto/assign-role.dto";
 import { AdminManagementService } from "../service/admin-management.service";
 import { AdminRoleService } from "../service/admin-role.service";
 import type { AuditedAdminRequest } from "../types/audited-admin-request";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Admin management (RX-95) under /api/v1/admin/admins. The list needs `admins:read`; every write needs
@@ -73,7 +74,7 @@ export class AdminAdminsController {
   @HttpCode(204)
   async assignRole(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
     const parsed = AssignRoleDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     req.audit.record(await this.roles.assignRole(id, parsed.data.role, req.admin.adminId, req.audit.tx));
   }
 }

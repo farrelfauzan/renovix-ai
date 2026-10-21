@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { CreateApiKeyDto } from "../dto/create-api-key.dto";
 import { ApiKeyService } from "../service/api-key.service";
@@ -6,6 +6,7 @@ import type { ApiKeyView } from "../types/api-key-view";
 import type { CreatedApiKey } from "../types/created-api-key";
 import type { RegeneratedApiKey } from "../types/regenerated-api-key";
 import type { SignedInUserRequest } from "../types/signed-in-user-request";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * The signed-in user's API keys (RNX-18), under /api/v1/auth/keys, for the login token or the session (an API key
@@ -20,7 +21,7 @@ export class ApiKeyController {
   @Access({ auth: ["jwt", "session"] })
   async create(@Req() req: SignedInUserRequest, @Body() body: unknown): Promise<CreatedApiKey> {
     const parsed = CreateApiKeyDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     return this.apiKeys.create(req.user.userId, parsed.data);
   }
 

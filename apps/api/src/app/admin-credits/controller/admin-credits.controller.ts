@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, HttpCode, Post, Req } from "@nestjs/common";
+import { Body, Controller, HttpCode, Post, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../../admin-auth/decorator/admin-audit.decorator";
 import type { AuditedAdminRequest } from "../../admin-auth/types/audited-admin-request";
 import { CreditAdjustmentDto } from "../dto/credit-adjustment.dto";
 import { CreditAdjustmentService } from "../service/credit-adjustment.service";
 import type { CreditAdjustmentView } from "../types/credit-adjustment-view";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Credit adjustments (RNX-227, the backend of RNX-99) under /api/v1/admin/credits. Needs `credits:adjust` and a
@@ -23,7 +24,7 @@ export class AdminCreditsController {
   @AdminAudit({ resource: "credit_account", action: "adjust" })
   async adjust(@Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<CreditAdjustmentView> {
     const parsed = CreditAdjustmentDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.adjustments.adjust({ adminId: req.admin.adminId, actionId: req.id, adjustment: parsed.data }, req.audit.tx);
     req.audit.record(change);
     return result;

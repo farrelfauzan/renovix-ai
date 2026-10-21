@@ -5,7 +5,6 @@ import {
   Patch,
   Body,
   Req,
-  BadRequestException,
   HttpCode,
   Res,
 } from "@nestjs/common";
@@ -15,6 +14,7 @@ import { Access } from "../../../common/decorators/access.decorator";
 import { AuthService } from "../service/auth.service";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../dto/create-auth.dto";
 import { authCookie, clearedAuthCookie } from "../utils/auth-cookie";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("auth")
 export class AuthController {
@@ -29,7 +29,7 @@ export class AuthController {
   ) {
     const parsed = RegisterDto.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+      throw createInvalidBodyException(parsed.error);
     }
     const result = await this.authService.register(parsed.data);
     reply.header("set-cookie", authCookie(result.token));
@@ -46,7 +46,7 @@ export class AuthController {
   ) {
     const parsed = LoginDto.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+      throw createInvalidBodyException(parsed.error);
     }
     const result = await this.authService.login(parsed.data);
     reply.header("set-cookie", authCookie(result.token));
@@ -71,7 +71,7 @@ export class AuthController {
   async updateProfile(@Req() req: any, @Body() body: unknown) {
     const parsed = UpdateProfileDto.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException(parsed.error.flatten().fieldErrors);
+      throw createInvalidBodyException(parsed.error);
     }
     return this.authService.updateProfile(req.user.userId, parsed.data);
   }

@@ -9,6 +9,8 @@ import {
 import { Access } from "../../../common/decorators/access.decorator";
 import { ConfigService } from "@nestjs/config";
 import type Stripe from "stripe";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
+import { CreateCheckoutSchema } from "../dto/create-checkout.dto";
 
 @Controller("billing")
 export class BillingController {
@@ -28,7 +30,7 @@ export class BillingController {
 
   @Post("checkout")
   @Access({ auth: ["jwt", "session"] })
-  async createCheckout(@Req() req: any, @Body() body: { amount?: number }) {
+  async createCheckout(@Req() req: any, @Body() body: unknown) {
     if (
       !this.configService.get<string>("STRIPE_ENABLED") ||
       this.configService.get<string>("STRIPE_ENABLED") === "false"
@@ -42,7 +44,9 @@ export class BillingController {
       throw new BadRequestException("Payment system not configured");
     }
 
-    const amount = body.amount ?? 5;
+    const parsed = CreateCheckoutSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    const amount = parsed.data.amount ?? 5;
     if (amount < 5) {
       throw new BadRequestException("Minimum top-up amount is $5");
     }

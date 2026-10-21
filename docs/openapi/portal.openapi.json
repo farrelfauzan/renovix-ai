@@ -1756,8 +1756,11 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "amount": {
+                    "type": "number"
+                  }
+                }
               }
             }
           }
@@ -1767,7 +1770,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -2138,8 +2141,17 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
               }
             }
           }
@@ -2149,7 +2161,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -2271,8 +2283,32 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "chunks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "content": {
+                          "type": "string"
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "chunks"
+                ]
               }
             }
           }
@@ -2282,7 +2318,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -2366,8 +2402,17 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "topK": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "query"
+                ]
               }
             }
           }
@@ -2377,7 +2422,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -3554,8 +3599,18 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
               }
             }
           }
@@ -3565,7 +3620,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -4053,8 +4108,20 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "workspaceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "workspaceId",
+                  "apiKey"
+                ]
               }
             }
           }
@@ -4064,7 +4131,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -4150,8 +4217,38 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "workspaceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "allowedProviders": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "brave-search",
+                        "duckduckgo"
+                      ]
+                    }
+                  },
+                  "preferredProvider": {
+                    "type": "string",
+                    "enum": [
+                      "brave-search",
+                      "duckduckgo"
+                    ]
+                  },
+                  "maxResults": {
+                    "type": "number"
+                  },
+                  "dailyLimitPerUser": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "workspaceId"
+                ]
               }
             }
           }
@@ -4161,7 +4258,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -4196,8 +4293,20 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "workspaceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "workspaceId",
+                  "apiKey"
+                ]
               }
             }
           }
@@ -4207,7 +4316,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -4366,8 +4475,31 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
-                "description": "Free-form JSON body (the handler reads it by hand; no Zod schema)"
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workspaceId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "env": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "provider",
+                  "workspaceId",
+                  "env"
+                ]
               }
             }
           }
@@ -4377,7 +4509,7 @@
             "description": "Success"
           },
           "400": {
-            "description": "Invalid request body"
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"

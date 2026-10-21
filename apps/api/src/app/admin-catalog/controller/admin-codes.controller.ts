@@ -7,6 +7,7 @@ import { CreateCodeDto } from "../../codes/dto/redeem-code.dto";
 import { DeactivateCodeBodyDto } from "../dto/deactivate-code-body.dto";
 import { ListCodesQueryDto } from "../dto/list-codes-query.dto";
 import { AdminCodesService } from "../service/admin-codes.service";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Invitation codes (RNX-226, D33), API only (the screens are RNX-98). Under /api/v1/admin/codes, staff only (the old
@@ -33,7 +34,7 @@ export class AdminCodesController {
   @AdminAudit({ resource: "invitation_code", action: "create" })
   async create(@Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<InvitationCode> {
     const parsed = CreateCodeDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.codes.create(parsed.data, req.admin.adminId, req.audit.tx);
     req.audit.record(change);
     return result;
@@ -45,7 +46,7 @@ export class AdminCodesController {
   @AdminAudit({ resource: "invitation_code", action: "deactivate" })
   async deactivate(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<InvitationCode> {
     const parsed = DeactivateCodeBodyDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.codes.deactivate(id, req.audit.tx);
     req.audit.record(change);
     return result;

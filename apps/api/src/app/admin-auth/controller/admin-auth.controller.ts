@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Inject, Param, Post, Req, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, HttpCode, Inject, Param, Post, Req, Res } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Access } from "../../../common/decorators/access.decorator";
@@ -21,6 +21,7 @@ import { buildClearedSessionCookies } from "../utils/build-cleared-session-cooki
 import { buildSessionCookies } from "../utils/build-session-cookies";
 import { buildSessionRevokedChange } from "../utils/build-session-revoked-change";
 import { readCookie } from "../utils/read-cookie";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Back-office sign-in and sessions (RX-94), API only (D109). Under /api/v1/admin/auth. The tokens travel
@@ -45,7 +46,7 @@ export class AdminAuthController {
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   async signIn(@Body() body: unknown, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
     const parsed = SignInDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const session = await this.credentials.signIn(parsed.data, req.headers["user-agent"]);
     return this.sendSession(reply, session);
   }
@@ -91,7 +92,7 @@ export class AdminAuthController {
   @Header("Cache-Control", "no-store")
   async confirm(@Body() body: unknown, @Req() req: AuditedAdminRequest, @Res({ passthrough: true }) reply: FastifyReply) {
     const parsed = TotpCodeDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const result = await this.enrolment.confirm(req.admin, parsed.data.code, req.headers["user-agent"], req.audit.tx);
     req.audit.record({
       before: { totpEnrolled: false, sessionId: req.admin.sessionId, scope: req.admin.scope },
@@ -126,7 +127,7 @@ export class AdminAuthController {
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   async reauth(@Body() body: unknown, @Req() req: AuditedAdminRequest) {
     const parsed = ReauthDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     await this.credentials.reauth(req.admin, parsed.data, req.audit.tx);
     req.audit.record({ before: { sessionId: req.admin.sessionId }, after: { sessionId: req.admin.sessionId, reauthenticated: true } });
   }
@@ -150,7 +151,7 @@ export class AdminAuthController {
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   async changePassword(@Body() body: unknown, @Req() req: AuditedAdminRequest, @Res({ passthrough: true }) reply: FastifyReply) {
     const parsed = ChangePasswordDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const session = await this.account.changePassword(req.admin, parsed.data.newPassword, req.headers["user-agent"], req.audit.tx);
     req.audit.record({
       before: { mustChangePassword: true, sessionId: req.admin.sessionId },

@@ -11,6 +11,7 @@ import {
 import { Access } from "../../../common/decorators/access.decorator";
 import { WorkspaceInviteService } from "../service/workspace-invite.service";
 import { AcceptInviteSchema } from "../dto/accept-invite.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("workspace-invites")
 export class WorkspaceInviteController {
@@ -31,13 +32,7 @@ export class WorkspaceInviteController {
   async acceptInvite(@Body() body: unknown, @Req() req: any) {
     const parsed = AcceptInviteSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.inviteService.acceptInvite(parsed.data.token, req.user.userId);
   }

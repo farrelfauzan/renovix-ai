@@ -31,7 +31,9 @@ import {
   UpdateChannelSchema,
   AddAgentSchema,
   ChatMessageSchema,
+  type ChatMessageDto,
 } from "../dto/channel.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("channels")
 @Access({ auth: ["jwt", "session"] })
@@ -53,13 +55,7 @@ export class ChannelController {
   async create(@Body() body: unknown, @Req() req: any) {
     const parsed = CreateChannelSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.channelService.create(req.user.userId, parsed.data);
   }
@@ -118,13 +114,7 @@ export class ChannelController {
   ) {
     const parsed = UpdateChannelSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.channelService.update(req.user.userId, id, parsed.data);
   }
@@ -190,13 +180,7 @@ export class ChannelController {
   ) {
     const parsed = AddAgentSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.channelService.addAgent(
       req.user.userId,
@@ -257,32 +241,25 @@ export class ChannelController {
     @Req() req: any,
     @Res() res: FastifyReply,
   ) {
+    const parsed = ChatMessageSchema.safeParse(body);
+    if (!parsed.success) {
+      throw createInvalidBodyException(parsed.error);
+    }
     // RNX-171: an error after the SSE headers ends that stream, not the process.
     return guardSseStream({
       response: res.raw,
       logger: this.logger,
-      stream: () => this.streamChat(id, agentId, body, req, res),
+      stream: () => this.streamChat(id, agentId, parsed.data, req, res),
     });
   }
 
-  private async streamChat(id: string, agentId: string, body: unknown, req: any, res: FastifyReply) {
-    const parsed = ChatMessageSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
-    }
-
+  private async streamChat(id: string, agentId: string, input: ChatMessageDto, req: any, res: FastifyReply) {
     const userId = req.user.userId;
     const origin = req.headers.origin || req.headers.Origin || "*";
 
     // RX-178 (review B1), RNX-200: the room access check, the fixed 400 for an unusable model and the run's 402s
     // (credits, per-run cap) are real HTTP answers, before the SSE headers and the classifier call.
-    await this.chatService.assertRunCanStart(userId, id, agentId, parsed.data.message);
+    await this.chatService.assertRunCanStart(userId, id, agentId, input.message);
 
     // Setup SSE streaming
     res.raw.writeHead(200, {
@@ -304,8 +281,8 @@ export class ChannelController {
     try {
       // Classify document intent via LLM
       const detectedFormat =
-        parsed.data.output_format ||
-        (await this.classifyDocumentIntent(parsed.data.message));
+        input.output_format ||
+        (await this.classifyDocumentIntent(input.message));
       this.logger.log(`[chat] detectedFormat=${detectedFormat}`);
 
       if (detectedFormat) {
@@ -322,7 +299,7 @@ export class ChannelController {
         userId,
         id,
         agentId,
-        parsed.data.message,
+        input.message,
         detectedFormat ? { documentFormat: detectedFormat } : undefined,
       );
 
@@ -332,7 +309,7 @@ export class ChannelController {
       if (toolDocumentResult) {
         // Document generated via tool call
         const summary = buildDocumentSummary(
-          parsed.data.message,
+          input.message,
           toolDocumentResult.format,
         );
         if (result.assistantMessageId) {
@@ -364,7 +341,7 @@ export class ChannelController {
           );
           // Send a short summary message instead of full content
           const summary = buildDocumentSummary(
-            parsed.data.message,
+            input.message,
             detectedFormat,
           );
           if (result.assistantMessageId) {

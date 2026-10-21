@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -13,6 +12,7 @@ import {
 import { Access } from "../../../common/decorators/access.decorator";
 import { AgentLinkService } from "../service/agent-link.service";
 import { CreateAgentLinkSchema } from "../dto/create-agent-link.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /** RNX-118: an agent's links ("Can call"), for the workspace owner of the agent only (AgentLinkService). */
 @Controller("agents")
@@ -32,13 +32,7 @@ export class AgentLinkController {
   async addLink(@Param("id", ParseUUIDPipe) id: string, @Body() body: unknown, @Req() req: any) {
     const parsed = CreateAgentLinkSchema.safeParse(body);
     if (!parsed.success) {
-      throw new BadRequestException({
-        error: {
-          message: "Invalid request body",
-          type: "invalid_request_error",
-          details: parsed.error.flatten().fieldErrors,
-        },
-      });
+      throw createInvalidBodyException(parsed.error);
     }
     return this.linkService.addLink(req.user.userId, id, parsed.data.calleeAgentId);
   }

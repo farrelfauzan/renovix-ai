@@ -12,7 +12,9 @@ import type { FastifyRequest } from "fastify";
 import { GowaService } from "../service/gowa.service";
 import { verifySignature } from "../utils/verify-signature";
 import { AgentRunService } from "../../agent/service/agent-run.service";
-import type { GowaInboundMessage } from "../types/gowa.types";
+import { GowaEventSchema } from "../dto/gowa-event.dto";
+import { GowaInboundMessageSchema } from "../dto/gowa-inbound-message.dto";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 import { Access } from "../../../common/decorators/access.decorator";
 
 /** GOWA sends `X-Hub-Signature-256: sha256=<hex>` (note R-8, GOWA v9.6.0). */
@@ -38,8 +40,6 @@ export class GowaWebhookController {
     @Body() body: unknown,
     @Req() req: RawBodyRequest<FastifyRequest>,
   ) {
-    const payload = body as GowaInboundMessage;
-
     // Verify the webhook signature before anything else (RX-115): "sha256=" + HMAC-SHA256 of the
     // raw body with the webhookSecret of a channel for payload.to. Several tenants can save the same
     // number, so the call belongs to the channel whose secret verifies it. Every refusal is the same 401.
@@ -49,8 +49,10 @@ export class GowaWebhookController {
         ? signature.slice(SIGNATURE_PREFIX.length)
         : undefined;
     const rawBody = req.rawBody;
+    // The body is parsed after the signature check, so an unsigned call still gets the same 401; only `to` is read before.
+    const to = typeof body === "object" && body !== null && "to" in body ? body.to : undefined;
     const candidates =
-      hex && rawBody ? await this.gowaService.findWhatsappChannels(payload?.to) : [];
+      hex && rawBody ? await this.gowaService.findWhatsappChannels(to) : [];
     const resolved = candidates.find(({ channel }) =>
       verifySignature(rawBody!, hex!, (channel.config as any)?.webhookSecret),
     );
@@ -58,10 +60,15 @@ export class GowaWebhookController {
       throw new UnauthorizedException("Invalid webhook signature");
     }
 
-    // Validate event type
-    if (payload.event !== "message.received") {
+    const envelope = GowaEventSchema.safeParse(body);
+    if (!envelope.success) throw createInvalidBodyException(envelope.error);
+    // Other events (acks, status updates) carry no message: skipped with 200, as before RNX-28.
+    if (envelope.data.event !== "message.received") {
       return { ok: true, skipped: true };
     }
+    const parsed = GowaInboundMessageSchema.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    const payload = parsed.data;
 
     // Only handle text messages for now
     if (payload.message.type !== "text" || !payload.message.text?.body) {

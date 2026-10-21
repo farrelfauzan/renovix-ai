@@ -20,6 +20,7 @@ import { mcpOAuthCookieName } from "../utils/mcp-oauth-cookie-name";
 import { mcpOAuthSetCookie } from "../utils/mcp-oauth-set-cookie";
 import { parseCookieHeader } from "../utils/parse-cookie-header";
 import { readStateProvider } from "../utils/read-state-provider";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Per-user MCP OAuth and credential management.
@@ -126,7 +127,7 @@ export class McpUserController {
     @Body() body: unknown,
   ) {
     const parsed = ConnectMcpTokenSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten().fieldErrors);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     await this.workspaceService.requireMembership(parsed.data.workspaceId, req.user.userId);
     return this.mcpUserService.connectWithToken(
       req.user.userId,

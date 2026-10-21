@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Req } from "@nestjs/common";
 import type { TopUpPack, TopUpPackVersion } from "@generated/prisma/client.js";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../../admin-auth/decorator/admin-audit.decorator";
@@ -6,6 +6,7 @@ import type { AuditedAdminRequest } from "../../admin-auth/types/audited-admin-r
 import { TopUpPackVersionBodyDto } from "../dto/top-up-pack-version-body.dto";
 import { UpdateActiveBodyDto } from "../dto/update-active-body.dto";
 import { AdminTopUpPacksService } from "../service/admin-top-up-packs.service";
+import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * Top-up packs (RNX-226), API only (the screens are RNX-98). Under /api/v1/admin/top-up-packs. Reads need
@@ -37,7 +38,7 @@ export class AdminTopUpPacksController {
   @AdminAudit({ resource: "top_up_pack", action: "update" })
   async update(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<TopUpPack> {
     const parsed = UpdateActiveBodyDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.packs.update({ id, body: parsed.data, adminId: req.admin.adminId }, req.audit.tx);
     req.audit.record(change);
     return result;
@@ -49,7 +50,7 @@ export class AdminTopUpPacksController {
   @AdminAudit({ resource: "top_up_pack", action: "create_version" })
   async createVersion(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest): Promise<TopUpPackVersion> {
     const parsed = TopUpPackVersionBodyDto.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.flatten());
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { result, change } = await this.packs.createVersion({ id, body: parsed.data, adminId: req.admin.adminId }, req.audit.tx);
     req.audit.record(change);
     return result;
