@@ -498,6 +498,8 @@ export class PortalController {
           cheapest.maxOutputTokens,
           outputFormat,
         ),
+        response_format: body.response_format,
+        reasoning_effort: body.reasoning_effort,
       });
 
       let fullContent = "";
@@ -754,6 +756,8 @@ export class PortalController {
           messages: tunedMessages,
           temperature: body.temperature,
           max_tokens: maxTokens,
+          response_format: body.response_format,
+          reasoning_effort: body.reasoning_effort,
         },
         {
           onAttempt: (tried) => void (attempt = tried),
