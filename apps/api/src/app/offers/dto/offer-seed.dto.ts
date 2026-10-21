@@ -5,6 +5,7 @@ import { EnterpriseBundleVersionTermsDto } from "./enterprise-bundle-version-ter
 import { EnterpriseBundleDto } from "./enterprise-bundle.dto";
 import { PackageVersionTermsDto } from "./package-version-terms.dto";
 import { PackageDto } from "./package.dto";
+import { SubscriptionPlanSeedDto } from "./subscription-plan-seed.dto";
 import { TopUpPackVersionTermsDto } from "./top-up-pack-version-terms.dto";
 import { TopUpPackDto } from "./top-up-pack.dto";
 
@@ -33,5 +34,7 @@ export const OfferSeedDto = z.strictObject({
   enterpriseBundles: z.array(
     EnterpriseBundleDto.extend({ version: EnterpriseBundleVersionTermsDto.extend({ effectiveFrom: EFFECTIVE_FROM }).nullable() }),
   ),
+  /** The legacy `subscription_plans` rows (RNX-91), upserted by slug by prisma/seed-offers.ts (no change record). */
+  subscriptionPlans: z.array(SubscriptionPlanSeedDto).optional(),
 });
 export type OfferSeedDto = z.infer<typeof OfferSeedDto>;

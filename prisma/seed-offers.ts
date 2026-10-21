@@ -45,6 +45,11 @@ const settings = new PlatformSettingsService(new PlatformSettingRepository(prism
 try {
   const before = await prisma.catalogChange.count();
   await new OfferSeedService(catalog, settings, transactions).applySeed(parsed.data, operator);
+  // RNX-91: the legacy subscription_plans rows, upserted by slug (idempotent; the runtime still reads them).
+  for (const plan of parsed.data.subscriptionPlans ?? []) {
+    const data = { ...plan, maxTokensPerMonth: BigInt(plan.maxTokensPerMonth) };
+    await prisma.subscriptionPlan.upsert({ where: { slug: plan.slug }, update: data, create: data });
+  }
   const written = (await prisma.catalogChange.count()) - before;
   console.log(`Applied ${file} as "seed:${operator}" to database "${target.pathname.slice(1)}" on ${target.hostname}:${target.port || 5432}: ${written} change record(s) written.`);
 } finally {
