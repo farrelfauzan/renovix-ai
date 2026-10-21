@@ -32,6 +32,7 @@ import { PromptTemplateRepository } from "../chat/repository/prompt-template.rep
 import { SystemPromptRepository } from "../chat/repository/system-prompt.repository";
 import { CodeRedemptionRepository } from "../codes/repository/code-redemption.repository";
 import { InvitationCodeRepository } from "../codes/repository/invitation-code.repository";
+import { ExchangeRateRepository } from "../exchange-rates/repository/exchange-rate.repository";
 import { KnowledgeBaseRepository } from "../knowledge/repository/knowledge-base.repository";
 import { KnowledgeChunkRepository } from "../knowledge/repository/knowledge-chunk.repository";
 import { McpOAuthStateRepository } from "../mcp/repository/mcp-oauth-state.repository";
@@ -84,6 +85,7 @@ const REPOSITORIES = [
   SystemPromptRepository,
   CodeRedemptionRepository,
   InvitationCodeRepository,
+  ExchangeRateRepository,
   KnowledgeBaseRepository,
   KnowledgeChunkRepository,
   McpOAuthStateRepository,

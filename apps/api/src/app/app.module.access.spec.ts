@@ -134,6 +134,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /health (HealthController.check)",
     "GET /mcp/user/oauth/callback (McpUserController.oauthCallback)",
     "GET /models (ModelsController.listModels)",
+    "GET /prices (PricesController.listPrices)",
     "GET /webhooks/stripe (WebhookController.healthCheck)",
     "GET /workspace-invites/accept (WorkspaceInviteController.resolveInvite)",
     "POST /admin/auth/refresh (AdminAuthController.refresh)",

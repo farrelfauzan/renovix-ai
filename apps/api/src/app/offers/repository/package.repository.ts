@@ -33,6 +33,18 @@ export class PackageRepository {
     return (tx ?? this.prisma).packageVersion.findUnique({ where: { id } });
   }
 
+  /**
+   * The active and visible packages in display order, each with its current version (the highest version number
+   * already in effect at `now`), in one call whatever the number of packages (RNX-53 price list).
+   */
+  findListedWithCurrentVersion(now: Date) {
+    return this.prisma.package.findMany({
+      where: { active: true, visible: true },
+      orderBy: { displayOrder: "asc" },
+      include: { versions: { where: { effectiveFrom: { lte: now } }, orderBy: { versionNumber: "desc" }, take: 1 } },
+    });
+  }
+
   /** Inserts a package version. */
   createVersion(data: Prisma.PackageVersionUncheckedCreateInput, tx?: DbTransaction) {
     return (tx ?? this.prisma).packageVersion.create({ data });

@@ -5,6 +5,7 @@ import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
 import type { PackageVersionTermsDto } from "../dto/package-version-terms.dto";
+import { ExchangeRateService } from "../../exchange-rates/service/exchange-rate.service";
 import { CatalogChangeRepository } from "../repository/catalog-change.repository";
 import { OfferCatalogService } from "./offer-catalog.service";
 import { PurchaseSnapshotService } from "./purchase-snapshot.service";
@@ -13,9 +14,10 @@ import { PurchaseSnapshotService } from "./purchase-snapshot.service";
 // and a purchase snapshot keeps what was bought (D37). Every write writes its change record in its transaction.
 
 // EXAMPLE values for these tests only, NOT decided prices or limits: RX-53 decides them, and they are set only
-// in prisma/offers.seed.json.
+// in prisma/offers.seed.json. Prices are US dollar cents (RNX-53); TEST_RATE is a throwaway USD to IDR rate.
+const TEST_RATE = "16500";
 const EXAMPLE_PRO_TERMS: PackageVersionTermsDto = {
-  priceRupiah: 149000,
+  priceUsdCents: 1900,
   creditsGranted: 20.5,
   billing: "one_time",
   maxAgents: 10,
@@ -24,7 +26,7 @@ const EXAMPLE_PRO_TERMS: PackageVersionTermsDto = {
   allowedChannels: ["web", "api"],
   allowedTiers: ["standard", "advanced", "premium", "frontier"],
 };
-const EXAMPLE_PRO_TERMS_AFTER_CHANGE: PackageVersionTermsDto = { ...EXAMPLE_PRO_TERMS, priceRupiah: 199000, creditsGranted: 25, maxAgents: 12 };
+const EXAMPLE_PRO_TERMS_AFTER_CHANGE: PackageVersionTermsDto = { ...EXAMPLE_PRO_TERMS, priceUsdCents: 2500, creditsGranted: 25, maxAgents: 12 };
 const EXAMPLE_PRO = { name: "Pro", displayOrder: 2, active: true, visible: true };
 const AUTHOR = { changedBy: "admin-test", reason: "test change" };
 
@@ -36,13 +38,17 @@ describe("OfferCatalogService (RX-86, test database)", () => {
   let changes: CatalogChangeRepository;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ providers: [OfferCatalogService, PurchaseSnapshotService] }));
+    ({ moduleRef, prisma } = await createTestModule({ providers: [OfferCatalogService, PurchaseSnapshotService, ExchangeRateService] }));
     catalog = moduleRef.get(OfferCatalogService);
     purchases = moduleRef.get(PurchaseSnapshotService);
     changes = moduleRef.get(CatalogChangeRepository);
   });
 
-  beforeEach(() => resetDatabase(prisma));
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    await prisma.exchangeRate.create({ data: { base: "USD", quote: "IDR", rate: TEST_RATE, rateDate: today, fetchedAt: new Date(), source: "frankfurter" } });
+  });
 
   afterEach(() => jest.restoreAllMocks());
 
@@ -56,7 +62,7 @@ describe("OfferCatalogService (RX-86, test database)", () => {
     const newVersion = await catalog.savePackageVersion({ ownerId: pro.id, terms: EXAMPLE_PRO_TERMS_AFTER_CHANGE, author: AUTHOR });
     const actualSnapshot = await prisma.purchaseSnapshot.findUniqueOrThrow({ where: { id: snapshot.id } });
     expect({
-      priceRupiah: actualSnapshot.priceRupiah,
+      priceUsdCents: actualSnapshot.priceUsdCents,
       creditsGranted: Number(actualSnapshot.creditsGranted),
       billing: actualSnapshot.billing,
       maxAgents: actualSnapshot.maxAgents,
@@ -68,7 +74,7 @@ describe("OfferCatalogService (RX-86, test database)", () => {
     expect(actualSnapshot.packageVersionId).toBe(oldVersion.id);
     expect(await prisma.packageVersion.findUniqueOrThrow({ where: { id: oldVersion.id } })).toEqual(oldVersion);
     expect(newVersion.id).not.toBe(oldVersion.id);
-    expect({ versionNumber: newVersion.versionNumber, priceRupiah: newVersion.priceRupiah }).toEqual({ versionNumber: 2, priceRupiah: 199000 });
+    expect({ versionNumber: newVersion.versionNumber, priceUsdCents: newVersion.priceUsdCents }).toEqual({ versionNumber: 2, priceUsdCents: 2500 });
     expect(await prisma.packageVersion.count({ where: { packageId: pro.id } })).toBe(2);
   });
 
@@ -79,8 +85,8 @@ describe("OfferCatalogService (RX-86, test database)", () => {
     const newVersion = await catalog.savePackageVersion({ ownerId: pro.id, terms: EXAMPLE_PRO_TERMS_AFTER_CHANGE, effectiveFrom: inputEffectiveFrom, author: AUTHOR });
     const actual = await prisma.catalogChange.findFirstOrThrow({ where: { entity: "package_version", entityId: newVersion.id } });
     expect(actual).toMatchObject({ changedBy: "admin-test", reason: "test change", effectiveFrom: inputEffectiveFrom });
-    expect(actual.before).toMatchObject({ id: oldVersion.id, priceRupiah: 149000, creditsGranted: "20.5" });
-    expect(actual.after).toMatchObject({ id: newVersion.id, priceRupiah: 199000, versionNumber: 2 });
+    expect(actual.before).toMatchObject({ id: oldVersion.id, priceUsdCents: 1900, creditsGranted: "20.5" });
+    expect(actual.after).toMatchObject({ id: newVersion.id, priceUsdCents: 2500, versionNumber: 2 });
     expect(newVersion).toMatchObject({ createdBy: "admin-test", reason: "test change", effectiveFrom: inputEffectiveFrom });
   });
 
@@ -107,7 +113,7 @@ describe("OfferCatalogService (RX-86, test database)", () => {
   });
 
   it.each([
-    ["a negative price", { priceRupiah: -1 }],
+    ["a negative price", { priceUsdCents: -1 }],
     ["credits finer than a micro-credit", { creditsGranted: 0.0000001 }],
     ["an unknown tier", { allowedTiers: ["ultra"] }],
     ["no allowed tier", { allowedTiers: [] }],
@@ -134,10 +140,10 @@ describe("OfferCatalogService (RX-86, test database)", () => {
 
   it("records a top-up purchase with the pack version's price and credits, and no limits", async () => {
     const pack = await catalog.saveTopUpPack({ name: "Example pack", active: true }, AUTHOR);
-    const version = await catalog.saveTopUpPackVersion({ ownerId: pack.id, terms: { creditsGranted: 10, priceRupiah: 50000 }, author: AUTHOR });
+    const version = await catalog.saveTopUpPackVersion({ ownerId: pack.id, terms: { creditsGranted: 10, priceUsdCents: 500 }, author: AUTHOR });
     const buyer = await createUser(prisma);
     const actual = await purchases.recordTopUpPurchase({ buyerUserId: buyer.id, versionId: version.id, paymentId: "example-payment" });
-    expect(actual).toMatchObject({ topUpPackVersionId: version.id, packageVersionId: null, priceRupiah: 50000, maxAgents: null, billing: null, paymentId: "example-payment" });
+    expect(actual).toMatchObject({ topUpPackVersionId: version.id, packageVersionId: null, priceUsdCents: 500, priceRupiah: 83000, maxAgents: null, billing: null, paymentId: "example-payment" });
     expect(Number(actual.creditsGranted)).toBe(10);
   });
 });

@@ -8,6 +8,8 @@ import { createUser } from "../../../../test/factories";
 // (triggers of migration 20261015150000_offer_catalog), whoever runs the SQL. TRUNCATE stays allowed for the
 // test tooling. The rows are written directly with the client; their values are throwaway.
 
+// RNX-53: the price and exchange-rate columns every snapshot carries (throwaway values).
+const SNAPSHOT_PRICE = { priceUsdCents: 1, exchangeRate: 1, exchangeRateDate: new Date("2026-01-01"), exchangeRateSource: "test", priceRupiah: 1 };
 const APPEND_ONLY_TABLES = ["package_versions", "top_up_pack_versions", "enterprise_bundle_versions", "purchase_snapshots", "catalog_changes"];
 
 describe("Append-only offer tables (RX-86, test database)", () => {
@@ -24,14 +26,14 @@ describe("Append-only offer tables (RX-86, test database)", () => {
     const version = { versionNumber: 1, createdBy: "test", reason: "test" };
     const pkg = await prisma.package.create({ data: { name: "P", displayOrder: 1, active: true, visible: true } });
     const packageVersion = await prisma.packageVersion.create({
-      data: { ...version, packageId: pkg.id, priceRupiah: 1, creditsGranted: 1, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, apiAccess: false, allowedChannels: [], allowedTiers: ["standard"] },
+      data: { ...version, packageId: pkg.id, priceUsdCents: 1, creditsGranted: 1, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, apiAccess: false, allowedChannels: [], allowedTiers: ["standard"] },
     });
     const pack = await prisma.topUpPack.create({ data: { name: "T", active: true } });
-    const packVersion = await prisma.topUpPackVersion.create({ data: { ...version, packId: pack.id, priceRupiah: 1, creditsGranted: 1 } });
+    const packVersion = await prisma.topUpPackVersion.create({ data: { ...version, packId: pack.id, priceUsdCents: 1, creditsGranted: 1 } });
     const bundle = await prisma.enterpriseBundle.create({ data: { name: "B", active: true } });
     await prisma.enterpriseBundleVersion.create({ data: { ...version, bundleId: bundle.id } });
     const buyer = await createUser(prisma);
-    await prisma.purchaseSnapshot.create({ data: { buyerUserId: buyer.id, packageVersionId: packageVersion.id, priceRupiah: 1, creditsGranted: 1 } });
+    await prisma.purchaseSnapshot.create({ data: { buyerUserId: buyer.id, packageVersionId: packageVersion.id, ...SNAPSHOT_PRICE, creditsGranted: 1 } });
     await prisma.catalogChange.create({ data: { entity: "package", entityId: pkg.id, changedBy: "test", reason: "test", after: {} } });
     ids = { packageVersionId: packageVersion.id, packVersionId: packVersion.id, buyerId: buyer.id };
   });
@@ -49,8 +51,8 @@ describe("Append-only offer tables (RX-86, test database)", () => {
   });
 
   it("refuses a price edit of a version a purchase points at, also through the client", async () => {
-    await expect(prisma.packageVersion.update({ where: { id: ids.packageVersionId }, data: { priceRupiah: 2 } })).rejects.toThrow("append-only");
-    expect((await prisma.packageVersion.findUniqueOrThrow({ where: { id: ids.packageVersionId } })).priceRupiah).toBe(1);
+    await expect(prisma.packageVersion.update({ where: { id: ids.packageVersionId }, data: { priceUsdCents: 2 } })).rejects.toThrow("append-only");
+    expect((await prisma.packageVersion.findUniqueOrThrow({ where: { id: ids.packageVersionId } })).priceUsdCents).toBe(1);
   });
 
   it.each([
@@ -58,7 +60,7 @@ describe("Append-only offer tables (RX-86, test database)", () => {
     ["both a package version and a pack version", "both"],
   ])("refuses a snapshot with %s (one-version CHECK)", async (_case, which) => {
     const versions = which === "both" ? { packageVersionId: ids.packageVersionId, topUpPackVersionId: ids.packVersionId } : {};
-    await expect(prisma.purchaseSnapshot.create({ data: { ...versions, buyerUserId: ids.buyerId, priceRupiah: 1, creditsGranted: 1 } })).rejects.toThrow("purchase_snapshots_one_version_check");
+    await expect(prisma.purchaseSnapshot.create({ data: { ...versions, buyerUserId: ids.buyerId, ...SNAPSHOT_PRICE, creditsGranted: 1 } })).rejects.toThrow("purchase_snapshots_one_version_check");
   });
 
   it("resetDatabase still empties the append-only tables (TRUNCATE is not refused)", async () => {

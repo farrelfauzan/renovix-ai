@@ -17,7 +17,7 @@ const steps = [
     icon: Wallet,
     title: 'Top Up Your Balance',
     description:
-      'Add credits via Stripe. Minimum $5 top-up. Your balance is your spending limit — no surprise bills, ever.',
+      'Add credits whenever you need them. Your balance is your spending limit — no surprise bills, ever.',
     code: 'POST /api/checkout → Stripe Checkout',
   },
   {
@@ -131,19 +131,6 @@ export function HowItWorksSection() {
             refund any difference after the response. You never pay more than
             the actual usage.
           </p>
-          <div className="mt-6 inline-flex items-center gap-6 text-sm text-gray-500">
-            <span>
-              <span className="font-semibold text-white">$0.0008</span> / 1K
-              input tokens
-            </span>
-            <span className="text-gray-700">|</span>
-            <span>
-              <span className="font-semibold text-white">$0.0008</span> / 1K
-              output tokens
-            </span>
-            <span className="text-gray-700">|</span>
-            <span className="text-indigo-400">Starting from</span>
-          </div>
         </motion.div>
       </div>
     </section>

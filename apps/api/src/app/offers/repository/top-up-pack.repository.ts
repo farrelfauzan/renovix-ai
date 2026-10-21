@@ -33,6 +33,17 @@ export class TopUpPackRepository {
     return (tx ?? this.prisma).topUpPackVersion.findUnique({ where: { id } });
   }
 
+  /**
+   * The active packs, each with its current version (the highest version number already in effect at `now`), in one
+   * call whatever the number of packs (RNX-53 price list).
+   */
+  findActiveWithCurrentVersion(now: Date) {
+    return this.prisma.topUpPack.findMany({
+      where: { active: true },
+      include: { versions: { where: { effectiveFrom: { lte: now } }, orderBy: { versionNumber: "desc" }, take: 1 } },
+    });
+  }
+
   /** Inserts a top-up pack version. */
   createVersion(data: Prisma.TopUpPackVersionUncheckedCreateInput, tx?: DbTransaction) {
     return (tx ?? this.prisma).topUpPackVersion.create({ data });
