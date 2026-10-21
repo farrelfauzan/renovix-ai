@@ -3,7 +3,6 @@ import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import helmet from "@fastify/helmet";
-import { AppModule } from "./app/app.module";
 import { resolveLlmProvider } from "./app/providers/llm-provider";
 import { createAppLogger } from "./common/utils/create-app-logger";
 import { createFastifyAdapter } from "./common/utils/create-fastify-adapter";
@@ -17,6 +16,9 @@ async function bootstrap(): Promise<NestFastifyApplication> {
   resolveLlmProvider(process.env);
   // RX-110: refuse missing, placeholder or too-short auth and encryption secrets, before anything starts.
   assertRequiredSecrets(process.env);
+  // RNX-233: AppModule is loaded only now, so a throw while its modules are evaluated (e.g. lib/auth reading a secret)
+  // reaches handleFatalStart (masked, one JSON line) instead of Node's raw uncaught dump. Eager: no separate chunk.
+  const { AppModule } = await import(/* webpackMode: "eager" */ "./app/app.module.js");
 
   const isDev = process.env.NODE_ENV === "development";
   const corsOrigins = resolveCorsOrigins(process.env);
