@@ -166,7 +166,19 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 ## Environment
 
-Copy `.env.example` to `.env`. Key variables:
+Copy `.env.example` to `.env` and keep all six `S3_*` keys in it: the API stops at boot with "Configuration key S3_BUCKET does not exist" when one is missing. Empty values boot, but uploads fail. `.env.example` points them at the local MinIO of `docker-compose.yml` (development only, never put real keys there):
+
+- `S3_BUCKET`: the bucket that stores uploaded files (`performa-ai`, created by `minio-init`).
+- `S3_REGION`: the bucket's region (`ap-southeast-1`).
+- `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`: the credentials (MinIO root user `minioadmin`/`minioadmin`).
+- `S3_ENDPOINT`: the S3 API URL (`http://localhost:9000`); optional, leave it out for AWS S3.
+- `S3_CDN_DOMAIN`: the host that replaces the storage host in signed download URLs; empty (as locally) keeps the signed URL as it is.
+
+Local uploads do not work until RNX-65 replaces the MinIO images, which no longer pull anonymously (Tech Lead, 2026-10-20).
+
+`ADMIN_JWT_SECRET` and `ADMIN_TOTP_ENCRYPTION_KEY` have no default in `.env.example`: generate both before the first start with the `openssl` commands written above them there (`openssl rand -base64 48` and `openssl rand -base64 32`), or the API stops at boot.
+
+Key variables:
 
 `JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY`, `MCP_OAUTH_STATE_SECRET` and `LLM_KEY_ENCRYPTION_KEY` are required in every mode (RX-110, RX-151, RX-177, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` or `LLM_KEY_ENCRYPTION_KEY` that is not 32 bytes.
 
