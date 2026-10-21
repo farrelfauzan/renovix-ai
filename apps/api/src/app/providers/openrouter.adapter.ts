@@ -9,9 +9,11 @@ import {
 } from "./provider.interface";
 import { LlmEndpoint } from "./types/llm-endpoint";
 import { ProviderHttpError } from "./errors/provider-http-error";
+import { ProviderTimeoutError } from "./errors/provider-timeout-error";
 import { isOpenRouterUrl } from "./utils/is-open-router-url";
 import { normalizeModelId } from "./utils/normalize-model-id";
-import { parseRetryAfterMs } from "./utils/parse-retry-after-ms";
+import { readProviderHttpError } from "./utils/read-provider-http-error";
+import { readProviderJson } from "./utils/read-provider-json";
 import { describeTestFailure } from "./utils/describe-test-failure";
 import { ProviderTestResult } from "./types/provider-test-result";
 import { ProviderTestTarget } from "./types/provider-test-target";
@@ -163,7 +165,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
     return send(connection);
   }
 
-  /** POST /chat/completions with Node's fetch; a non-2xx answer becomes a ProviderHttpError. */
+  /** POST /chat/completions with Node's fetch; a non-2xx answer becomes a typed ProviderHttpError, without its body (RNX-190). */
   private async post(
     endpoint: LlmEndpoint,
     body: Record<string, unknown>,
@@ -176,17 +178,12 @@ export class OpenRouterAdapter implements ProviderAdapter {
       signal,
     });
     if (response.ok) return response;
-    throw new ProviderHttpError({
-      message: `Request failed with status code ${response.status}`,
-      status: response.status,
-      bodyText: await response.text(),
-      retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
-    });
+    throw await readProviderHttpError(response);
   }
 
   private async postChat(endpoint: LlmEndpoint, body: Record<string, unknown>): Promise<any> {
     const response = await this.post(endpoint, body, AbortSignal.timeout(CHAT_TIMEOUT_MS));
-    return response.json();
+    return readProviderJson(response);
   }
 
   /**
@@ -201,14 +198,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
       headers: this.buildHeaders(this.modelListEndpoint),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });
-    if (!response.ok) {
-      throw new ProviderHttpError({
-        message: `Listing models failed with status code ${response.status}`,
-        status: response.status,
-        bodyText: await response.text(),
-      });
-    }
-    const body = (await response.json()) as {
+    if (!response.ok) throw await readProviderHttpError(response);
+    const body = (await readProviderJson(response)) as {
       data?: Array<{
         id?: unknown;
         pricing?: Record<string, unknown>;
@@ -283,7 +274,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
   /**
    * Today's retries (6 attempts on timeout, 500, 502, 503, 429), against the request's connection.
    * A 502/503 with Retry-After leaves the loop at once (RX-161, see retryOnceAfter); a 502 or 503
-   * without one keeps this back-off (RX-178: no fallback to leave for).
+   * without one keeps this back-off (RX-178: no fallback to leave for). RNX-190 (D199): timeouts on every attempt end
+   * in the typed ProviderTimeoutError.
    */
   private async postChatWithRetries(connection: LlmEndpoint, body: Record<string, unknown>): Promise<any> {
     const maxRetries = 6;
@@ -299,7 +291,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
         const isTimeout = err?.name === "TimeoutError";
 
         if (isTimeout || (status && [500, 502, 503, 429].includes(status))) {
-          if (attempt === maxRetries - 1) throw err;
+          if (attempt === maxRetries - 1) throw isTimeout ? new ProviderTimeoutError() : err;
           const delay =
             status === 429
               ? Math.min(5000 * 2 ** attempt, 60000)
@@ -435,12 +427,13 @@ export class OpenRouterAdapter implements ProviderAdapter {
     try {
       return await this.post(endpoint, body, AbortSignal.any(signal ? [signal, connect.signal] : [connect.signal]));
     } catch (err: any) {
-      // RX-169: callers get the status and the body text (ProviderHttpError), never a stream.
+      // RX-169: callers get the typed error (ProviderHttpError: status and kind, RNX-190), never a stream.
       // RNX-208 (D197, D208): the log names the host and the status only, never the body or an error message.
       this.logger.error(
         `OpenRouter stream error (${new URL(endpoint.baseUrl).host}, ${err.status}): ${err instanceof ProviderHttpError ? toProviderErrorText(err.status).logText : errorName(err)}`,
       );
-      throw err;
+      // RNX-190 (D199): the connect timeout is the typed timeout error.
+      throw err?.name === "TimeoutError" ? new ProviderTimeoutError() : err;
     } finally {
       clearTimeout(timer);
     }

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ServerResponse } from "node:http";
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -28,6 +29,8 @@ import {
 } from "../../../../test/llm-stub";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
+import { captureOutput } from "../../../../test/capture-output";
+import { plantedProviderSecret } from "../../../../test/planted-provider-secret";
 
 // RX-169: the API-key route POST /chat/completions never streams (its request
 // schema has no `stream` field; ChatService calls ProviderRouter.chat). A
@@ -122,9 +125,11 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
     });
 
     expect(res.statusCode).toBe(500);
+    // RNX-190 (D199): a 400 about the model is the typed "model not found" (was "Failed to get response from model
+    // provider."); the status code stays 500.
     expect(res.json()).toMatchObject({
       statusCode: 500,
-      message: "Failed to get response from model provider. No credits were charged.",
+      message: "Model not found at the provider (400). No credits were charged.",
     });
     const usage = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id, type: "usage" } });
     expect(usage.map((e) => [e.outcome, e.amount.toFixed(6), e.uncharged.toFixed(6), e.tokensNew, e.tokensOut])).toEqual([
@@ -188,8 +193,88 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
     }).toEqual({
       leakingLogLines: [],
       leakingSseLines: [],
-      clientMessages: [`Provider request failed (${status}). No credits were charged.`],
+      // RNX-190 (D199): the typed text (the 400 body does not name the model, so it is "unavailable").
+      clientMessages: [`${status === 401 ? "Provider rejected the credentials" : "Provider unavailable"} (${status}). No credits were charged.`],
       streamErrorLogLines: [`${streamErrorLine}: Provider error (status ${status})`],
     });
+  });
+
+  // RNX-190 (D197, D208): a provider 401 body that echoes the key's last characters and its SHA-256 (RX-174) reaches
+  // no line the process prints (Nest's Logger is not mocked) and nothing the client receives, on the non-stream call.
+  it("RNX-190 AC1: stream false, the provider answers 401 with a planted key suffix and SHA-256 → neither is in any output line or in the response", async () => {
+    primary.respond((_r, res) => sendJson(res, 401, plantedProviderSecret.body));
+    const user = await createUser(prisma, { apiKey: API_KEY });
+    await fundPaidWallet(prisma, user.id, 1);
+    const output = captureOutput();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/chat/completions",
+      headers: { authorization: `Bearer ${API_KEY}` },
+      payload: { model: "test-model", messages: [{ role: "user", content: "Hi" }] },
+    });
+
+    expect({
+      status: res.statusCode,
+      providerCalls: primary.requests.length,
+      leakingOutputLines: output.lines.filter(plantedProviderSecret.isFoundIn),
+      leaksInResponse: plantedProviderSecret.isFoundIn(res.body),
+    }).toEqual({ status: 500, providerCalls: 1, leakingOutputLines: [], leaksInResponse: false });
+  });
+
+  // RNX-190 (D199): the client gets the typed error's fixed text; the HTTP code stays (500 here, an SSE error event on
+  // a stream) and the process keeps answering.
+  const typedCases: Array<[string, (res: ServerResponse) => void, string]> = [
+    ["401", (res) => sendJson(res, 401, { error: { message: "invalid key" } }), "Provider rejected the credentials (401)"],
+    ["404 naming the model", (res) => sendJson(res, 404, { error: { message: "The model test-model does not exist" } }), "Model not found at the provider (404)"],
+    ["503", (res) => sendJson(res, 503, { error: { message: "overloaded" } }), "Provider unavailable (503)"],
+  ];
+
+  it.each(typedCases)("RNX-190 AC2: stream true, the provider answers %s → an SSE error event with the typed fixed text; health answers", async (_name, answer, text) => {
+    primary.respond((_r, res) => answer(res));
+    const user = await createUser(prisma, { apiKey: API_KEY });
+    await fundPaidWallet(prisma, user.id, 1);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/chat/completions",
+      headers: { authorization: `Bearer ${API_KEY}` },
+      payload: { model: "test-model", messages: [{ role: "user", content: "Hi" }], stream: true },
+    });
+
+    expect(sseErrorMessages(res.body)).toEqual([`${text}. No credits were charged.`]);
+    expect((await app.inject({ method: "GET", url: "/health" })).statusCode).toBe(200);
+  });
+
+  it("RNX-190 AC2: stream true, the connect times out → an SSE error event with the timeout's fixed text; health answers", async () => {
+    jest.spyOn(AbortSignal, "any").mockImplementation(() => AbortSignal.abort(new DOMException("timed out", "TimeoutError")));
+    const user = await createUser(prisma, { apiKey: API_KEY });
+    await fundPaidWallet(prisma, user.id, 1);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/chat/completions",
+      headers: { authorization: `Bearer ${API_KEY}` },
+      payload: { model: "test-model", messages: [{ role: "user", content: "Hi" }], stream: true },
+    });
+
+    expect(sseErrorMessages(res.body)).toEqual(["Provider timed out. No credits were charged."]);
+    expect((await app.inject({ method: "GET", url: "/health" })).statusCode).toBe(200);
+  });
+
+  // A 503 is retried 6 times with a real back-off of 44 s on this route; its typed text is checked on the adapter.
+  it.each(typedCases.slice(0, 2))("RNX-190 AC2: stream false, the provider answers %s → HTTP 500 with the typed fixed text", async (_name, answer, text) => {
+    primary.respond((_r, res) => answer(res));
+    const user = await createUser(prisma, { apiKey: API_KEY });
+    await fundPaidWallet(prisma, user.id, 1);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/chat/completions",
+      headers: { authorization: `Bearer ${API_KEY}` },
+      payload: { model: "test-model", messages: [{ role: "user", content: "Hi" }] },
+    });
+
+    expect([res.statusCode, res.json().message]).toEqual([500, `${text}. No credits were charged.`]);
   });
 });

@@ -15,7 +15,8 @@ describe("describeTestFailure", () => {
     [500, "the request was refused"],
     [503, "the request was refused"],
   ])("a %i keeps only the status and a fixed text, never the body", (status, expectedText) => {
-    const inputError = new ProviderHttpError({ message: plantedMarker, status, bodyText: plantedMarker });
+    // RNX-190: the error can no longer carry the body or a message of the caller's choosing.
+    const inputError = new ProviderHttpError({ status, kind: "unavailable" });
 
     const actualReason = describeTestFailure(inputError, 15_000);
 

@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { OpenRouterAdapter } from "./openrouter.adapter";
@@ -12,6 +13,8 @@ import {
   startStubHttpServer,
   StubHttpServer,
 } from "../../../test/llm-stub";
+import { captureOutput } from "../../../test/capture-output";
+import { plantedProviderSecret } from "../../../test/planted-provider-secret";
 
 // RX-178: the chat adapter sends every call to the request's connection (a provider record: base URL, key, slug).
 // The env endpoint (LLM_BASE_URL / LLM_API_KEY / OPENROUTER_API_KEY) serves GET /models only, and the env fallback
@@ -443,12 +446,14 @@ describe("RX-161: provider transport", () => {
   });
 
   describe("AC-c: 502 with a plain-text body", () => {
-    it("chat with Retry-After: one retry, then the 502 surfaces with its text, not a JSON error", async () => {
+    // RNX-190 (D197): the error no longer carries the provider's text; it surfaces as the typed "unavailable".
+    it("chat with Retry-After: one retry, then the 502 surfaces typed, not a JSON error, without its text", async () => {
       plain502({ "Retry-After": "7" });
 
       const thrown = await makeAdapter(stubOnly()).chat(request()).catch((err) => err);
 
-      expect(thrown).toMatchObject({ name: "ProviderHttpError", status: 502, bodyText: "Bad gateway" });
+      expect(thrown).toMatchObject({ name: "ProviderHttpError", status: 502, kind: "unavailable" });
+      expect(thrown).not.toHaveProperty("bodyText");
       expect(thrown).not.toBeInstanceOf(SyntaxError);
       expect(provider.requests).toHaveLength(2);
       expect(retryDelays).toEqual([7000]);
@@ -463,10 +468,13 @@ describe("RX-161: provider transport", () => {
       expect(envStub.requests).toHaveLength(0);
     });
 
-    it("chatStream without Retry-After: the 502 surfaces with its text; fallback 0", async () => {
+    it("chatStream without Retry-After: the 502 surfaces typed, without its text; fallback 0", async () => {
       plain502();
 
-      await expect(drain(makeAdapter(staleEnv()).chatStream(request()))).rejects.toMatchObject({ status: 502, bodyText: "Bad gateway" });
+      const thrown = await drain(makeAdapter(staleEnv()).chatStream(request())).catch((err: unknown) => err);
+
+      expect(thrown).toMatchObject({ status: 502, kind: "unavailable" });
+      expect(thrown).not.toHaveProperty("bodyText");
       expect(provider.requests).toHaveLength(1);
       expect(envStub.requests).toHaveLength(0);
     });
@@ -699,5 +707,114 @@ describe("RX-21: listModels reads OpenRouter's per-token prices", () => {
     expect(models).toEqual([
       { providerId: "openai/gpt-4", inputPrice: "0.00003", outputPrice: "0.00006", cachedInputPrice: "0.000015" },
     ]);
+  });
+});
+
+// RNX-190 (D197, D208): a provider 401 body can echo the key's last characters and its SHA-256 (RX-174). The error a
+// chat call rejects with must not carry them: not in a log line written meanwhile (Nest's Logger is not mocked), and
+// not in the error itself as a log would print it (util.inspect, as Nest's ExceptionsHandler and a cron job log an
+// error nobody caught), as JSON, as a string or as its stack.
+describe("RNX-190 AC1: a provider 401 body with a planted key suffix and SHA-256", () => {
+  const leaksOf = (err: unknown, lines: string[]): string[] =>
+    [inspect(err), JSON.stringify(err), String(err), (err as Error).stack ?? "", ...lines].filter(plantedProviderSecret.isFoundIn);
+
+  beforeEach(() => {
+    provider.respond((_r, res) => sendJson(res, 401, plantedProviderSecret.body));
+    envStub.respond((_r, res) => sendJson(res, 401, plantedProviderSecret.body));
+  });
+
+  it("control: the stub's answer carries both planted values, and the search finds them there", async () => {
+    const answer = await fetch(`${provider.baseUrl}/chat/completions`, { method: "POST", body: "{}" });
+    const text = await answer.text();
+
+    expect([answer.status, text.includes(plantedProviderSecret.keySuffix), text.includes(plantedProviderSecret.sha256)]).toEqual([401, true, true]);
+  });
+
+  it("non-stream chat: the 401 surfaces; neither value is in a log line or in the error", async () => {
+    const output = captureOutput();
+
+    const thrown = await makeAdapter(staleEnv()).chat(request()).catch((err: unknown) => err);
+
+    expect({ status: (thrown as { status?: number }).status, leaks: leaksOf(thrown, output.lines) }).toEqual({ status: 401, leaks: [] });
+  });
+
+  it("chatStream: the 401 surfaces; neither value is in a log line or in the error", async () => {
+    const output = captureOutput();
+
+    const thrown = await drain(makeAdapter(staleEnv()).chatStream(request())).catch((err: unknown) => err);
+
+    expect({ status: (thrown as { status?: number }).status, leaks: leaksOf(thrown, output.lines) }).toEqual({ status: 401, leaks: [] });
+  });
+
+  it("listModels (the price refresh): the 401 surfaces; neither value is in a log line or in the error", async () => {
+    const output = captureOutput();
+
+    const thrown = await makeAdapter({ LLM_BASE_URL: envStub.baseUrl, LLM_API_KEY: ENV_KEY }).listModels().catch((err: unknown) => err);
+
+    expect({ status: (thrown as { status?: number }).status, leaks: leaksOf(thrown, output.lines) }).toEqual({ status: 401, leaks: [] });
+  });
+});
+
+// RNX-190 (D199): an upstream failure is one of four typed errors with a fixed text: 401 or 403 → unauthorized; 400,
+// 404 or 422 about the model → model not found; a timeout → timeout; anything else → unavailable. The status stays.
+describe("RNX-190 AC2: typed upstream errors with fixed text", () => {
+  const modelBody = { error: { message: `The model \`${SLUG}\` does not exist or you do not have access to it.` } };
+  const cases: Array<[string, number, unknown, { kind: string; message: string }]> = [
+    ["401", 401, { error: { message: "invalid key" } }, { kind: "unauthorized", message: "Provider rejected the credentials (401)" }],
+    ["403", 403, { error: { message: "forbidden" } }, { kind: "unauthorized", message: "Provider rejected the credentials (403)" }],
+    ["404 naming the model", 404, modelBody, { kind: "model_not_found", message: "Model not found at the provider (404)" }],
+    ["400 naming the model", 400, modelBody, { kind: "model_not_found", message: "Model not found at the provider (400)" }],
+    ["422 naming the model", 422, modelBody, { kind: "model_not_found", message: "Model not found at the provider (422)" }],
+    ["404 not naming the model", 404, { error: { message: "no route" } }, { kind: "unavailable", message: "Provider unavailable (404)" }],
+    ["503", 503, { error: { message: "overloaded" } }, { kind: "unavailable", message: "Provider unavailable (503)" }],
+  ];
+  /** The connect or request timeout fires at once: the signal is already aborted with a TimeoutError. */
+  const timedOutSignal = () => AbortSignal.abort(new DOMException("timed out", "TimeoutError"));
+
+  it.each(cases)("chat: %s → its typed error with its fixed text", async (_name, status, body, expected) => {
+    provider.respond((_r, res) => sendJson(res, status, body));
+
+    const thrown = await makeAdapter(staleEnv()).chat(request()).catch((err: unknown) => err);
+
+    expect(thrown).toMatchObject({ name: "ProviderHttpError", status, ...expected });
+  });
+
+  it.each(cases)("chatStream: %s → its typed error with its fixed text", async (_name, status, body, expected) => {
+    provider.respond((_r, res) => sendJson(res, status, body));
+
+    const thrown = await drain(makeAdapter(staleEnv()).chatStream(request())).catch((err: unknown) => err);
+
+    expect(thrown).toMatchObject({ name: "ProviderHttpError", status, ...expected });
+  });
+
+  it("chat: no answer within the timeout on every attempt → the timeout error with its fixed text, after the 6 attempts", async () => {
+    jest.spyOn(AbortSignal, "timeout").mockImplementation(timedOutSignal);
+
+    const thrown = await makeAdapter(staleEnv()).chat(request()).catch((err: unknown) => err);
+
+    expect(thrown).toMatchObject({ name: "ProviderTimeoutError", kind: "timeout", message: "Provider timed out" });
+    expect(retryDelays).toHaveLength(5);
+  });
+
+  it("chatStream: the connect timeout → the timeout error with its fixed text", async () => {
+    jest.spyOn(AbortSignal, "any").mockImplementation(timedOutSignal);
+
+    const thrown = await drain(makeAdapter(staleEnv()).chatStream(request())).catch((err: unknown) => err);
+
+    expect(thrown).toMatchObject({ name: "ProviderTimeoutError", kind: "timeout", message: "Provider timed out" });
+  });
+
+  it("chat: a 2xx answer that is not JSON fails with a fixed text, never the parse error (it quotes the body)", async () => {
+    provider.respond((_r, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end(`sk-...${plantedProviderSecret.keySuffix} not json`);
+    });
+
+    const thrown = await makeAdapter(staleEnv()).chat(request()).catch((err: unknown) => err);
+
+    expect({ message: (thrown as Error).message, leaks: [inspect(thrown)].filter(plantedProviderSecret.isFoundIn) }).toEqual({
+      message: "The provider answered with something other than JSON",
+      leaks: [],
+    });
   });
 });

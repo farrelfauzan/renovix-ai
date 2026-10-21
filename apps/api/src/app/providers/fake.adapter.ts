@@ -2,6 +2,7 @@ import { ChatRequest, ChatResponse, ProviderAdapter } from "./provider.interface
 import { ProviderTestResult } from "./types/provider-test-result";
 import { ProviderTestTarget } from "./types/provider-test-target";
 import { ProviderHttpError } from "./errors/provider-http-error";
+import { toProviderErrorKind } from "./utils/to-provider-error-kind";
 import { readUsage } from "./utils/read-usage";
 
 /**
@@ -66,9 +67,8 @@ export class FakeProviderAdapter implements ProviderAdapter {
     const turn = this.next(params);
     if (turn.error) {
       throw new ProviderHttpError({
-        message: `Request failed with status code ${turn.error.code}`,
         status: turn.error.code,
-        bodyText: JSON.stringify({ error: turn.error }),
+        kind: toProviderErrorKind({ status: turn.error.code, bodyText: turn.error.message }),
       });
     }
     const toolCalls = toolCallsOf(turn);
