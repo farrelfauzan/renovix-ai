@@ -144,6 +144,7 @@ model Provider {
   /// RNX-162: the total tokens (new + cached + output) a call must exceed for highCaseFactor to apply.
   highCaseTokenThreshold Int?         @map("high_case_token_threshold")
   models               AiModel[]
+  reconciliationEntries ProviderReconciliationEntry[]
 
   @@unique([name], where: raw("deleted_at IS NULL"))
   @@index([createdByAdminId])
@@ -1421,6 +1422,9 @@ model CreditLedgerEntry {
   @@unique([accountId, idempotencyKey])
   /// I3: a call_id appears on at most one usage entry (partial unique index, created by the migration).
   @@unique([callId], map: "credit_ledger_entries_usage_call_id_key", where: raw("type = 'usage'"))
+  /// RNX-228: credits sold per day reads the purchase entries (top_up, plan_grant) of a day. Written as Postgres prints
+  /// the predicate, so `migrate diff` sees no drift.
+  @@index([createdAt], map: "credit_ledger_entries_purchase_created_at_idx", where: raw("type = ANY (ARRAY['top_up'::\"CreditEntryType\", 'plan_grant'::\"CreditEntryType\"])"))
   @@map("credit_ledger_entries")
 }
 
@@ -1536,4 +1540,92 @@ model ModelCallCost {
   /// RNX-228's reconciliation reads the calls of one day.
   @@index([createdAt])
   @@map("model_call_costs")
+}
+
+// RNX-228: daily usage, cost and revenue aggregates. A closed Asia/Jakarta day is built once by the rollup job
+// (UsageRollupScheduler) into usage_daily_rollups and credit_sales_daily_rollups, and recorded in usage_rollup_days;
+// a day without a usage_rollup_days row (today, or a day the job has not built yet) is computed live from the raw
+// rows with the same query. Written by raw SQL in UsageRollupRepository only.
+
+/// One built day of the usage and credit-sales rollups (RNX-228). Its rows are complete: the day is not built again.
+model UsageRollupDay {
+  day     DateTime @id @db.Date
+  builtAt DateTime @default(now()) @map("built_at") @db.Timestamptz()
+
+  @@map("usage_rollup_days")
+}
+
+/// The model calls of one Asia/Jakarta day per provider, model, tier, wallet, workspace or user, and package (RNX-228).
+model UsageDailyRollup {
+  id                    String       @id @default(uuid())
+  day                   DateTime     @db.Date
+  /// Null: calls without a provider record ("no provider record").
+  providerId            String?      @map("provider_id")
+  providerModelId       String       @map("provider_model_id")
+  tier                  String
+  wallet                CreditWallet
+  /// The call's workspace (agent runs); null on a path without one.
+  workspaceId           String?      @map("workspace_id")
+  /// The usage entry's memberUserId (the runner) when the call has no workspace; null otherwise.
+  userId                String?      @map("user_id")
+  /// The purchase snapshot the call's credits are priced from (paid wallet only); null without one.
+  packageVersionId      String?      @map("package_version_id")
+  topUpPackVersionId    String?      @map("top_up_pack_version_id")
+  calls                 Int
+  tokensNew             BigInt       @map("tokens_new")
+  tokensCached          BigInt       @map("tokens_cached")
+  tokensOut             BigInt       @map("tokens_out")
+  tokensReasoning       BigInt       @map("tokens_reasoning")
+  /// Sums over the calls whose USD cost is known; costUnknownUsdCalls counts the others.
+  costLowUsd            Decimal      @map("cost_low_usd") @db.Decimal(30, 12)
+  costHighUsd           Decimal      @map("cost_high_usd") @db.Decimal(30, 12)
+  costUnknownUsdCalls   Int          @map("cost_unknown_usd_calls")
+  /// Sums over the calls whose rupiah cost is known; costUnknownIdrCalls counts the others.
+  costLowIdr            Decimal      @map("cost_low_idr") @db.Decimal(36, 12)
+  costHighIdr           Decimal      @map("cost_high_idr") @db.Decimal(36, 12)
+  costUnknownIdrCalls   Int          @map("cost_unknown_idr_calls")
+  /// Credits charged on paid-wallet calls (minus the usage entries' amounts).
+  creditsConsumed       Decimal      @map("credits_consumed") @db.Decimal(30, 6)
+  /// Credits consumed x the snapshot's price per credit, over the calls priced from a snapshot.
+  revenueIdr            Decimal      @map("revenue_idr") @db.Decimal(36, 12)
+  revenueUsd            Decimal      @map("revenue_usd") @db.Decimal(30, 12)
+  /// Paid-wallet calls with no snapshot to price them (no usage entry, a company pool, credits from a code).
+  revenueUnknownCalls   Int          @map("revenue_unknown_calls")
+  revenueUnknownCredits Decimal      @map("revenue_unknown_credits") @db.Decimal(30, 6)
+
+  @@index([day])
+  @@map("usage_daily_rollups")
+}
+
+/// Credits sold on one Asia/Jakarta day per package (RNX-228): paid-wallet top_up and plan_grant entries whose reference
+/// is a purchase snapshot's payment id. The value is the snapshot's list price, not cash received.
+model CreditSalesDailyRollup {
+  id                 String   @id @default(uuid())
+  day                DateTime @db.Date
+  packageVersionId   String?  @map("package_version_id")
+  topUpPackVersionId String?  @map("top_up_pack_version_id")
+  entries            Int
+  creditsSold        Decimal  @map("credits_sold") @db.Decimal(30, 6)
+  listValueIdr       Decimal  @map("list_value_idr") @db.Decimal(30, 0)
+  listValueUsd       Decimal  @map("list_value_usd") @db.Decimal(30, 2)
+
+  @@index([day])
+  @@map("credit_sales_daily_rollups")
+}
+
+/// A provider record's portal balance on one Asia/Jakarta day, entered by an admin (RNX-228). One per provider and day.
+model ProviderReconciliationEntry {
+  id               String   @id @default(uuid())
+  providerId       String   @map("provider_id")
+  provider         Provider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  day              DateTime @db.Date
+  portalBalanceUsd Decimal  @map("portal_balance_usd") @db.Decimal(18, 6)
+  /// Credit bought on the portal that day, in USD; 0 when none.
+  topUpUsd         Decimal  @map("top_up_usd") @db.Decimal(18, 6)
+  enteredByAdminId String   @map("entered_by_admin_id")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@unique([providerId, day])
+  @@map("provider_reconciliation_entries")
 }

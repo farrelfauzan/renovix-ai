@@ -35,6 +35,7 @@ import { AdminAuditModule } from "./admin-auth/admin-audit.module";
 import { AdminProvidersModule } from "./admin-providers/admin-providers.module";
 import { AdminCreditsModule } from "./admin-credits/admin-credits.module";
 import { AdminCatalogModule } from "./admin-catalog/admin-catalog.module";
+import { AdminUsageModule } from "./admin-usage/admin-usage.module";
 import { AdminAuditInterceptor } from "./admin-auth/interceptor/admin-audit.interceptor";
 import { AccessModule } from "../common/access.module";
 import { GlobalExceptionFilter } from "../common/filters/global-exception.filter";
@@ -85,6 +86,7 @@ import { clientIp } from "../common/utils/client-ip";
     AdminProvidersModule,
     AdminCreditsModule,
     AdminCatalogModule,
+    AdminUsageModule,
     AccessModule,
   ],
   controllers: [AppController],
