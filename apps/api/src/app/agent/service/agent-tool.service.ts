@@ -47,15 +47,6 @@ export class AgentToolService {
     }
   }
 
-  // Store last generated document result for the current run
-  private lastDocumentResult: {
-    format: string;
-    url: string;
-    filename: string;
-    expiresAt: string;
-    key: string;
-  } | null = null;
-
   constructor(
     private readonly mcpClient: McpClientService,
     private readonly mcpService: McpService,
@@ -395,7 +386,7 @@ export class AgentToolService {
         case "create_reminder":
           return this.executeCreateReminder(args, agent, userId, channelId);
         case "create_document":
-          return this.executeCreateDocument(args);
+          return this.executeCreateDocument(args, mcpSession);
         default:
           return `Tool "${toolName}" is not available. It may require an MCP integration to be connected.`;
       }
@@ -505,11 +496,15 @@ export class AgentToolService {
     }
   }
 
-  private async executeCreateDocument(args: {
-    content: string;
-    format: string;
-    filename?: string;
-  }): Promise<string> {
+  /** RNX-222: the generated document is kept on the calling run's own session, never on this shared service. */
+  private async executeCreateDocument(
+    args: {
+      content: string;
+      format: string;
+      filename?: string;
+    },
+    mcpSession: McpRunSession,
+  ): Promise<string> {
     if (!args.content || !args.format) {
       return "Error: Both 'content' (markdown) and 'format' (pdf/docx/xlsx) are required.";
     }
@@ -523,7 +518,7 @@ export class AgentToolService {
         args.format,
         args.filename,
       );
-      this.lastDocumentResult = result;
+      mcpSession.document = result;
       const formatLabels: Record<string, string> = {
         pdf: "PDF",
         docx: "Word document",
@@ -534,14 +529,6 @@ export class AgentToolService {
       this.logger.error(`[create_document] Failed: ${err.message}`, err.stack);
       return `Failed to generate document: ${err.message}`;
     }
-  }
-
-  getLastDocumentResult() {
-    return this.lastDocumentResult;
-  }
-
-  clearLastDocumentResult() {
-    this.lastDocumentResult = null;
   }
 
   private async executeCreateReminder(

@@ -16,7 +16,6 @@ import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
 import type { FastifyReply } from "fastify";
 import { AgentRunService } from "../service/agent-run.service";
-import { AgentToolService } from "../service/agent-tool.service";
 import { AgentChatSchema } from "../dto/agent-chat.dto";
 import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -32,7 +31,6 @@ export class AgentRunController {
 
   constructor(
     private readonly runService: AgentRunService,
-    private readonly toolService: AgentToolService,
     private readonly documentService: DocumentService,
     private readonly providerRouter: ProviderRouter,
     private readonly registry: ModelRegistryService,
@@ -97,9 +95,6 @@ export class AgentRunController {
         );
       }
 
-      // Clear any previous document result before running
-      this.toolService.clearLastDocumentResult();
-
       // Use non-streaming chat (reliable, no stream issues)
       const result = await this.runService.chat(
         userId,
@@ -113,9 +108,8 @@ export class AgentRunController {
         `[Controller] chat completed | runId=${result.runId} contentLen=${result.message.content?.length ?? 0}`,
       );
 
-      // Check if create_document tool was called during the run
-      const toolDocumentResult = this.toolService.getLastDocumentResult();
-      this.toolService.clearLastDocumentResult();
+      // RNX-222: the document this run's own create_document call generated, if it was called
+      const toolDocumentResult = result.document;
 
       if (toolDocumentResult) {
         // Document was generated via tool call — send it

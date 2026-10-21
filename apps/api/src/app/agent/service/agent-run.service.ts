@@ -72,6 +72,7 @@ export class AgentRunService {
     private readonly workspaceKnowledge: WorkspaceKnowledgeService,
   ) {}
 
+  /** One agent message as one run; RNX-222: the result carries the document its own `create_document` made. */
   async chat(
     userId: string,
     agentId: string,
@@ -148,7 +149,7 @@ export class AgentRunService {
       options?.documentFormat,
     );
 
-    const { run, result } = await this.runMessage(context, messages, agent, runSessionId, message);
+    const { run, result, document } = await this.runMessage(context, messages, agent, runSessionId, message);
 
     // Extract and store memory asynchronously
     this.memoryService
@@ -178,6 +179,7 @@ export class AgentRunService {
         totalTokens: result.totalTokens,
         cost: result.totalCost?.toString(),
       },
+      document,
     };
   }
 
@@ -238,7 +240,7 @@ export class AgentRunService {
    * 13). The run row (for a new session) and the user message are written only once the reservation holds, so a
    * refused message writes neither; the MCP connections opened for the run are closed on every path (success,
    * refusal, provider error, budget stop). RNX-217: they are this run's own (mcpSession); closing them closes no
-   * other run's.
+   * other run's. RNX-222: the document its `create_document` call generated (mcpSession) is returned with it.
    */
   private async runMessage(context: AgentContext, messages: any[], agent: any, sessionId: string, message: string) {
     const injectDelegation = agent.agentType === "parent" && agent.subAgents?.length > 0;
@@ -290,7 +292,7 @@ export class AgentRunService {
           cost: result.totalCost,
         },
       });
-      return { run, result };
+      return { run, result, document: mcpSession.document };
     } finally {
       await this.toolService.cleanupMcpConnections(mcpSession);
     }

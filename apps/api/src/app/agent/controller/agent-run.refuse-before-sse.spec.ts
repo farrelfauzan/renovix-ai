@@ -70,8 +70,6 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
             useValue: {
               buildToolSchemasWithMcp: async () => [],
               cleanupMcpConnections,
-              clearLastDocumentResult: () => undefined,
-              getLastDocumentResult: () => null,
             },
           },
           { provide: AgentMemoryService, useValue: { getMemoryContext: async () => "", extractAndStore: async () => undefined } },
