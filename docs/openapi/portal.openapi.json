@@ -2909,7 +2909,8 @@
                       "low",
                       "medium",
                       "high"
-                    ]
+                    ],
+                    "description": "Reasoning effort sent to the model. Ignored (not sent, not refused) for models without reasoning support."
                   },
                   "conversation_id": {
                     "type": "string",
@@ -3102,7 +3103,8 @@
                       "low",
                       "medium",
                       "high"
-                    ]
+                    ],
+                    "description": "Reasoning effort sent to the model. Ignored (not sent, not refused) for models without reasoning support."
                   },
                   "conversation_id": {
                     "type": "string",
