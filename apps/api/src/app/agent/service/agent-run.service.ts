@@ -383,7 +383,7 @@ export class AgentRunService {
             let result: string;
 
             if (toolCall.function.name === "call_agent") {
-              result = await this.executeSubAgent(agent, context.callableAgents, args, meteredRun, metered.callId);
+              result = await this.executeSubAgent(agent, context, args, meteredRun, metered.callId);
               iterations += 2;
             } else {
               result = await this.toolService.executeTool(
@@ -433,12 +433,13 @@ export class AgentRunService {
 
   /**
    * One hop (RX-22b), behind call_agent (RNX-118): the called agent's model call is metered on the run, with the
-   * calling model call as its parent. Only an agent of `callableAgents` (a linked callee in the caller's workspace,
-   * none for a runner outside it) is called; any other name is refused and nothing runs.
+   * calling model call as its parent. Only an agent of `runContext.callableAgents` (a linked callee in the caller's
+   * workspace, none for a runner outside it) is called; any other name is refused and nothing runs. RNX-119: the hop
+   * runs for the run's own runner and scope (`runContext`).
    */
   private async executeSubAgent(
     agent: any,
-    callableAgents: CallableAgent[],
+    runContext: AgentContext,
     args: any,
     meteredRun: AgentRunBudget,
     parentCallId: string,
@@ -458,7 +459,7 @@ export class AgentRunService {
       return "Error: Missing task for the called agent.";
     }
 
-    const subAgent = callableAgents.find(
+    const subAgent = runContext.callableAgents.find(
       (callee) => callee.id === rawIdentifier || callee.name.toLowerCase() === rawIdentifier.toLowerCase(),
     );
 
@@ -476,8 +477,8 @@ export class AgentRunService {
     // RX-178 review N3: a sub-agent whose model cannot be resolved is a failed hop (the fixed text), not a failed run.
     let context: AgentContext;
     try {
-      // RNX-119: a called agent runs without tools, and only in a run inside the workspace (callable agents are none outside)
-      context = await this.buildContext(subAgent, agent.userId, "inside");
+      // RNX-119: the called agent runs for the run's own runner and scope (it gets no tools, see below)
+      context = await this.buildContext(subAgent, runContext.userId, runContext.scope);
     } catch (err) {
       if (!(err instanceof ModelUnavailableException)) throw err;
       this.logger.warn(`[executeSubAgent] sub-agent ${subAgent.id}: model not available`);
