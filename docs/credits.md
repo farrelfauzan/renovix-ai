@@ -464,7 +464,7 @@ Follows: D44, D64 item 4 (no collaboration on Starter and Pro, enforced on the s
 
 - A Starter or Pro account has one person. It has no workspace members, no invitations and no seats; the server refuses them (D64).
 - Only a company account (Enterprise) has seats, collaborators and a pool. Seats count across all the company's workspaces (D7).
-- Consequence for the ledger: on a user account, `memberUserId` is always the account owner; only a company pool has entries from several people.
+- Consequence for the ledger: on a user account, `memberUserId` is always the account owner, except on an `adjustment` entry, which names the back-office admin who made it (RNX-227); only a company pool has entries from several people.
 
 ## 11. The onboarding demo agent
 

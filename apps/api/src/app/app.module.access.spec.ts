@@ -201,6 +201,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
     "POST /admin/admins/:id/suspend (AdminAdminsController.suspend)",
     "POST /admin/auth/reauth (AdminAuthController.reauth)",
+    "POST /admin/credits/adjustments (AdminCreditsController.adjust)",
     "POST /admin/invitations (AdminInvitationsController.create)",
     "POST /admin/invitations/:id/resend (AdminInvitationsController.resend)",
     "POST /admin/providers (AdminProvidersController.create)",
@@ -252,6 +253,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "PATCH /admin/roles/:name (AdminRolesController.update)": ["roles:write"],
     "POST /admin/roles (AdminRolesController.create)": ["roles:write"],
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)": ["roles:write"],
+    // RNX-227: a credit adjustment needs credits:adjust.
+    "POST /admin/credits/adjustments (AdminCreditsController.adjust)": ["credits:adjust"],
   };
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
@@ -310,11 +313,13 @@ describe("RX-114: every route of AppModule declares its access", () => {
   // RNX-187: editing a role and every role assignment as well. Inviting an Owner (POST /admin/invitations with
   // role "owner") also needs one; its controller checks that, since `reauth` cannot depend on the body. RNX-214:
   // resending an Owner invitation (POST /admin/invitations/:id/resend) too, checked in its controller the same way.
+  // RNX-227: a credit adjustment.
   const REAUTH_ROUTES = [
     "PATCH /admin/roles/:name (AdminRolesController.update)",
     "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
     "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
     "POST /admin/admins/:id/suspend (AdminAdminsController.suspend)",
+    "POST /admin/credits/adjustments (AdminCreditsController.adjust)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
   ];
 
@@ -340,6 +345,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/auth/sign-out (AdminAuthController.signOut)",
     "POST /admin/auth/totp/confirm (AdminAuthController.confirm)",
     "POST /admin/auth/totp/enrol (AdminAuthController.enrol)",
+    "POST /admin/credits/adjustments (AdminCreditsController.adjust)",
     "POST /admin/invitations (AdminInvitationsController.create)",
     "POST /admin/invitations/:id/resend (AdminInvitationsController.resend)",
     "POST /admin/providers (AdminProvidersController.create)",

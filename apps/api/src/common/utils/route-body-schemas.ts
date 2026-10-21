@@ -20,6 +20,7 @@ import { AcceptInvitationDto } from "../../app/admin-auth/dto/accept-invitation.
 import { TotpCodeDto } from "../../app/admin-auth/dto/totp-code.dto";
 import { AuditLogQueryDto } from "../../app/admin-auth/dto/audit-log-query.dto";
 import { AuditLogExportQueryDto } from "../../app/admin-auth/dto/audit-log-export-query.dto";
+import { CreditAdjustmentDto } from "../../app/admin-credits/dto/credit-adjustment.dto";
 import { CreateProviderDto } from "../../app/admin-providers/dto/create-provider.dto";
 import { UpdateProviderDto } from "../../app/admin-providers/dto/update-provider.dto";
 import { TestProviderDto } from "../../app/admin-providers/dto/test-provider.dto";
@@ -66,6 +67,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /admin/providers/:id/test", TestProviderDto],
   ["POST /admin/providers/:providerId/models", CreateProviderModelDto],
   ["PATCH /admin/providers/:providerId/models/:modelId", UpdateProviderModelDto],
+  ["POST /admin/credits/adjustments", CreditAdjustmentDto],
   // ─── chat and agents ───
   ["POST /chat/completions", ApiChatCompletionRequestSchema],
   ["POST /agents", CreateAgentSchema],
