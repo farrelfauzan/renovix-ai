@@ -195,4 +195,6 @@ Copy `.env.example` to `.env`. Key variables:
 | `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |
 
+API logs (RNX-17, `apps/api/src/common/logger/app-logger.ts`): `NODE_ENV` sets both level and format, no other variable. With `development` every level is logged in Nest's readable format. Any other value logs errors and warnings only, as one JSON object per line. A line written while a request is handled carries `requestId` (the Fastify request id), `route` (the route pattern, not the URL) and `accountId` (or `adminId` on a back-office route) once a guard has accepted the caller. Every line is masked centrally, whatever the call site passes: authorization and cookie headers, API and provider keys, passwords, tokens, Bearer credentials, JWTs and connection-string passwords become `[REDACTED]`, in strings, objects and errors. `console.*` calls bypass this logger.
+
 Frontend apps need `NEXT_PUBLIC_API_URL` (build-time Docker ARG for chat).

@@ -4,6 +4,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import helmet from "@fastify/helmet";
 import { AppModule } from "./app/app.module";
 import { resolveLlmProvider } from "./app/providers/llm-provider";
+import { createAppLogger } from "./common/utils/create-app-logger";
 import { createFastifyAdapter } from "./common/utils/create-fastify-adapter";
 import { assertRequiredSecrets } from "./common/utils/assert-required-secrets";
 import { resolveCorsOrigins } from "./common/utils/resolve-cors-origins";
@@ -30,9 +31,8 @@ async function bootstrap(): Promise<NestFastifyApplication> {
         allowedHeaders: ["Content-Type", "Authorization", "X-Portal-Session"],
         credentials: true,
       },
-      logger: isDev
-        ? ["debug", "error", "warn", "verbose", "log"]
-        : ["error", "warn"],
+      // RNX-17: JSON lines (readable in development) with the request's id, route and account; secrets masked.
+      logger: createAppLogger(process.env),
       rawBody: true,
     },
   );
