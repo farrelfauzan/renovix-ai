@@ -25,8 +25,8 @@ export class AgentMemoryService {
    * outside the workspace (an outsider on a public agent) reads no workspace memory.
    */
   async getMemoryContext(agentId: string, userId: string, scope: RunScope): Promise<string> {
-    // Resolve workspace from agent
-    const workspaceId = scope === "inside" ? await this.findSharedWorkspaceId(agentId) : null;
+    // Resolve workspace from agent (RNX-119: findRunMemoryWorkspaceId)
+    const workspaceId = await this.findRunMemoryWorkspaceId(agentId, scope);
 
     const parts: string[] = [];
 
@@ -51,12 +51,11 @@ export class AgentMemoryService {
   }
 
   /**
-   * Get only workspace-scoped memories for agent chat (no user memories). RNX-119 (R17): none for a run outside the
-   * workspace.
+   * Get only workspace-scoped memories for agent chat (no user memories). RNX-119: the workspace is
+   * findRunMemoryWorkspaceId's (none for a run outside the workspace; never a channel's other workspace).
    */
-  async getWorkspaceMemoryContext(agentId: string, scope: RunScope): Promise<string> {
-    if (scope !== "inside") return "";
-    const workspaceId = await this.findSharedWorkspaceId(agentId);
+  async getWorkspaceMemoryContext(agentId: string, scope: RunScope, channelId?: string): Promise<string> {
+    const workspaceId = await this.findRunMemoryWorkspaceId(agentId, scope, channelId);
 
     if (!workspaceId) return "";
 
@@ -127,16 +126,8 @@ Rules:
       const facts = JSON.parse(jsonMatch[0]);
       if (!Array.isArray(facts) || facts.length === 0) return;
 
-      // Resolve workspace from channel or agent
-      let workspaceId: string | null = null;
-      if (channelId) {
-        const workspace =
-          await this.workspaces.findWorkspaceIdByChannel(channelId);
-        workspaceId = workspace?.id ?? null;
-      }
-      if (!workspaceId) {
-        workspaceId = await this.findSharedWorkspaceId(agentId);
-      }
+      // RNX-119 review round 1: the run's memory workspace, never a channel's other workspace
+      const workspaceId = await this.findRunMemoryWorkspaceId(agentId, scope, channelId);
 
       // Store each fact
       for (const fact of facts.slice(0, 3)) {
@@ -193,25 +184,18 @@ Rules:
     }
   }
 
+  /** The memory_store tool's write. RNX-119: nothing for a run outside the workspace (R17). */
   async storeExplicit(
     agentId: string,
     userId: string,
     fact: string,
     type: string,
+    scope: RunScope,
     channelId?: string,
   ): Promise<void> {
-    // Resolve workspace: first try via channel, then via agent
-    let workspaceId: string | null = null;
-
-    if (channelId) {
-      const workspace =
-        await this.workspaces.findWorkspaceIdByChannel(channelId);
-      workspaceId = workspace?.id ?? null;
-    }
-
-    if (!workspaceId) {
-      workspaceId = await this.findSharedWorkspaceId(agentId);
-    }
+    if (scope !== "inside") return;
+    // RNX-119 review round 1: the run's memory workspace, never a channel's other workspace
+    const workspaceId = await this.findRunMemoryWorkspaceId(agentId, scope, channelId);
 
     this.logger.log(
       `[storeExplicit] agentId=${agentId} userId=${userId} channelId=${channelId ?? "null"} workspaceId=${workspaceId ?? "null"} type=${type} fact="${fact.slice(0, 100)}"`,
@@ -242,12 +226,20 @@ Rules:
   }
 
   /**
-   * The agent's workspace id, or null when the agent is in its owner's default workspace (or does not exist):
-   * an agent in a default workspace keeps the memory of an agent with no workspace (RNX-117, answer 1).
+   * RNX-119 (review round 1): the workspace whose memory a run reads and writes. A run's memory is read from and
+   * written to the CHANNEL's workspace only when that workspace IS the agent's own workspace (agent.workspaceId).
+   * Otherwise, for an inside run it falls back to the agent's own workspace, never the channel's other workspace; for
+   * an outside run there is no workspace memory at all (R17). Null also when the agent does not exist, or when the
+   * fallback is the agent's owner's default workspace: an agent there keeps the memory of an agent with no workspace
+   * (RNX-117, answer 1).
    */
-  private async findSharedWorkspaceId(agentId: string): Promise<string | null> {
+  private async findRunMemoryWorkspaceId(agentId: string, scope: RunScope, channelId?: string): Promise<string | null> {
+    if (scope !== "inside") return null;
     const agent = await this.agents.findAgentWorkspaceId(agentId);
-    if (!agent || agent.workspace.isDefault) return null;
-    return agent.workspaceId;
+    if (!agent) return null;
+    if (channelId && (await this.workspaces.findWorkspaceIdByChannel(channelId))?.id === agent.workspaceId) {
+      return agent.workspaceId;
+    }
+    return agent.workspace.isDefault ? null : agent.workspaceId;
   }
 }

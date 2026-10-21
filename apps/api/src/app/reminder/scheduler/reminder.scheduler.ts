@@ -148,6 +148,7 @@ export class ReminderScheduler {
     const memoryContext = await this.memoryService.getWorkspaceMemoryContext(
       agent.id,
       scope,
+      reminder.channelId,
     );
     if (memoryContext) {
       systemContent += `\n\n## Workspace Memory\nHere are important facts you should remember:\n${memoryContext}`;

@@ -209,6 +209,75 @@ describe("RNX-119: the memory_store tool follows the run's scope (test database,
     });
   });
 
+  /**
+   * RNX-119 review round 1 (blocking): collaborator C runs W's private agent (C is an Enterprise collaborator of W) in
+   * C's own channel, which is the channel of C's shared workspace Y. The run's facts (memory_store and the extraction)
+   * belong to W, never to Y.
+   */
+  describe("a channel linked to another workspace of the runner (review round 1)", () => {
+    const EXTRACTED = "RNX119 EXTRACTED FACT";
+
+    const seedChannelInOtherWorkspace = async () => {
+      const seeded = await seed();
+      await prisma.agent.update({ where: { id: seeded.agent.id }, data: { isPublic: false } });
+      const yWorkspace = await createWorkspace(prisma, { ownerId: seeded.collaborator.id, channelId: seeded.collaboratorChannel.id });
+      return { ...seeded, yWorkspace };
+    };
+
+    const rowsIn = async (workspaceId: string) =>
+      (await prisma.workspaceMemory.findMany({ where: { workspaceId }, orderBy: { content: "asc" } })).map((r) => r.content);
+
+    it("channel chat: memory_store and the extraction write to W, nothing to the channel's workspace Y", async () => {
+      const { workspace, agent, collaborator, collaboratorChannel, yWorkspace } = await seedChannelInOtherWorkspace();
+      fake.enqueue(storeTurn, { content: "Done" }, { content: `[{"type":"fact","content":"${EXTRACTED}","confidence":0.9}]` });
+
+      await settled(() => channelChats.chat(collaborator.id, collaboratorChannel.id, agent.id, "Remember this"));
+
+      expect(await rowsIn(yWorkspace.id)).toEqual([]);
+      expect(await rowsIn(workspace.id)).toEqual([EXTRACTED, FACT]);
+    });
+
+    it("reminder fire: memory_store writes to W, nothing to the channel's workspace Y", async () => {
+      const { workspace, agent, collaborator, collaboratorChannel, yWorkspace } = await seedChannelInOtherWorkspace();
+      const room = await prisma.channelChatRoom.create({ data: { channelId: collaboratorChannel.id } });
+      await prisma.reminder.create({
+        data: {
+          userId: collaborator.id,
+          agentId: agent.id,
+          channelId: collaboratorChannel.id,
+          chatRoomId: room.id,
+          prompt: "Remember this daily",
+          cronExpression: "0 8 * * *",
+          timezone: "UTC",
+          nextRunAt: new Date(Date.now() - 60_000),
+        },
+      });
+      fake.enqueue(storeTurn, { content: "Done" });
+
+      await moduleRef.get(ReminderScheduler).processReminders();
+
+      expect(await rowsIn(yWorkspace.id)).toEqual([]);
+      expect(await rowsIn(workspace.id)).toEqual([FACT]);
+    });
+
+    it("channel chat: the prompt reads W's memory, never Y's", async () => {
+      const { workspace, agent, collaborator, collaboratorChannel, yWorkspace } = await seedChannelInOtherWorkspace();
+      await prisma.workspaceMemory.createMany({
+        data: [
+          { workspaceId: workspace.id, type: "fact", content: "W MEMORY", status: "active" },
+          { workspaceId: yWorkspace.id, type: "fact", content: "Y MEMORY", status: "active" },
+        ],
+      });
+      fake.enqueue({ content: "Done" }, { content: "[]" });
+
+      await settled(() => channelChats.chat(collaborator.id, collaboratorChannel.id, agent.id, "Hi"));
+
+      const prompt = String(fake.requests[0].messages[0].content);
+      expect(prompt).toContain("W MEMORY");
+      expect(prompt).not.toContain("Y MEMORY");
+    });
+  });
+
   describe("a run inside the workspace stores as before (control)", () => {
     it("agent chat: a collaborator's memory_store writes the fact to the workspace memory", async () => {
       const { workspace, agent, collaborator } = await seed();

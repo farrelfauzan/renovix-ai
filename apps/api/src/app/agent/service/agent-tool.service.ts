@@ -504,6 +504,7 @@ export class AgentToolService {
         userId,
         args.fact,
         args.type || "context",
+        scope,
         channelId,
       );
       return `Successfully stored memory: "${args.fact}" (type: ${args.type})`;
