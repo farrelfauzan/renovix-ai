@@ -10,4 +10,14 @@ export interface ModelConnection {
   readonly apiKey: string;
   /** The provider record's name, for log lines and usage rows. */
   readonly providerName: string;
+  /**
+   * RNX-179: the provider record's id, the key of its circuit breaker in ProviderRouter. Absent on a connection that
+   * is not a provider record (LLM_PROVIDER=fake, hand-built test connections): such a call has no breaker.
+   */
+  readonly providerRecordId?: string;
+  /**
+   * RNX-179 (D58, D149): the model's usable fallback models, in order, each with its own provider and slug; a 502 or
+   * 503 moves the call to the next one. A fallback has none itself.
+   */
+  readonly fallbacks?: readonly ModelConnection[];
 }

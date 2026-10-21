@@ -18,6 +18,9 @@ import { streamedCallTokens } from "../../billing/utils/streamed-call-tokens";
 import type { UsageRecord } from "../../billing/types/usage-record";
 import { ProviderRouter } from "../../providers/provider-router";
 import type { ChatRequest, ChatUsage } from "../../providers/provider.interface";
+import type { ServedBy } from "../../providers/types/served-by";
+import type { CallHooks } from "../../providers/types/call-hooks";
+import { failedAttemptRecord } from "../../billing/utils/failed-attempt-record";
 import { ProviderHttpError } from "../../providers/errors/provider-http-error";
 import { ProviderStreamError } from "../../providers/errors/provider-stream-error";
 import { ProviderTimeoutError } from "../../providers/errors/provider-timeout-error";
@@ -56,13 +59,15 @@ export class ChatService {
     const startTime = Date.now();
     const { connection, request, matchedTemplate, call } = await this.openCall(body, user);
 
-    // 5. Call provider
+    // 5. Call provider. RNX-179: each attempt that falls over to a fallback model is its own provider_error entry
+    // (rule 6); the call's entry below names the last model tried (the one that answered or failed).
+    let attempt: ServedBy = connection;
     let providerResponse;
     try {
-      providerResponse = await this.providerRouter.chat(request);
+      providerResponse = await this.providerRouter.chat(request, this.attemptHooks(call, (tried) => (attempt = tried)));
     } catch (error: any) {
       // A provider error is charged 0 and releases the hold (docs/credits.md section 3.1 rule 6).
-      await this.credits.finishCall({ ...call, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" });
+      await this.credits.finishCall({ ...call, modelId: attempt.slug, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" });
       this.logger.error(`Provider call failed: ${error.message}`, error.stack);
       // RNX-190 (D199): a typed upstream error gives the client its fixed text; the status code stays 500.
       const isTyped = error instanceof ProviderHttpError || error instanceof ProviderTimeoutError;
@@ -77,21 +82,23 @@ export class ChatService {
     const { usage } = providerResponse;
     const entry = await this.credits.finishCall({
       ...call,
+      modelId: attempt.slug,
       tokens: tokensFromUsage(usage.prompt_tokens, usage.cachedTokens ?? 0, usage.completion_tokens),
       outcome: "completed",
     });
     const actualCost = entry.amount.negated();
 
-    // 8. Log usage (async — don't block response)
+    // 8. Log usage (async — don't block response): the model and provider that answered (RNX-179: a fallback after a
+    // 502/503), charged above at the requested model's rates (D149).
     this.usage
       .logUsage({
         userId: user.id,
-        model: body.model,
+        model: attempt.slug,
         inputTokens: providerResponse.usage.prompt_tokens,
         outputTokens: providerResponse.usage.completion_tokens,
         cost: actualCost,
         latencyMs,
-        provider: connection.providerName,
+        provider: attempt.providerName,
       })
       .catch((err) => this.logger.error("Failed to log usage", err));
 
@@ -179,8 +186,12 @@ export class ChatService {
       finishReason: "stop",
       isOpened: false,
     };
+    // RNX-179: the last model tried (the one that answered, after any 502/503 before the first payload); each attempt
+    // that fell over is its own provider_error entry (rule 6).
+    let attempt: ServedBy = opened.connection;
+    const hooks = this.attemptHooks(opened.call, (tried) => (attempt = tried));
     try {
-      for await (const payload of this.providerRouter.chatStream({ ...opened.request, signal: disconnected.signal })) {
+      for await (const payload of this.providerRouter.chatStream({ ...opened.request, signal: disconnected.signal }, hooks)) {
         received.isOpened = true;
         const delta = readCompletionDelta(payload);
         if (delta.content) {
@@ -192,19 +203,20 @@ export class ChatService {
         received.usage = delta.usage ?? received.usage;
       }
     } catch (error) {
-      return this.endFailedStream(error, { call: opened.call, sentPrompt, received, aborted: disconnected.signal.aborted, response });
+      const call = { ...opened.call, modelId: attempt.slug };
+      return this.endFailedStream(error, { call, sentPrompt, received, aborted: disconnected.signal.aborted, response });
     }
     const outcome = streamedCallOutcome({ providerFailed: false, aborted: disconnected.signal.aborted, streamOpened: received.isOpened });
-    const entry = await this.finishStreamedCall(opened.call, outcome, { sentPrompt, ...received });
+    const entry = await this.finishStreamedCall({ ...opened.call, modelId: attempt.slug }, outcome, { sentPrompt, ...received });
     this.usage
       .logUsage({
         userId: user.id,
-        model: body.model,
+        model: attempt.slug,
         inputTokens: (entry.tokensNew ?? 0) + (entry.tokensCached ?? 0),
         outputTokens: entry.tokensOut ?? 0,
         cost: entry.amount.negated(),
         latencyMs: Date.now() - startTime,
-        provider: opened.connection.providerName,
+        provider: attempt.providerName,
       })
       .catch((err) => this.logger.error("Failed to log usage", err));
     if (outcome === "completed" && body.store) await this.storeConversation(body, user.id, { content: received.content });
@@ -319,6 +331,18 @@ export class ChatService {
     this.logger.error(`Stream error: ${text.logText}`);
     failed.response.write(`data: ${JSON.stringify({ error: { message: `${text.clientMessage}. No credits were charged.` } })}\n\n`);
     failed.response.end();
+  }
+
+  /**
+   * RNX-179: the router hooks of one call: `onTried` learns each model tried, and each attempt that falls over to a
+   * fallback is written as its own provider_error usage entry under the call's reservation (docs/credits.md section
+   * 3.1 rule 6), without closing it.
+   */
+  private attemptHooks(call: Omit<UsageRecord, "tokens" | "outcome">, onTried: (tried: ServedBy) => void): CallHooks {
+    return {
+      onAttempt: onTried,
+      onAttemptFailed: async (failed) => void (await this.credits.recordUsage(failedAttemptRecord(call, failed))),
+    };
   }
 
   /**

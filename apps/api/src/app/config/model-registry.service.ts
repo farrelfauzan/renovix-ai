@@ -6,6 +6,7 @@ import { resolveLlmProvider } from "../providers/llm-provider";
 import type { ModelConnection } from "../providers/types/model-connection";
 import { ModelUnavailableException } from "./errors/model-unavailable.exception";
 import type { CachedConnection } from "./types/cached-connection";
+import { isTierAbove } from "./utils/is-tier-above";
 
 /**
  * One tier's per-token credit rates (RX-21). The credit CHARGING path multiplies token counts by
@@ -44,6 +45,8 @@ export class ModelRegistryService implements OnModuleInit {
   private models = new Map<string, ModelConfig>();
   /** RX-178: active models whose provider record is active and live, by slug. */
   private connections = new Map<string, CachedConnection>();
+  /** RNX-179: each active model's fallback model slugs, in order (active or not; resolveConnection filters). */
+  private fallbackSlugs = new Map<string, string[]>();
   private tierRates = new Map<string, TierRates>();
   private markupMultiplier = new Decimal(2);
   private lastRefresh = 0;
@@ -67,6 +70,7 @@ export class ModelRegistryService implements OnModuleInit {
         providerRecord: {
           select: { id: true, name: true, baseUrl: true, status: true, deletedAt: true, apiKeyCiphertext: true },
         },
+        fallbacks: { orderBy: { position: "asc" }, select: { fallbackModel: { select: { slug: true } } } },
       },
     });
     const rateRows = await this.prisma.tierRate.findMany();
@@ -76,7 +80,9 @@ export class ModelRegistryService implements OnModuleInit {
 
     const map = new Map<string, ModelConfig>();
     const connections = new Map<string, CachedConnection>();
+    const fallbackSlugs = new Map<string, string[]>();
     for (const m of aiModels) {
+      fallbackSlugs.set(m.slug, m.fallbacks.map((fallback) => fallback.fallbackModel.slug));
       const record = m.providerRecord;
       if (record && record.deletedAt === null && record.status === "active") {
         connections.set(m.slug, {
@@ -103,6 +109,7 @@ export class ModelRegistryService implements OnModuleInit {
     }
     this.models = map;
     this.connections = connections;
+    this.fallbackSlugs = fallbackSlugs;
 
     const rates = new Map<string, TierRates>();
     for (const row of rateRows) {
@@ -135,13 +142,50 @@ export class ModelRegistryService implements OnModuleInit {
    * call through ProviderRepository; the cache holds the ciphertext only) and the slug sent as `model`. An unknown
    * slug, a model without a provider record and an inactive or deleted provider are a ModelUnavailableException
    * (400). LLM_PROVIDER=fake skips the lookup (D199-5): no rows needed, and the fake sends nothing anywhere.
+   * RNX-179: the connection carries the model's usable fallback models, in order (see resolveFallback).
    */
   async resolveConnection(slug: string): Promise<ModelConnection> {
     if (this.isFakeMode) return { slug, ...FAKE_CONNECTION };
     await this.ensureFresh();
     const cached = this.connections.get(slug);
     if (!cached) throw new ModelUnavailableException();
-    return { slug, baseUrl: cached.baseUrl, apiKey: this.openKey(cached, slug), providerName: cached.providerName };
+    const fallbacks = (this.fallbackSlugs.get(slug) ?? []).flatMap((fallbackSlug) => this.resolveFallback(slug, fallbackSlug));
+    return { ...this.toConnection(slug, cached), fallbacks };
+  }
+
+  /** RX-178, RNX-179: the call's connection of one cached provider record (its key opened for this call), with the record id for its breaker. */
+  private toConnection(slug: string, cached: CachedConnection): ModelConnection {
+    return {
+      slug,
+      baseUrl: cached.baseUrl,
+      apiKey: this.openKey(cached, slug),
+      providerName: cached.providerName,
+      providerRecordId: cached.providerRecordId,
+    };
+  }
+
+  /**
+   * RNX-179 (D149): one fallback of `slug` as a connection, or none when it cannot serve: an inactive model, an
+   * inactive or deleted provider, a key that does not open, or a tier above the model's (raised after it was set as a
+   * fallback). Each skip is logged.
+   */
+  private resolveFallback(slug: string, fallbackSlug: string): ModelConnection[] {
+    const cached = this.connections.get(fallbackSlug);
+    if (!cached) {
+      this.logger.warn(`[resolveConnection] fallback ${fallbackSlug} of ${slug} skipped: the model or its provider is not active`);
+      return [];
+    }
+    const tier = this.models.get(slug)?.tier ?? "";
+    const fallbackTier = this.models.get(fallbackSlug)?.tier ?? "";
+    if (isTierAbove(fallbackTier, tier)) {
+      this.logger.warn(`[resolveConnection] fallback ${fallbackSlug} of ${slug} skipped: its tier ${fallbackTier} is above ${tier}`);
+      return [];
+    }
+    try {
+      return [this.toConnection(fallbackSlug, cached)];
+    } catch {
+      return [];
+    }
   }
 
   /** RX-178 review N1: a stored key that does not open makes the provider unusable for chat: the fixed 400, the reason logged. */

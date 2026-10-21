@@ -14,4 +14,6 @@ export type ProviderModelView = {
   readonly active: boolean;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** RNX-179: the ids of the model's fallback models, in order. */
+  readonly fallbackModelIds: readonly string[];
 };

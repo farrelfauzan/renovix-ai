@@ -24,7 +24,10 @@ import { errorName } from "../../common/utils/error-name";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MAX_TOKENS = 4096;
-/** Outage statuses whose Retry-After the adapter honours once (RX-161). No other endpoint is tried (RX-178, D199-4). */
+/**
+ * Outage statuses whose Retry-After the adapter honours once (RX-161). RNX-179: when a fallback model remains
+ * (`hasFallback`), they end the call at once instead, and ProviderRouter moves on to the fallback.
+ */
 const OUTAGE_STATUSES = [502, 503];
 const CHAT_TIMEOUT_MS = 300000;
 /** Time allowed until the stream's response headers arrive; the body itself is not cut off. */
@@ -135,7 +138,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
 
   /**
    * RX-161: a 502/503 with Retry-After is retried once against the same connection after the stated
-   * wait; there is no other endpoint (RX-178, D199-4: the env fallback is gone, RX-179 rebuilds it).
+   * wait, unless a fallback model remains (RNX-179: ProviderRouter moves on instead, no wait).
    * RX-183: when `signal` fires during the wait, the timer is cleared, the wait rejects with the
    * signal's reason (as an aborted fetch does) and the provider is not called again; chat passes no
    * signal and waits the full time exactly as before.
@@ -144,9 +147,9 @@ export class OpenRouterAdapter implements ProviderAdapter {
     err: unknown,
     connection: LlmEndpoint,
     send: (endpoint: LlmEndpoint) => Promise<T>,
-    signal?: AbortSignal,
+    { signal, hasFallback }: Pick<ChatRequest, "signal" | "hasFallback">,
   ): Promise<T> {
-    if (!isRetryAfterOutage(err)) throw err;
+    if (!isRetryAfterOutage(err) || hasFallback) throw err;
     this.logger.warn(
       `[LLM] provider (${new URL(connection.baseUrl).host}) answered ${err.status} with Retry-After; retrying once in ${err.retryAfterMs}ms`,
     );
@@ -238,8 +241,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
     }
 
     const send = (endpoint: LlmEndpoint) => this.postChat(endpoint, body);
-    const data = await this.postChatWithRetries(connection, body).catch((err) =>
-      this.retryOnceAfter(err, connection, send),
+    const data = await this.postChatWithRetries(connection, body, params.hasFallback).catch((err) =>
+      this.retryOnceAfter(err, connection, send, params),
     );
 
     if (params.max_tokens && params.max_tokens <= 50) {
@@ -274,10 +277,11 @@ export class OpenRouterAdapter implements ProviderAdapter {
   /**
    * Today's retries (6 attempts on timeout, 500, 502, 503, 429), against the request's connection.
    * A 502/503 with Retry-After leaves the loop at once (RX-161, see retryOnceAfter); a 502 or 503
-   * without one keeps this back-off (RX-178: no fallback to leave for). RNX-190 (D199): timeouts on every attempt end
-   * in the typed ProviderTimeoutError.
+   * without one keeps this back-off when no fallback model remains; with one (`hasFallback`, RNX-179) a 502 or 503
+   * leaves at once so ProviderRouter can move on. RNX-190 (D199): timeouts on every attempt end in the typed
+   * ProviderTimeoutError.
    */
-  private async postChatWithRetries(connection: LlmEndpoint, body: Record<string, unknown>): Promise<any> {
+  private async postChatWithRetries(connection: LlmEndpoint, body: Record<string, unknown>, hasFallback = false): Promise<any> {
     const maxRetries = 6;
     let lastError: any;
 
@@ -288,6 +292,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
         lastError = err;
         if (isRetryAfterOutage(err)) throw err;
         const status = err instanceof ProviderHttpError ? err.status : undefined;
+        if (hasFallback && status && OUTAGE_STATUSES.includes(status)) throw err;
         const isTimeout = err?.name === "TimeoutError";
 
         if (isTimeout || (status && [500, 502, 503, 429].includes(status))) {
@@ -345,9 +350,9 @@ export class OpenRouterAdapter implements ProviderAdapter {
     // RX-183: a consumer that stops iterating closes the upstream by leaving the for await.
     const { signal } = params;
     const send = (endpoint: LlmEndpoint) => this.openStream(endpoint, body, signal);
-    // No retries on a stream (today's behaviour) beyond one Retry-After wait; no fallback (RX-178).
+    // No retries on a stream (today's behaviour) beyond one Retry-After wait; none with a fallback left (RNX-179).
     const response = await this.openStream(connection, body, signal).catch((err) =>
-      this.retryOnceAfter(err, connection, send, signal),
+      this.retryOnceAfter(err, connection, send, params),
     );
 
     const decoder = new TextDecoder();

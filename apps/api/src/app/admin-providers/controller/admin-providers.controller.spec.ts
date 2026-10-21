@@ -656,4 +656,92 @@ describe("Provider records and their models (RX-177, Fastify, test database)", (
       expect(reused.id).not.toBe(first.id);
     });
   });
+
+  describe("RNX-179 AC3: fallback models through PATCH /admin/providers/:id/models/:modelId (D149: same tier or lower)", () => {
+    /** M (standard) on provider P1 and a model on provider P2 of `tier`. */
+    const twoModels = async (fallbackTier: string) => {
+      const { cookie, adminId } = await signedIn("owner");
+      const p1 = await createProvider(prisma, { createdByAdminId: adminId });
+      const p2 = await createProvider(prisma, { createdByAdminId: adminId });
+      const m = await createModel(prisma, { providerRecordId: p1.id, slug: "cc/x", tier: "standard" });
+      const f = await createModel(prisma, { providerRecordId: p2.id, slug: "y", tier: fallbackTier });
+      const setFallbacks = (fallbackModelIds: string[]) =>
+        call("PATCH", `/admin/providers/${p1.id}/models/${m.id}`, cookie, { fallbackModelIds });
+      return { p1, m, f, setFallbacks, cookie };
+    };
+    const storedFallbacks = (modelId: string) =>
+      prisma.aiModelFallback.findMany({ where: { modelId }, orderBy: { position: "asc" } });
+
+    it("negative: M standard, F premium → 400 naming the tiers, nothing stored", async () => {
+      const { m, f, setFallbacks } = await twoModels("premium");
+
+      const res = await setFallbacks([f.id]);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().message).toBe("A fallback model must be in the model's tier (standard) or a lower one; it is premium");
+      expect(await storedFallbacks(m.id)).toEqual([]);
+    });
+
+    it("control: F standard → 200, stored at position 0, shown on the model and audited", async () => {
+      const { p1, m, f, setFallbacks, cookie } = await twoModels("standard");
+
+      const res = await setFallbacks([f.id]);
+      const listed = await call("GET", `/admin/providers/${p1.id}/models`, cookie);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().fallbackModelIds).toEqual([f.id]);
+      expect((await storedFallbacks(m.id)).map((row) => [row.fallbackModelId, row.position])).toEqual([[f.id, 0]]);
+      expect(listed.json().find((model: Json) => model.id === m.id).fallbackModelIds).toEqual([f.id]);
+      const [audit] = await prisma.adminAuditLog.findMany({ where: { resource: "ai_model", action: "update" } });
+      expect(audit.after).toEqual({ providerId: p1.id, modelId: m.id, changedFields: "fallbackModelIds" });
+    });
+
+    it("control: a lower tier is accepted; [] removes the list", async () => {
+      const { m, f, setFallbacks } = await twoModels("standard");
+      await prisma.aiModel.update({ where: { id: m.id }, data: { tier: "advanced" } });
+
+      const accepted = await setFallbacks([f.id]);
+      const cleared = await setFallbacks([]);
+
+      expect([accepted.statusCode, cleared.statusCode]).toEqual([200, 200]);
+      expect(await storedFallbacks(m.id)).toEqual([]);
+    });
+
+    it("negative: the tier is checked against the model's tier after the same PATCH (tier lowered to standard, F advanced → 400)", async () => {
+      const { p1, m, f, cookie } = await twoModels("advanced");
+      await prisma.aiModel.update({ where: { id: m.id }, data: { tier: "advanced" } });
+
+      const res = await call("PATCH", `/admin/providers/${p1.id}/models/${m.id}`, cookie, { tier: "standard", fallbackModelIds: [f.id] });
+
+      expect(res.statusCode).toBe(400);
+      expect((await prisma.aiModel.findUniqueOrThrow({ where: { id: m.id } })).tier).toBe("advanced");
+      expect(await storedFallbacks(m.id)).toEqual([]);
+    });
+
+    it.each([
+      ["the model itself", (ids: { m: string; f: string }) => [ids.m], "A model cannot be its own fallback"],
+      ["an id of no model", () => ["5f0c8a52-2c1e-4b8e-9a8e-1d2f3a4b5c6d"], "A fallback model does not exist"],
+    ])("negative: %s → 400, nothing stored", async (_label, fallbackIds, message) => {
+      const { m, f, setFallbacks } = await twoModels("standard");
+
+      const res = await setFallbacks(fallbackIds({ m: m.id, f: f.id }));
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().message).toBe(message);
+      expect(await storedFallbacks(m.id)).toEqual([]);
+    });
+
+    it.each([
+      ["a duplicate id", (f: string) => [f, f]],
+      ["an id that is not a uuid", () => ["y"]],
+      ["six fallbacks", (f: string) => [f, ...Array.from({ length: 5 }, () => randomUUID())]],
+    ])("negative (Zod): %s → 400, nothing stored", async (_label, fallbackIds) => {
+      const { m, f, setFallbacks } = await twoModels("standard");
+
+      const res = await setFallbacks(fallbackIds(f.id));
+
+      expect(res.statusCode).toBe(400);
+      expect(await storedFallbacks(m.id)).toEqual([]);
+    });
+  });
 });

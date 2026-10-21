@@ -12,4 +12,5 @@ export const toAuditedModelValues = (model: ProviderModelView): AdminAuditValues
   maxTokens: model.maxTokens,
   maxOutputTokens: model.maxOutputTokens,
   active: model.active,
+  fallbackModelIds: model.fallbackModelIds.join(","),
 });
