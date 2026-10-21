@@ -56,7 +56,7 @@ export class MemoryExtractionService {
    * Called fire-and-forget after conversation is saved.
    */
   async extract(userId: string, conversationId: string): Promise<void> {
-    console.log(
+    this.logger.debug(
       `Starting memory extraction for conversation ${conversationId} of user ${userId}`,
     );
     try {
