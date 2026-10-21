@@ -20,6 +20,7 @@ import { ProviderRouter } from "../../providers/provider-router";
 import type { ChatRequest, ChatUsage } from "../../providers/provider.interface";
 import { ProviderHttpError } from "../../providers/errors/provider-http-error";
 import { ProviderStreamError } from "../../providers/errors/provider-stream-error";
+import { ProviderTimeoutError } from "../../providers/errors/provider-timeout-error";
 import { toProviderErrorText } from "../../../common/utils/to-provider-error-text";
 import { streamedCallOutcome } from "../../portal/utils/streamed-call-outcome";
 import { UsageService } from "../../usage/service/usage.service";
@@ -63,8 +64,10 @@ export class ChatService {
       // A provider error is charged 0 and releases the hold (docs/credits.md section 3.1 rule 6).
       await this.credits.finishCall({ ...call, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" });
       this.logger.error(`Provider call failed: ${error.message}`, error.stack);
+      // RNX-190 (D199): a typed upstream error gives the client its fixed text; the status code stays 500.
+      const isTyped = error instanceof ProviderHttpError || error instanceof ProviderTimeoutError;
       throw new InternalServerErrorException(
-        "Failed to get response from model provider. No credits were charged.",
+        `${isTyped ? error.message : "Failed to get response from model provider"}. No credits were charged.`,
       );
     }
 
@@ -284,7 +287,8 @@ export class ChatService {
   /**
    * A streamed answer that failed (RNX-196): its one usage entry (a provider error, also after the client went away,
    * is charged 0 and releases the hold; a client that went away once the stream opened is charged what it received),
-   * then a provider error ends the stream with the fixed text of its status (D197, D208: never the provider's text).
+   * then a provider error ends the stream with the fixed text of its status (D197, D208: never the provider's text), and
+   * of its kind for a typed upstream error (D199, RNX-190: an HTTP error or a timeout).
    * Any other error is rethrown to RNX-171's stream guard, which ends the stream with its own fixed event.
    */
   private async endFailedStream(
@@ -297,7 +301,8 @@ export class ChatService {
       response: ServerResponse;
     },
   ): Promise<void> {
-    const isProviderError = error instanceof ProviderHttpError || error instanceof ProviderStreamError;
+    const isProviderError =
+      error instanceof ProviderHttpError || error instanceof ProviderStreamError || error instanceof ProviderTimeoutError;
     const outcome = streamedCallOutcome({
       providerFailed: isProviderError || !failed.aborted,
       aborted: failed.aborted,
@@ -307,7 +312,10 @@ export class ChatService {
       this.logger.error("Failed to record the failed call's usage", err),
     );
     if (!isProviderError) throw error;
-    const text = toProviderErrorText(error.status);
+    const text =
+      error instanceof ProviderTimeoutError
+        ? toProviderErrorText(undefined, error.kind)
+        : toProviderErrorText(error.status, error instanceof ProviderHttpError ? error.kind : undefined);
     this.logger.error(`Stream error: ${text.logText}`);
     failed.response.write(`data: ${JSON.stringify({ error: { message: `${text.clientMessage}. No credits were charged.` } })}\n\n`);
     failed.response.end();

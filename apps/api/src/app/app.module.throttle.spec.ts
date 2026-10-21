@@ -19,6 +19,11 @@ jest.mock("@aws-sdk/client-s3", () => ({
   PutObjectCommand: class {},
   DeleteObjectCommand: class {},
 }));
+// RNX-168: a stub for better-auth's handler (setup-env.ts mocks lib/auth without one); only the throttler in
+// front of BetterAuthController is under test, not better-auth.
+jest.mock("../lib/auth", () => ({
+  auth: { api: { getSession: async () => null }, handler: async () => new Response(null, { status: 401 }) },
+}));
 // Required, not imported: see app.module.guards.spec.ts.
 const { AppModule }: { AppModule: Type<unknown> } = require("./app.module");
 
@@ -26,6 +31,8 @@ const { AppModule }: { AppModule: Type<unknown> } = require("./app.module");
 const SIGN_IN_LIMIT = 10;
 /** The one socket address every request comes from behind a load balancer. */
 const PROXY = "10.0.0.1";
+/** The global throttler (app.module.ts): 60 calls a minute per caller on a route without its own @Throttle. */
+const GLOBAL_LIMIT = 60;
 /** 10 answered sign-in attempts (an invalid body is 400), then 429. */
 const TEN_THEN_429 = [...Array(SIGN_IN_LIMIT).fill(400), 429];
 
@@ -103,5 +110,23 @@ describe("RX-155: the real AppModule's throttler counts per client (D48 client-I
 
     expect(first).toEqual(TEN_THEN_429);
     expect(second).toEqual(TEN_THEN_429);
+  });
+
+  it("RNX-168 gate: better-auth's sign-in route goes through the global throttler: 60 calls a minute per socket address, then 429, whatever X-Forwarded-For says", async () => {
+    delete process.env.CLIENT_IP_HEADER;
+    const statuses: number[] = [];
+
+    for (let i = 0; i <= GLOBAL_LIMIT; i++) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/better/sign-in/email",
+        remoteAddress: "192.0.2.9",
+        headers: { "x-forwarded-for": `203.0.113.${i}` },
+        payload: { email: "nobody@renovix.test", password: "wrong-password" },
+      });
+      statuses.push(response.statusCode);
+    }
+
+    expect(statuses).toEqual([...Array(GLOBAL_LIMIT).fill(401), 429]);
   });
 });

@@ -1,7 +1,10 @@
+import { inspect } from "node:util";
 import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EmbeddingService } from "./embedding.service";
 import { blockOutbound, OutboundBlocker, sendJson, startStubHttpServer, StubHttpServer } from "../../../../test/llm-stub";
+import { captureOutput } from "../../../../test/capture-output";
+import { plantedProviderSecret } from "../../../../test/planted-provider-secret";
 
 // RX-160: embeddings read base URL, key, model and dimensions from configuration.
 // Only a local stub is called; every other host is blocked (blockOutbound).
@@ -126,5 +129,46 @@ describe("RX-160 AC7: the embedding key never reaches a log line", () => {
     await expect(service.embed(["a"])).rejects.toThrow();
 
     expect(lines.filter((l) => l.includes("rx160-marker-key"))).toEqual([]);
+  });
+});
+
+// RNX-190 (D197, D208): a provider 401 body can echo the key's last characters and its SHA-256 (RX-174). The error an
+// embedding call rejects with must not carry them: not in a log line written meanwhile (Nest's Logger is not mocked),
+// and not in the error itself as a log would print it (util.inspect, as Nest's ExceptionsHandler logs an error a
+// route did not catch), as JSON, as a string or as its stack.
+describe("RNX-190 AC1: an embedding call answered 401 with a planted key suffix and SHA-256", () => {
+  const leaksOf = (err: unknown, lines: string[]): string[] =>
+    [inspect(err), JSON.stringify(err), String(err), (err as Error).stack ?? "", ...lines].filter(plantedProviderSecret.isFoundIn);
+
+  it("control: the stub's answer carries both planted values, and the search finds them there", async () => {
+    stub.respond((_req, res) => sendJson(res, 401, plantedProviderSecret.body));
+
+    const answer = await fetch(`${stub.baseUrl}/embeddings`, { method: "POST", body: "{}" });
+
+    expect([answer.status, plantedProviderSecret.isFoundIn(await answer.text())]).toEqual([401, true]);
+  });
+
+  it("the 401 surfaces with its typed fixed text; neither value is in a log line or in the error", async () => {
+    stub.respond((_req, res) => sendJson(res, 401, plantedProviderSecret.body));
+    const output = captureOutput();
+
+    const thrown = await makeService(stubEnv()).embed(["a"]).catch((err: unknown) => err);
+
+    expect({ status: (thrown as { status?: number }).status, leaks: leaksOf(thrown, output.lines) }).toEqual({ status: 401, leaks: [] });
+    expect(thrown).toMatchObject({ name: "ProviderHttpError", kind: "unauthorized", message: "Provider rejected the credentials (401)" });
+  });
+
+  it("a 2xx answer that is not JSON fails with a fixed text, never the parse error (it quotes the body)", async () => {
+    stub.respond((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end(`sk-...${plantedProviderSecret.keySuffix} not json`);
+    });
+
+    const thrown = await makeService(stubEnv()).embed(["a"]).catch((err: unknown) => err);
+
+    expect({ message: (thrown as Error).message, leaks: [inspect(thrown)].filter(plantedProviderSecret.isFoundIn) }).toEqual({
+      message: "The provider answered with something other than JSON",
+      leaks: [],
+    });
   });
 });

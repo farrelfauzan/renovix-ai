@@ -269,32 +269,35 @@ describe("RNX-196: the API-key chat route streams when stream is true (Fastify, 
   describe("AC5: a provider error → the fixed text and the end of the stream; charged 0, hold released; the provider's text in no SSE line and no log line", () => {
     it.each([
       {
+        // RNX-190 (D199): an HTTP error is typed; it can no longer carry the body or a message of the caller's choosing.
         name: "HTTP error before the first chunk",
         status: 503,
+        clientText: "Provider unavailable (503)",
+        logText: "Provider error (status 503, unavailable)",
         streamed: "",
         failStream: () =>
           jest.spyOn(moduleRef.get(ProviderRouter), "chatStream").mockImplementation(async function* () {
             yield* [];
-            throw new ProviderHttpError({
-              message: `Request failed with status code 503 ${MARKER}`,
-              status: 503,
-              bodyText: JSON.stringify({ error: { message: `${MARKER} upstream overloaded` } }),
-            });
+            throw new ProviderHttpError({ status: 503, kind: "unavailable" });
           }),
       },
       {
         name: "error chunk as the first chunk",
         status: 429,
+        clientText: "Provider request failed (429)",
+        logText: "Provider error (status 429)",
         streamed: "",
         failStream: () => fake.enqueue({ error: { code: 429, message: `${MARKER} rate limited` } }),
       },
       {
         name: "error chunk mid-stream",
         status: 502,
+        clientText: "Provider request failed (502)",
+        logText: "Provider error (status 502)",
         streamed: "Partial answer ",
         failStream: () => fake.enqueue({ content: "Partial answer ", error: { code: 502, message: `${MARKER} disconnected` } }),
       },
-    ])("$name", async ({ status, streamed, failStream }) => {
+    ])("$name", async ({ clientText, logText, streamed, failStream }) => {
       await createApiUser(1);
       failStream();
       const logs = captureLogs();
@@ -303,11 +306,11 @@ describe("RNX-196: the API-key chat route streams when stream is true (Fastify, 
 
       expect([res.statusCode, res.headers["content-type"]]).toEqual([200, "text/event-stream"]);
       expect(chunksOf(res.body).map((c) => c.choices?.[0]?.delta?.content ?? "").join("")).toBe(streamed);
-      expect(sseErrorMessages(res.body)).toEqual([`Provider request failed (${status}). No credits were charged.`]);
+      expect(sseErrorMessages(res.body)).toEqual([`${clientText}. No credits were charged.`]);
       expect(sseData(res.body).pop()).toMatch(/^\{"error"/);
       expect(res.body).not.toContain("[DONE]");
       expect(res.body).not.toContain(MARKER);
-      expect(logs.lines).toContain(`Stream error: Provider error (status ${status})`);
+      expect(logs.lines).toContain(`Stream error: ${logText}`);
       expect(logs.lines.filter((l) => l.includes(MARKER))).toEqual([]);
       const record = await callRecord();
       expect(record.entries.map(([outcome, , , , amount]) => [outcome, amount])).toEqual([["provider_error", "0.000000"]]);

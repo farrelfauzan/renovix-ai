@@ -1,7 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { resolveLlmProvider } from "../../providers/llm-provider";
-import { ProviderHttpError } from "../../providers/errors/provider-http-error";
+import { readProviderHttpError } from "../../providers/utils/read-provider-http-error";
+import { readProviderJson } from "../../providers/utils/read-provider-json";
 import { readPositiveInteger } from "../../../common/utils/read-positive-integer";
 import { assertEmbeddingLength } from "../utils/assert-embedding-length";
 import { fakeEmbedding } from "../utils/fake-embedding";
@@ -60,15 +61,10 @@ export class EmbeddingService {
       }),
       signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS),
     });
-    if (!response.ok) {
-      throw new ProviderHttpError({
-        message: `Embedding request failed with status code ${response.status}`,
-        status: response.status,
-        bodyText: await response.text(),
-      });
-    }
+    // RNX-190 (D197, D199): a typed error with a fixed text; neither the body nor a parse error quoting it goes on.
+    if (!response.ok) throw await readProviderHttpError(response);
 
-    const data: any = await response.json();
+    const data: any = await readProviderJson(response);
     for (const item of data.data) {
       assertEmbeddingLength(item.embedding, EMBEDDING_COLUMN_DIMENSIONS);
     }
