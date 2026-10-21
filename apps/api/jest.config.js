@@ -32,6 +32,9 @@ module.exports = {
   setupFiles: ['<rootDir>/test/setup-env.ts'],
   // Database tests share one database and truncate it, so files run one at a time.
   maxWorkers: 1,
+  // Applies to every test and every hook (Jest's default is 5 s). resetDatabase takes about 0.1 s, but under
+  // machine load (RNX-204) a hook measured up to about 16 s; a hook or test that never ends still fails here.
+  testTimeout: 30000,
   moduleFileExtensions: ['ts', 'js', 'html'],
   coverageDirectory: 'test-output/jest/coverage',
 };
