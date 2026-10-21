@@ -15,6 +15,7 @@ import { ProviderCircuitBreaker } from "./provider-circuit-breaker";
 import { ProviderHttpError } from "./errors/provider-http-error";
 import { isFailoverError } from "./utils/is-failover-error";
 import { isProviderFailure } from "./utils/is-provider-failure";
+import { servedByOf } from "./utils/served-by-of";
 
 /**
  * RNX-179: variables of the env fallback that RX-178 removed (D199-4). Nothing reads them; at boot a warning names
@@ -58,7 +59,7 @@ export class ProviderRouter {
     const candidates = this.candidatesOf(params.connection);
     for (const [index, connection] of candidates.entries()) {
       const hasFallback = index < candidates.length - 1;
-      const attempt = { slug: connection.slug, providerName: connection.providerName };
+      const attempt = servedByOf(connection);
       hooks.onAttempt?.(attempt);
       this.logger.log(
         `[chat] provider=${connection.providerName} model=${connection.slug} messages=${params.messages?.length} tools=${params.tools?.length ?? 0}`,
@@ -95,7 +96,7 @@ export class ProviderRouter {
     const candidates = this.candidatesOf(params.connection);
     for (const [index, connection] of candidates.entries()) {
       const hasFallback = index < candidates.length - 1;
-      const attempt = { slug: connection.slug, providerName: connection.providerName };
+      const attempt = servedByOf(connection);
       hooks.onAttempt?.(attempt);
       this.logger.log(
         `[chatStream] provider=${connection.providerName} model=${connection.slug} messages=${params.messages?.length} tools=${params.tools?.length ?? 0} tool_choice=${JSON.stringify(params.tool_choice)} toolNames=[${(params.tools || []).map((t: any) => t.function?.name).join(",")}]`,

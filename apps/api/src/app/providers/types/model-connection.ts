@@ -1,3 +1,5 @@
+import type { CallCostBasis } from "./call-cost-basis";
+
 /**
  * Where one chat call goes (RX-178, D199): the model's provider record, resolved from the request's slug by
  * ModelRegistryService.resolveConnection. Every chat call carries one on ChatRequest.
@@ -20,4 +22,6 @@ export interface ModelConnection {
    * 503 moves the call to the next one. A fallback has none itself.
    */
   readonly fallbacks?: readonly ModelConnection[];
+  /** RNX-162: the model's prices and its provider record's cost settings; absent without a provider record. */
+  readonly costBasis?: CallCostBasis;
 }

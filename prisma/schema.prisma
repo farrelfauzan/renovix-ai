@@ -134,6 +134,14 @@ model Provider {
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt            DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
   deletedAt            DateTime?      @map("deleted_at") @db.Timestamptz()
+  /// RNX-162: multiplies the provider's reported cost of a call into our low cost estimate; null means 1.
+  costMultiplier       Decimal?       @map("cost_multiplier") @db.Decimal(12, 6)
+  /// RNX-162: the lowest our low cost estimate of one call may be, in USD; null means no floor.
+  perCallFloorUsd      Decimal?       @map("per_call_floor_usd") @db.Decimal(18, 12)
+  /// RNX-162: with highCaseTokenThreshold, our high cost estimate of a call above the threshold is low x this factor.
+  highCaseFactor       Decimal?       @map("high_case_factor") @db.Decimal(12, 6)
+  /// RNX-162: the total tokens (new + cached + output) a call must exceed for highCaseFactor to apply.
+  highCaseTokenThreshold Int?         @map("high_case_token_threshold")
   models               AiModel[]
 
   @@unique([name], where: raw("deleted_at IS NULL"))
@@ -1485,4 +1493,42 @@ model AdminAuditLog {
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([action, createdAt])
   @@map("admin_audit_log")
+}
+
+/// RNX-162 (D243 decision 38, D235): what one model call cost us, one row per call_id, 1:1 with the call's usage entry
+/// (credit_ledger_entries, which stays as it is). Written after the usage entry commits, outside its transaction: a
+/// failed write is logged and never fails the call. No prompt or answer content. USD amounts are Decimal; the rupiah
+/// amounts and the rate are null when no usable USD to IDR rate is stored (none, or older than 7 days).
+model ModelCallCost {
+  id               String       @id @default(uuid())
+  callId           String       @unique @map("call_id")
+  /// The provider record that served the call; null on a connection without one (LLM_PROVIDER=fake).
+  providerId       String?      @map("provider_id")
+  /// The model id sent to the provider (the served model's slug, D149 option B).
+  providerModelId  String       @map("provider_model_id")
+  tokensNew        Int          @map("tokens_new")
+  tokensCached     Int          @map("tokens_cached")
+  tokensOut        Int          @map("tokens_out")
+  /// Part of tokensOut, as reported; null when the provider reported none.
+  tokensReasoning  Int?         @map("tokens_reasoning")
+  /// The cost the provider reported for the call (OpenRouter `usage.cost`); null when it reported none.
+  reportedCostUsd  Decimal?     @map("reported_cost_usd") @db.Decimal(18, 12)
+  /// new x input + cached x cached input + output x output price; null when the model's prices were not known.
+  tokenPriceUsd    Decimal?     @map("token_price_usd") @db.Decimal(18, 12)
+  /// Null only when there is neither a reported cost nor a token-price figure.
+  costLowUsd       Decimal?     @map("cost_low_usd") @db.Decimal(18, 12)
+  costHighUsd      Decimal?     @map("cost_high_usd") @db.Decimal(18, 12)
+  costLowIdr       Decimal?     @map("cost_low_idr") @db.Decimal(24, 12)
+  costHighIdr      Decimal?     @map("cost_high_idr") @db.Decimal(24, 12)
+  exchangeRate     Decimal?     @map("exchange_rate") @db.Decimal(18, 6)
+  exchangeRateDate DateTime?    @map("exchange_rate_date") @db.Date
+  wallet           CreditWallet
+  /// The workspace of the agent run that made the call; null on a path without one (chat, portal).
+  workspaceId      String?      @map("workspace_id")
+  tier             String
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+
+  /// RNX-228's reconciliation reads the calls of one day.
+  @@index([createdAt])
+  @@map("model_call_costs")
 }

@@ -108,21 +108,24 @@ export class AgentRunMeterService {
       modelId: call.request.connection.slug,
       tier,
       rates,
+      cost: { servedBy: call.request.connection, workspaceId: run.workspaceId },
     };
     const startedAt = Date.now();
     // RNX-179: each attempt that falls over to a fallback model is its own provider_error entry under the run's
     // reservation (docs/credits.md section 3.1 rule 6); the call's entry names the last model tried.
-    let triedSlug = usage.modelId;
+    let tried: ServedBy = call.request.connection;
     const hooks = {
-      onAttempt: (tried: ServedBy) => void (triedSlug = tried.slug),
+      onAttempt: (attempt: ServedBy) => void (tried = attempt),
       onAttemptFailed: async (failed: ServedBy) => void (await this.credits.recordUsage(failedAttemptRecord(usage, failed))),
     };
     const response = await this.providerRouter.chat(call.request, hooks).catch(async (err: unknown) => {
-      await this.credits.recordUsage({ ...usage, modelId: triedSlug, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error" });
+      const cost = { servedBy: tried, workspaceId: run.workspaceId };
+      await this.credits.recordUsage({ ...usage, modelId: tried.slug, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error", cost });
       throw err;
     });
     const tokens = tokensFromUsage(response.usage.prompt_tokens, response.usage.cachedTokens ?? 0, response.usage.completion_tokens);
-    const entry = await this.credits.recordUsage({ ...usage, modelId: triedSlug, tokens, outcome: "completed" });
+    const cost = { servedBy: tried, usage: response.usage, workspaceId: run.workspaceId };
+    const entry = await this.credits.recordUsage({ ...usage, modelId: tried.slug, tokens, outcome: "completed", cost });
     run.spent = run.spent.plus(entry.amount.negated());
     await this.logCallUsage(run, call.request, response, { cost: entry.amount.negated(), latencyMs: Date.now() - startedAt });
     return { response, callId: usage.callId };
@@ -152,7 +155,14 @@ export class AgentRunMeterService {
     const estimate = estimateRunCredits(rootCall, linkedCalls, agentCallSetting ?? DEFAULT_AGENT_CALLS_PER_RUN);
     const runId = randomUUID();
     const reservation = await this.credits.reserveRun({ userId: start.runnerUserId, runId, cap, minimum: Decimal.min(estimate, cap) });
-    return { runId, reservationId: reservation.id, runnerUserId: start.runnerUserId, held: reservation.amountHeld, spent: NO_CREDITS };
+    return {
+      runId,
+      reservationId: reservation.id,
+      runnerUserId: start.runnerUserId,
+      workspaceId: start.workspaceId,
+      held: reservation.amountHeld,
+      spent: NO_CREDITS,
+    };
   }
 
   /** The per-run cap (docs/credits.md section 13.2): the platform setting, never below its floor. */

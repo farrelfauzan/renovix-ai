@@ -1,3 +1,4 @@
+import type { Decimal } from "@prisma/client/runtime/client";
 import type { ProviderTestResult } from "./types/provider-test-result";
 import type { ProviderTestTarget } from "./types/provider-test-target";
 import type { ModelConnection } from "./types/model-connection";
@@ -56,6 +57,10 @@ export interface ChatUsage {
   total_tokens: number;
   /** Input tokens served from the provider's prompt cache (`prompt_tokens_details.cached_tokens`), part of prompt_tokens (RX-22). */
   cachedTokens?: number;
+  /** RNX-162: the cost the provider reported for the call in USD (OpenRouter `usage.cost`); absent when none. */
+  costUsd?: Decimal;
+  /** RNX-162: the reasoning tokens (`completion_tokens_details.reasoning_tokens`), part of completion_tokens; absent when none. */
+  reasoningTokens?: number;
 }
 
 export interface ChatChoice {
