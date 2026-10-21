@@ -5,7 +5,7 @@ import * as jwt from "jsonwebtoken";
 import { PrismaService } from "./prisma/prisma.service";
 import { createFastifyApp } from "../../test/test-module";
 import { resetDatabase, testDatabaseUrl } from "../../test/test-database";
-import { createUser } from "../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../test/factories";
 import { accessCookie, ADMIN_PASSWORD, adminHttp, BACK_OFFICE_ORIGIN, createAdmin, totpCode } from "../../test/admin-auth";
 
 // RX-114: the real AppModule, started as it is (not through createTestModule,
@@ -65,11 +65,12 @@ describe("RX-114: the global guards of the real AppModule (Fastify, test databas
   });
 
   it("a jwt/session route: 401 without a credential, 403 with an API key, 200 with a login JWT", async () => {
-    const user = await createUser(prisma, { apiKey: "sk_live_rx114-app" });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: testApiKey("rx114-app") });
     const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
 
     const anonymous = await app.inject({ method: "GET", url: "/agents" });
-    const withKey = await app.inject({ method: "GET", url: "/agents", headers: { authorization: "Bearer sk_live_rx114-app" } });
+    const withKey = await app.inject({ method: "GET", url: "/agents", headers: { authorization: `Bearer ${testApiKey("rx114-app")}` } });
     const withJwt = await app.inject({ method: "GET", url: "/agents", headers: { authorization: `Bearer ${token}` } });
 
     expect(anonymous.statusCode).toBe(401);

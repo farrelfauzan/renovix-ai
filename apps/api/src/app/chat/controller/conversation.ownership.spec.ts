@@ -9,7 +9,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 
 // RX-15 characterization: conversation ownership on the API-key routes
 // (/conversations, ApiKeyGuard) through the real controller and
@@ -42,8 +42,10 @@ describe("Conversations (/conversations, API key): ownership (RX-15, Fastify, te
   const key = (apiKey: string) => ({ authorization: `Bearer ${apiKey}` });
 
   const setup = async () => {
-    const alice = await createUser(prisma, { apiKey: "sk_live_alice" });
-    const bob = await createUser(prisma, { apiKey: "sk_live_bob" });
+    const alice = await createUser(prisma);
+    await createApiKey(prisma, alice.id, { apiKey: testApiKey("alice") });
+    const bob = await createUser(prisma);
+    await createApiKey(prisma, bob.id, { apiKey: testApiKey("bob") });
     const conversation = await prisma.conversation.create({
       data: {
         userId: alice.id,
@@ -58,7 +60,7 @@ describe("Conversations (/conversations, API key): ownership (RX-15, Fastify, te
   it.each([
     ["no Authorization header", {}],
     ["a JWT instead of an API key", { authorization: `Bearer ${jwt.sign({ userId: "u" }, "any-secret")}` }],
-    ["an unknown key", { authorization: "Bearer sk_live_unknown" }],
+    ["an unknown key", { authorization: `Bearer ${testApiKey("unknown")}` }],
   ])("not signed in (%s): GET /conversations is 401", async (_case, headers: Record<string, string>) => {
     const res = await app.inject({ method: "GET", url: "/conversations", headers });
 
@@ -71,7 +73,7 @@ describe("Conversations (/conversations, API key): ownership (RX-15, Fastify, te
     const read = await app.inject({
       method: "GET",
       url: `/conversations/${conversation.id}`,
-      headers: key("sk_live_alice"),
+      headers: key(testApiKey("alice")),
     });
     expect(read.statusCode).toBe(200);
     expect(read.json().messages).toEqual([
@@ -81,7 +83,7 @@ describe("Conversations (/conversations, API key): ownership (RX-15, Fastify, te
     const del = await app.inject({
       method: "DELETE",
       url: `/conversations/${conversation.id}`,
-      headers: key("sk_live_alice"),
+      headers: key(testApiKey("alice")),
     });
     expect(del.statusCode).toBe(204);
     expect(await prisma.conversation.count()).toBe(0);
@@ -93,12 +95,12 @@ describe("Conversations (/conversations, API key): ownership (RX-15, Fastify, te
     const read = await app.inject({
       method: "GET",
       url: `/conversations/${conversation.id}`,
-      headers: key("sk_live_bob"),
+      headers: key(testApiKey("bob")),
     });
     expect(read.statusCode).toBe(404);
     expect(read.body).not.toContain("Alice's secret");
 
-    const list = await app.inject({ method: "GET", url: "/conversations", headers: key("sk_live_bob") });
+    const list = await app.inject({ method: "GET", url: "/conversations", headers: key(testApiKey("bob")) });
     expect(list.statusCode).toBe(200);
     expect(list.json()).toMatchObject({ data: [], total: 0 });
   });
@@ -109,7 +111,7 @@ describe("Conversations (/conversations, API key): ownership (RX-15, Fastify, te
     const del = await app.inject({
       method: "DELETE",
       url: `/conversations/${conversation.id}`,
-      headers: key("sk_live_bob"),
+      headers: key(testApiKey("bob")),
     });
 
     expect(del.statusCode).toBe(404);

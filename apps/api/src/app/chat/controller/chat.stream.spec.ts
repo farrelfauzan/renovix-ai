@@ -21,7 +21,7 @@ import { ProviderHttpError } from "../../providers/errors/provider-http-error";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
@@ -39,7 +39,7 @@ jest.mock("../service/conversation.service", () => ({ ConversationService: class
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 jest.mock("../../usage/service/usage.service", () => ({ UsageService: class {} }));
 
-const API_KEY = "sk_live_rnx196-test-key";
+const API_KEY = testApiKey("rnx196-test-key");
 const MODEL = "stream-model";
 const MARKER = "RNX196-PROVIDER-MARKER";
 const MESSAGES = [{ role: "user", content: "Hi" }];
@@ -111,7 +111,8 @@ describe("RNX-196: the API-key chat route streams when stream is true (Fastify, 
 
   /** A user with the route's API key and `credits` on the paid wallet (none when 0). */
   const createApiUser = async (credits: number) => {
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     if (credits > 0) await fundPaidWallet(prisma, user.id, credits);
     return user;
   };

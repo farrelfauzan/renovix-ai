@@ -17,6 +17,7 @@ import { AgentToolRepository } from "../agent/repository/agent-tool.repository";
 import { AgentRepository } from "../agent/repository/agent.repository";
 import { AiModelRepository } from "../config/repository/ai-model.repository";
 import { AppConfigRepository } from "../config/repository/app-config.repository";
+import { ApiKeyRepository } from "../auth/repository/api-key.repository";
 import { UserRepository } from "../auth/repository/user.repository";
 import { CreditAccountRepository } from "../billing/repository/credit-account.repository";
 import { CreditLedgerEntryRepository } from "../billing/repository/credit-ledger-entry.repository";
@@ -71,6 +72,7 @@ const REPOSITORIES = [
   AgentRepository,
   AiModelRepository,
   AppConfigRepository,
+  ApiKeyRepository,
   UserRepository,
   CreditAccountRepository,
   CreditLedgerEntryRepository,

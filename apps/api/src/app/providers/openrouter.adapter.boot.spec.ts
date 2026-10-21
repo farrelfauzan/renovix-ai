@@ -18,6 +18,7 @@ const productionEnv = (extra: Record<string, string>): NodeJS.ProcessEnv => ({
   MCP_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
   MCP_OAUTH_STATE_SECRET: randomBytes(48).toString("base64"),
   LLM_KEY_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
+  API_KEY_HASH_SECRET: randomBytes(48).toString("base64"),
   ...extra,
 });
 

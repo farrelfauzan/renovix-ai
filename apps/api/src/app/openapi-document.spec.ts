@@ -188,9 +188,9 @@ describe("RX-170: two generated OpenAPI documents", () => {
     expect(scanOpenApiDocumentForSecrets(plantedHost, SETUP_ENV_VALUES)).toContain("internal hostname");
   });
 
-  it("no operation advertises an sk_live_ key example in any description", () => {
+  it("no operation advertises an rnx_live_ or sk_live_ key example in any description", () => {
     for (const document of [backoffice, portal]) {
-      expect(JSON.stringify(document)).not.toMatch(/sk_live_|sk_test_|pk_live_|pk_test_/);
+      expect(JSON.stringify(document)).not.toMatch(/rnx_live_|sk_live_|sk_test_|pk_live_|pk_test_/);
     }
   });
 

@@ -16,6 +16,7 @@ describe("scanOpenApiDocumentForSecrets", () => {
   it("flags secret-ish names, key prefixes and internal hostnames wherever they appear", () => {
     expect(scanOpenApiDocumentForSecrets({ paths: { "/x": { get: { description: "the JWT_SECRET value" } } } }, [])).toContain("secret name");
     expect(scanOpenApiDocumentForSecrets({ paths: { "/x": { get: { example: "sk_live_abc123" } } } }, [])).toContain("API key prefix");
+    expect(scanOpenApiDocumentForSecrets({ paths: { "/x": { get: { example: "rnx_live_abc123" } } } }, [])).toContain("API key prefix");
     expect(scanOpenApiDocumentForSecrets({ servers: [{ url: "http://localhost:3000" }] }, [])).toContain("internal hostname");
     expect(scanOpenApiDocumentForSecrets({ servers: [{ url: "http://10.0.0.1.internal:80" }] }, [])).toContain("internal hostname");
   });

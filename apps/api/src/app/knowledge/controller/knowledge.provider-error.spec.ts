@@ -8,7 +8,7 @@ import { S3Service } from "../service/s3.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import { blockOutbound, OutboundBlocker, sendJson, startStubHttpServer, StubHttpServer } from "../../../../test/llm-stub";
 import { captureOutput } from "../../../../test/capture-output";
 import { plantedProviderSecret } from "../../../../test/planted-provider-secret";
@@ -21,7 +21,7 @@ jest.mock("../service/s3.service", () => ({ S3Service: class {} }));
 
 const EMBEDDING_ENV_KEYS = ["LLM_PROVIDER", "EMBEDDING_BASE_URL", "EMBEDDING_API_KEY", "EMBEDDING_MODEL"] as const;
 const savedEnv = EMBEDDING_ENV_KEYS.map((k) => process.env[k]);
-const API_KEY = "sk_live_rnx190-test-key";
+const API_KEY = testApiKey("rnx190-test-key");
 
 describe("RNX-190: provider error body on the knowledge search route (Fastify, test database)", () => {
   let stub: StubHttpServer;
@@ -65,7 +65,7 @@ describe("RNX-190: provider error body on the knowledge search route (Fastify, t
 
   it("AC1: the embedding provider answers 401 with a planted key suffix and SHA-256 → neither is in any output line or in the response", async () => {
     stub.respond((_r, res) => sendJson(res, 401, plantedProviderSecret.body));
-    await createUser(prisma, { apiKey: API_KEY });
+    await createApiKey(prisma, (await createUser(prisma)).id, { apiKey: API_KEY });
     const output = captureOutput();
 
     const res = await app.inject({

@@ -19,7 +19,6 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
 
   // Outside world, clock, randomness (test 2)
   ["apps/api/src/common/guards/combined-auth.guard.ts CombinedAuthGuard.trySession"]: "test 2: await, network (the Better Auth session lookup)",
-  [`${SRC}/auth/service/auth.service.ts AuthService.generateApiKey`]: "test 2: randomness (crypto.randomBytes); RX-18 owns the API key helpers",
   [`${SRC}/codes/service/codes.service.ts CodesService.generateCode`]: "test 2: randomness (crypto.randomBytes)",
   [`${SRC}/knowledge/service/s3.service.ts S3Service.buildKey`]: "test 2: clock (Date.now)",
   [`${SRC}/document/service/document.service.ts DocumentService.resolveBaseName`]: "test 2: clock (Date.now in the fallback name)",
@@ -31,11 +30,9 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
   [`${SRC}/email/service/email-template.service.ts EmailTemplateService.buildInviteEmail`]: "test 2: environment (toLocaleDateString formats the date in the server's time zone)",
 
   // Owned by a named ticket
-  [`${SRC}/auth/service/auth.service.ts AuthService.maskApiKey`]: "RX-18",
   [`${SRC}/agent/service/agent-run.service.ts AgentRunService.buildMessages`]: "RX-23..25",
 
   // Functions outside a class
-  ["apps/api/src/common/guards/api-key.guard.ts hashApiKey"]: "RX-18 rewrites the API key guard",
   [`${SRC}/admin-auth/service/admin-session.service.ts newRefreshToken`]: "test 2: randomness (crypto.randomBytes)",
   [`${SRC}/portal/service/portal-tier.service.ts jakartaDay`]: "test 2: clock (`now` defaults to new Date())",
   [`${SRC}/portal/service/portal-tier.service.ts startOfJakartaDay`]: "test 2: clock (`now` defaults to new Date())",

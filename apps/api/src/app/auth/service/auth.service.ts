@@ -5,7 +5,6 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
-import * as crypto from "crypto";
 import { UserRepository } from "../repository/user.repository";
 import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
 import { TransactionService } from "../../prisma/transaction.service";
@@ -20,14 +19,6 @@ export class AuthService {
     private readonly transactions: TransactionService,
   ) {}
 
-  private generateApiKey(): string {
-    return `sk_live_${crypto.randomBytes(24).toString("hex")}`;
-  }
-
-  private maskApiKey(key: string): string {
-    return key.slice(0, 8) + "..." + key.slice(-4);
-  }
-
   async register(dto: RegisterDto) {
     const existing = await this.users.findUserByEmail(dto.email);
     if (existing) {
@@ -35,15 +26,14 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, 12);
-    const apiKey = this.generateApiKey();
 
-    // The user and its default workspace (RNX-117) are written together or not at all.
+    // The user and its default workspace (RNX-117) are written together or not at all. No API key (RNX-18):
+    // keys are created on request only (POST /auth/keys).
     const user = await this.transactions.run(async (tx) => {
       const created = await this.users.createUser(
         {
           email: dto.email,
           password: hashedPassword,
-          apiKey,
           name: dto.name || null,
         },
         tx,
@@ -54,12 +44,7 @@ export class AuthService {
 
     const token = this.signToken(user.id, user.email);
 
-    return {
-      user,
-      token,
-      apiKeyWarning:
-        "Store this key securely. It will not be shown again in full.",
-    };
+    return { user, token };
   }
 
   async login(dto: LoginDto) {
@@ -95,22 +80,8 @@ export class AuthService {
     };
   }
 
-  async getProfile(userId: string) {
-    const user = await this.users.findProfileOrThrow(userId);
-    return {
-      ...user,
-      apiKey: this.maskApiKey(user.apiKey),
-    };
-  }
-
-  async regenerateApiKey(userId: string) {
-    const apiKey = this.generateApiKey();
-    await this.users.updateApiKey(userId, apiKey);
-    return {
-      apiKey,
-      apiKeyWarning:
-        "Store this key securely. It will not be shown again in full.",
-    };
+  getProfile(userId: string) {
+    return this.users.findProfileOrThrow(userId);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {

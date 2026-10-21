@@ -339,6 +339,21 @@ describe("RX-114: every route of AppModule declares its access", () => {
     );
   });
 
+  // RNX-18: the API key routes are the signed-in user's (jwt/session); an API key cannot manage keys.
+  const API_KEY_MANAGEMENT_ROUTES = [
+    "DELETE /auth/keys/:id (ApiKeyController.revoke)",
+    "GET /auth/keys (ApiKeyController.list)",
+    "POST /auth/keys (ApiKeyController.create)",
+    "POST /auth/keys/regenerate (ApiKeyController.regenerate)",
+  ];
+
+  it("RNX-18: the API key routes exist and declare jwt/session", () => {
+    expect(labels(routes.filter((route) => route.path.startsWith("/auth/keys")))).toEqual(API_KEY_MANAGEMENT_ROUTES);
+    expect(
+      labels(routes.filter((route) => API_KEY_MANAGEMENT_ROUTES.includes(route.label) && declares(route, ["jwt", "session"]))),
+    ).toEqual(API_KEY_MANAGEMENT_ROUTES);
+  });
+
   // RX-96 criterion 4: the back office is /admin, and /admin is the back office.
   const isAdminPath = (route: Route) => /^\/admin(\/|$)/.test(route.path);
   const listsStaff = (route: Route) => !route.access?.public && route.access?.auth?.includes("staff") === true;

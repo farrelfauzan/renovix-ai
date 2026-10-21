@@ -8,7 +8,7 @@ import { S3Service } from "../service/s3.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser, createWorkspace } from "../../../../test/factories";
+import { createUser, createWorkspace, createApiKey, testApiKey } from "../../../../test/factories";
 
 // RX-15 characterization: knowledge base and chunk ownership on the API-key
 // routes (/v1/knowledge, ApiKeyGuard) through the real controller and
@@ -49,8 +49,10 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
   const key = (apiKey: string) => ({ authorization: `Bearer ${apiKey}` });
 
   const setup = async () => {
-    const alice = await createUser(prisma, { apiKey: "sk_live_alice" });
-    const bob = await createUser(prisma, { apiKey: "sk_live_bob" });
+    const alice = await createUser(prisma);
+    await createApiKey(prisma, alice.id, { apiKey: testApiKey("alice") });
+    const bob = await createUser(prisma);
+    await createApiKey(prisma, bob.id, { apiKey: testApiKey("bob") });
     const kb = await prisma.knowledgeBase.create({
       data: { userId: alice.id, name: "Alice KB" },
     });
@@ -72,13 +74,13 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
   it("owner can read and change their knowledge base and chunks (positive control)", async () => {
     const { kb, chunk } = await setup();
 
-    const read = await app.inject({ method: "GET", url: `/v1/knowledge/bases/${kb.id}`, headers: key("sk_live_alice") });
+    const read = await app.inject({ method: "GET", url: `/v1/knowledge/bases/${kb.id}`, headers: key(testApiKey("alice")) });
     expect(read.statusCode).toBe(200);
 
     const chunks = await app.inject({
       method: "GET",
       url: `/v1/knowledge/bases/${kb.id}/chunks`,
-      headers: key("sk_live_alice"),
+      headers: key(testApiKey("alice")),
     });
     expect(chunks.statusCode).toBe(200);
     expect(chunks.json().chunks).toEqual([expect.objectContaining({ id: chunk.id })]);
@@ -86,7 +88,7 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
     const update = await app.inject({
       method: "PUT",
       url: `/v1/knowledge/bases/${kb.id}`,
-      headers: key("sk_live_alice"),
+      headers: key(testApiKey("alice")),
       payload: { name: "Renamed by owner" },
     });
     expect(update.statusCode).toBe(200);
@@ -95,7 +97,7 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
     const delChunk = await app.inject({
       method: "DELETE",
       url: `/v1/knowledge/bases/${kb.id}/chunks/${chunk.id}`,
-      headers: key("sk_live_alice"),
+      headers: key(testApiKey("alice")),
     });
     expect(delChunk.statusCode).toBe(204);
   });
@@ -103,19 +105,19 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
   it("another user cannot read it: GET base and chunks are 403, the list leaves it out", async () => {
     const { kb } = await setup();
 
-    const read = await app.inject({ method: "GET", url: `/v1/knowledge/bases/${kb.id}`, headers: key("sk_live_bob") });
+    const read = await app.inject({ method: "GET", url: `/v1/knowledge/bases/${kb.id}`, headers: key(testApiKey("bob")) });
     const chunks = await app.inject({
       method: "GET",
       url: `/v1/knowledge/bases/${kb.id}/chunks`,
-      headers: key("sk_live_bob"),
+      headers: key(testApiKey("bob")),
     });
     const search = await app.inject({
       method: "POST",
       url: "/v1/knowledge/search",
-      headers: key("sk_live_bob"),
+      headers: key(testApiKey("bob")),
       payload: { query: "note", knowledgeBaseId: kb.id },
     });
-    const list = await app.inject({ method: "GET", url: "/v1/knowledge/bases", headers: key("sk_live_bob") });
+    const list = await app.inject({ method: "GET", url: "/v1/knowledge/bases", headers: key(testApiKey("bob")) });
 
     expect([read.statusCode, chunks.statusCode, search.statusCode]).toEqual([403, 403, 403]);
     expect(chunks.body).not.toContain("Alice's private note");
@@ -132,7 +134,7 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
     const res = await app.inject({
       method,
       url: `/v1/knowledge/bases/${kb.id}${suffix}`,
-      headers: key("sk_live_bob"),
+      headers: key(testApiKey("bob")),
       payload,
     });
 
@@ -149,12 +151,12 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
     const viaAlice = await app.inject({
       method: "DELETE",
       url: `/v1/knowledge/bases/${kb.id}/chunks/${chunk.id}`,
-      headers: key("sk_live_bob"),
+      headers: key(testApiKey("bob")),
     });
     const viaOwn = await app.inject({
       method: "DELETE",
       url: `/v1/knowledge/bases/${bobKb.id}/chunks/${chunk.id}`,
-      headers: key("sk_live_bob"),
+      headers: key(testApiKey("bob")),
     });
 
     expect([viaAlice.statusCode, viaOwn.statusCode]).toEqual([403, 404]);
@@ -169,7 +171,8 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
     "a removed workspace admin cannot read the workspace knowledge base they created",
     async () => {
       const owner = await createUser(prisma);
-      const admin = await createUser(prisma, { apiKey: "sk_live_former_admin" });
+      const admin = await createUser(prisma);
+      await createApiKey(prisma, admin.id, { apiKey: testApiKey("former_admin") });
       const workspace = await createWorkspace(prisma, { ownerId: owner.id });
       await prisma.workspaceMember.create({
         data: { workspaceId: workspace.id, userId: admin.id, role: "admin", status: "removed" },
@@ -184,7 +187,7 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
       const res = await app.inject({
         method: "GET",
         url: `/v1/knowledge/bases/${kb.id}/chunks`,
-        headers: key("sk_live_former_admin"),
+        headers: key(testApiKey("former_admin")),
       });
 
       expect(res.body).not.toContain("added by another member");

@@ -16,7 +16,7 @@ import { HealthController } from "../../health/controller/health.controller";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import {
@@ -45,7 +45,7 @@ jest.mock("../service/conversation.service", () => ({ ConversationService: class
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 
 const PRIMARY_KEY = "rx169-marker-key-not-real-primary";
-const API_KEY = "sk_live_rx169-test-key";
+const API_KEY = testApiKey("rx169-test-key");
 
 describe("RX-169: provider error on the API-key chat route (Fastify, test database)", () => {
   let primary: StubHttpServer;
@@ -114,7 +114,8 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
   // released and the call has one provider_error usage entry of amount 0; the balance is unchanged.
   it("AC7: provider answers 400 → HTTP 500 JSON, a provider_error entry of 0, the hold released, balance unchanged, health answers", async () => {
     primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 1);
 
     const res = await app.inject({
@@ -148,7 +149,8 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
   });
 
   it("RX-22: an unaffordable estimate → HTTP 402 CREDITS_EXHAUSTED (was 400 Insufficient balance), no provider call, nothing written", async () => {
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, "0.000001");
 
     const res = await app.inject({
@@ -173,7 +175,8 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
     const isLeak = (text: string) => text.includes(marker) || text.includes("FAKE1234") || text.includes("rx169-marker-key");
     const logs = captureLogs();
     primary.respond((_r, res) => sendJson(res, status, { error: { message: `Incorrect API key provided: ${marker} ...sk-or-v1-FAKE1234`, code: status } }));
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 1);
 
     const res = await app.inject({
@@ -203,7 +206,8 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
   // no line the process prints (Nest's Logger is not mocked) and nothing the client receives, on the non-stream call.
   it("RNX-190 AC1: stream false, the provider answers 401 with a planted key suffix and SHA-256 → neither is in any output line or in the response", async () => {
     primary.respond((_r, res) => sendJson(res, 401, plantedProviderSecret.body));
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 1);
     const output = captureOutput();
 
@@ -232,7 +236,8 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
 
   it.each(typedCases)("RNX-190 AC2: stream true, the provider answers %s → an SSE error event with the typed fixed text; health answers", async (_name, answer, text) => {
     primary.respond((_r, res) => answer(res));
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 1);
 
     const res = await app.inject({
@@ -248,7 +253,8 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
 
   it("RNX-190 AC2: stream true, the connect times out → an SSE error event with the timeout's fixed text; health answers", async () => {
     jest.spyOn(AbortSignal, "any").mockImplementation(() => AbortSignal.abort(new DOMException("timed out", "TimeoutError")));
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 1);
 
     const res = await app.inject({
@@ -265,7 +271,8 @@ describe("RX-169: provider error on the API-key chat route (Fastify, test databa
   // A 503 is retried 6 times with a real back-off of 44 s on this route; its typed text is checked on the adapter.
   it.each(typedCases.slice(0, 2))("RNX-190 AC2: stream false, the provider answers %s → HTTP 500 with the typed fixed text", async (_name, answer, text) => {
     primary.respond((_r, res) => answer(res));
-    const user = await createUser(prisma, { apiKey: API_KEY });
+    const user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await fundPaidWallet(prisma, user.id, 1);
 
     const res = await app.inject({

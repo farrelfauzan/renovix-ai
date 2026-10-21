@@ -40,6 +40,7 @@ import { CloneAgentSchema } from "../../app/agent/dto/clone-agent.dto";
 import { UpdateAgentSchema } from "../../app/agent/dto/update-agent.dto";
 import { CreateAgentLinkSchema } from "../../app/agent/dto/create-agent-link.dto";
 import { RegisterDto, LoginDto, UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
+import { CreateApiKeyDto } from "../../app/auth/dto/create-api-key.dto";
 import { ApiChatCompletionRequestSchema, ChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
 import { CreateCodeDto, RedeemCodeDto } from "../../app/codes/dto/redeem-code.dto";
 import { ExportRequestSchema } from "../../app/document/dto/export-request.dto";
@@ -118,6 +119,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   // ─── the rest of the product API ───
   ["POST /auth/register", RegisterDto],
   ["POST /auth/login", LoginDto],
+  ["POST /auth/keys", CreateApiKeyDto],
   ["PATCH /auth/me", UpdateProfileDto],
   ["POST /codes/redeem", RedeemCodeDto],
   ["POST /export", ExportRequestSchema],

@@ -79,7 +79,7 @@ describe("CombinedAuthGuard (RX-15 characterization)", () => {
       ["an expired JWT", { authorization: `Bearer ${sign({ userId: "u", exp: Math.floor(Date.now() / 1000) - 60 })}` }],
       ["a JWT signed with another secret", { authorization: `Bearer ${sign({ userId: "u" }, "another-secret")}` }],
       ["an unsigned JWT (alg none)", { authorization: `Bearer ${sign({ userId: "u" }, "", { algorithm: "none" })}` }],
-      ["an API key (wrong credential type)", { authorization: "Bearer sk_live_some-api-key" }],
+      ["an API key (wrong credential type)", { authorization: "Bearer rnx_live_some-api-key" }],
       ["a lowercase bearer scheme", { authorization: `bearer ${sign({ userId: "u" })}` }],
       ["a Basic scheme", { authorization: `Basic ${Buffer.from("a:b").toString("base64")}` }],
       ["Bearer with no token", { authorization: "Bearer " }],

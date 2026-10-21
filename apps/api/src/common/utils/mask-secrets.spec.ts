@@ -30,6 +30,8 @@ describe("RNX-17: maskSecrets", () => {
     ["/callback?token=abc&state=1", "/callback?token=[REDACTED]&state=1"],
     ["Incorrect API key provided: sk-or-v1-abcdef123", "Incorrect API key provided: [REDACTED]"],
     ["key sk_live_0123456789 refused", "key [REDACTED] refused"],
+    // RNX-18: our keys are rnx_live_ now.
+    [`key rnx_live_${"0a".repeat(38)} refused`, "key [REDACTED] refused"],
     ["jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl here", "jwt [REDACTED] here"],
     ["connect postgresql://renovix:s3cret@db:5432/app", "connect postgresql://renovix:[REDACTED]@db:5432/app"],
   ])("masks the secret in %j", (input, expected) => {

@@ -17,8 +17,8 @@ const SECRET_TEXT: readonly RegExp[] = [
   /\b((?:authorization|(?:set-)?cookie)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\r\n]*)/gi,
   // `password=...`, `"apiKey": "..."`, `token: ...` in a message, a query string or JSON.
   /\b((?:passw(?:or)?d|secret|token|api[-_]?key|x-portal-session)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;&]+)/gi,
-  // API and provider keys: sk_live_... (ours), sk-or-v1-... (OpenRouter), sk-ant-..., sk-proj-...
-  /()\b(sk[-_][A-Za-z0-9_-]{6,})/g,
+  // API and provider keys: rnx_live_... (ours, RNX-18), sk_live_..., sk-or-v1-... (OpenRouter), sk-ant-..., sk-proj-...
+  /()\b((?:rnx_live_|sk[-_])[A-Za-z0-9_-]{6,})/g,
   // JWTs.
   /()\b(eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*)/g,
   // The password of a connection string (postgresql://user:password@host).
@@ -69,8 +69,8 @@ function maskValue(value: unknown, seen: WeakSet<object>, depth: number): unknow
 
 /**
  * RNX-17: a copy of a log argument with every secret replaced by `[REDACTED]`: by key name in objects and errors
- * (any depth), and by shape in every string (Bearer credentials, authorization and cookie headers, `sk-`/`sk_`
- * keys, JWTs, `key=value` pairs, connection-string passwords). A masked value never appears in full or in part.
+ * (any depth), and by shape in every string (Bearer credentials, authorization and cookie headers, `rnx_live_`,
+ * `sk-`/`sk_` keys, JWTs, `key=value` pairs, connection-string passwords). A masked value never appears in full or in part.
  */
 export function maskSecrets(value: unknown): unknown {
   return maskValue(value, new WeakSet<object>(), 0);

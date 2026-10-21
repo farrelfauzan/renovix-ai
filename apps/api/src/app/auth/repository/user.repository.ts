@@ -17,7 +17,7 @@ export class UserRepository {
 
   /** Creates an email and password user; returns the fields the sign-up answers with. */
   createUser(
-    data: Pick<Prisma.UserCreateInput, "email" | "password" | "apiKey" | "name">,
+    data: Pick<Prisma.UserCreateInput, "email" | "password" | "name">,
     tx?: DbTransaction,
   ) {
     return (tx ?? this.prisma).user.create({
@@ -26,7 +26,6 @@ export class UserRepository {
         id: true,
         email: true,
         name: true,
-        apiKey: true,
         createdAt: true,
       },
     });
@@ -58,18 +57,9 @@ export class UserRepository {
         timezone: true,
         locale: true,
         status: true,
-        apiKey: true,
         createdAt: true,
         updatedAt: true,
       },
-    });
-  }
-
-  /** Replaces this user's API key. */
-  updateApiKey(userId: string, apiKey: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).user.update({
-      where: { id: userId },
-      data: { apiKey },
     });
   }
 

@@ -13,9 +13,10 @@ const productionEnv = (): NodeJS.ProcessEnv => ({
   MCP_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
   MCP_OAUTH_STATE_SECRET: randomBytes(48).toString("base64"),
   LLM_KEY_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
+  API_KEY_HASH_SECRET: randomBytes(48).toString("base64"),
 });
 
-const SECRETS = ["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_ENCRYPTION_KEY", "MCP_OAUTH_STATE_SECRET", "LLM_KEY_ENCRYPTION_KEY"];
+const SECRETS = ["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_ENCRYPTION_KEY", "MCP_OAUTH_STATE_SECRET", "LLM_KEY_ENCRYPTION_KEY", "API_KEY_HASH_SECRET"];
 
 describe("assertRequiredSecrets", () => {
   it("control: starts in production with real values", () => {
@@ -32,7 +33,7 @@ describe("assertRequiredSecrets", () => {
     expect(() => assertRequiredSecrets({ ...productionEnv(), [name]: "" })).toThrow(`${name} is required`);
   });
 
-  it.each(["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_OAUTH_STATE_SECRET"])(
+  it.each(["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_OAUTH_STATE_SECRET", "API_KEY_HASH_SECRET"])(
     "refuses to start in production when %s is the placeholder \"change-me-in-production\"",
     (name) => {
       expect(() => assertRequiredSecrets({ ...productionEnv(), [name]: "change-me-in-production" })).toThrow(
@@ -41,7 +42,7 @@ describe("assertRequiredSecrets", () => {
     },
   );
 
-  it.each(["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_OAUTH_STATE_SECRET"])(
+  it.each(["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_OAUTH_STATE_SECRET", "API_KEY_HASH_SECRET"])(
     "refuses to start in production when %s is shorter than 32 characters",
     (name) => {
       expect(() => assertRequiredSecrets({ ...productionEnv(), [name]: "x".repeat(31) })).toThrow(
@@ -70,6 +71,11 @@ describe("assertRequiredSecrets", () => {
 
     it("refuse to start it in production", () => {
       expect(() => assertRequiredSecrets({ ...example, NODE_ENV: "production" })).toThrow("placeholder value");
+    });
+
+    it("RNX-18 (AC7): its API_KEY_HASH_SECRET is refused in production", () => {
+      const env = { ...productionEnv(), API_KEY_HASH_SECRET: example.API_KEY_HASH_SECRET };
+      expect(() => assertRequiredSecrets(env)).toThrow("API_KEY_HASH_SECRET is a placeholder value");
     });
 
     it("RX-177: its LLM_KEY_ENCRYPTION_KEY is refused in production", () => {

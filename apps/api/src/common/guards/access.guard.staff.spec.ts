@@ -7,7 +7,7 @@ import { AdminSessionService } from "../../app/admin-auth/service/admin-session.
 import { PrismaService } from "../../app/prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
-import { createUser } from "../../../test/factories";
+import { createUser, createApiKey, testApiKey } from "../../../test/factories";
 import { seedAdminRoles } from "../../../test/admin-auth";
 
 // RX-94: the `staff` method of the global AccessGuard, its scope option and `reauth`, through real HTTP
@@ -87,7 +87,7 @@ class ProductProbeController {
   }
 }
 
-const API_KEY = "sk_live_rx94-valid-key";
+const API_KEY = testApiKey("rx94-valid-key");
 const BETTER_AUTH_COOKIE = "better-auth.session_token=rx94";
 const ACCESS = "rx_admin_access";
 const MINUTE = 60_000;
@@ -115,7 +115,8 @@ describe("AccessGuard staff method (RX-94, Fastify, test database)", () => {
   beforeEach(async () => {
     jest.useFakeTimers({ doNotFake: [...NOT_DATE], now: new Date("2026-10-14T08:00:00Z") });
     await resetDatabase(prisma);
-    user = await createUser(prisma, { apiKey: API_KEY });
+    user = await createUser(prisma);
+    await createApiKey(prisma, user.id, { apiKey: API_KEY });
     await seedAdminRoles(prisma);
     admin = await prisma.adminUser.create({ data: { email: "ops@example.com", passwordHash: "not-used", role: "operations" } });
     mockGetSession.mockReset();
@@ -277,7 +278,7 @@ describe("AccessGuard staff method (RX-94, Fastify, test database)", () => {
     });
 
     it("an unknown API key, a cookie without a session: 401", async () => {
-      const withKey = await get("/staff-probe/full", { authorization: "Bearer sk_live_unknown" });
+      const withKey = await get("/staff-probe/full", { authorization: `Bearer ${testApiKey("unknown")}` });
       const withCookie = await get("/staff-probe/full", { cookie: BETTER_AUTH_COOKIE });
 
       expect(withKey.statusCode).toBe(401);

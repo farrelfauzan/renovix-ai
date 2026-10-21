@@ -75,11 +75,4 @@ export class AuthController {
     }
     return this.authService.updateProfile(req.user.userId, parsed.data);
   }
-
-  @Post("keys/regenerate")
-  @Access({ auth: ["jwt", "session"] })
-  @HttpCode(200)
-  async regenerateApiKey(@Req() req: any) {
-    return this.authService.regenerateApiKey(req.user.userId);
-  }
 }

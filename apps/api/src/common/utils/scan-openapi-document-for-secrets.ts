@@ -9,7 +9,7 @@ export type SecretPattern = { readonly label: string; readonly test: RegExp };
 export function openApiSecretPatterns(envValues: readonly string[]): SecretPattern[] {
   const patterns: SecretPattern[] = [
     { label: "secret name", test: /SECRET/i },
-    { label: "API key prefix", test: /sk_live_|sk_test_|pk_live_|pk_test_/ },
+    { label: "API key prefix", test: /rnx_live_|sk_live_|sk_test_|pk_live_|pk_test_/ },
     { label: "internal hostname", test: /\blocalhost\b|\b127\.0\.0\.1\b|\.internal\b/i },
     { label: "back-office test origin", test: /admin\.renovix\.test/ },
   ];

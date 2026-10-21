@@ -4,6 +4,8 @@
 // characters, it looks for the value itself, its last 6 characters (a provider may echo a key's tail)
 // and its SHA-256 in hex (a provider may echo a key's hash). It prints "<NAME>: found (<form>) in <file>"
 // or "<NAME>: not found". It never prints a value, a tail or a hash.
+// RNX-18: it also looks for anything shaped like one of our API keys (`rnx_live_` and 8 or more letters or digits)
+// and prints "rnx_live_ key: found in <file>" or "rnx_live_ key: not found", never the key.
 // Exit code 1 when anything is found, 2 on bad usage or an unreadable file, else 0.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -11,6 +13,7 @@ import { readFileSync } from "node:fs";
 const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD/i;
 const MIN_VALUE_LENGTH = 8;
 const TAIL_LENGTH = 6;
+const API_KEY_SHAPE = /\brnx_live_[A-Za-z0-9]{8,}/;
 
 const files = process.argv.slice(2);
 if (files.length === 0) {
@@ -40,5 +43,8 @@ for (const [name, value] of secrets) {
   isLeaking ||= hits.length > 0;
   console.log(hits.length ? hits.join("\n") : `${name}: not found`);
 }
+const keyHits = contents.filter(({ text }) => API_KEY_SHAPE.test(text)).map(({ file }) => `rnx_live_ key: found in ${file}`);
+isLeaking ||= keyHits.length > 0;
+console.log(keyHits.length ? keyHits.join("\n") : "rnx_live_ key: not found");
 console.log(`${secrets.length} variables checked against ${files.length} files`);
 process.exitCode = isLeaking ? 1 : 0;
