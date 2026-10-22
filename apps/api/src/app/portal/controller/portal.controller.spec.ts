@@ -177,7 +177,7 @@ describe("RX-10: POST /chat/portal/completions free tier (Fastify, test database
     expect(JSON.stringify([sessions, counters])).not.toContain(ip);
   });
 
-  it("RX-138: without X-Portal-Session, POST /chat/portal/completions is 401 and counts nothing", async () => {
+  it("RNX-225: without a portal session, POST /chat/portal/completions gets a new portal_session cookie and counts on that session (RX-138: was 401)", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/chat/portal/completions",
@@ -186,9 +186,11 @@ describe("RX-10: POST /chat/portal/completions free tier (Fastify, test database
       payload: { messages: [{ role: "user", content: "Hi" }] },
     });
 
-    expect(res.statusCode).toBe(401);
-    expect(await prisma.portalSession.count()).toBe(0);
-    expect(await prisma.anonymousUsageCounter.count()).toBe(0);
+    const sessionId = /^portal_session=([0-9a-f-]{36}); /.exec(String(res.headers["set-cookie"]))?.[1];
+    expect(res.statusCode).toBe(200);
+    expect(sessionId).toBeDefined();
+    expect((await prisma.portalSession.findMany()).map((s) => s.sessionToken)).toEqual([sessionId]);
+    expect(await prisma.anonymousUsageCounter.count()).toBe(2);
   });
 
   it("RX-138: a session already at today's 20 requests answers 429 free_limit_reached and counts nothing", async () => {

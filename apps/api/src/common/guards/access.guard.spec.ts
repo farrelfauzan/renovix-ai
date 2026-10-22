@@ -281,8 +281,8 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
     });
 
     // RX-22: the guard also reads the user's paid credit account (credit_accounts); the count is of user lookups.
-    it("X-Portal-Session and a valid login JWT: 200, the user, one user lookup", async () => {
-      const res = await get("/probe/portal", { "x-portal-session": SESSION, authorization: loginJwt() });
+    it("X-Portal-Session and a valid session: 200, the user, one user lookup", async () => {
+      const res = await get("/probe/portal", { "x-portal-session": SESSION, ...validSession() });
 
       expect(res.statusCode).toBe(200);
       expect(res.json().portalIdentity).toEqual({
@@ -293,6 +293,15 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       expect(userLookups).toHaveBeenCalledTimes(1);
     });
 
+    // RNX-225 AC1: a login JWT is never read on the portal.
+    it("X-Portal-Session and a valid login JWT: 200 as anonymous free tier, no user lookup", async () => {
+      const res = await get("/probe/portal", { "x-portal-session": SESSION, authorization: loginJwt() });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ user: null, portalIdentity: { sessionId: SESSION, tier: "free" } });
+      expect(userLookups).toHaveBeenCalledTimes(0);
+    });
+
     it("X-Portal-Session and an API key bearer: 200 as anonymous free tier (as before RX-114)", async () => {
       const res = await get("/probe/portal", { "x-portal-session": SESSION, authorization: `Bearer ${API_KEY}` });
 
@@ -300,21 +309,33 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       expect(res.json()).toEqual({ user: null, portalIdentity: { sessionId: SESSION, tier: "free" } });
     });
 
-    it("no X-Portal-Session: 401 (was 400)", async () => {
+    // RNX-225: a request without a portal session gets a new one and its httpOnly cookie (was 401).
+    it("no portal session: 200, a new session id and its portal_session cookie", async () => {
       const res = await get("/probe/portal");
 
-      expect(res.statusCode).toBe(401);
-      expect(res.json().message).toBe("Missing X-Portal-Session header");
+      expect(res.statusCode).toBe(200);
+      const sessionId = res.json().portalIdentity.sessionId;
+      expect(res.json()).toEqual({ user: null, portalIdentity: { sessionId, tier: "free" } });
+      expect(res.headers["set-cookie"]).toBe(`portal_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
+    });
+
+    it("the portal_session cookie: 200 with its id, no new cookie", async () => {
+      const res = await get("/probe/portal", { cookie: `portal_session=${SESSION}` });
+
+      expect(res.json().portalIdentity).toEqual({ sessionId: SESSION, tier: "free" });
+      expect(res.headers["set-cookie"]).toBeUndefined();
     });
 
     it.each([
       ["a valid login JWT", () => ({ authorization: loginJwt() })],
       ["a valid API key", () => ({ authorization: `Bearer ${API_KEY}` })],
-    ])("no X-Portal-Session but %s: still 401 (the header is the portal's credential)", async (_case, headers) => {
+    ])("no portal session but %s: 200 as anonymous free tier, with a new portal session", async (_case, headers) => {
       const res = await get("/probe/portal", headers());
 
-      expect(res.statusCode).toBe(401);
-      expect(res.json().message).toBe("Missing X-Portal-Session header");
+      expect(res.statusCode).toBe(200);
+      expect(res.json().user).toBeNull();
+      expect(res.json().portalIdentity.tier).toBe("free");
+      expect(res.headers["set-cookie"]).toMatch(/^portal_session=/);
     });
   });
 

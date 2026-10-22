@@ -1,5 +1,4 @@
 import { ConfigModule } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Decimal } from "@prisma/client/runtime/client";
@@ -21,6 +20,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { captureLogs, requestOverSocket, sseErrorMessages } from "../../../../test/sse-client";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-171 AC3/AC4: POST /chat/portal/completions (free and paid paths) is wrapped by the SSE stream guard. A
 // collaborator throws a plain Error after the SSE headers, and the route's own catch then throws too (its first
@@ -129,16 +129,17 @@ describe("RNX-171: the portal stream guard (Fastify, real socket)", () => {
   it("paid path: the provider call throws after the headers, then the route's catch throws → error event, stream ends, health answers, no secret logged", async () => {
     const user = await createUser(prisma);
     await fundPaidWallet(prisma, user.id, 5);
-    const token = moduleRef.get(JwtService).sign({ userId: user.id, email: user.email });
+    const session = asSessionUser(user);
+    const sessionToken = session.cookie.slice(session.cookie.indexOf("=") + 1);
     const logs = plantThrowInRouteCatch();
     const reserve = jest.spyOn(moduleRef.get(CreditService), "reserve");
     const chatStream = jest.spyOn(moduleRef.get(ProviderRouter), "chatStream").mockImplementation(() => {
       throw new Error("planted collaborator failure");
     });
 
-    const res = await chat({ authorization: `Bearer ${token}` }, MODEL.slug);
+    const res = await chat(session, MODEL.slug);
 
     expect([reserve.mock.calls.length, chatStream.mock.calls.length]).toEqual([1, 1]); // the paid path
-    await expectGuardedEnd(res, logs, [MARKER_KEY, MARKER_SESSION, MARKER_COOKIE, token]);
+    await expectGuardedEnd(res, logs, [MARKER_KEY, MARKER_SESSION, MARKER_COOKIE, sessionToken]);
   }, 15000);
 });

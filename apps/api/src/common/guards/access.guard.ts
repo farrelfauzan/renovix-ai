@@ -68,8 +68,8 @@ export class AccessGuard implements CanActivate {
       if (result === true) return true;
       rejection ??= result || undefined;
     }
-    // A portal route takes the login JWT or the session as its optional user:
-    // without `X-Portal-Session` it answers 401 whatever else the request carries.
+    // A portal route takes the session as its optional user and refuses no other credential. Since
+    // RNX-225 PortalGuard always accepts (a request without a portal session gets a new one).
     const others = accepted.includes("portal")
       ? []
       : CREDENTIAL_METHODS.filter((method) => !accepted.includes(method));

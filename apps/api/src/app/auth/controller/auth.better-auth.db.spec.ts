@@ -2,12 +2,15 @@ import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import type { LightMyRequestResponse } from "fastify";
 import * as jwt from "jsonwebtoken";
 import { AuthModule } from "../auth.module";
+import { createAppLogger } from "../../../common/utils/create-app-logger";
 import { BetterAuthTestApp, startBetterAuthApp } from "../../../../test/better-auth-app";
+import { captureOutput } from "../../../../test/capture-output";
 
 // RNX-225: email sign-up and sign-in go through Better Auth (/api/auth/better/sign-up/email, /sign-in/email); the
 // login JWT routes (POST /auth/login, /auth/register, /auth/logout) are gone. Real lib/auth and better-auth on the
-// test database (test/real-better-auth.ts, test/better-auth-app.ts), behind the real AuthModule and AccessGuard.
-// Made-up email addresses and passwords only.
+// test database (test/real-better-auth.ts, test/better-auth-app.ts), behind the real AuthModule and AccessGuard, with
+// the production AppLogger (RX-68's "no token in the logs", now on the Better Auth session token). Made-up email
+// addresses and passwords only.
 jest.mock("better-auth", () => require("../../../../test/real-better-auth").requireNative("better-auth"));
 jest.mock("better-auth/adapters/prisma", () =>
   require("../../../../test/real-better-auth").requireNative("better-auth/adapters/prisma"),
@@ -36,6 +39,7 @@ describe("RNX-225: email auth through Better Auth; the login JWT routes are gone
   beforeAll(async () => {
     started = await startBetterAuthApp({ imports: [AuthModule] });
     app = started.app;
+    app.useLogger(createAppLogger({ NODE_ENV: "production" }));
   });
 
   afterAll(() => app?.close());
@@ -93,6 +97,48 @@ describe("RNX-225: email auth through Better Auth; the login JWT routes are gone
     expect(res.statusCode).toBe(401);
     expect(sessionCookieLine(res)).toBeUndefined();
     expect(profile.statusCode).toBe(401);
+  });
+
+  describe("AC5: the session token never reaches the output (production AppLogger, stdout, stderr, console)", () => {
+    /** The session cookie's value and the session token in it (the part before the signature). */
+    const tokensOf = (cookieLine: string | undefined): string[] => {
+      const value = decodeURIComponent((cookieLine ?? "").split(";")[0].slice(SESSION_COOKIE.length + 1));
+      return [value, value.split(".")[0]].filter((token) => token.length > 0);
+    };
+
+    /**
+     * Sign-up, sign-in, the session route with each session cookie and a wrong password, all while the output is
+     * captured; `plant` runs inside the capture with the tokens (the control). Returns the captured lines that hold a
+     * token, and the tokens.
+     */
+    const runCaptured = async (email: string, plant: (tokens: string[]) => void = () => undefined) => {
+      const output = captureOutput();
+      try {
+        const signedUp = await signUp(email);
+        const signedIn = await signIn(email);
+        await me(sessionCookieLine(signedUp));
+        await me(sessionCookieLine(signedIn));
+        await signIn(email, "not-the-password");
+        const tokens = [...tokensOf(sessionCookieLine(signedUp)), ...tokensOf(sessionCookieLine(signedIn))];
+        plant(tokens);
+        return { tokens, leaked: output.lines.filter((line) => tokens.some((token) => line.includes(token))) };
+      } finally {
+        jest.restoreAllMocks();
+      }
+    };
+
+    it("no line printed during sign-up, sign-in and the session route holds the session token", async () => {
+      const { tokens, leaked } = await runCaptured("no-token-in-logs@renovix.test");
+
+      expect(tokens).toHaveLength(4);
+      expect(leaked).toEqual([]);
+    });
+
+    it("control: a planted console.log(token) is caught", async () => {
+      const { leaked } = await runCaptured("planted-log@renovix.test", (tokens) => console.log(`session ${tokens[1]}`));
+
+      expect(leaked).toHaveLength(1);
+    });
   });
 
   it("a login JWT of a real user on the session route: 401", async () => {

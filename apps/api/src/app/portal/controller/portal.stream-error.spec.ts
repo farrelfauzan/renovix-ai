@@ -1,6 +1,5 @@
 import { Logger } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import axios from "axios";
@@ -40,6 +39,7 @@ import {
 } from "../../../../test/llm-stub";
 import { createResolvableModel, testConnection } from "../../../../test/provider-model";
 import { captureLogs } from "../../../../test/sse-client";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-169: a provider that answers a streamed portal chat with an error status
 // must give the client an SSE error event and leave the process running. The
@@ -136,11 +136,11 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
   const paidChat = async () => {
     const user = await createUser(prisma);
     await fundPaidWallet(prisma, user.id, 5);
-    const token = moduleRef.get(JwtService).sign({ userId: user.id, email: user.email });
+    const session = asSessionUser(user);
     return app.inject({
       method: "POST",
       url: "/chat/portal/completions",
-      headers: { "x-portal-session": "22222222-2222-4222-8222-222222222222", authorization: `Bearer ${token}` },
+      headers: { "x-portal-session": "22222222-2222-4222-8222-222222222222", ...session },
       payload: { model: "standard-cheap", messages: [{ role: "user", content: "Hi" }] },
     });
   };
@@ -336,7 +336,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
         url: "/chat/portal/completions",
         headers: {
           "x-portal-session": session,
-          authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: user.email })}`,
+          ...asSessionUser(user),
         },
         payload: { model: "standard-cheap", messages: [{ role: "user", content: "Hi" }] },
       });
@@ -447,7 +447,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       );
       const user = await createUser(prisma);
       await fundPaidWallet(prisma, user.id, 5);
-      const token = moduleRef.get(JwtService).sign({ userId: user.id, email: user.email });
+      const session = asSessionUser(user);
       if (!app.getHttpServer().listening) await app.listen(0, "127.0.0.1");
       const { port } = app.getHttpServer().address() as AddressInfo;
       const client = httpRequest({
@@ -458,7 +458,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
         headers: {
           "content-type": "application/json",
           "x-portal-session": "44444444-4444-4444-8444-444444444444",
-          authorization: `Bearer ${token}`,
+          ...session,
         },
       });
       client.on("error", () => undefined); // destroyed below on purpose
@@ -553,7 +553,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
         .mockImplementation((params) => stream(params.signal!));
       const user = await createUser(prisma);
       await fundPaidWallet(prisma, user.id, 5);
-      const token = moduleRef.get(JwtService).sign({ userId: user.id, email: user.email });
+      const session = asSessionUser(user);
       if (!app.getHttpServer().listening) await app.listen(0, "127.0.0.1");
       const { port } = app.getHttpServer().address() as AddressInfo;
       const client = httpRequest({
@@ -561,7 +561,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
         port,
         method: "POST",
         path: "/chat/portal/completions",
-        headers: { "content-type": "application/json", "x-portal-session": SESSION_NIT, authorization: `Bearer ${token}` },
+        headers: { "content-type": "application/json", "x-portal-session": SESSION_NIT, ...session },
       });
       client.on("error", () => undefined); // destroyed below on purpose
       client.end(JSON.stringify({ model: "standard-cheap", messages: [{ role: "user", content: "Hi" }] }));

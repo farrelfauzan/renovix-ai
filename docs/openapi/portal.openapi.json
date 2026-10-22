@@ -154,7 +154,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -237,7 +237,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -268,7 +268,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -363,7 +363,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -392,7 +392,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -456,7 +456,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -513,7 +513,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -551,7 +551,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -621,7 +621,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -698,7 +698,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -738,7 +738,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -792,7 +792,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -832,7 +832,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -863,7 +863,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -915,7 +915,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -955,7 +955,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -986,7 +986,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1017,7 +1017,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1057,7 +1057,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1095,7 +1095,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1152,7 +1152,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1224,7 +1224,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1264,7 +1264,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1318,7 +1318,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1366,7 +1366,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1386,7 +1386,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1406,7 +1406,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1426,7 +1426,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1446,7 +1446,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1498,7 +1498,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1529,7 +1529,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1549,7 +1549,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1569,7 +1569,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1634,7 +1634,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1672,7 +1672,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1692,7 +1692,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1744,7 +1744,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1775,7 +1775,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1804,7 +1804,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1835,7 +1835,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1899,7 +1899,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1939,7 +1939,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -1979,7 +1979,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2010,7 +2010,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2063,7 +2063,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2103,7 +2103,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2143,7 +2143,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2220,7 +2220,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2269,7 +2269,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2324,7 +2324,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2355,7 +2355,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2425,7 +2425,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2463,7 +2463,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2494,7 +2494,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2525,7 +2525,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2582,7 +2582,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2611,7 +2611,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2672,7 +2672,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2712,7 +2712,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2786,7 +2786,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2845,7 +2845,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2883,7 +2883,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2939,7 +2939,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -2984,7 +2984,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -3779,7 +3779,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -3825,7 +3825,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4033,7 +4033,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4064,7 +4064,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4097,7 +4097,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4160,7 +4160,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4218,7 +4218,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4251,7 +4251,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4271,7 +4271,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4291,7 +4291,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4322,7 +4322,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4353,7 +4353,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4411,7 +4411,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4444,7 +4444,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4486,7 +4486,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4561,7 +4561,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4607,7 +4607,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4684,7 +4684,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4715,7 +4715,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4784,7 +4784,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4813,7 +4813,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4878,7 +4878,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5400,7 +5400,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5420,7 +5420,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5472,7 +5472,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5503,7 +5503,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5561,7 +5561,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5590,7 +5590,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5621,7 +5621,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5685,7 +5685,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5725,7 +5725,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5765,7 +5765,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5796,7 +5796,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5866,7 +5866,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5904,7 +5904,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5935,7 +5935,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -5952,17 +5952,17 @@
         "name": "Authorization",
         "description": "API key: 'Bearer ' followed by the account's API key"
       },
-      "JwtOrSession": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT",
-        "description": "JWT Bearer token or Better Auth session cookie"
-      },
       "PortalSession": {
         "type": "apiKey",
-        "in": "header",
-        "name": "X-Portal-Session",
-        "description": "Portal session id (chat portal)"
+        "in": "cookie",
+        "name": "portal_session",
+        "description": "Portal session id (chat portal; set by the API when missing, http-only; X-Portal-Session header accepted as a fallback)"
+      },
+      "SessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "better-auth.session_token",
+        "description": "Better Auth session cookie (set by sign-up/sign-in under /api/auth/better; http-only)"
       }
     }
   }

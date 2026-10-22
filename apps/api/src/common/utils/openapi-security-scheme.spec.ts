@@ -6,7 +6,7 @@ describe("openApiSecuritySchemeName", () => {
     expect(openApiSecuritySchemeName({ auth: ["apiKey"] })).toBe("BearerApiKey");
     expect(openApiSecuritySchemeName({ auth: ["portal"] })).toBe("PortalSession");
     expect(openApiSecuritySchemeName({ auth: ["staff"] })).toBe("BackOfficeSession");
-    expect(openApiSecuritySchemeName({ auth: ["session"] })).toBe("JwtOrSession");
+    expect(openApiSecuritySchemeName({ auth: ["session"] })).toBe("SessionCookie");
   });
 
   it("maps a public route (or a missing declaration) to no scheme", () => {

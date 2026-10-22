@@ -81,12 +81,13 @@ describe("RX-114: the global guards of the real AppModule (Fastify, test databas
     expect(withSession.statusCode).toBe(200);
   });
 
-  it("an API key route and a portal route: 401 without their credential", async () => {
+  it("an API key route: 401 without its credential; a portal route: 200 with a new portal_session cookie (RNX-225: was 401)", async () => {
     const conversations = await app.inject({ method: "GET", url: "/conversations" });
     const portal = await app.inject({ method: "GET", url: "/chat/portal/models" });
 
     expect(conversations.statusCode).toBe(401);
-    expect(portal.statusCode).toBe(401);
+    expect(portal.statusCode).toBe(200);
+    expect(String(portal.headers["set-cookie"])).toMatch(/^portal_session=[0-9a-f-]{36}; Path=\/; HttpOnly;/);
   });
 
   it("RX-156: an /admin route refuses a foreign Origin and a POST without Origin (403), and takes the back-office Origin", async () => {

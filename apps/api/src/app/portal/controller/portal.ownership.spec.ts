@@ -1,4 +1,4 @@
-import { JwtService } from "@nestjs/jwt";
+import * as jwt from "jsonwebtoken";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
@@ -19,9 +19,10 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-15 characterization: conversation and knowledge ownership on the chat
-// portal routes (PortalGuard, JWT path) through the real PortalController,
+// portal routes (PortalGuard, session path) through the real PortalController,
 // ConversationService and KnowledgeService on the test database. No route here
 // calls a model; the collaborators they do not use are empty stubs, and their
 // modules are replaced because they load ESM-only packages.
@@ -65,9 +66,9 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
 
   afterAll(() => app?.close());
 
-  const as = (user: { id: string }) => ({
+  const as = (user: { id: string; email: string }) => ({
     "x-portal-session": SESSION,
-    authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: "x@test.local" })}`,
+    ...asSessionUser(user),
   });
 
   /** A user whose paid wallet holds 5 credits on the ledger (RX-22: the portal reads the ledger, not User.balance). */
@@ -94,10 +95,11 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
     return { alice, bob, conversation, kb, chunk };
   };
 
-  it("not signed in (no X-Portal-Session header): portal conversation list is 401 (RX-114: was 400)", async () => {
+  it("no portal session at all: a new portal_session cookie, and the anonymous 400 (RNX-225: was 401)", async () => {
     const res = await app.inject({ method: "GET", url: "/chat/portal/conversations" });
 
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(400);
+    expect(String(res.headers["set-cookie"])).toMatch(/^portal_session=[0-9a-f-]{36}; Path=\/; HttpOnly;/);
   });
 
   it.each([
@@ -113,8 +115,13 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
     [
       "an expired login JWT of an existing user",
       (user: { id: string }) => ({
-        authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: "x@test.local" }, { expiresIn: -60 })}`,
+        authorization: `Bearer ${jwt.sign({ userId: user.id, email: "x@test.local" }, process.env.JWT_SECRET!, { expiresIn: -60 })}`,
       }),
+    ],
+    // RNX-225: a login JWT is never read on the portal, valid or not.
+    [
+      "a valid login JWT of an existing user (RNX-225)",
+      (user: { id: string }) => ({ authorization: `Bearer ${jwt.sign({ userId: user.id, email: "x@test.local" }, process.env.JWT_SECRET!)}` }),
     ],
     ["an expired Better Auth session cookie (getSession returns null)", () => ({ cookie: "better-auth.session_token=expired" })],
   ])("RX-138: %s with a portal session: portal conversation list is 400 (treated as anonymous)", async (_case, credential: (user: { id: string }) => Record<string, string>) => {

@@ -1,5 +1,4 @@
 import { ConfigModule } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
@@ -21,6 +20,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { realPromptTuning } from "../../../../test/real-prompt-tuning";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-22 review B1: the paid portal path refuses with 402 BEFORE prompt tuning, whose knowledge searches embed the
 // query (paid /embeddings calls). The REAL PromptTuningService and knowledge services run; only
@@ -94,7 +94,7 @@ describe("RX-22 review B1: the paid portal chat refuses an unaffordable request 
       url: "/chat/portal/completions",
       headers: {
         "x-portal-session": "77777777-7777-4777-8777-777777777777",
-        authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: user.email })}`,
+        ...asSessionUser(user),
       },
       payload: { model: "b1-model", messages: [{ role: "user", content: "Hi" }] },
     });

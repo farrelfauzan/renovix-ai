@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { FastifyAdapter, NestFastifyApplication } from "@nestjs/platform-fastify";
 import { WorkspaceChannelController } from "./workspace-channel.controller";
@@ -115,7 +114,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
   const sessionAuth = (user: { id: string; email: string }) => asSessionUser(user);
   const portal = (user: { id: string; email: string }) => ({
     "x-portal-session": SESSION,
-    authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: user.email })}`,
+    ...asSessionUser(user),
   });
   const apiKey = (user: { apiKey: string }) => ({ authorization: `Bearer ${user.apiKey}` });
 
