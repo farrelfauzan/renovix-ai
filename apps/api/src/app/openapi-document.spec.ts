@@ -155,6 +155,7 @@ describe("RX-170: two generated OpenAPI documents", () => {
       "GET /api/v1 (AppController.getData)",
       "GET /api/v1/webhooks/stripe (WebhookController.healthCheck)",
       "POST /api/v1/webhooks/gowa (GowaWebhookController.handleInbound)",
+      "POST /api/v1/webhooks/payments (PaymentWebhookController.receive)",
       "POST /api/v1/webhooks/stripe (WebhookController.handleStripeWebhook)",
     ]);
   });

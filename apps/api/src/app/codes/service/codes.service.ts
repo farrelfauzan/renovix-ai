@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { Decimal } from "@prisma/client/runtime/client";
@@ -14,12 +15,14 @@ import { CodeRedemptionRepository } from "../repository/code-redemption.reposito
 import { SubscriptionPlanRepository } from "../../billing/repository/subscription-plan.repository";
 import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
+import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
 
 const CODE_DEACTIVATED = "This code has been deactivated";
 const CODE_EXPIRED = "This code has expired";
 const NO_REDEMPTIONS_LEFT =
   "This code has reached its maximum number of redemptions";
 const ALREADY_REDEEMED = "You have already redeemed this code";
+const CREDITS_ONLY_NEEDS_PACKAGE = "A credits-only code can be redeemed only by an account with a package";
 
 @Injectable()
 export class CodesService {
@@ -30,6 +33,7 @@ export class CodesService {
     private readonly subscriptions: UserSubscriptionRepository,
     private readonly creditLedger: CreditLedgerService,
     private readonly transactions: TransactionService,
+    private readonly packageOwnership: PackageOwnershipService,
   ) {}
 
   /**
@@ -68,6 +72,11 @@ export class CodesService {
 
     if (existingRedemption) {
       throw new ConflictException(ALREADY_REDEEMED);
+    }
+
+    // D36 (RNX-35): no credits-only state; a free account cannot redeem a credits-only code.
+    if (code.type === "topup" && !(await this.packageOwnership.hasPackage(userId))) {
+      throw new ForbiddenException(CREDITS_ONLY_NEEDS_PACKAGE);
     }
 
     // Execute redemption in a transaction

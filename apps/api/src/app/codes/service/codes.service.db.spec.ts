@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { CodesService } from "./codes.service";
 import { CodeRedemptionRepository } from "../repository/code-redemption.repository";
@@ -9,6 +9,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createPlan, createSubscription, createUser } from "../../../../test/factories";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
+import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -18,7 +19,7 @@ describe("CodesService.redeemCode (test database)", () => {
   let service: CodesService;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ providers: [CodesService, CreditLedgerService] }));
+    ({ moduleRef, prisma } = await createTestModule({ providers: [CodesService, CreditLedgerService, PackageOwnershipService] }));
     service = moduleRef.get(CodesService);
   });
 
@@ -32,6 +33,13 @@ describe("CodesService.redeemCode (test database)", () => {
     prisma.invitationCode.create({
       data: { code, type: "subscription", planId, durationDays: 30 },
     });
+
+  /** A user with a package (an active subscription): RNX-35 (D36), only such an account redeems a credits-only code. */
+  const createPackageUser = async () => {
+    const user = await createUser(prisma);
+    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    return user;
+  };
 
   const topupCode = (maxRedemptions: number, code = "PERF-TOPUP-0001") =>
     prisma.invitationCode.create({
@@ -149,7 +157,7 @@ describe("CodesService.redeemCode (test database)", () => {
   };
 
   it("RX-22: a redeemed code grants into the credit ledger (credits-only code: bonus; package code: plan_grant)", async () => {
-    const user = await createUser(prisma);
+    const user = await createPackageUser();
     const plan = await createPlan(prisma, { slug: "pro" });
     const topup = await topupCode(1);
     const both = await prisma.invitationCode.create({
@@ -168,6 +176,32 @@ describe("CodesService.redeemCode (test database)", () => {
     ]);
     expect(await paidBalanceOf(user.id)).toBe(35);
     await assertCreditLedgerInvariants(prisma);
+  });
+
+  // RNX-35 (D36): no credits-only state; a free account (no subscription, no bought package) cannot redeem a credits-only code.
+  it("RNX-35 (D36): a free account redeeming a credits-only code is refused with 403; nothing is granted or used up", async () => {
+    const user = await createUser(prisma);
+    const code = await topupCode(3);
+
+    const redeem = service.redeemCode(user.id, code.code);
+
+    await expect(redeem).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(redeem).rejects.toThrow("A credits-only code can be redeemed only by an account with a package");
+    expect(await grantsOf(user.id, code.id)).toEqual({ balance: 0, ledgerRows: 0, subscription: null, redemptions: 0, timesRedeemed: 0 });
+  });
+
+  it("RNX-35 (D36): an account with a bought package (a package purchase snapshot, no subscription) may redeem a credits-only code", async () => {
+    const user = await createUser(prisma);
+    const pkg = await prisma.package.create({ data: { name: "Starter-d36", displayOrder: 1, active: true, visible: true } });
+    const version = await prisma.packageVersion.create({
+      data: { packageId: pkg.id, versionNumber: 1, priceUsdCents: 1000, creditsGranted: 10, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, apiAccess: false, allowedChannels: [], allowedTiers: [], createdBy: "test", reason: "test" },
+    });
+    await prisma.purchaseSnapshot.create({
+      data: { buyerUserId: user.id, packageVersionId: version.id, priceUsdCents: 1000, exchangeRate: "16500", exchangeRateDate: new Date("2026-10-21"), exchangeRateSource: "test", priceRupiah: 165000, creditsGranted: 10, allowedChannels: [], allowedTiers: [] },
+    });
+    const code = await topupCode(3);
+
+    await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({ success: true, creditsGranted: 25 });
   });
 
   // D186: a code that grants 0 credits (e.g. a package code that only unlocks) writes no ledger entry; the
@@ -204,7 +238,7 @@ describe("CodesService.redeemCode (test database)", () => {
   });
 
   it("RX-147: refuses a user's second redemption of a code with uses left and changes nothing", async () => {
-    const user = await createUser(prisma);
+    const user = await createPackageUser();
     const code = await topupCode(3);
     await service.redeemCode(user.id, code.code);
 
@@ -218,7 +252,7 @@ describe("CodesService.redeemCode (test database)", () => {
   });
 
   it("RX-147: refuses a second user on a single-use code with the maximum-redemptions 400", async () => {
-    const [userA, userB] = [await createUser(prisma), await createUser(prisma)];
+    const [userA, userB] = [await createPackageUser(), await createPackageUser()];
     const code = await topupCode(1);
     await service.redeemCode(userA.id, code.code);
 
@@ -230,7 +264,7 @@ describe("CodesService.redeemCode (test database)", () => {
   });
 
   it("RX-147: keeps a fresh user's balance equal to the sum of the user's ledger rows after each redemption", async () => {
-    const user = await createUser(prisma);
+    const user = await createPackageUser();
     const first = await topupCode(5, "PERF-TOPUP-0001");
     const second = await topupCode(5, "PERF-TOPUP-0002");
 
@@ -241,7 +275,7 @@ describe("CodesService.redeemCode (test database)", () => {
   });
 
   it("RX-147: grants a two-use code to exactly two of three users redeeming at the same moment", async () => {
-    const users = [await createUser(prisma), await createUser(prisma), await createUser(prisma)];
+    const users = [await createPackageUser(), await createPackageUser(), await createPackageUser()];
     const code = await topupCode(2);
     holdCallersAtRedemptionCheck(users.length);
 
@@ -262,7 +296,7 @@ describe("CodesService.redeemCode (test database)", () => {
   });
 
   it("RX-147: grants once when the same user redeems one code twice at the same moment (201 and 409, never 500)", async () => {
-    const user = await createUser(prisma);
+    const user = await createPackageUser();
     const code = await topupCode(3);
     holdCallersAtRedemptionCheck(2);
 

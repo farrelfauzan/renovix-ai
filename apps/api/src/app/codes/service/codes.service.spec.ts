@@ -5,6 +5,7 @@ import { CodeRedemptionRepository } from "../repository/code-redemption.reposito
 import { SubscriptionPlanRepository } from "../../billing/repository/subscription-plan.repository";
 import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
+import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
 import { TransactionService } from "../../prisma/transaction.service";
 
 // PrismaService loads the generated client; a plain mock object is passed in instead.
@@ -30,6 +31,7 @@ function setup(code: unknown) {
     new UserSubscriptionRepository(prisma as never),
     { appendEntry: jest.fn() } as unknown as CreditLedgerService,
     new TransactionService(prisma as never),
+    { hasPackage: jest.fn().mockResolvedValue(true) } as unknown as PackageOwnershipService,
   );
   return { service, tx };
 }

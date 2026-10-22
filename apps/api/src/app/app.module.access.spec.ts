@@ -145,6 +145,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /auth/logout (AuthController.logout)",
     "POST /auth/register (AuthController.register)",
     "POST /webhooks/gowa (GowaWebhookController.handleInbound)",
+    "POST /webhooks/payments (PaymentWebhookController.receive)",
     "POST /webhooks/stripe (WebhookController.handleStripeWebhook)",
   ];
   const API_KEY_ROUTES = [
@@ -178,6 +179,11 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /chat/portal/knowledge (PortalController.createKnowledgeBase)",
     "POST /chat/portal/knowledge/:id/upload (PortalController.uploadToKnowledgeBase)",
     "POST /chat/portal/link-session (PortalController.linkSession)",
+  ];
+  // RNX-35: the buyer's payment routes take the product session only (no "jwt": RNX-225 retires it).
+  const SESSION_ROUTES = [
+    "GET /payments/orders/:id (PaymentsController.getOrder)",
+    "POST /payments/checkout (PaymentsController.startCheckout)",
   ];
   // Back-office routes (RX-94): `staff` only, full sessions unless a scope is declared.
   const STAFF_ROUTES = [
@@ -316,6 +322,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     expect(labels(routes.filter((route) => route.access?.public))).toEqual(PUBLIC_ROUTES);
     expect(labels(routes.filter((route) => declares(route, ["apiKey"])))).toEqual(API_KEY_ROUTES);
     expect(labels(routes.filter((route) => declares(route, ["portal"])))).toEqual(PORTAL_ROUTES);
+    expect(labels(routes.filter((route) => declares(route, ["session"])))).toEqual(SESSION_ROUTES);
     expect(labels(routes.filter((route) => declaresStaff(route, undefined)))).toEqual(STAFF_ROUTES);
     expect(labels(routes.filter((route) => declaresStaff(route, "enrolment")))).toEqual(STAFF_ENROLMENT_ROUTES);
     expect(labels(routes.filter((route) => declaresStaff(route, "any")))).toEqual(STAFF_ANY_SCOPE_ROUTES);
@@ -328,6 +335,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
       ...PUBLIC_ROUTES,
       ...API_KEY_ROUTES,
       ...PORTAL_ROUTES,
+      ...SESSION_ROUTES,
       ...STAFF_ROUTES,
       ...STAFF_ENROLMENT_ROUTES,
       ...STAFF_ANY_SCOPE_ROUTES,

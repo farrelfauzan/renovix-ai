@@ -8,6 +8,7 @@ import type { SaveSettingBodyDto } from "../dto/save-setting-body.dto";
 import type { AdminWriteInput } from "../types/admin-write-input";
 import type { Audited } from "../types/audited";
 import type { SettingView } from "../types/setting-view";
+import { toAuditSettingValue } from "../utils/to-audit-setting-value";
 
 /**
  * Typed platform settings through the admin API (RNX-226): every name of the registry (offers/config/platform-settings.ts)
@@ -31,6 +32,6 @@ export class AdminSettingsService {
     const before = await this.settings.getSetting(name, tx);
     await this.settings.saveSetting({ name, value: body.value, author: { changedBy: adminId, reason: body.reason } }, tx);
     const after = await this.settings.getSetting(name, tx);
-    return { result: { name, value: after }, change: { before: { name, value: before }, after: { name, value: after }, reason: body.reason } };
+    return { result: { name, value: after }, change: { before: { name, value: toAuditSettingValue(before) }, after: { name, value: toAuditSettingValue(after) }, reason: body.reason } };
   }
 }

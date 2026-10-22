@@ -62,4 +62,18 @@ export const PLATFORM_SETTINGS = {
   paymentGatewayFeePercent: z.number().min(0).max(100),
   /** A provider's day is flagged when its portal drop is above our high estimate by more than this percentage of it (RNX-228). */
   reconciliationDriftThresholdPercent: z.number().nonnegative().max(1000),
+  /** Payments kill switch (RNX-35, docs/payments.md section 6): checkout is open only while this is true; not set is off. PAYMENTS_FORCE_OFF=true wins. */
+  paymentsEnabled: z.boolean(),
+  /** The largest single payment, in rupiah (RNX-35). Not set: checkout is refused. */
+  paymentsMaxPerPaymentRupiah: AT_LEAST_ONE,
+  /** One account's pending and paid checkouts per Jakarta day, in rupiah (RNX-35). Not set: checkout is refused. */
+  paymentsMaxPerAccountPerDayRupiah: AT_LEAST_ONE,
+  /** All pending and paid checkouts per Jakarta day, in rupiah (RNX-35). Not set: checkout is refused. */
+  paymentsMaxPlatformPerDayRupiah: AT_LEAST_ONE,
+  /** How long an order stays payable, in minutes (RNX-35). Not set: checkout is refused. */
+  paymentsOrderExpiryMinutes: AT_LEAST_ONE,
+  /** How often the reconciliation job runs, in minutes (RNX-35). Not set: the job does not run. */
+  paymentsReconcileEveryMinutes: AT_LEAST_ONE,
+  /** The pilot allow-list: the user ids that may check out (RNX-35, AC23). Not set or empty: everyone. */
+  paymentsAllowedUserIds: z.array(z.string().trim().min(1)),
 } as const;
