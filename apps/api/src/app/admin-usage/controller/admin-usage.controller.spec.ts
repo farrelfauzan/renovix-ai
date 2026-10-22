@@ -157,6 +157,56 @@ describe("Usage, cost and profit aggregates and reconciliation (RNX-228, Fastify
     });
   });
 
+  describe("AC8: two API instances run the daily job at the same time", () => {
+    type RollupLocks = { held: number; waiting: number };
+    /** The rollup job's advisory locks (first key 228001) in this database: held and waited for. */
+    const rollupLocks = async (): Promise<RollupLocks> => {
+      const [locks] = await prisma.$queryRaw<RollupLocks[]>`
+        SELECT count(*) FILTER (WHERE l.granted)::int AS held, count(*) FILTER (WHERE NOT l.granted)::int AS waiting
+        FROM pg_locks l JOIN pg_database d ON d.oid = l.database
+        WHERE l.locktype = 'advisory' AND l.classid = 228001 AND d.datname = current_database()`;
+      return locks;
+    };
+    /** Polls the rollup locks until `isReached` holds, for at most 5 s; whether it was reached. */
+    const waitForLocks = async (isReached: (locks: RollupLocks) => boolean): Promise<boolean> => {
+      for (let i = 0; i < 100; i++) {
+        if (isReached(await rollupLocks())) return true;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return false;
+    };
+
+    it("the second instance waits on the advisory lock the first holds, then skips that day: each day is built once", async () => {
+      await seedScenario();
+      const { cookie } = await signedIn("finance");
+      const aggregates = moduleRef.get(UsageAggregatesService);
+      const jobs: Promise<string[]>[] = [];
+      const reached: boolean[] = [];
+
+      // The test holds a SHARE lock on usage_daily_rollups, so instance A stops at its first INSERT while it holds the
+      // advisory lock of its first day; instance B, started then, must wait on that advisory lock.
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`LOCK TABLE usage_daily_rollups IN SHARE MODE`;
+        jobs.push(aggregates.buildClosedDays());
+        reached.push(await waitForLocks(({ held }) => held === 1));
+        jobs.push(aggregates.buildClosedDays());
+        reached.push(await waitForLocks(({ held, waiting }) => held === 1 && waiting === 1));
+      }, { timeout: 25_000 });
+      const settled = await Promise.allSettled(jobs);
+
+      expect(reached).toEqual([true, true]);
+      expect(settled.map((job) => (job.status === "rejected" ? String(job.reason) : job.status))).toEqual(["fulfilled", "fulfilled"]);
+      const [first, second] = settled.map((job) => (job.status === "fulfilled" ? job.value : []));
+      const builtDays = (await prisma.usageRollupDay.findMany()).map((row) => row.day.toISOString().slice(0, 10)).sort();
+      expect(builtDays).toEqual(expect.arrayContaining(["2026-10-05", "2026-10-06"]));
+      expect([...first, ...second].sort()).toEqual(builtDays);
+      expect(first).toContain("2026-10-05");
+      expect(second).not.toContain("2026-10-05");
+      const { totals } = (await get(cookie, `/admin/usage/profit?${PERIOD}`)).json();
+      expect(totals).toMatchObject({ calls: 6, creditsConsumed: "11", costLowUsd: "0.056" });
+    });
+  });
+
   describe("AC3: cost, revenue, profit and margin need profit:read; token counts need usage:read", () => {
     it.each([["finance"], ["owner"]])("%s: profit 200 and daily 200", async (role) => {
       const { cookie } = await signedIn(role);
@@ -366,6 +416,18 @@ describe("Usage, cost and profit aggregates and reconciliation (RNX-228, Fastify
       expect(rowOf(rows, { day: "2026-10-06" })).toMatchObject({ portalDropUsd: "0.95", flagged: true });
       const { rows: alone } = (await get(cookie, "/admin/reconciliation?from=2026-10-04&to=2026-10-04")).json();
       expect(alone).toEqual([expect.objectContaining({ previousBalanceUsd: null, portalDropUsd: null, flagged: null })]);
+    });
+
+    it("the threshold not set (its value is pending, no default): the drop is shown, the threshold and the flag are null", async () => {
+      const { p1 } = await seedScenario();
+      const { cookie } = await signedIn("finance");
+      await enter(cookie, { providerId: p1, day: "2026-10-04", portalBalanceUsd: "100" });
+      await enter(cookie, { providerId: p1, day: "2026-10-05", portalBalanceUsd: "99.9" });
+
+      const { rows, driftThresholdPercent } = (await get(cookie, "/admin/reconciliation?from=2026-10-05&to=2026-10-05")).json();
+
+      expect(driftThresholdPercent).toBeNull();
+      expect(rowOf(rows, { providerId: p1 })).toMatchObject({ portalDropUsd: "0.1", estimateHighUsd: "0.05", flagged: null });
     });
   });
 });
