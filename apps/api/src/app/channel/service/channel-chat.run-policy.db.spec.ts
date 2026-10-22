@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { ChannelChatService } from "./channel-chat.service";
 import { ChannelService } from "./channel.service";
@@ -216,6 +216,59 @@ describe("RNX-119: the run policy on every channel chat message (test database, 
     );
 
     await nothingCharged();
+  });
+
+  describe("RNX-260 (D259)", () => {
+    const CLOSED = new ConflictException("This workspace is archived or deleted: no new run can start in it");
+
+    it.each(["draft", "archived"])(
+      "AC5: the agent is %s: a collaborator cannot add it to a channel, and a message where it was added earlier is refused (404), nothing charged",
+      async (status) => {
+        const { collaborator, channel, agent } = await collaboratorSetup();
+        await prisma.agent.update({ where: { id: agent.id }, data: { status } });
+        const other = await prisma.channel.create({ data: { userId: collaborator.id, name: "Other room" } });
+
+        await expect(channels.addAgent(collaborator.id, other.id, agent.id)).rejects.toThrow(new NotFoundException("Agent not found"));
+        await expect(service.assertRunCanStart(collaborator.id, channel.id, agent.id, "Hi")).rejects.toThrow(
+          new NotFoundException("Agent not found"),
+        );
+        await expect(service.chat(collaborator.id, channel.id, agent.id, "Hi")).rejects.toThrow(new NotFoundException("Agent not found"));
+
+        expect(await prisma.channelAgent.count({ where: { channelId: other.id } })).toBe(0);
+        await nothingCharged();
+      },
+    );
+
+    it("AC5: the owner adds a draft agent to their channel and runs it (control)", async () => {
+      const { owner, agent } = await seedWorkspace();
+      await prisma.agent.update({ where: { id: agent.id }, data: { status: "draft" } });
+      fake.enqueue({ content: "Hello" }, { content: "[]" });
+
+      const channel = await channelWithAgent(owner.id, agent.id);
+      await service.assertRunCanStart(owner.id, channel.id, agent.id, "Hi");
+      const result = await chat(owner.id, channel.id, agent.id, "Hi");
+
+      expect(result.content).toBe("Hello");
+    });
+
+    it.each(["archived", "deleted"])(
+      "AC6: the workspace is %s: the owner's and a collaborator's channel chat are refused with 409, nothing charged",
+      async (status) => {
+        const { owner, workspace, collaborator, channel, agent } = await collaboratorSetup();
+        const ownerChannel = await channelWithAgent(owner.id, agent.id);
+        await prisma.workspace.update({ where: { id: workspace.id }, data: { status } });
+
+        for (const [userId, channelId] of [
+          [owner.id, ownerChannel.id],
+          [collaborator.id, channel.id],
+        ]) {
+          await expect(service.assertRunCanStart(userId, channelId, agent.id, "Hi")).rejects.toThrow(CLOSED);
+          await expect(service.chat(userId, channelId, agent.id, "Hi")).rejects.toThrow(CLOSED);
+        }
+
+        await nothingCharged();
+      },
+    );
   });
 
   it("AC5: an outsider's channel chat with the public agent: no workspace memory in the prompt, no extraction, no fact written", async () => {

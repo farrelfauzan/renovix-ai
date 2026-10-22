@@ -341,22 +341,28 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
       await expect(call(bob.id, agent.id, agentRun.id)).resolves.toBeTruthy();
     });
 
-    it("another user's agent, the caller owning none: 404 Agent not found, the run kept (userId decides)", async () => {
+    /** RNX-260 (D259, 78): run reads need only "this run is mine": not the caller's run is an empty list or 404 Run not found. */
+    const expectNotTheCallersRun = async (result: Promise<unknown>) => {
+      if (method === "listRuns") await expect(result).resolves.toEqual([]);
+      else await expect(result).rejects.toThrow(new NotFoundException("Run not found"));
+    };
+
+    it("another user's agent, the caller owning none: not the caller's run (was 404 Agent not found), the run kept (userId decides)", async () => {
       const { bob, alice } = await seedUsers();
       const agent = await createAgent(prisma, { userId: alice.id });
       const agentRun = await seedRun(agent);
 
-      await expect(call(bob.id, agent.id, agentRun.id)).rejects.toThrow(new NotFoundException("Agent not found"));
+      await expectNotTheCallersRun(call(bob.id, agent.id, agentRun.id));
 
       expect(await prisma.agentRun.count({ where: { id: agentRun.id } })).toBe(1);
     });
 
-    it("an unknown agent id while the caller owns an agent: 404 Agent not found (id decides)", async () => {
+    it("an unknown agent id while the caller owns an agent: no run of it (was 404 Agent not found) (id decides)", async () => {
       const { bob } = await seedUsers();
       const agent = await createAgent(prisma, { userId: bob.id });
       const agentRun = await seedRun(agent);
 
-      await expect(call(bob.id, UNKNOWN_ID, agentRun.id)).rejects.toThrow(new NotFoundException("Agent not found"));
+      await expectNotTheCallersRun(call(bob.id, UNKNOWN_ID, agentRun.id));
 
       expect(await prisma.agentRun.count({ where: { id: agentRun.id } })).toBe(1);
     });
