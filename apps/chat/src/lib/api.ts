@@ -3,16 +3,6 @@ import { config } from "./config";
 
 const API_BASE = config.apiUrl;
 
-export function getOrCreateSessionToken(): string {
-  if (typeof window === "undefined") return "";
-  let token = localStorage.getItem("portal_session");
-  if (!token) {
-    token = crypto.randomUUID();
-    localStorage.setItem("portal_session", token);
-  }
-  return token;
-}
-
 /** Free-tier daily caps (RX-10): the message is the agreed copy. */
 export const FREE_LIMIT_CODES = ["free_limit_reached", "free_capacity_reached"];
 
@@ -83,21 +73,11 @@ export function streamCompletion(
   onDocument?: (doc: DocumentAttachment) => void,
 ): AbortController {
   const controller = new AbortController();
-  const sessionToken = getOrCreateSessionToken();
-  const jwt =
-    typeof window !== "undefined" ? localStorage.getItem("jwt") : null;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-Portal-Session": sessionToken,
-  };
-  if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
-
   let receivedConversationId: string | undefined;
 
   fetch(`${API_BASE}/chat/portal/completions`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({
       messages,

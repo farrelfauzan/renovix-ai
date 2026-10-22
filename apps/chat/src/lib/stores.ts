@@ -164,12 +164,10 @@ export const useChatStore = create<ChatState>()(
 
 // Auth store
 interface AuthState {
-  jwt: string | null;
   email: string | null;
   name: string | null;
   avatar: string | null;
   sessionAuth: boolean; // true when authenticated via Better Auth (cookie session)
-  setAuth: (jwt: string, email: string) => void;
   setSessionAuth: (
     email: string,
     name?: string | null,
@@ -182,29 +180,22 @@ interface AuthState {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      jwt: null,
       email: null,
       name: null,
       avatar: null,
       sessionAuth: false,
-      setAuth: (jwt, email) => {
-        if (typeof window !== "undefined") localStorage.setItem("jwt", jwt);
-        set({ jwt, email, sessionAuth: false });
-      },
       setSessionAuth: (email, name = null, avatar = null) => {
-        set({ jwt: null, email, sessionAuth: true, name, avatar });
+        set({ email, sessionAuth: true, name, avatar });
       },
       logout: () => {
-        if (typeof window !== "undefined") localStorage.removeItem("jwt");
         set({
-          jwt: null,
           email: null,
           name: null,
           avatar: null,
           sessionAuth: false,
         });
       },
-      isLoggedIn: () => !!get().jwt || get().sessionAuth,
+      isLoggedIn: () => get().sessionAuth,
     }),
     { name: "performa-auth" },
   ),

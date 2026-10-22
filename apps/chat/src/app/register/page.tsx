@@ -8,7 +8,7 @@ import { useAuthStore } from "@/lib/stores";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
-import { signIn } from "@/lib/auth-client";
+import { signIn, signUp } from "@/lib/auth-client";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 
 export default function RegisterPage() {
@@ -18,7 +18,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<string | null>(null);
-  const { setAuth } = useAuthStore();
+  const { setSessionAuth } = useAuthStore();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -34,14 +34,15 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await apiClient.post<{
-        token: string;
-        user: { email: string };
-      }>("/auth/register", {
+      const { data, error: signUpError } = await signUp.email({
         email,
         password,
+        name: email.split("@")[0],
       });
-      setAuth(res.token, res.user.email);
+      if (signUpError || !data) {
+        throw new Error(signUpError?.message || "Registration failed");
+      }
+      setSessionAuth(data.user.email, data.user.name, data.user.image);
       // Link portal session to authenticated user
       apiClient.post("/chat/portal/link-session").catch(() => {});
       queryClient.invalidateQueries({ queryKey: ["portal-usage"] });
