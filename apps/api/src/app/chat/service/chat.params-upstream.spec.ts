@@ -77,7 +77,8 @@ describe("RNX-199: response_format and reasoning_effort reach the provider", () 
   });
 
   const send = async (payload: Record<string, unknown>) => {
-    const res = { send: jest.fn() };
+    const res = { send: jest.fn(), header: jest.fn() };
+    res.header.mockReturnValue(res); // RNX-232: the controller sets X-Credits-Used, then sends
     await controller.createCompletion(
       { model: PLAIN_SLUG, messages: [{ role: "user", content: "Hi" }], ...payload },
       { user },

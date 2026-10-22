@@ -56,4 +56,6 @@ export const PLATFORM_SETTINGS = {
   graceDays: COUNT,
   /** High-severity guardrail violations within a fixed 7-day window that make a repeat offender (D59, PRD 09 F9; no value). */
   repeatOffenderThreshold: AT_LEAST_ONE,
+  /** Requests per minute per API key, counted in memory on each API instance (D47: 60; RNX-232). */
+  apiKeyRequestsPerMinute: AT_LEAST_ONE,
 } as const;
