@@ -177,8 +177,10 @@ export class CreditService {
   private async assertUnderKeyCap(apiKeyId: string, tx: DbTransaction): Promise<void> {
     const cap = await this.apiKeys.lockKeyCap(apiKeyId, tx);
     if (cap === null) return;
-    const used = await this.entries.sumKeyUsageSince(apiKeyId, startOfJakartaMonth(new Date()), tx);
+    // Holds first, then usage: recordUsage (no key lock) moves a call's charge from held to used in one commit, so a
+    // commit between the two reads is counted twice (conservative), never zero times (review round 1).
     const held = await this.reservations.sumOpenKeyHolds(apiKeyId, tx);
+    const used = await this.entries.sumKeyUsageSince(apiKeyId, startOfJakartaMonth(new Date()), tx);
     if (used.plus(held).greaterThanOrEqualTo(cap)) throw new CreditsExhaustedException();
   }
 
