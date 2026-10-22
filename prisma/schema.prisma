@@ -1300,6 +1300,7 @@ model PurchaseSnapshot {
 
   @@index([buyerUserId, createdAt])
   @@index([packageVersionId])
+  @@index([paymentId])
   @@index([topUpPackVersionId])
   @@map("purchase_snapshots")
 }

@@ -94,6 +94,9 @@ CREATE TABLE "provider_reconciliation_entries" (
 -- CreateIndex
 CREATE INDEX "credit_ledger_entries_purchase_created_at_idx" ON "credit_ledger_entries"("created_at") WHERE (type = ANY (ARRAY['top_up'::"CreditEntryType", 'plan_grant'::"CreditEntryType"]));
 
+-- CreateIndex (the credit-sales query joins a purchase entry to its snapshot by payment id)
+CREATE INDEX "purchase_snapshots_payment_id_idx" ON "purchase_snapshots"("payment_id");
+
 -- CreateIndex
 CREATE INDEX "usage_daily_rollups_day_idx" ON "usage_daily_rollups"("day");
 
