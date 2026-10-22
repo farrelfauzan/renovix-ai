@@ -243,6 +243,16 @@ describe("Usage, cost and profit aggregates and reconciliation (RNX-228, Fastify
       expect((await get(cookie, "/admin/usage/daily?from=2026-10-05&to=2026-10-04")).statusCode).toBe(400);
     });
 
+    it("the widest period (0001-01-01 to 9999-12-31): 400 within 1000 ms, the cap is checked before any day is listed (negative)", async () => {
+      const { cookie } = await signedIn("finance");
+      const startedAt = Date.now();
+
+      const res = await get(cookie, "/admin/usage/daily?from=0001-01-01&to=9999-12-31");
+
+      expect(res.statusCode).toBe(400);
+      expect(Date.now() - startedAt).toBeLessThan(1000);
+    });
+
     it("the usage report: token counts per day, provider, model, tier and workspace or user", async () => {
       const { p1, u1 } = await seedScenario();
       const { cookie } = await signedIn("viewer");
