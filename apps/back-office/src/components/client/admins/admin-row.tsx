@@ -19,13 +19,13 @@ type AdminRowProps = {
   readonly onResend: (id: string) => void;
 };
 
-const CELL = "border-b border-neutral-100 px-2 py-1";
+const CELL = "border-b border-rx-line px-2 py-1";
 
 /** One row of the admin list; its controls follow the permissions (visibility only: the API enforces them). */
 export function AdminRow({ entry, api, roles, isOwnRow, canWriteAdmins, canWriteRoles, onAct, onResend }: AdminRowProps) {
   const isInvited = entry.status === "invited";
   const button = (label: string, action: () => Promise<unknown>) => (
-    <button key={label} type="button" aria-label={`${label} ${entry.email}`} onClick={() => onAct(action)} className="rounded border border-neutral-300 px-2 py-1 text-sm">
+    <button key={label} type="button" aria-label={`${label} ${entry.email}`} onClick={() => onAct(action)} className="rounded-rx border border-rx-line px-2 py-1 text-sm">
       {label}
     </button>
   );
@@ -39,7 +39,7 @@ export function AdminRow({ entry, api, roles, isOwnRow, canWriteAdmins, canWrite
       <td className={CELL}>{describeAdminStatus(entry)}</td>
       <td className={`${CELL} flex flex-wrap gap-1`}>
         {canWriteAdmins && isInvited && (
-          <button type="button" aria-label={`Resend ${entry.email}`} onClick={() => onResend(entry.id)} className="rounded border border-neutral-300 px-2 py-1 text-sm">Resend</button>
+          <button type="button" aria-label={`Resend ${entry.email}`} onClick={() => onResend(entry.id)} className="rounded-rx border border-rx-line px-2 py-1 text-sm">Resend</button>
         )}
         {canWriteAdmins && isInvited && button("Revoke", () => api.revokeInvitation(entry.id))}
         {canWriteAdmins && entry.status === "active" && button("Suspend", () => api.suspend(entry.id))}

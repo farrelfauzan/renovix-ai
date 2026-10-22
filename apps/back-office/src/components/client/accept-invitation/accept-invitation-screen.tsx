@@ -70,12 +70,12 @@ export function AcceptInvitationScreen({ invitationApi = defaultInvitationApi, s
     }
   };
   if (stage.kind === "enrolment") return <TotpEnrolmentStep api={signInApi} onDone={() => router.replace("/")} />;
-  if (stage.kind === "checking") return <p className="mt-4 text-sm text-neutral-600">Checking your invitation…</p>;
-  if (stage.kind === "refused") return <p role="alert" className="mt-4 text-sm text-red-700">{stage.message}</p>;
+  if (stage.kind === "checking") return <p className="mt-4 text-sm text-rx-muted">Checking your invitation…</p>;
+  if (stage.kind === "refused") return <p role="alert" className="mt-4 text-sm text-rx-red-bar">{stage.message}</p>;
   return (
     <div className="mt-4 flex flex-col gap-4">
       <AcceptInvitationForm preview={stage.preview} isSubmitting={isSubmitting} onSubmit={(name, password) => accept(stage, name, password)} />
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
     </div>
   );
 }

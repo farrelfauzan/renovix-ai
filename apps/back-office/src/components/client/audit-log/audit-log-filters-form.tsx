@@ -28,11 +28,11 @@ export function AuditLogFiltersForm({ onApply }: { onApply: (filters: AuditLogFi
             type={type}
             value={filters[name]}
             onChange={(event) => setFilters({ ...filters, [name]: event.target.value })}
-            className="rounded border border-neutral-300 px-2 py-1"
+            className="rounded-rx border border-rx-line px-2 py-1"
           />
         </label>
       ))}
-      <button type="submit" className="rounded border border-neutral-300 px-3 py-1 text-sm">
+      <button type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm">
         Apply filters
       </button>
     </form>

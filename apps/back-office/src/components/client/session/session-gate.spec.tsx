@@ -42,7 +42,7 @@ function renderGate(route: string, answers: Record<string, Answer>) {
   pathname = route;
   const session = createSession(answers);
   render(
-    <SessionGate api={session.api} sideNavigation={<nav aria-label="Back-office" />}>
+    <SessionGate api={session.api} sideNavigation={<nav aria-label="Back-office" />} publicHeader={null}>
       <p>Gated content</p>
     </SessionGate>,
   );
