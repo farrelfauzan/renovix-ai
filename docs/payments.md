@@ -82,9 +82,17 @@ Every `paymentsReconcileEveryMinutes` (a one-minute tick runs it when that many 
 
 **Several instances (Cloud Run).** Rows are claimed with `FOR UPDATE SKIP LOCKED` and a claim time (5 minutes, released after the check), so two runs check disjoint orders. Even if two checks of one order overlap (the job and a webhook), the grant's conditional update and the ledger idempotency key give exactly one grant.
 
-## 5. Daily reconciliation routine
+## 5. Daily reconciliation routine (back office, API only for now)
 
-The admin routes (the orders of a day with counts, the CSV, "confirm from provider", "mark unmatched as refunded") come with RNX-267 (35a part 2).
+Each morning, for yesterday's Jakarta day:
+
+1. `GET /api/v1/admin/payments/orders?day=YYYY-MM-DD` (`credits:read`): the counts (pending, paid, late, expired, cancelled, failed, unmatched, amount_mismatch, unconfirmed, webhook_missed, needs_review), the orders, and the unmatched payments. `&state=<one of them>` lists only those.
+2. `GET /api/v1/admin/payments/orders/export?day=YYYY-MM-DD` (`credits:read`, audited): the CSV (`orderId, providerRef, amountRupiah, createdAt, expiresAt, paidAt, lastWebhookAt, status, flags`), one line per order then one per unmatched payment. Compare it with the GoPay Merchant app's settlement report.
+3. For an order still `pending` (or `needs_review`) that the merchant app shows as paid: `POST /api/v1/admin/payments/orders/:id/confirm` with `{ "reason" }` (`credits:adjust`, re-authenticated within 2 minutes). It asks the provider again and applies the answer through the same settlement path: a settlement with the order's amount grants once.
+4. For an unmatched payment refunded to the buyer outside the API: `POST /api/v1/admin/payments/unmatched/:id/refunded` with `{ "note" }` (`credits:adjust`, re-authenticated).
+5. A payment seen in the GoPay Merchant app but **unknown to the provider** (no order, no unmatched row): no new code. Use RNX-227's adjustment, `POST /api/v1/admin/credits/adjustments` (`credits:adjust`, re-authenticated), with the buyer as `target`, the credits the buyer paid for, a `reason`, the GoPay transaction id as `paymentReference`, and `gopay:<transaction id>` as the `idempotencyKey` so the same payment cannot be credited twice.
+
+No new staff permission (decision 81, D264): reads use `credits:read`, writes `credits:adjust`, set in one place, `apps/api/src/app/payments/config/admin-payment-permissions.ts`. Every action writes an `admin_audit_log` row (who, when, why).
 
 ## 6. Settings
 

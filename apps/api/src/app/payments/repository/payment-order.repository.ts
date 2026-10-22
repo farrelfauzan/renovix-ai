@@ -3,6 +3,8 @@ import type { PaymentOrder, PaymentOrderStatus, Prisma } from "@generated/prisma
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { CreatedCharge } from "../types/created-charge";
+import type { OrderDayCounts } from "../types/order-day-counts";
+import type { OrderListState } from "../types/order-list-state";
 import type { PaidOrderUpdate } from "../types/paid-order-update";
 import type { ReconcileClaim } from "../types/reconcile-claim";
 import type { TimeRange } from "../types/time-range";
@@ -145,5 +147,44 @@ export class PaymentOrderRepository {
   /** Ends the reconciliation claim on the order. */
   async releaseClaim(id: string): Promise<void> {
     await this.prisma.paymentOrder.update({ where: { id }, data: { reconcileClaimedUntil: null } });
+  }
+
+  /** The orders created in `range`, oldest first; with `state`, only those in that status or with that flag ("unmatched": none). */
+  findCreatedIn(range: TimeRange, state: OrderListState | null): Promise<PaymentOrder[]> {
+    const where: Record<OrderListState, Prisma.PaymentOrderWhereInput> = {
+      pending: { status: "pending" },
+      paid: { status: "paid" },
+      expired: { status: "expired" },
+      cancelled: { status: "cancelled" },
+      failed: { status: "failed" },
+      late: { isLate: true },
+      amount_mismatch: { isAmountMismatch: true },
+      unconfirmed: { isUnconfirmed: true },
+      webhook_missed: { isWebhookMissed: true },
+      needs_review: { needsReview: true },
+      unmatched: { id: { in: [] } },
+    };
+    return this.prisma.paymentOrder.findMany({
+      where: { ...(state ? where[state] : {}), createdAt: { gte: range.start, lt: range.end } },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  /** The orders created in `range`, counted by status and by flag (the unmatched count is the unmatched payments', not here: 0). */
+  async countCreatedIn(range: TimeRange): Promise<OrderDayCounts> {
+    const [row] = await this.prisma.$queryRaw<OrderDayCounts[]>`
+      SELECT count(*) FILTER (WHERE "status" = 'pending')::int AS "pending",
+        count(*) FILTER (WHERE "status" = 'paid')::int AS "paid",
+        count(*) FILTER (WHERE "is_late")::int AS "late",
+        count(*) FILTER (WHERE "status" = 'expired')::int AS "expired",
+        count(*) FILTER (WHERE "status" = 'cancelled')::int AS "cancelled",
+        count(*) FILTER (WHERE "status" = 'failed')::int AS "failed",
+        0 AS "unmatched",
+        count(*) FILTER (WHERE "is_amount_mismatch")::int AS "amount_mismatch",
+        count(*) FILTER (WHERE "is_unconfirmed")::int AS "unconfirmed",
+        count(*) FILTER (WHERE "is_webhook_missed")::int AS "webhook_missed",
+        count(*) FILTER (WHERE "needs_review")::int AS "needs_review"
+      FROM "payment_orders" WHERE "created_at" >= ${range.start} AND "created_at" < ${range.end}`;
+    return row;
   }
 }

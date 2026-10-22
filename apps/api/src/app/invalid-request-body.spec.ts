@@ -39,6 +39,7 @@ import { KnowledgeService } from "./knowledge/service/knowledge.service";
 import { McpUserController } from "./mcp/controller/mcp-user.controller";
 import { WebSearchController } from "./mcp/controller/web-search.controller";
 import { WebSearchService } from "./mcp/service/web-search.service";
+import { AdminPaymentsController } from "./payments/controller/admin-payments.controller";
 import { PaymentsController } from "./payments/controller/payments.controller";
 import { PortalController } from "./portal/controller/portal.controller";
 import { PrismaService } from "./prisma/prisma.service";
@@ -152,6 +153,8 @@ const ROWS: readonly Row[] = [
   { route: "PUT /admin/settings/:name", body: NOT_AN_OBJECT },
   { route: "POST /admin/usage/users/:userId/email", body: NOT_AN_OBJECT },
   { route: "POST /admin/reconciliation/entries", body: { day: "2026-10-20", portalBalanceUsd: "10" }, details: ["providerId"] },
+  { route: "POST /admin/payments/orders/:id/confirm", body: { reason: "" }, details: ["reason"] },
+  { route: "POST /admin/payments/unmatched/:id/refunded", body: NOT_AN_OBJECT },
   // ─── the rest of the product API ───
   { route: "POST /agents", body: NOT_AN_OBJECT },
   { route: "POST /agents/clone/:templateId", body: NOT_AN_OBJECT },
@@ -225,7 +228,7 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
         ChannelController, GowaWebhookController, ChatController, CodesController, DocumentController,
         KnowledgeController, McpUserController, WebSearchController, PortalController, ReminderController,
         WorkspaceChannelController, WorkspaceInviteController, WorkspaceController,
-        PaymentsController,
+        AdminPaymentsController, PaymentsController,
       ],
       providers: [
         { provide: APP_GUARD, useClass: SignedInTestGuard },

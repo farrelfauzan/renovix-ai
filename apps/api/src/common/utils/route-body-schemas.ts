@@ -67,6 +67,10 @@ import { AcceptInviteSchema } from "../../app/workspace/dto/accept-invite.dto";
 import { CreateChannelSchema, UpdateChannelSchema, AddAgentSchema, ChatMessageSchema } from "../../app/channel/dto/channel.dto";
 import { CreateReminderSchema, UpdateReminderSchema } from "../../app/reminder/dto/reminder.dto";
 import { CheckoutBodyDto } from "../../app/payments/dto/checkout-body.dto";
+import { ConfirmOrderBodyDto } from "../../app/payments/dto/confirm-order-body.dto";
+import { MarkRefundedBodyDto } from "../../app/payments/dto/mark-refunded-body.dto";
+import { OrdersListQueryDto } from "../../app/payments/dto/orders-list-query.dto";
+import { OrdersDayQueryDto } from "../../app/payments/dto/orders-day-query.dto";
 
 /** `METHOD /controller-path[/handler-path]` → the Zod schema its controller parses the request body with. */
 export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, ZodType>([
@@ -98,6 +102,8 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["PUT /admin/settings/:name", SaveSettingBodyDto],
   ["POST /admin/usage/users/:userId/email", EmailRevealBodyDto],
   ["POST /admin/reconciliation/entries", ReconciliationEntryBodyDto],
+  ["POST /admin/payments/orders/:id/confirm", ConfirmOrderBodyDto],
+  ["POST /admin/payments/unmatched/:id/refunded", MarkRefundedBodyDto],
   // ─── chat and agents ───
   ["POST /chat/completions", ApiChatCompletionRequestSchema],
   ["POST /agents", CreateAgentSchema],
@@ -157,4 +163,6 @@ export const ROUTE_QUERY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string,
   ["GET /admin/audit-log", AuditLogQueryDto],
   ["GET /admin/audit-log/export", AuditLogExportQueryDto],
   ["GET /admin/codes", ListCodesQueryDto],
+  ["GET /admin/payments/orders", OrdersListQueryDto],
+  ["GET /admin/payments/orders/export", OrdersDayQueryDto],
 ]);
