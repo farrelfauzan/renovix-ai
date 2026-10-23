@@ -39,6 +39,7 @@ import { KnowledgeService } from "./knowledge/service/knowledge.service";
 import { McpUserController } from "./mcp/controller/mcp-user.controller";
 import { WebSearchController } from "./mcp/controller/web-search.controller";
 import { WebSearchService } from "./mcp/service/web-search.service";
+import { PaymentsController } from "./payments/controller/payments.controller";
 import { PortalController } from "./portal/controller/portal.controller";
 import { PrismaService } from "./prisma/prisma.service";
 import { ReminderController } from "./reminder/controller/reminder.controller";
@@ -171,6 +172,7 @@ const ROWS: readonly Row[] = [
   { route: "POST /workspaces/:id/invites", body: NOT_AN_OBJECT },
   { route: "POST /workspace-invites/accept", body: NOT_AN_OBJECT },
   { route: "POST /codes/redeem", body: NOT_AN_OBJECT },
+  { route: "POST /payments/checkout", body: { offer: "top_up_pack", packageId: "p" }, details: ["packId"] },
   { route: "POST /mcp/user/connect", body: NOT_AN_OBJECT },
   { route: "POST /v1/knowledge/bases", body: NOT_AN_OBJECT },
   { route: "PUT /v1/knowledge/bases/:id", body: NOT_AN_OBJECT },
@@ -221,6 +223,7 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
         ChannelController, GowaWebhookController, ChatController, CodesController, DocumentController,
         KnowledgeController, McpUserController, WebSearchController, PortalController, ReminderController,
         WorkspaceChannelController, WorkspaceInviteController, WorkspaceController,
+        PaymentsController,
       ],
       providers: [
         { provide: APP_GUARD, useClass: SignedInTestGuard },

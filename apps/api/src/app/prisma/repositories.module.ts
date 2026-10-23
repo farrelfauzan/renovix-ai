@@ -50,6 +50,10 @@ import { PlatformSettingRepository } from "../offers/repository/platform-setting
 import { PurchaseSnapshotRepository } from "../offers/repository/purchase-snapshot.repository";
 import { TopUpPackRepository } from "../offers/repository/top-up-pack.repository";
 import { TierRateRepository } from "../offers/repository/tier-rate.repository";
+import { PaymentOrderChangeRepository } from "../payments/repository/payment-order-change.repository";
+import { PaymentOrderRepository } from "../payments/repository/payment-order.repository";
+import { PaymentUnmatchedPaymentRepository } from "../payments/repository/payment-unmatched-payment.repository";
+import { PaymentWebhookEventRepository } from "../payments/repository/payment-webhook-event.repository";
 import { AnonymousUsageCounterRepository } from "../portal/repository/anonymous-usage-counter.repository";
 import { PortalSessionRepository } from "../portal/repository/portal-session.repository";
 import { ReminderRepository } from "../reminder/repository/reminder.repository";
@@ -108,6 +112,10 @@ const REPOSITORIES = [
   PurchaseSnapshotRepository,
   TopUpPackRepository,
   TierRateRepository,
+  PaymentOrderChangeRepository,
+  PaymentOrderRepository,
+  PaymentUnmatchedPaymentRepository,
+  PaymentWebhookEventRepository,
   AnonymousUsageCounterRepository,
   PortalSessionRepository,
   ReminderRepository,

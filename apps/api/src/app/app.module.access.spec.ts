@@ -155,6 +155,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/invitations/accept (AdminInvitationsController.accept)",
     "POST /admin/invitations/preview (AdminInvitationsController.preview)",
     "POST /webhooks/gowa (GowaWebhookController.handleInbound)",
+    "POST /webhooks/payments (PaymentWebhookController.receive)",
     "POST /webhooks/stripe (WebhookController.handleStripeWebhook)",
   ];
   const API_KEY_ROUTES = [
@@ -318,7 +319,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/reconciliation/entries (AdminReconciliationController.record)": ["reconciliation:write"],
   };
   // RNX-225 (D113): every route that accepted the login JWT or the session now accepts the session only (the
-  // login JWT is retired as an access method). This is the full list of the routes whose @Access changed.
+  // login JWT is retired as an access method). This is the full list of the routes whose @Access changed, plus
+  // RNX-35's two buyer payment routes, which took the session only from the start.
   const SESSION_ROUTES = [
     "DELETE /agents/:id (AgentController.delete)",
     "DELETE /agents/:id/channels/:channelId (AgentController.removeChannel)",
@@ -366,6 +368,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /mcp/servers (McpController.listServers)",
     "GET /mcp/user/credentials (McpUserController.listCredentials)",
     "GET /mcp/user/oauth/start (McpUserController.startOAuth)",
+    "GET /payments/orders/:id (PaymentsController.getOrder)",
     "GET /reminders (ReminderController.list)",
     "GET /reminders/:id (ReminderController.findById)",
     "GET /usage (UsageController.getUsage)",
@@ -411,6 +414,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /codes/redeem (CodesController.redeemCode)",
     "POST /mcp/servers/:id/test (McpController.testConnection)",
     "POST /mcp/user/connect (McpUserController.connectWithToken)",
+    "POST /payments/checkout (PaymentsController.startCheckout)",
     "POST /reminders (ReminderController.create)",
     "POST /workspace-invites/accept (WorkspaceInviteController.acceptInvite)",
     "POST /workspaces (WorkspaceController.create)",

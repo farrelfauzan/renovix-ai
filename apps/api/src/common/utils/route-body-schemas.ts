@@ -66,6 +66,7 @@ import { AcceptInviteSchema } from "../../app/workspace/dto/accept-invite.dto";
 
 import { CreateChannelSchema, UpdateChannelSchema, AddAgentSchema, ChatMessageSchema } from "../../app/channel/dto/channel.dto";
 import { CreateReminderSchema, UpdateReminderSchema } from "../../app/reminder/dto/reminder.dto";
+import { CheckoutBodyDto } from "../../app/payments/dto/checkout-body.dto";
 
 /** `METHOD /controller-path[/handler-path]` → the Zod schema its controller parses the request body with. */
 export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, ZodType>([
@@ -142,6 +143,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /reminders", CreateReminderSchema],
   ["PATCH /reminders/:id", UpdateReminderSchema],
   ["POST /billing/checkout", CreateCheckoutSchema],
+  ["POST /payments/checkout", CheckoutBodyDto],
   ["POST /mcp/user/connect", ConnectMcpTokenSchema],
   ["PUT /integrations/web-search/brave/key", WebSearchKeySchema],
   ["PUT /integrations/web-search/policy", UpdateWebSearchPolicySchema],

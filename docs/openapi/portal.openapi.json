@@ -60,6 +60,10 @@
       "description": "Routes under /models"
     },
     {
+      "name": "payments",
+      "description": "Routes under /payments"
+    },
+    {
       "name": "prices",
       "description": "Routes under /prices"
     },
@@ -4594,6 +4598,116 @@
         },
         "tags": [
           "models"
+        ]
+      }
+    },
+    "/api/v1/payments/checkout": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "offer": {
+                        "type": "string",
+                        "enum": [
+                          "package"
+                        ]
+                      },
+                      "packageId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
+                    },
+                    "required": [
+                      "offer",
+                      "packageId"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "offer": {
+                        "type": "string",
+                        "enum": [
+                          "top_up_pack"
+                        ]
+                      },
+                      "packId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
+                    },
+                    "required": [
+                      "offer",
+                      "packId"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "429": {
+            "description": "Rate limit exceeded (route-specific throttle)"
+          }
+        },
+        "security": [
+          {
+            "JwtOrSession": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/payments/orders/:id": {
+      "get": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "JwtOrSession": []
+          }
+        ],
+        "tags": [
+          "payments"
         ]
       }
     },
