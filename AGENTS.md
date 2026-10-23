@@ -14,14 +14,14 @@ Nx 22 monorepo. Package manager: **Bun** (Docker builds fall back to npm with `-
 |------|------|-----------|----------|
 | `apps/api` | Backend API | NestJS 11 + **Fastify 5** (not Express) | 3000 |
 | `apps/chat` | Chat portal | Next.js 16 (App Router) | 4300 |
-| `apps/back-office` | Staff back-office (shell: navigation + placeholder pages; no Dockerfile yet); shares no code with chat/landing | Next.js 16 (App Router) | 4400 (`ADMIN_ORIGIN`) |
+| `apps/back-office` | Staff back-office (shell: navigation + placeholder pages; no Dockerfile yet); imports UI primitives from the shared UI package (D287), never from chat or landing | Next.js 16 (App Router) | 4400 (`ADMIN_ORIGIN`) |
 | `apps/landing` | Landing page | Next.js 16 (App Router) | 3001 (Docker); `nx dev` does not pin a port |
 | `apps/api-e2e` | API E2E tests | Jest + SWC | -- |
 | `prisma/` | Schema + 39 migrations + seed | Prisma 7 + pgvector | -- |
 | `infra/` | Terraform IaC (7 modules), kept for reference (see Infrastructure & Deploy) | GCP, >= Terraform 1.7 | -- |
 | `docs/` | Strategy/design docs; finished ones are in `docs/archive/` | Markdown | -- |
 
-No `libs/` packages exist yet.
+No workspace packages exist yet; the shared UI package (D287: the shadcn primitives and the shared token layer, imported by chat, back-office and landing) will be the first, and its build ticket sets its name and path.
 
 ## Dev Commands
 
@@ -142,7 +142,7 @@ nx run api-e2e:e2e       # dependsOn api:build and api:serve
 Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 - Dark mode only (`className="dark"` on `<html>` in chat and landing)
-- shadcn/ui components in `apps/chat/src/components/ui/` (new-york style, Radix primitives)
+- shadcn/ui primitives (new-york style, Radix) in the shared UI package (D287), imported by chat, back-office and landing; until that package is merged they are in `apps/chat/src/components/ui/`
 - Tailwind CSS v4 via `@tailwindcss/postcss` plugin (chat, landing)
 - State: Zustand (persisted to localStorage) + TanStack React Query
 - Auth: `better-auth/react` client for SSO, custom JWT for legacy
