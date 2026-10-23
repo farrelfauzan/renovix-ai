@@ -13,9 +13,9 @@ export function TotpConfirmForm({ isSubmitting, onConfirm }: { isSubmitting: boo
     <form aria-label="Confirm authenticator" onSubmit={submit} className="flex max-w-sm flex-col gap-3">
       <label className="flex flex-col gap-1 text-sm">
         Code from your authenticator app
-        <input type="text" name="code" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required value={code} onChange={(event) => setCode(event.target.value)} className="rounded border border-neutral-300 px-2 py-1" />
+        <input type="text" name="code" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required value={code} onChange={(event) => setCode(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
       </label>
-      <button type="submit" disabled={isSubmitting} className="self-start rounded border border-neutral-300 px-3 py-1 text-sm">
+      <button type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
         Confirm
       </button>
     </form>

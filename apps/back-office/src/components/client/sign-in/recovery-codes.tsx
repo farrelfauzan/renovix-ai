@@ -10,7 +10,7 @@ export function RecoveryCodes({ codes, onContinue }: { codes: readonly string[];
           <li key={code}>{code}</li>
         ))}
       </ul>
-      <button type="button" onClick={onContinue} className="self-start rounded border border-neutral-300 px-3 py-1 text-sm">
+      <button type="button" onClick={onContinue} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
         Continue
       </button>
     </div>

@@ -50,12 +50,12 @@ export function TotpEnrolmentStep({ api, onDone }: { api: SignInApi; onDone: () 
       ) : (
         <>
           <p className="text-sm">Your account has no authenticator yet. Set one up to finish signing in.</p>
-          <button type="button" disabled={isSubmitting} onClick={start} className="self-start rounded border border-neutral-300 px-3 py-1 text-sm">
+          <button type="button" disabled={isSubmitting} onClick={start} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
             Set up authenticator
           </button>
         </>
       )}
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
     </div>
   );
 }
