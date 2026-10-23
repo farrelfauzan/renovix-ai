@@ -59,6 +59,7 @@ model User {
   guardrailViolations GuardrailViolation[]
   reminders       Reminder[]
   purchaseSnapshots PurchaseSnapshot[]
+  paymentOrders   PaymentOrder[]
   creditAccounts  CreditAccount[]
   apiKeys         ApiKey[]
 
@@ -1184,6 +1185,7 @@ model PackageVersion {
   reason            String
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz()
   purchases         PurchaseSnapshot[]
+  paymentOrders     PaymentOrder[]
 
   @@unique([packageId, versionNumber])
   @@map("package_versions")
@@ -1215,6 +1217,7 @@ model TopUpPackVersion {
   reason         String
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz()
   purchases      PurchaseSnapshot[]
+  paymentOrders  PaymentOrder[]
 
   @@unique([packId, versionNumber])
   @@map("top_up_pack_versions")
@@ -1299,12 +1302,12 @@ model PurchaseSnapshot {
   apiAccess          Boolean?          @map("api_access")
   allowedChannels    String[]          @map("allowed_channels")
   allowedTiers       String[]          @map("allowed_tiers")
-  paymentId          String?           @map("payment_id")
+  /// The payment it was bought with (RNX-35: the provider reference); unique, so one payment has one snapshot. Null for a code.
+  paymentId          String?           @unique @map("payment_id")
   createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz()
 
   @@index([buyerUserId, createdAt])
   @@index([packageVersionId])
-  @@index([paymentId])
   @@index([topUpPackVersionId])
   @@map("purchase_snapshots")
 }
@@ -1639,4 +1642,135 @@ model ProviderReconciliationEntry {
 
   @@unique([providerId, day])
   @@map("provider_reconciliation_entries")
+}
+
+// RNX-35a (D240, docs/payments.md): orders paid through one payment provider (PaymentProvider; only the fake exists in
+// 35a). A webhook never grants: the grant follows a status check that answers paid with the order's exact amount. The
+// CHECK on the offer columns is written by hand in migration 20261022060000_payment_orders.
+
+/// The life of a payment order (docs/payments.md section 2).
+enum PaymentOrderStatus {
+  pending
+  paid
+  expired
+  cancelled
+  failed
+}
+
+/// Why a payment the provider reported could not be applied to an order.
+enum PaymentUnmatchedReason {
+  /// No order has the reported reference.
+  unknown_reference
+  /// The order's status check answered paid with another amount.
+  amount_mismatch
+}
+
+/// Whether staff have settled an unmatched payment (refunded outside the API, docs/payments.md section 5).
+enum PaymentUnmatchedStatus {
+  open
+  refunded
+}
+
+/// One checkout: the buyer, the offer version and its price as quoted at checkout (USD price x the purchase rate, the
+/// same columns as the purchase snapshot), the provider and its reference, and the status with its flags. Exactly one
+/// of packageVersionId and topUpPackVersionId is set (CHECK). The (provider, providerRef) pair is unique: the webhook
+/// and the status check find the order by it. reconcileClaimedUntil is the reconciliation job's claim on the row.
+model PaymentOrder {
+  id                    String             @id @default(uuid())
+  userId                String             @map("user_id")
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  packageVersionId      String?            @map("package_version_id")
+  packageVersion        PackageVersion?    @relation(fields: [packageVersionId], references: [id], onDelete: Restrict)
+  topUpPackVersionId    String?            @map("top_up_pack_version_id")
+  topUpPackVersion      TopUpPackVersion?  @relation(fields: [topUpPackVersionId], references: [id], onDelete: Restrict)
+  priceUsdCents         Int                @map("price_usd_cents")
+  exchangeRate          Decimal            @map("exchange_rate") @db.Decimal(18, 6)
+  exchangeRateDate      DateTime           @map("exchange_rate_date") @db.Date
+  exchangeRateSource    String             @map("exchange_rate_source")
+  /// The rupiah amount to pay; a status check must report exactly this amount before anything is granted.
+  amountRupiah          Int                @map("amount_rupiah")
+  provider              String
+  /// The provider's own reference (its transaction id); null until the charge is created.
+  providerRef           String?            @map("provider_ref")
+  /// What the buyer pays with: a QR string or a URL, as the provider returned it.
+  paymentCode           String?            @map("payment_code")
+  status                PaymentOrderStatus @default(pending)
+  expiresAt             DateTime           @map("expires_at") @db.Timestamptz()
+  paidAt                DateTime?          @map("paid_at") @db.Timestamptz()
+  lastWebhookAt         DateTime?          @map("last_webhook_at") @db.Timestamptz()
+  isLate                Boolean            @default(false) @map("is_late")
+  isAmountMismatch      Boolean            @default(false) @map("is_amount_mismatch")
+  isUnconfirmed         Boolean            @default(false) @map("is_unconfirmed")
+  isWebhookMissed       Boolean            @default(false) @map("is_webhook_missed")
+  /// Status checks that answered neither paid, expired nor cancelled; at 3 the order needs manual review.
+  unknownChecks         Int                @default(0) @map("unknown_checks")
+  needsReview           Boolean            @default(false) @map("needs_review")
+  reconcileClaimedUntil DateTime?          @map("reconcile_claimed_until") @db.Timestamptz()
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+  changes               PaymentOrderChange[]
+
+  @@unique([provider, providerRef])
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@map("payment_orders")
+}
+
+/// The audit of a payment order: one row per status change or flag (who or what made it, and why).
+model PaymentOrderChange {
+  id         String              @id @default(uuid())
+  orderId    String              @map("order_id")
+  order      PaymentOrder        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  /// What happened: created, charge_failed, paid, expired, cancelled, amount_mismatch, unconfirmed, unknown_status, needs_review.
+  event      String
+  fromStatus PaymentOrderStatus? @map("from_status")
+  toStatus   PaymentOrderStatus  @map("to_status")
+  /// checkout, webhook, reconcile or admin.
+  source     String
+  /// The admin's id when source is admin.
+  actorId    String?             @map("actor_id")
+  note       String?
+  createdAt  DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([orderId, createdAt])
+  @@map("payment_order_changes")
+}
+
+/// One verified provider webhook, as received: the reported reference, status and amount, and the SHA-256 of the raw
+/// body (the body itself is not kept). orderId is null when no order has the reference (see PaymentUnmatchedPayment).
+model PaymentWebhookEvent {
+  id                   String   @id @default(uuid())
+  provider             String
+  providerRef          String   @map("provider_ref")
+  orderId              String?  @map("order_id")
+  reportedStatus       String   @map("reported_status")
+  reportedAmountRupiah Int?     @map("reported_amount_rupiah")
+  bodySha256           String   @map("body_sha256")
+  receivedAt           DateTime @default(now()) @map("received_at") @db.Timestamptz()
+
+  @@index([provider, providerRef])
+  @@index([receivedAt])
+  @@map("payment_webhook_events")
+}
+
+/// A payment the provider reported that grants nothing: its reference matches no order, or the amount did not match
+/// the order's. Staff refund it outside the API and mark it refunded with a note (docs/payments.md section 5).
+model PaymentUnmatchedPayment {
+  id           String                 @id @default(uuid())
+  provider     String
+  providerRef  String                 @map("provider_ref")
+  reason       PaymentUnmatchedReason
+  orderId      String?                @map("order_id")
+  amountRupiah Int?                   @map("amount_rupiah")
+  status       PaymentUnmatchedStatus @default(open)
+  refundedAt   DateTime?              @map("refunded_at") @db.Timestamptz()
+  refundedBy   String?                @map("refunded_by")
+  refundNote   String?                @map("refund_note")
+  createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@unique([provider, providerRef])
+  @@index([createdAt])
+  @@map("payment_unmatched_payments")
 }
