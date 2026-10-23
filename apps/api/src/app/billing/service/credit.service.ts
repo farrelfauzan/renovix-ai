@@ -4,6 +4,7 @@ import type { CreditLedgerEntry, CreditReservation, CreditReservationStatus } fr
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
 import { ModelCallCostService } from "../../model-call-costs/service/model-call-cost.service";
+import { ApiKeyRepository } from "../../auth/repository/api-key.repository";
 import { CreditsExhaustedException } from "../errors/credits-exhausted.exception";
 import { CreditAccountRepository } from "../repository/credit-account.repository";
 import { CreditLedgerEntryRepository } from "../repository/credit-ledger-entry.repository";
@@ -14,6 +15,7 @@ import type { UsageRecord } from "../types/usage-record";
 import { assertCreditAmount } from "../utils/assert-credit-amount";
 import { chargeCall } from "../utils/charge-call";
 import { isSameUsage } from "../utils/is-same-usage";
+import { startOfJakartaMonth } from "../utils/start-of-jakarta-month";
 
 /**
  * How long a request's hold lives before the sweep may release it (docs/credits.md section 3.1 rule 8): the adapter's
@@ -36,16 +38,19 @@ export class CreditService {
     private readonly entries: CreditLedgerEntryRepository,
     private readonly reservations: CreditReservationRepository,
     private readonly callCosts: ModelCallCostService,
+    private readonly apiKeys: ApiKeyRepository,
   ) {}
 
   /**
    * Holds `amount` on the user's paid wallet for one request: one conditional update (available covers it, wallet not
    * frozen) and the open reservation row, in one transaction. CreditsExhaustedException (402), writing nothing, when the
-   * wallet cannot cover it or does not exist.
+   * wallet cannot cover it or does not exist. RNX-232: a request made with an API key first passes the key's monthly
+   * cap (`assertUnderKeyCap`, same transaction) and its reservation records the key.
    */
   async reserve(request: ReserveRequest): Promise<CreditReservation> {
     assertCreditAmount(request.amount);
     return this.transactions.run(async (tx) => {
+      if (request.apiKeyId) await this.assertUnderKeyCap(request.apiKeyId, tx);
       const accountId = await this.accounts.addHold({ userId: request.userId }, "paid", request.amount, tx);
       if (!accountId) throw new CreditsExhaustedException();
       return this.reservations.createReservation(
@@ -53,6 +58,7 @@ export class CreditService {
           accountId,
           wallet: "paid",
           requestId: request.requestId,
+          apiKeyId: request.apiKeyId,
           amountHeld: request.amount,
           expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
         },
@@ -162,6 +168,22 @@ export class CreditService {
     }
   }
 
+  /**
+   * RNX-232 (D47): the monthly cap of an API key, checked on the locked key row so that a key's reservations pass it one
+   * at a time: CreditsExhaustedException (402) when the key's usage in this Asia/Jakarta calendar month plus what its
+   * open reservations still hold has reached the cap. A call that starts under the cap may go over it (its estimate
+   * or its overrun), so the month ends at most one call's charge above the cap. No cap: no check.
+   */
+  private async assertUnderKeyCap(apiKeyId: string, tx: DbTransaction): Promise<void> {
+    const cap = await this.apiKeys.lockKeyCap(apiKeyId, tx);
+    if (cap === null) return;
+    // Holds first, then usage: recordUsage (no key lock) moves a call's charge from held to used in one commit, so a
+    // commit between the two reads is counted twice (conservative), never zero times (review round 1).
+    const held = await this.reservations.sumOpenKeyHolds(apiKeyId, tx);
+    const used = await this.entries.sumKeyUsageSince(apiKeyId, startOfJakartaMonth(new Date()), tx);
+    if (used.plus(held).greaterThanOrEqualTo(cap)) throw new CreditsExhaustedException();
+  }
+
   /** The body of `recordUsage`, inside its transaction. */
   private async appendUsageToLockedAccount(accountId: string, record: UsageRecord, tx: DbTransaction): Promise<CreditLedgerEntry> {
     const account = await this.accounts.lockAccount(accountId, tx);
@@ -196,6 +218,7 @@ export class CreditService {
         ...record.tokens,
         outcome: record.outcome,
         idempotencyKey: record.callId,
+        apiKeyId: record.apiKeyId,
       },
       tx,
     );
