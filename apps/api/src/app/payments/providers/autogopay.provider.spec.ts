@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { createHmac } from "node:crypto";
 import { inspect } from "node:util";
 import { autoGoPayFixtures as fx } from "../../../../test/autogopay-fixtures";
@@ -97,6 +98,8 @@ describe("AutoGoPayProvider (RNX-229)", () => {
       ["an unmapped status", fx.status.unknownStatus, { state: "unknown", amountRupiah: 165_000, paidAt: null }],
       ["a prototype key as status", { status: 200, body: { transaction_status: "constructor" } }, { state: "unknown", amountRupiah: null, paidAt: null }],
       ["a malformed body", fx.status.malformed, { state: "unknown", amountRupiah: null, paidAt: null }],
+      ["a settlement without an amount (review round 1)", { status: 200, body: { transaction_status: "settlement", paid_at: "2026-10-23T10:05:00+07:00" } }, { state: "unknown", amountRupiah: null, paidAt: null }],
+      ["a settlement with a null amount (review round 1)", { status: 200, body: { transaction_status: "settlement", amount: null } }, { state: "unknown", amountRupiah: null, paidAt: null }],
       ["a body that is not JSON", { status: 200, body: undefined }, { state: "unknown", amountRupiah: null, paidAt: null }],
     ])("maps %s", async (_case, answer, expected) => {
       const { provider } = providerWith(answer as AutoGoPayResponse);
@@ -151,8 +154,16 @@ describe("AutoGoPayProvider (RNX-229)", () => {
       const { provider } = providerWith();
       const otherBody = JSON.stringify({ reference: "agp-test-txn-0001", status: "PAID" });
 
+      const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+
       expect(await provider.verifyWebhook(webhook(otherBody, sign(otherBody)))).toEqual({ isVerified: false });
       expect(await provider.verifyWebhook(webhook("not json", sign("not json")))).toEqual({ isVerified: false });
+
+      expect(warn.mock.calls).toEqual([
+        ["AutoGoPay webhook: the signature is valid but the body is not the expected shape (not recorded)"],
+        ["AutoGoPay webhook: the signature is valid but the body is not the expected shape (not recorded)"],
+      ]);
+      warn.mockRestore();
     });
 
     it("without a key nothing verifies, not even a signature made with an empty key", async () => {

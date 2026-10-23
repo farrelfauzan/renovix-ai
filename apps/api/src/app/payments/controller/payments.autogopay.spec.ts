@@ -222,6 +222,23 @@ describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)
       expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
     });
 
+    it("review round 1 (probe P-1): a settlement status without an amount is unknown, not amount_mismatch: the order stays pending; a later settlement with the amount grants once", async () => {
+      const { user, orderId, reference } = await pendingStarterOrder();
+      transport.setStatus(reference, "settlement");
+
+      const res = await webhook(webhookBody(reference));
+
+      expect(res.statusCode).toBe(200);
+      expect(await orderOf(orderId)).toMatchObject({ status: "pending", isAmountMismatch: false, unknownChecks: 1 });
+      expect(await grants()).toHaveLength(0);
+      transport.setStatus(reference, "settlement", STARTER_PRICE_RUPIAH);
+      await expireOrder(orderId);
+      expect(await reconcile()).toMatchObject({ outcomes: { granted: 1 } });
+      expect(await orderOf(orderId)).toMatchObject({ status: "paid" });
+      expect(await grants()).toHaveLength(1);
+      expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
+    });
+
     it("AC7, AC13: a settlement webhook for a transaction_id with no order (a second payment of the same QR): 200, unmatched, no grant", async () => {
       await pendingStarterOrder();
       const raw = webhookBody("agp-test-txn-no-order");

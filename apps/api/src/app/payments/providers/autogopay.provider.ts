@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { verifySignature } from "../../channel/utils/verify-signature";
 import { AUTOGOPAY_API } from "../config/autogopay-api";
 import { AUTOGOPAY_LIMITS } from "../config/autogopay-limits";
@@ -28,7 +29,7 @@ const UNKNOWN_STATUS: ProviderPaymentStatus = { state: "unknown", amountRupiah: 
  * The AutoGoPay QRIS adapter (RNX-229, docs/payments.md section 1): a dynamic QRIS per order through the API with a
  * Bearer key, statuses mapped to the five states, webhooks verified with HMAC-SHA256 of the raw body keyed with the
  * same API key. Never retries; a failed call throws an error that names only the path, the HTTP status or the error's
- * class: never the key, a signature or a body. Nothing here logs.
+ * class: never the key, a signature or a body. The one log line (a signed webhook body it cannot read) names none of them.
  */
 export class AutoGoPayProvider implements PaymentProvider {
   readonly name = "autogopay";
@@ -36,6 +37,7 @@ export class AutoGoPayProvider implements PaymentProvider {
   readonly maxAmountRupiah = AUTOGOPAY_LIMITS.maxAmountRupiah;
   private readonly apiKey: string;
   private readonly transport: AutoGoPayTransport;
+  private readonly logger = new Logger(AutoGoPayProvider.name);
 
   constructor(options: AutoGoPayProviderOptions) {
     this.apiKey = options.apiKey;
@@ -55,8 +57,9 @@ export class AutoGoPayProvider implements PaymentProvider {
   }
 
   /**
-   * The payment's state (`/qris/status`), within `timeoutMs` (10 s by default); unknown for a status it cannot map or a
-   * body it cannot read; throws on a failed call.
+   * The payment's state (`/qris/status`), within `timeoutMs` (10 s by default); unknown for a status it cannot map, a
+   * body it cannot read, or a settlement without an amount (the amount cannot be checked against the order, and the
+   * core would close the order as amount_mismatch for good; unknown keeps it for the next check); throws on a failed call.
    */
   async getStatus(providerRef: string, options: StatusCheckOptions = {}): Promise<ProviderPaymentStatus> {
     const response = await this.post(AUTOGOPAY_API.statusPath, { transaction_id: providerRef }, options.timeoutMs);
@@ -64,7 +67,9 @@ export class AutoGoPayProvider implements PaymentProvider {
     const parsed = AutoGoPayStatusResponseDto.safeParse(response.body);
     if (!parsed.success) return UNKNOWN_STATUS;
     const { transaction_status, amount, paid_at } = parsed.data;
-    return { state: this.stateOf(AUTOGOPAY_STATUS_STATES, transaction_status), amountRupiah: amount ?? null, paidAt: offsetDateOf(paid_at) };
+    const state = this.stateOf(AUTOGOPAY_STATUS_STATES, transaction_status);
+    if (state === "paid" && amount == null) return UNKNOWN_STATUS;
+    return { state, amountRupiah: amount ?? null, paidAt: offsetDateOf(paid_at) };
   }
 
   /** Cancels the QRIS (`/qris/cancel`); throws on a failed call. */
@@ -78,7 +83,10 @@ export class AutoGoPayProvider implements PaymentProvider {
     const signature = request.headers[AUTOGOPAY_SIGNATURE_HEADER];
     if (typeof signature !== "string" || !verifySignature(request.rawBody, signature, this.apiKey)) return NOT_VERIFIED;
     const parsed = AutoGoPayWebhookBodyDto.safeParse(this.parseJson(request.rawBody));
-    if (!parsed.success) return NOT_VERIFIED;
+    if (!parsed.success) {
+      this.logger.warn("AutoGoPay webhook: the signature is valid but the body is not the expected shape (not recorded)");
+      return NOT_VERIFIED;
+    }
     const { transaction_id, status, amount } = parsed.data.transaction;
     return { isVerified: true, providerRef: transaction_id, reportedState: this.stateOf(AUTOGOPAY_WEBHOOK_STATES, status), reportedAmountRupiah: amount ?? null };
   }
