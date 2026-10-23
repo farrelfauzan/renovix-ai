@@ -1976,9 +1976,7 @@
                     "default": "member",
                     "type": "string",
                     "enum": [
-                      "admin",
-                      "member",
-                      "viewer"
+                      "member"
                     ]
                   }
                 },
@@ -2501,9 +2499,7 @@
                   "role": {
                     "type": "string",
                     "enum": [
-                      "admin",
-                      "member",
-                      "viewer"
+                      "member"
                     ]
                   },
                   "status": {
@@ -5762,9 +5758,7 @@
                     "default": "member",
                     "type": "string",
                     "enum": [
-                      "admin",
-                      "member",
-                      "viewer"
+                      "member"
                     ]
                   }
                 },
@@ -5942,9 +5936,7 @@
                   "role": {
                     "type": "string",
                     "enum": [
-                      "admin",
-                      "member",
-                      "viewer"
+                      "member"
                     ]
                   },
                   "status": {
