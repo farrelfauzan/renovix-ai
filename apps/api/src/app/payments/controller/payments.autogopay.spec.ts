@@ -5,6 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { AutoGoPayProvider } from "../providers/autogopay.provider";
 import type { AutoGoPayResponse } from "../types/autogopay-response";
 import { PaymentReconciliationService } from "../service/payment-reconciliation.service";
+import { advance } from "../../../../test/admin-auth";
 import { autoGoPayFixtures as fx } from "../../../../test/autogopay-fixtures";
 import { captureLogLines } from "../../../../test/capture-log-lines";
 import { createUser } from "../../../../test/factories";
@@ -12,6 +13,7 @@ import { ScriptedAutoGoPayTransport } from "../../../../test/scripted-autogopay-
 import { resetDatabase } from "../../../../test/test-database";
 import {
   STARTER_PRICE_RUPIAH,
+  TEST_PAYMENT_SETTINGS,
   createPaymentsApp,
   paidBalanceOf,
   paymentsHttp,
@@ -19,6 +21,7 @@ import {
   seedPaymentSettings,
   seedRate,
   sessionFromCookie,
+  useFakeDateFromNow,
 } from "../../../../test/payments";
 
 // RNX-229, RNX-273: the acceptance criteria through the AutoGoPay adapter: real HTTP (Fastify inject, raw body kept as
@@ -63,12 +66,18 @@ describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)
 
   afterEach(() => {
     jest.restoreAllMocks();
+    jest.useRealTimers();
     delete process.env.PAYMENTS_FORCE_OFF;
   });
 
   afterAll(() => app?.close());
 
   const reconcile = () => moduleRef.get(PaymentReconciliationService).reconcile();
+  /** The next interval's run: the fake clock moves one reconciliation interval on (the last run's claims have ended, RNX-271). */
+  const reconcileNextInterval = () => {
+    advance(TEST_PAYMENT_SETTINGS.paymentsReconcileEveryMinutes * MINUTE);
+    return reconcile();
+  };
   const buyStarter = (userId: string) => http.checkout(userId, { offer: "package", packageId: catalog.starterId });
   /** A user with a pending Starter order through the real checkout; its id and AutoGoPay transaction id. */
   const pendingStarterOrder = async () => {
@@ -496,11 +505,12 @@ describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)
     });
 
     it("AC16: an unmapped status three times in a row: needs_review, the job stops claiming it, no credit", async () => {
+      useFakeDateFromNow();
       const { orderId, reference } = await pendingStarterOrder();
       await expireOrder(orderId);
       transport.setStatus(reference, "refund", STARTER_PRICE_RUPIAH);
 
-      const runs = [await reconcile(), await reconcile(), await reconcile(), await reconcile()];
+      const runs = [await reconcile(), await reconcileNextInterval(), await reconcileNextInterval(), await reconcileNextInterval()];
 
       expect(runs.map((run) => run.outcomes)).toEqual([{ unknown: 1 }, { unknown: 1 }, { needs_review: 1 }, {}]);
       expect(await orderOf(orderId)).toMatchObject({ status: "pending", unknownChecks: 3, needsReview: true });

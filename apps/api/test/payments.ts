@@ -7,6 +7,7 @@ import { PAYMENT_PROVIDER } from "../src/app/payments/config/payment-provider.to
 import { PaymentsModule } from "../src/app/payments/payments.module";
 import type { PaymentProvider } from "../src/app/payments/types/payment-provider";
 import { createFastifyAdapter } from "../src/common/utils/create-fastify-adapter";
+import { NOT_DATE } from "./admin-auth";
 import { createTestModule } from "./test-module";
 
 // Shared tooling of the payment specs (RNX-35). FakePaymentProvider, or AutoGoPay over a scripted transport (RNX-229):
@@ -121,3 +122,9 @@ export async function givePackage(prisma: PrismaService, userId: string): Promis
     data: { userId, planId: plan.id, currentPeriodStart: new Date(now), currentPeriodEnd: new Date(now + 30 * 86_400_000) },
   });
 }
+
+/**
+ * Fakes Date only (the database driver and Fastify keep their real timers), starting at the real now so the seeded rate
+ * stays today's; the clock stands still until moved (`advance` in ./admin-auth). Undo with `jest.useRealTimers()`.
+ */
+export const useFakeDateFromNow = (): void => void jest.useFakeTimers({ doNotFake: [...NOT_DATE], now: Date.now() });

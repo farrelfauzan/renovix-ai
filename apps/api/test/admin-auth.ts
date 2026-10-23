@@ -19,7 +19,7 @@ export const MINUTE = 60_000;
 /** Base time of the fake clock: one second into a 30-second TOTP step. */
 export const START = new Date("2026-10-14T08:00:01Z");
 /** Only Date is faked: the database driver and Fastify keep their real timers. The clock stands still. */
-const NOT_DATE = [
+export const NOT_DATE = [
   "hrtime", "nextTick", "performance", "queueMicrotask", "requestAnimationFrame", "cancelAnimationFrame",
   "requestIdleCallback", "cancelIdleCallback", "setImmediate", "clearImmediate", "setInterval",
   "clearInterval", "setTimeout", "clearTimeout",
