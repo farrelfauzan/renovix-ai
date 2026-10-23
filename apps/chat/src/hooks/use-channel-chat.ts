@@ -43,17 +43,11 @@ export function useChannelChat(
         | undefined;
 
       try {
-        const jwt =
-          typeof window !== "undefined" ? localStorage.getItem("jwt") : null;
-
         const response = await fetch(
           `${config.apiUrl}/channels/${channelId}/agents/${agentId}/chat`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               message,
               ...(options?.output_format

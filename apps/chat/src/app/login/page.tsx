@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<string | null>(null);
-  const { setAuth } = useAuthStore();
+  const { setSessionAuth } = useAuthStore();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -27,15 +27,14 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await apiClient.post<{
-        token: string;
-        user: { email: string };
-      }>("/auth/login", {
-        method: "POST",
+      const { data, error: signInError } = await signIn.email({
         email,
         password,
       });
-      setAuth(res.token, res.user.email);
+      if (signInError || !data) {
+        throw new Error(signInError?.message || "Login failed");
+      }
+      setSessionAuth(data.user.email, data.user.name, data.user.image);
       // Link portal session to authenticated user
       apiClient.post("/chat/portal/link-session").catch(() => {});
       queryClient.invalidateQueries({ queryKey: ["portal-usage"] });

@@ -3,21 +3,19 @@ import type { NextRequest } from "next/server";
 
 /**
  * Middleware to protect authenticated routes.
- * Checks for Better Auth session cookie or JWT cookie. The `jwt` cookie is
- * the httpOnly cookie the API sets on email login/register (RX-68).
- * Redirects to /login if neither is present.
+ * Checks for the Better Auth session cookie (the only session, RNX-49).
+ * Redirects to /login if it is not present.
  */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Check for authentication tokens
+  // Check for the session cookie
   // In production with secure cookies, Better Auth prefixes names with __Secure-
   const sessionToken =
     request.cookies.get("better-auth.session_token")?.value ||
     request.cookies.get("__Secure-better-auth.session_token")?.value;
-  const jwt = request.cookies.get("jwt")?.value;
 
-  const isAuthenticated = !!sessionToken || !!jwt;
+  const isAuthenticated = !!sessionToken;
 
   if (!isAuthenticated) {
     const loginUrl = new URL("/login", request.url);
