@@ -181,6 +181,16 @@ describe("AutoGoPayProvider (RNX-229)", () => {
       expect(await provider.verifyWebhook(webhook(noMethod, sign(noMethod)))).toEqual({ isVerified: true, providerRef: "TRX-001", reportedState: "paid", reportedAmountRupiah: 50_000 });
     });
 
+    it("#167 review: a signed webhook with payment_method null is taken as QRIS, not refused as unreadable", async () => {
+      const { provider } = providerWith();
+      const nullMethod = raw.replace('"payment_method": "QRIS"', '"payment_method": null');
+      const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+
+      expect(nullMethod).toContain('"payment_method": null');
+      expect(await provider.verifyWebhook(webhook(nullMethod, sign(nullMethod)))).toEqual({ isVerified: true, providerRef: "TRX-001", reportedState: "paid", reportedAmountRupiah: 50_000 });
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it("RNX-273: an ignored method is checked only after the signature (a forged one is not verified)", async () => {
       const { provider } = providerWith();
       const otherProduct = raw.replace('"payment_method": "QRIS"', '"payment_method": "QRIS_SHOPEEPAY"');

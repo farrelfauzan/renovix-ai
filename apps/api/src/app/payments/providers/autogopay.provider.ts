@@ -89,7 +89,7 @@ export class AutoGoPayProvider implements PaymentProvider {
 
   /**
    * Verifies `x-signature` (hex HMAC-SHA256 of the raw body under the API key, constant time), then reads the body. A
-   * `payment_method` other than QRIS (another AutoGoPay product on the same key) is ignored; a missing one is QRIS.
+   * `payment_method` other than QRIS (another AutoGoPay product on the same key) is ignored; a missing or null one is QRIS.
    */
   async verifyWebhook(request: WebhookRequest): Promise<WebhookVerification> {
     const signature = request.headers[AUTOGOPAY_SIGNATURE_HEADER];
@@ -99,8 +99,9 @@ export class AutoGoPayProvider implements PaymentProvider {
       this.logger.warn("AutoGoPay webhook: the signature is valid but the body is not the expected shape (not recorded)");
       return NOT_VERIFIED;
     }
-    const { transaction_id, status, amount, payment_method = AUTOGOPAY_QRIS_PAYMENT_METHOD } = parsed.data.transaction;
-    if (payment_method !== AUTOGOPAY_QRIS_PAYMENT_METHOD) return this.ignoreWebhook(payment_method);
+    const { transaction_id, status, amount } = parsed.data.transaction;
+    const paymentMethod = parsed.data.transaction.payment_method ?? AUTOGOPAY_QRIS_PAYMENT_METHOD;
+    if (paymentMethod !== AUTOGOPAY_QRIS_PAYMENT_METHOD) return this.ignoreWebhook(paymentMethod);
     return { isVerified: true, providerRef: transaction_id, reportedState: this.stateOf(AUTOGOPAY_WEBHOOK_STATES, status), reportedAmountRupiah: amount ?? null };
   }
 
