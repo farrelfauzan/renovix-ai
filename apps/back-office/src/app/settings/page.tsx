@@ -1,5 +1,10 @@
-import { PlaceholderPage } from "@/components/server/placeholder-page";
+import { SettingsScreen } from "@/components/client/settings/settings-screen";
 
 export default function SettingsPage() {
-  return <PlaceholderPage title="Settings" />;
+  return (
+    <section>
+      <h1 className="text-xl font-semibold">Settings</h1>
+      <SettingsScreen />
+    </section>
+  );
 }
