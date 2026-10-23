@@ -206,6 +206,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/enterprise-bundles/:id (AdminEnterpriseBundlesController.get)",
     "GET /admin/packages (AdminPackagesController.list)",
     "GET /admin/packages/:id (AdminPackagesController.get)",
+    "GET /admin/payments/orders (AdminPaymentsController.listOrders)",
+    "GET /admin/payments/orders/export (AdminPaymentsController.exportOrders)",
     "GET /admin/providers (AdminProvidersController.list)",
     "GET /admin/providers/:id (AdminProvidersController.get)",
     "GET /admin/providers/:providerId/models (AdminProviderModelsController.list)",
@@ -234,6 +236,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/invitations (AdminInvitationsController.create)",
     "POST /admin/invitations/:id/resend (AdminInvitationsController.resend)",
     "POST /admin/packages/:id/versions (AdminPackagesController.createVersion)",
+    "POST /admin/payments/orders/:id/confirm (AdminPaymentsController.confirmFromProvider)",
+    "POST /admin/payments/unmatched/:id/refunded (AdminPaymentsController.markRefunded)",
     "POST /admin/providers (AdminProvidersController.create)",
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
     "POST /admin/providers/:id/test (AdminProvidersController.test)",
@@ -289,6 +293,11 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)": ["roles:write"],
     // RNX-227: a credit adjustment needs credits:adjust.
     "POST /admin/credits/adjustments (AdminCreditsController.adjust)": ["credits:adjust"],
+    // RNX-35: the payments day list and its CSV need credits:read; confirm from provider and mark refunded need credits:adjust.
+    "GET /admin/payments/orders (AdminPaymentsController.listOrders)": ["credits:read"],
+    "GET /admin/payments/orders/export (AdminPaymentsController.exportOrders)": ["credits:read"],
+    "POST /admin/payments/orders/:id/confirm (AdminPaymentsController.confirmFromProvider)": ["credits:adjust"],
+    "POST /admin/payments/unmatched/:id/refunded (AdminPaymentsController.markRefunded)": ["credits:adjust"],
     // RNX-226: packages, top-up packs and Enterprise bundles need packages:*; invitation codes (no code permission in
     // RX-96: a code grants credits or a plan) need packages:write, the reads too (a code's text is a redeemable secret);
     // platform settings need settings:*.
@@ -549,6 +558,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
   // resending an Owner invitation (POST /admin/invitations/:id/resend) too, checked in its controller the same way.
   // RNX-227: a credit adjustment.
   // D250 (RNX-226): every price change (a new package, pack or bundle version) and every invitation code write.
+  // RNX-35: the two payment writes, confirm from provider and mark unmatched as refunded.
   const REAUTH_ROUTES = [
     "PATCH /admin/codes/:id (AdminCodesController.deactivate)",
     "PATCH /admin/roles/:name (AdminRolesController.update)",
@@ -559,6 +569,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/credits/adjustments (AdminCreditsController.adjust)",
     "POST /admin/enterprise-bundles/:id/versions (AdminEnterpriseBundlesController.createVersion)",
     "POST /admin/packages/:id/versions (AdminPackagesController.createVersion)",
+    "POST /admin/payments/orders/:id/confirm (AdminPaymentsController.confirmFromProvider)",
+    "POST /admin/payments/unmatched/:id/refunded (AdminPaymentsController.markRefunded)",
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
   ];
@@ -595,6 +607,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/invitations (AdminInvitationsController.create)",
     "POST /admin/invitations/:id/resend (AdminInvitationsController.resend)",
     "POST /admin/packages/:id/versions (AdminPackagesController.createVersion)",
+    "POST /admin/payments/unmatched/:id/refunded (AdminPaymentsController.markRefunded)",
     "POST /admin/providers (AdminProvidersController.create)",
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
     "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)",
@@ -611,6 +624,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     // RX-95: the invitation link's holder has no account yet; accept writes the new admin's audit row itself.
     "POST /admin/invitations/accept (AdminInvitationsController.accept)",
     "POST /admin/invitations/preview (AdminInvitationsController.preview)",
+    // RNX-35: confirm from provider calls the payment provider outside a transaction; the handler writes its own audit row.
+    "POST /admin/payments/orders/:id/confirm (AdminPaymentsController.confirmFromProvider)",
     // RX-177: the provider call must run outside a transaction; the handler writes its own audit row in a
     // short transaction after the call (admin-providers.controller.spec.ts checks the row).
     "POST /admin/providers/:id/test (AdminProvidersController.test)",
@@ -628,7 +643,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
 
   // RX-164 (PRD 09 F16): a read is not audited by default, but an export is. The CSV export is a GET that
   // writes its own audit row through the same hook, so it is pinned here: dropping its `@AdminAudit` fails.
-  const AUDITED_READ_ROUTES = ["GET /admin/audit-log/export (AdminAuditLogController.export)"];
+  const AUDITED_READ_ROUTES = [
+    "GET /admin/audit-log/export (AdminAuditLogController.export)",
+    "GET /admin/payments/orders/export (AdminPaymentsController.exportOrders)",
+  ];
 
   it("RX-164: the /admin reads that write an audit row (exports) are pinned", () => {
     expect(labels(routes.filter((route) => isAdminRoute(route) && !changesState(route) && route.audit !== undefined))).toEqual(
