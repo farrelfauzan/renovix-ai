@@ -54,6 +54,17 @@ export const sseErrorMessages = (body: string): string[] =>
     .filter((data) => data.startsWith('{"error"'))
     .map((data) => JSON.parse(data).error.message as string);
 
+/**
+ * RNX-16: every event of an SSE body, in order: a `data:` line's JSON parsed, `[DONE]` as the string "[DONE]", and
+ * any other block (a `: heartbeat` comment) as written.
+ */
+export const sseEvents = (body: string): unknown[] =>
+  body
+    .split("\n\n")
+    .filter((block) => block !== "")
+    .map((block) => (block.startsWith("data: ") ? block.slice("data: ".length) : block))
+    .map((data) => (data.startsWith("{") ? JSON.parse(data) : data));
+
 /** A throw planted inside a route's own catch: the first `Logger.error` line that matches `when` throws `error`. */
 export interface PlantedLoggerThrow {
   when: RegExp;
