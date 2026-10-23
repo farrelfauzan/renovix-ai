@@ -296,6 +296,22 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
       await assertCreditLedgerInvariants(prisma);
     });
 
+    it("RNX-16 budget stop (AR): the stored assistant message holds the budget-stop text after the user message, with 0 tokens (the call that ran is not counted) and no cost", async () => {
+      const { bob, parent, sub } = await seed("1");
+      await setRunCap(prisma, 0.01);
+      fake.enqueue(delegateTurn(sub.id, { prompt_tokens: 9_500, completion_tokens: 10 }));
+      const expectedContent = budgetStopMessage(new Decimal("0.01"));
+
+      const actual = await service.chat(bob.id, parent.id, "Hi");
+
+      const stored = await prisma.agentMessage.findMany({ where: { runId: actual.runId }, orderBy: { createdAt: "asc" } });
+      expect(stored.map((m) => [m.role, m.content, m.tokens, m.cost])).toEqual([
+        ["user", "Hi", null, null],
+        ["assistant", expectedContent, 0, null],
+      ]);
+      expect(actual.usage).toEqual({ totalTokens: 0, cost: undefined });
+    });
+
     it("with less available than the cap, the hold is the whole available balance; the budget stop keeps the balance at or above 0", async () => {
       const { bob, parent, sub } = await seed("0.02");
       fake.enqueue(delegateTurn(sub.id, { prompt_tokens: 18_000, completion_tokens: 10 }));

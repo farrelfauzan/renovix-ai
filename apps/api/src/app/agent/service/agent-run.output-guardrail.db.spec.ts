@@ -195,6 +195,21 @@ describe("RNX-275: the output guardrail runs before the agent run stores or memo
       expect(mockCheckOutput).toHaveBeenCalledTimes(1);
     });
 
+    it("#170 review: masked but not blocked (e.g. PII), the stored message, the memory input and the reply are the masked text; one checkOutput call", async () => {
+      const { bob, agent } = await seed();
+      fake.enqueue({ content: "Call me at 0812-0000-3535" });
+      mockCheckOutput.mockImplementation(async () => ({ blocked: false, content: "Call me at [PHONE]" }));
+
+      const actual = await service.chat(bob.id, agent.id, "Hi");
+
+      expect(await assistantContentsOf(actual.runId)).toEqual(["Call me at [PHONE]"]);
+      expect(await messagesContaining("0812-0000-3535")).toEqual([]);
+      expect(actual.message.content).toBe("Call me at [PHONE]");
+      expect(mockExtractAndStore).toHaveBeenCalledTimes(1);
+      expect(mockExtractAndStore).toHaveBeenCalledWith(agent.id, bob.id, "Hi", "Call me at [PHONE]", expect.anything());
+      expect(mockCheckOutput).toHaveBeenCalledTimes(1);
+    });
+
     it("the budget-stop message still goes through the guardrail once and is stored as returned", async () => {
       const { bob, agent } = await seed();
       const helper = await createAgent(prisma, { userId: bob.id, name: "Bob helper", status: "active" });
