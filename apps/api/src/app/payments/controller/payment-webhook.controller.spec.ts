@@ -618,6 +618,37 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
       expect(await grants()).toHaveLength(1);
       expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
     });
+
+    it("review round 1: a batch slower than its claim (each check 10 s, a provider timing out): the run stops before its claim ends and the next interval's run, overlapping it, checks no order twice within one claim window", async () => {
+      const inputOrders = await expiredPendingOrders(8);
+      await seedPaymentSettings(prisma, { paymentsReconcileEveryMinutes: 1 });
+      for (const { orderId } of inputOrders) fake.simulateState(orderId, "unknown");
+      const start = Date.now();
+      const checks: { reference: string; at: number }[] = [];
+      const realGetStatus = fake.getStatus.bind(fake);
+      let nextRun: Promise<unknown> | null = null;
+      // Each status check takes 10 s; the next interval's run (another tick, same or other instance) starts one minute
+      // after the first while the first is still checking (the scheduler does not stop overlapping runs).
+      jest.spyOn(fake, "getStatus").mockImplementation(async (reference: string) => {
+        if (nextRun === null && Date.now() - start >= MINUTE) {
+          nextRun = reconcile();
+          await nextRun;
+        }
+        checks.push({ reference, at: Date.now() });
+        advance(10 * SECOND);
+        return realGetStatus(reference);
+      });
+
+      await reconcile();
+      if (nextRun === null) {
+        advance(start + MINUTE - Date.now());
+        await reconcile();
+      }
+
+      const timesOf = (reference: string) => checks.filter((check) => check.reference === reference).map((check) => check.at).sort((a, b) => a - b);
+      const actualGaps = inputOrders.flatMap(({ reference }) => timesOf(reference).slice(1).map((at, i) => ({ reference, gapMs: at - timesOf(reference)[i] })));
+      expect(actualGaps.filter(({ gapMs }) => gapMs < MINUTE - CLAIM_SLACK)).toEqual([]);
+    });
   });
 
   describe("AC11: the logs of a payments run hold no provider key, signature secret or account detail", () => {

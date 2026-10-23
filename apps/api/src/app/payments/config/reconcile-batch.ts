@@ -7,9 +7,12 @@
  * wait a whole extra interval. It stays below one minute, so with the shortest interval (1 minute, the setting's
  * minimum) the claim still ends after the run's now. `fallbackClaimMinutes` is the claim while
  * `paymentsReconcileEveryMinutes` is not set (the scheduler does not run then, but `reconcile()` can still be called).
+ * `checkBudgetSeconds`: a run stops checking when less of its claim is left (above the 10 s status-call timeout, plus
+ * the settlement transaction), so a check never outlasts the claim; the unchecked rest waits for the next interval.
  */
 export const RECONCILE_BATCH = {
   size: 100,
   claimSlackSeconds: 30,
   fallbackClaimMinutes: 5,
+  checkBudgetSeconds: 15,
 } as const;

@@ -33,18 +33,19 @@ export class PaymentReconciliationService {
     private readonly settlement: PaymentSettlementService,
   ) {}
 
-  /** Claims one batch and checks each order; the outcomes, counted. */
+  /**
+   * Claims one batch and checks each order; the outcomes, counted. The run stops checking when less than
+   * `checkBudgetSeconds` of its claim is left (RNX-271 review round 1): the rest keeps its claim and the next interval's
+   * run takes it, so no order is checked twice in one interval even when a batch is slower than its claim.
+   */
   async reconcile(): Promise<ReconcileSummary> {
     if (!(await this.paymentSettings.isEnabled())) return { isPaused: true, claimed: 0, outcomes: {} };
     const now = new Date();
-    const claimed = await this.orders.claimForReconcile({
-      provider: this.provider.name,
-      now,
-      claimUntil: await this.claimUntilOf(now),
-      limit: RECONCILE_BATCH.size,
-    });
+    const claimUntil = await this.claimUntilOf(now);
+    const claimed = await this.orders.claimForReconcile({ provider: this.provider.name, now, claimUntil, limit: RECONCILE_BATCH.size });
     const outcomes: Partial<Record<ReconcileOutcome, number>> = {};
     for (const order of claimed) {
+      if (Date.now() + RECONCILE_BATCH.checkBudgetSeconds * SECOND_MS > claimUntil.getTime()) break;
       const outcome = await this.checkClaimed(order);
       outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
     }
