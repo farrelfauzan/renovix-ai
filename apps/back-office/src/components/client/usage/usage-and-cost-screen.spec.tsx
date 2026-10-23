@@ -3,6 +3,7 @@ import type { ApiClient } from "@/lib/api/api-client";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
 import { createUsageApi } from "@/lib/usage/usage-api";
+import { TablePager } from "./table-pager";
 import { UsageAndCostScreen } from "./usage-and-cost-screen";
 
 // RNX-163: the usage and cost screen against a mocked back-office API client (shapes from apps/api admin-usage types).
@@ -207,5 +208,83 @@ describe("UsageAndCostScreen (RNX-163)", () => {
 
     expect(await screen.findByText("Your role has no access to usage and cost.")).toBeTruthy();
     expect(mock.keys()).toEqual([]);
+  });
+});
+
+describe("the tables' pager (D274)", () => {
+  const many = (count: number, make: (index: number) => object) => Array.from({ length: count }, (_, index) => make(index + 1));
+  const usageRows = () => many(137, (n) => usageRow({ providerModelId: `model-${n}`, user: null, workspaceId: "ws" }));
+  const usageHandlers = (): Record<string, Handler> => ({ "GET /usage/daily": () => ({ status: 200, body: { ...PERIOD, rows: usageRows() } }) });
+  const usagePanel = () => screen.getByRole("region", { name: "Token usage" });
+  const bodyRows = () => within(within(usagePanel()).getByRole("table")).getAllByRole("row").slice(1);
+  const next = () => fireEvent.click(within(usagePanel()).getByRole("button", { name: "Next" }));
+
+  it("137 rows: 50, then 51 to 100, then 101 to 137 with Next disabled; Previous is disabled on the first page", async () => {
+    renderScreen(VIEWER, usageHandlers());
+
+    expect(await within(await screen.findByRole("region", { name: "Token usage" })).findByText("Rows 1–50 of 137")).toBeTruthy();
+    expect(bodyRows()).toHaveLength(50);
+    expect((within(usagePanel()).getByRole("button", { name: "Previous" }) as HTMLButtonElement).disabled).toBe(true);
+    next();
+    expect(within(usagePanel()).getByText("Rows 51–100 of 137")).toBeTruthy();
+    expect(within(bodyRows()[0]).getByText("model-51")).toBeTruthy();
+    next();
+    expect(within(usagePanel()).getByText("Rows 101–137 of 137")).toBeTruthy();
+    expect(bodyRows()).toHaveLength(37);
+    expect((within(usagePanel()).getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("Previous returns to the page before", async () => {
+    renderScreen(VIEWER, usageHandlers());
+    await within(await screen.findByRole("region", { name: "Token usage" })).findByText("Rows 1–50 of 137");
+    next();
+
+    fireEvent.click(within(usagePanel()).getByRole("button", { name: "Previous" }));
+
+    expect(within(usagePanel()).getByText("Rows 1–50 of 137")).toBeTruthy();
+    expect(within(bodyRows()[0]).getByText("model-1")).toBeTruthy();
+  });
+
+  it("a new range puts the table back on page 1", async () => {
+    renderScreen(VIEWER, usageHandlers());
+    await within(await screen.findByRole("region", { name: "Token usage" })).findByText("Rows 1–50 of 137");
+    next();
+    expect(within(usagePanel()).getByText("Rows 51–100 of 137")).toBeTruthy();
+    const form = screen.getByRole("form", { name: "Report range" });
+
+    fireEvent.change(within(form).getByLabelText("From"), { target: { value: "2026-10-01" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Apply range" }));
+
+    expect(await within(usagePanel()).findByText("Rows 1–50 of 137")).toBeTruthy();
+  });
+
+  it("the pager itself goes back to page 1 when it gets a new rows array", () => {
+    const rowsOf = () => Array.from({ length: 137 }, (_, index) => index + 1);
+    const view = (rows: number[]) => <TablePager rows={rows}>{(page) => <p>{page.length} shown</p>}</TablePager>;
+    const { rerender } = render(view(rowsOf()));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Rows 51–100 of 137")).toBeTruthy();
+
+    rerender(view(rowsOf()));
+
+    expect(screen.getByText("Rows 1–50 of 137")).toBeTruthy();
+  });
+
+  it("the totals stay the API's for the whole range on every page of the profit table", async () => {
+    const rows = many(137, (n) => ({ ...profitReport.rows[0], providerModelId: `model-${n}` }));
+    renderScreen(FINANCE, {
+      ...USAGE_OK,
+      "GET /usage/profit": () => ({ status: 200, body: { ...profitReport, rows } }),
+      "GET /reconciliation": () => ({ status: 200, body: { ...PERIOD, driftThresholdPercent: null, rows: [] } }),
+      "GET /providers": () => ({ status: 200, body: [] }),
+    });
+    const panel = await screen.findByRole("region", { name: "Cost and profit" });
+    const totalsBefore = within(await screen.findByLabelText("Totals")).getByText("777");
+
+    fireEvent.click(within(panel).getAllByRole("button", { name: "Next" })[0]);
+
+    expect(within(panel).getByText("Rows 51–100 of 137")).toBeTruthy();
+    expect(within(screen.getByLabelText("Totals")).getByText("777")).toBe(totalsBefore);
+    expect(within(screen.getByLabelText("Totals")).getByText("Credits consumed").nextSibling?.textContent).toBe("777");
   });
 });

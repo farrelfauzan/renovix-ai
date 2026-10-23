@@ -5,6 +5,7 @@ import type { ReportRange } from "@/lib/usage/report-range";
 import type { UsageApi } from "@/lib/usage/usage-api";
 import { useReport } from "@/lib/usage/use-report";
 import { SectionMessage } from "./section-message";
+import { TablePager } from "./table-pager";
 import { UsageTable } from "./usage-table";
 
 type UsageSectionProps = { readonly api: UsageApi; readonly range: ReportRange; readonly canReveal: boolean };
@@ -18,7 +19,9 @@ export function UsageSection({ api, range, canReveal }: UsageSectionProps) {
       {error && <SectionMessage text={`Token usage could not be loaded: ${error}`} isError />}
       {!data && !error && <SectionMessage text="Loading token usage…" />}
       {data && data.rows.length === 0 && <SectionMessage text="No usage in this range." />}
-      {data && data.rows.length > 0 && <UsageTable rows={data.rows} api={api} canReveal={canReveal} />}
+      {data && data.rows.length > 0 && (
+        <TablePager rows={data.rows}>{(rows) => <UsageTable rows={rows} api={api} canReveal={canReveal} />}</TablePager>
+      )}
     </section>
   );
 }

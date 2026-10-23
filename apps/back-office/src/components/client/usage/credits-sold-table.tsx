@@ -1,13 +1,13 @@
 "use client";
 
 import { formatUsdIdr } from "@/lib/usage/format-usd-idr";
-import type { ProfitReport } from "@/lib/usage/profit-report";
+import type { CreditSalesView } from "@/lib/usage/credit-sales-view";
 
 /** Credits sold per day and package; the value is what the API labels it ("list value, not cash"). */
-export function CreditsSoldTable({ creditsSold }: { creditsSold: ProfitReport["creditsSold"] }) {
+export function CreditsSoldTable({ label, rows }: { label: string; rows: readonly CreditSalesView[] }) {
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-base font-semibold">Credits sold ({creditsSold.label})</h3>
+      <h3 className="text-base font-semibold">Credits sold ({label})</h3>
       <div className="overflow-x-auto rounded-rx border border-rx-line">
         <table className="w-full min-w-[500px] text-left text-sm">
           <thead className="bg-rx-surface text-rx-muted">
@@ -18,7 +18,7 @@ export function CreditsSoldTable({ creditsSold }: { creditsSold: ProfitReport["c
             </tr>
           </thead>
           <tbody>
-            {creditsSold.rows.map((row, index) => (
+            {rows.map((row, index) => (
               <tr key={index} className="border-t border-rx-line">
                 <td className="px-3 py-2">{row.day}</td>
                 <td className="px-3 py-2">{row.packageVersionId ?? row.topUpPackVersionId ?? "none"}</td>
