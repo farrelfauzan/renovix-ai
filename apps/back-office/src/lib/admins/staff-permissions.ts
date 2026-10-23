@@ -17,6 +17,7 @@ export const STAFF_PERMISSIONS: readonly string[] = [
   "roles:read", "roles:write",
   "settings:read", "settings:write",
   "audit:read",
+  "profit:read", "reconciliation:write",
 ];
 
 /** Held by the Owner role only: the API refuses them on a custom role, so the role form does not offer them. */
