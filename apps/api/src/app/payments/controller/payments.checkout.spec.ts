@@ -5,6 +5,7 @@ import { ExchangeRateService } from "../../exchange-rates/service/exchange-rate.
 import { PrismaService } from "../../prisma/prisma.service";
 import { TransactionService } from "../../prisma/transaction.service";
 import { FakePaymentProvider } from "../providers/fake-payment.provider";
+import { PaymentOrderRepository } from "../repository/payment-order.repository";
 import { createUser } from "../../../../test/factories";
 import { resetDatabase } from "../../../../test/test-database";
 import {
@@ -148,6 +149,20 @@ describe("RNX-35a checkout (Fastify, test database, fake provider)", () => {
       expect(res.json().message).toBe("A top-up pack needs a package; buy Starter or Pro first");
       await expectNothingStarted();
     });
+
+    it("a free account buying Pro (another one-time package): 201, allowed", async () => {
+      const user = await createUser(prisma);
+      const pro = await prisma.package.create({ data: { name: "Pro-rx35", displayOrder: 3, active: true, visible: true } });
+      await prisma.packageVersion.create({
+        data: { packageId: pro.id, versionNumber: 1, priceUsdCents: 2500, creditsGranted: 300, billing: "one_time", maxAgents: 5, maxConnectedTools: 5, apiAccess: true, allowedChannels: ["web"], allowedTiers: ["standard"], createdBy: "test", reason: "RNX-35 test" },
+      });
+
+      const res = await http.checkout(user.id, { offer: "package", packageId: pro.id });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toMatchObject({ offer: "package", state: "pending" });
+      expect(createCharge).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("AC7: the kill switch", () => {
@@ -206,6 +221,32 @@ describe("RNX-35a checkout (Fastify, test database, fake provider)", () => {
       expect([ok.statusCode, refused.statusCode, other.statusCode]).toEqual([201, 422, 201]);
       expect(refused.json().message).toContain("paymentsMaxPerAccountPerDayRupiah");
       expect(createCharge).toHaveBeenCalledTimes(2);
+    });
+
+    it("two checkouts of one account at the same moment against its daily cap: exactly one goes through (the checkout lock)", async () => {
+      const user = await createUser(prisma);
+      await seedPaymentSettings(prisma, { paymentsMaxPerAccountPerDayRupiah: STARTER_PRICE_RUPIAH * 2 - 1 });
+
+      const results = await Promise.all([buyStarter(user.id), buyStarter(user.id)]);
+
+      expect(results.map((res) => res.statusCode).sort()).toEqual([201, 422]);
+      expect(await prisma.paymentOrder.count()).toBe(1);
+      expect(createCharge).toHaveBeenCalledTimes(1);
+    });
+
+    it("the daily caps count today's paid orders and not failed ones", async () => {
+      const user = await createUser(prisma);
+      await seedPaymentSettings(prisma, { paymentsMaxPerAccountPerDayRupiah: STARTER_PRICE_RUPIAH * 2 - 1 });
+      expect((await buyStarter(user.id)).statusCode).toBe(201);
+      const order = await prisma.paymentOrder.findFirstOrThrow();
+      await prisma.paymentOrder.update({ where: { id: order.id }, data: { status: "paid", paidAt: new Date() } });
+
+      const whilePaid = await buyStarter(user.id);
+      await prisma.paymentOrder.update({ where: { id: order.id }, data: { status: "failed", paidAt: null } });
+      const whileFailed = await buyStarter(user.id);
+
+      expect([whilePaid.statusCode, whileFailed.statusCode]).toEqual([422, 201]);
+      expect(whilePaid.json().message).toContain("paymentsMaxPerAccountPerDayRupiah");
     });
 
     it.each(["paymentsMaxPerPaymentRupiah", "paymentsMaxPerAccountPerDayRupiah", "paymentsMaxPlatformPerDayRupiah", "paymentsOrderExpiryMinutes"])(
@@ -294,6 +335,29 @@ describe("RNX-35a checkout (Fastify, test database, fake provider)", () => {
       expect((await prisma.paymentOrderChange.findMany({ orderBy: { createdAt: "asc" } })).map((c) => c.event)).toEqual(["created", "charge_failed"]);
       expect((await http.getOrder(user.id, order.id)).json()).toMatchObject({ state: "failed", paymentCode: null });
       expect(await prisma.creditLedgerEntry.count()).toBe(0);
+    });
+  });
+
+  describe("review round 1: storing the created charge fails", () => {
+    it("the charge is cancelled, the order fails (not left pending, not counted toward the caps), and the original error fails the request even when cancel throws", async () => {
+      const user = await createUser(prisma);
+      await seedPaymentSettings(prisma, { paymentsMaxPerAccountPerDayRupiah: STARTER_PRICE_RUPIAH * 2 - 1 });
+      jest.spyOn(PaymentOrderRepository.prototype, "attachCharge").mockRejectedValueOnce(new Error("planted store failure"));
+      const cancel = jest.spyOn(fake, "cancel").mockRejectedValueOnce(new TypeError("planted cancel failure"));
+      const error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+      jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+
+      const res = await buyStarter(user.id);
+
+      expect(res.statusCode).toBe(500);
+      const order = await prisma.paymentOrder.findFirstOrThrow();
+      expect(cancel).toHaveBeenCalledWith(`fake_${order.id}`);
+      expect(order).toMatchObject({ status: "failed", providerRef: null });
+      expect((await prisma.paymentOrderChange.findMany({ orderBy: { createdAt: "asc" } })).map((c) => c.event)).toEqual(["created", "charge_failed"]);
+      const logged = error.mock.calls.flat().map((arg) => (arg instanceof Error ? arg.message : String(arg))).join("\n");
+      expect(logged).toContain("planted store failure");
+      expect(logged).not.toContain("planted cancel failure");
+      expect((await buyStarter(user.id)).statusCode).toBe(201);
     });
   });
 });

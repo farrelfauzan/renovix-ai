@@ -102,7 +102,7 @@ export class PaymentSettlementService {
     });
   }
 
-  /** The provider says expired or cancelled: a pending order closes so (a later paid answer can still grant it, flagged late). */
+  /** The provider says expired or cancelled: a pending order closes so (a later paid answer with its amount still grants it once, flagged late when after its expiry). */
   private close(order: PaymentOrder, state: "expired" | "cancelled", check: OrderCheck): Promise<CheckOutcome> {
     return this.transactions.run(async (tx) => {
       const fromStatus = await this.orders.moveStatus(order.id, ["pending"], state, tx);

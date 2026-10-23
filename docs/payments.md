@@ -43,7 +43,7 @@ Table `payment_orders`: the buyer, the offer version (a package version or a top
 | `pending` | Created; waiting for the payment. |
 | `paid` | A status check said paid with the order's exact amount; credits granted once. |
 | `expired` | The provider said expired. A payment that still arrives later grants (flagged `late`). |
-| `cancelled` | The provider said cancelled. |
+| `cancelled` | The provider said cancelled. A payment that still arrives later with the order's amount grants once (flagged `late` when after the expiry): the money arrived. |
 | `failed` | The provider refused the charge, or a paid amount did not match (`amount_mismatch`). |
 
 | Flag | Set when |
@@ -78,7 +78,7 @@ Table `payment_orders`: the buyer, the offer version (a package version or a top
 
 ## 4. The reconciliation job
 
-Every `paymentsReconcileEveryMinutes` (a one-minute tick runs it when that many minutes have passed on the instance; not set: it does not run). It claims the provider's pending orders that are past their expiry or were named by a webhook, not in review, up to 100 per run, and checks each through the settlement path: a paid one grants (flagged `webhook_missed` if no webhook came, `late` if paid after expiry); expired or cancelled ones close; a pending one past its expiry counts as unknown.
+Every `paymentsReconcileEveryMinutes` (a one-minute tick runs it when that many minutes have passed on the instance; not set: it does not run). It claims the provider's pending orders that are past their expiry or were named by a webhook, not in review, up to 100 per run, and checks each through the settlement path: a paid one grants (flagged `webhook_missed` if no webhook came, `late` if paid after expiry); expired or cancelled ones close; a pending one past its expiry counts as unknown. A check that throws is logged (the error's class only) and counted as `error`, and the run goes on with the next order.
 
 **Several instances (Cloud Run).** Rows are claimed with `FOR UPDATE SKIP LOCKED` and a claim time (5 minutes, released after the check), so two runs check disjoint orders. Even if two checks of one order overlap (the job and a webhook), the grant's conditional update and the ledger idempotency key give exactly one grant.
 

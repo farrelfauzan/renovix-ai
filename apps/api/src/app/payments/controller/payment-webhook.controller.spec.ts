@@ -6,6 +6,7 @@ import { PurchaseSnapshotService } from "../../offers/service/purchase-snapshot.
 import { PrismaService } from "../../prisma/prisma.service";
 import { FakePaymentProvider } from "../providers/fake-payment.provider";
 import { PaymentReconciliationService } from "../service/payment-reconciliation.service";
+import { PaymentSettlementService } from "../service/payment-settlement.service";
 import { createUser } from "../../../../test/factories";
 import { resetDatabase } from "../../../../test/test-database";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
@@ -307,6 +308,25 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
       expect(paid).toMatchObject({ fromStatus: "expired", toStatus: "paid", source: "webhook" });
     });
 
+    it("review round 1 (BLOCKING 1): a paid answer after the provider said cancelled still grants once, flagged late, audited from cancelled", async () => {
+      const { user, orderId, reference } = await pendingStarterOrder();
+      await expireOrder(orderId);
+      fake.simulateState(orderId, "cancelled");
+      await reconcile();
+      expect((await orderOf(orderId)).status).toBe("cancelled");
+      fake.simulatePaid(orderId, { paidAt: new Date() });
+
+      const first = await paidWebhook(reference);
+      const again = await paidWebhook(reference);
+
+      expect([first.statusCode, again.statusCode]).toEqual([200, 200]);
+      expect(await orderOf(orderId)).toMatchObject({ status: "paid", isLate: true });
+      expect(await grants()).toHaveLength(1);
+      expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
+      const paid = await prisma.paymentOrderChange.findFirstOrThrow({ where: { orderId, event: "paid" } });
+      expect(paid).toMatchObject({ fromStatus: "cancelled", toStatus: "paid", source: "webhook" });
+    });
+
     it("the job finds a pending order past its expiry already paid (no webhook came): grants once through the same path, flagged late and webhook_missed", async () => {
       const { user, orderId } = await pendingStarterOrder();
       await expireOrder(orderId);
@@ -386,6 +406,30 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
 
       expect(await reconcile()).toMatchObject({ outcomes: { unknown: 1 } });
       expect(warn).toHaveBeenCalledWith(`Payment order ${orderId}: the status check failed (TypeError)`);
+    });
+
+    it("review round 1 (BLOCKING 2): one order whose check throws does not stop the batch; the next paid order is still granted, the failure is counted and logs only the error's class", async () => {
+      const first = await pendingStarterOrder();
+      const second = await pendingStarterOrder();
+      await expireOrder(first.orderId, 20);
+      await expireOrder(second.orderId, 10);
+      fake.simulatePaid(first.orderId);
+      fake.simulatePaid(second.orderId);
+      const settlement = moduleRef.get(PaymentSettlementService);
+      const checkOrder = settlement.checkOrder.bind(settlement);
+      jest.spyOn(settlement, "checkOrder").mockImplementation(async (order, check) => {
+        if (order.id === first.orderId) throw new RangeError(`check failed with ${TEST_WEBHOOK_SECRET}`);
+        return checkOrder(order, check);
+      });
+      const error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+
+      const summary = await reconcile();
+
+      expect(summary).toMatchObject({ claimed: 2, outcomes: { error: 1, granted: 1 } });
+      expect(await orderOf(second.orderId)).toMatchObject({ status: "paid", isWebhookMissed: true });
+      expect(await orderOf(first.orderId)).toMatchObject({ status: "pending", reconcileClaimedUntil: null });
+      expect(error).toHaveBeenCalledWith(`Payment order ${first.orderId}: the reconciliation check failed (RangeError)`);
+      expect(JSON.stringify(error.mock.calls)).not.toContain(TEST_WEBHOOK_SECRET);
     });
 
     it("two job runs at the same moment (two instances) claim disjoint rows: each order is checked once", async () => {

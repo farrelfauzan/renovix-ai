@@ -81,8 +81,9 @@ export class PaymentOrderRepository {
   }
 
   /**
-   * Marks a pending or expired order paid, in one conditional update: paidAt, late when paid after its expiry, and
-   * webhook_missed when asked and no webhook was seen. Returns the status it had; null when it was neither.
+   * Marks a pending, expired or cancelled order paid, in one conditional update: paidAt, late when paid after its
+   * expiry, and webhook_missed when asked and no webhook was seen. A paid answer after the provider said cancelled
+   * still grants (the money arrived; review round 1). Returns the status it had; null when it was none of them.
    */
   async markPaid(update: PaidOrderUpdate, tx: DbTransaction): Promise<PaymentOrderStatus | null> {
     const { orderId, paidAt, isWebhookMissedWhenNone } = update;
@@ -90,7 +91,7 @@ export class PaymentOrderRepository {
       WITH "before" AS (SELECT "id", "status" FROM "payment_orders" WHERE "id" = ${orderId} FOR UPDATE)
       UPDATE "payment_orders" AS o SET "status" = 'paid', "paid_at" = ${paidAt}, "is_late" = ${paidAt} > o."expires_at",
         "is_webhook_missed" = ${isWebhookMissedWhenNone} AND o."last_webhook_at" IS NULL, "updated_at" = now()
-      FROM "before" WHERE o."id" = "before"."id" AND "before"."status" IN ('pending', 'expired')
+      FROM "before" WHERE o."id" = "before"."id" AND "before"."status" IN ('pending', 'expired', 'cancelled')
       RETURNING "before"."status"::text AS "from_status"`;
     return rows[0]?.from_status ?? null;
   }

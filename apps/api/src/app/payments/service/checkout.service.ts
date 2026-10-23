@@ -118,7 +118,10 @@ export class CheckoutService {
     });
   }
 
-  /** Asks the provider for the charge, outside any transaction; a refused charge fails the order (502). */
+  /**
+   * Asks the provider for the charge, outside any transaction; a refused charge fails the order (502). A charge that
+   * cannot be stored is cancelled (a failing cancel is only logged) and the order fails, then the original error is rethrown.
+   */
   private async attachCharge(order: PaymentOrder, description: string): Promise<PaymentOrder> {
     const charge = await this.requestCharge(order, description);
     if (!charge) {
@@ -128,7 +131,8 @@ export class CheckoutService {
     try {
       return await this.orders.attachCharge(order.id, charge);
     } catch (err) {
-      await this.provider.cancel(charge.providerRef);
+      await this.provider.cancel(charge.providerRef).catch((cancelErr: unknown) => this.logger.warn(`Payment order ${order.id}: cancelling the charge failed (${errorNameOf(cancelErr)})`));
+      await this.failOrder(order.id);
       throw err;
     }
   }
