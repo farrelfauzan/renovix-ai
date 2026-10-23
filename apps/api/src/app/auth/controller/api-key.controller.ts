@@ -16,7 +16,10 @@ import { createInvalidBodyException } from "../../../common/utils/create-invalid
 export class ApiKeyController {
   constructor(private readonly apiKeys: ApiKeyService) {}
 
-  /** Creates a key: `{ name, expiresIn: "30d" | "90d" | "1y" | "never" }`; answers its fields and `apiKey`, once. */
+  /**
+   * Creates a key: `{ name, expiresIn: "30d" | "90d" | "1y" | "never", allowedTiers?, monthlyCreditCap? }` (RNX-232: tiers
+   * the package does not allow are a 403); answers its fields and `apiKey`, once.
+   */
   @Post()
   @Access({ auth: ["jwt", "session"] })
   async create(@Req() req: SignedInUserRequest, @Body() body: unknown): Promise<CreatedApiKey> {
@@ -25,7 +28,10 @@ export class ApiKeyController {
     return this.apiKeys.create(req.user.userId, parsed.data);
   }
 
-  /** The user's keys, newest first: id, name, prefix, createdAt, lastUsedAt, revokedAt, expiresAt. */
+  /**
+   * The user's keys, newest first: id, name, prefix, createdAt, lastUsedAt, revokedAt, expiresAt, allowedTiers,
+   * monthlyCreditCap.
+   */
   @Get()
   @Access({ auth: ["jwt", "session"] })
   list(@Req() req: SignedInUserRequest): Promise<ApiKeyView[]> {

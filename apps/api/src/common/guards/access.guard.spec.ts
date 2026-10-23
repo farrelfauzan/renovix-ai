@@ -264,7 +264,8 @@ describe("AccessGuard (RX-114, Fastify, test database)", () => {
       const res = await get("/probe/api-key", { authorization: `Bearer ${API_KEY}` });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json().user).toEqual({ id: user.id, email: user.email });
+      // RNX-232: also the key and its allowed tiers.
+      expect(res.json().user).toMatchObject({ id: user.id, email: user.email, apiKeyId: expect.any(String) });
       expect(keyLookups).toHaveBeenCalledTimes(1); // RNX-18: api_keys by prefix, with its user
       expect(userLookups).toHaveBeenCalledTimes(0);
     });

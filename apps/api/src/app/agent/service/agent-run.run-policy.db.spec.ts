@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { AgentRunService } from "./agent-run.service";
 import { AgentRunPolicyService } from "./agent-run-policy.service";
@@ -197,6 +197,16 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
     expect(await prisma.agentRun.count()).toBe(0);
   };
 
+  /** The owner and a collaborator each run the agent once; each gets their own run. */
+  const twoRuns = async () => {
+    const seeded = await seedWorkspace();
+    const collaborator = await addMember(seeded.workspace.id);
+    fake.enqueue({ content: "owner answer" }, { content: "[]" }, { content: "collaborator answer" }, { content: "[]" });
+    const ownerRun = await chat(seeded.owner.id, seeded.agent.id, "OWNER QUESTION");
+    const collaboratorRun = await chat(collaborator.id, seeded.agent.id, "COLLABORATOR QUESTION");
+    return { ...seeded, collaborator, ownerRun, collaboratorRun };
+  };
+
   describe("AC1: who may run the workspace's private agent", () => {
     it("an Enterprise collaborator runs it with the same prompt, model, knowledge and links as the owner", async () => {
       const { owner, workspace, agent } = await seedWorkspace();
@@ -282,16 +292,6 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
   });
 
   describe("AC4: runs per person", () => {
-    /** The owner and a collaborator each run the agent once; each gets their own run. */
-    const twoRuns = async () => {
-      const seeded = await seedWorkspace();
-      const collaborator = await addMember(seeded.workspace.id);
-      fake.enqueue({ content: "owner answer" }, { content: "[]" }, { content: "collaborator answer" }, { content: "[]" });
-      const ownerRun = await chat(seeded.owner.id, seeded.agent.id, "OWNER QUESTION");
-      const collaboratorRun = await chat(collaborator.id, seeded.agent.id, "COLLABORATOR QUESTION");
-      return { ...seeded, collaborator, ownerRun, collaboratorRun };
-    };
-
     it("each run belongs to its runner; listRuns and getRun show each person only their own", async () => {
       const { owner, collaborator, agent, ownerRun, collaboratorRun } = await twoRuns();
 
@@ -324,12 +324,16 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
       expect((await prisma.agentRun.findMany()).map((r) => r.id)).toEqual([ownerRun.runId]);
     });
 
-    it("someone outside the workspace asking for a run gets 404 Agent not found, as before", async () => {
+    // RNX-260 (D259, 78): own runs need only "this run is mine"; outside the workspace another person's run is 404
+    // (was "Agent not found" for every call, own runs included), and the list holds only the caller's runs (none here).
+    it("someone outside the workspace asking for another person's run gets 404; their list is empty", async () => {
       const { agent, ownerRun } = await twoRuns();
       const stranger = await newUser();
 
-      await expect(service.getRun(stranger.id, agent.id, ownerRun.runId)).rejects.toThrow(new NotFoundException("Agent not found"));
-      await expect(service.listRuns(stranger.id, agent.id)).rejects.toThrow(new NotFoundException("Agent not found"));
+      await expect(service.getRun(stranger.id, agent.id, ownerRun.runId)).rejects.toThrow(new NotFoundException("Run not found"));
+      await expect(service.deleteRun(stranger.id, agent.id, ownerRun.runId)).rejects.toThrow(new NotFoundException("Run not found"));
+      expect(await service.listRuns(stranger.id, agent.id)).toEqual([]);
+      expect(await prisma.agentRun.count({ where: { id: ownerRun.runId } })).toBe(1);
     });
 
     it("the active-run lookup finds only the caller's run: another person's session id opens a new run, without its history", async () => {
@@ -369,6 +373,93 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
       expect(new Set(ownerUsage.logs.map((l) => l.userId))).toEqual(new Set([owner.id]));
       expect(new Set(collaboratorUsage.logs.map((l) => l.userId))).toEqual(new Set([collaborator.id]));
       expect(ownerUsage.total + collaboratorUsage.total).toBe(allLogs.length);
+    });
+  });
+
+  describe("RNX-260 (D259): agent status, workspace status, own runs", () => {
+    const CLOSED = new ConflictException("This workspace is archived or deleted: no new run can start in it");
+
+    it.each(["draft", "archived"])("AC5: a collaborator running a %s agent is refused (404), nothing charged", async (status) => {
+      const { workspace, agent } = await seedWorkspace();
+      const collaborator = await addMember(workspace.id);
+      await prisma.agent.update({ where: { id: agent.id }, data: { status } });
+
+      await expect(service.assertRunCanStart(collaborator.id, agent.id, "Hi")).rejects.toThrow(new NotFoundException("Agent not found"));
+      await expect(service.chat(collaborator.id, agent.id, "Hi")).rejects.toThrow(new NotFoundException("Agent not found"));
+
+      await nothingCharged();
+    });
+
+    it.each(["draft", "archived"])("AC5: the owner runs a %s agent (control)", async (status) => {
+      const { owner, agent } = await seedWorkspace();
+      await prisma.agent.update({ where: { id: agent.id }, data: { status } });
+      fake.enqueue({ content: "owner answer" }, { content: "[]" });
+
+      await service.assertRunCanStart(owner.id, agent.id, "Hi");
+      const result = await chat(owner.id, agent.id, "Hi");
+
+      expect(result.message.content).toBe("owner answer");
+    });
+
+    it.each(["archived", "deleted"])(
+      "AC6: the workspace is %s: the owner and a collaborator starting a run get 409, nothing charged; their earlier runs are listed and deleted",
+      async (status) => {
+        const { owner, collaborator, workspace, agent, ownerRun, collaboratorRun } = await twoRuns();
+        fake.requests.length = 0;
+        const charged = {
+          reservations: await prisma.creditReservation.count(),
+          usage: await prisma.creditLedgerEntry.count({ where: { type: "usage" } }),
+          runs: await prisma.agentRun.count(),
+        };
+        await prisma.workspace.update({ where: { id: workspace.id }, data: { status } });
+
+        for (const runner of [owner, collaborator]) {
+          await expect(service.assertRunCanStart(runner.id, agent.id, "Hi")).rejects.toThrow(CLOSED);
+          await expect(service.chat(runner.id, agent.id, "Hi")).rejects.toThrow(CLOSED);
+        }
+
+        expect(fake.requests).toHaveLength(0);
+        expect({
+          reservations: await prisma.creditReservation.count(),
+          usage: await prisma.creditLedgerEntry.count({ where: { type: "usage" } }),
+          runs: await prisma.agentRun.count(),
+        }).toEqual(charged);
+        expect((await service.listRuns(owner.id, agent.id)).map((r) => r.id)).toEqual([ownerRun.runId]);
+        expect((await service.listRuns(collaborator.id, agent.id)).map((r) => r.id)).toEqual([collaboratorRun.runId]);
+        await service.deleteRun(owner.id, agent.id, ownerRun.runId);
+        await service.deleteRun(collaborator.id, agent.id, collaboratorRun.runId);
+        expect(await prisma.agentRun.count()).toBe(0);
+      },
+    );
+
+    it("AC7: an outsider who ran the public agent, then it was unpublished: lists, reads and deletes their own run", async () => {
+      const { agent } = await seedWorkspace({ isPublic: true });
+      const outsider = await newUser();
+      fake.enqueue({ content: "Hello" });
+      const run = await chat(outsider.id, agent.id, "OUTSIDER QUESTION");
+      await prisma.agent.update({ where: { id: agent.id }, data: { isPublic: false } });
+
+      const listed = await service.listRuns(outsider.id, agent.id);
+      const read = await service.getRun(outsider.id, agent.id, run.runId);
+      await service.deleteRun(outsider.id, agent.id, run.runId);
+
+      expect(listed.map((r) => r.id)).toEqual([run.runId]);
+      expect(read.messages.map((m) => m.content)).toEqual(["OUTSIDER QUESTION", "Hello"]);
+      expect(await prisma.agentRun.count()).toBe(0);
+    });
+
+    it("AC7: a collaborator whose owner's plan no longer allows collaboration lists and deletes their own run; another person's run is 404", async () => {
+      const { owner, collaborator, agent, ownerRun, collaboratorRun } = await twoRuns();
+      const pro = await createPlan(prisma, { slug: "pro" });
+      await prisma.userSubscription.update({ where: { userId: owner.id }, data: { planId: pro.id } });
+
+      const listed = await service.listRuns(collaborator.id, agent.id);
+      await expect(service.getRun(collaborator.id, agent.id, ownerRun.runId)).rejects.toThrow(new NotFoundException("Run not found"));
+      await expect(service.deleteRun(collaborator.id, agent.id, ownerRun.runId)).rejects.toThrow(new NotFoundException("Run not found"));
+      await service.deleteRun(collaborator.id, agent.id, collaboratorRun.runId);
+
+      expect(listed.map((r) => r.id)).toEqual([collaboratorRun.runId]);
+      expect((await prisma.agentRun.findMany()).map((r) => r.id)).toEqual([ownerRun.runId]);
     });
   });
 

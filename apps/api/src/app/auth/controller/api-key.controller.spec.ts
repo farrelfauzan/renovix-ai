@@ -160,7 +160,9 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
       const keys = res.json();
       expect(res.statusCode).toBe(200);
       expect(keys.map((k: { name: string }) => k.name)).toEqual(["newer", "older"]);
-      expect(Object.keys(keys[0]).sort()).toEqual(["createdAt", "expiresAt", "id", "lastUsedAt", "name", "prefix", "revokedAt"]);
+      expect(Object.keys(keys[0]).sort()).toEqual([
+        "allowedTiers", "createdAt", "expiresAt", "id", "lastUsedAt", "monthlyCreditCap", "name", "prefix", "revokedAt",
+      ]);
       expect(keys[0].lastUsedAt).not.toBeNull();
       expect(keys[1]).toMatchObject({ id: older.json().id, lastUsedAt: null, revokedAt: null });
       expect(JSON.stringify(keys)).not.toContain(newer.json().apiKey);

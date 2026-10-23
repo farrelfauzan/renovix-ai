@@ -35,6 +35,14 @@ export class WorkspaceRepository {
     });
   }
 
+  /** The status of the workspace with this id ("active" | "archived" | "deleted"), if it exists (RNX-260). */
+  findWorkspaceStatus(workspaceId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).workspace.findUnique({
+      where: { id: workspaceId },
+      select: { status: true },
+    });
+  }
+
   /** This owner's default workspace, created with its owner member row when there is none (RNX-117; race-safe). */
   ensureDefaultWorkspace(ownerId: string, tx?: DbTransaction) {
     return ensureDefaultWorkspace(tx ?? this.prisma, ownerId);

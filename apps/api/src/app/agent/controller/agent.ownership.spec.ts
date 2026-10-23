@@ -4,6 +4,7 @@ import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentLinkController } from "./agent-link.controller";
 import { AgentService } from "../service/agent.service";
+import { AgentRunPolicyService } from "../service/agent-run-policy.service";
 import { AgentLinkService } from "../service/agent-link.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -35,7 +36,7 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController, AgentLinkController],
       // RX-113: attaching a workspace knowledge base checks the workspace role
-      providers: [AgentService, AgentLinkService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, AgentRunPolicyService, AgentLinkService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -130,7 +131,7 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
 
   // Was HOLE (RX-15), fixed by RX-112 (parentAgentId); RNX-118 replaced parent and sub-agents with links. Bob could
   // point his agent at Alice's parent agent, which then offered it to her agent. Now a link is made by the workspace
-  // owner of the calling agent, to an agent of the same workspace.
+  // owner of the calling agent, to an agent of the same workspace. RNX-260 (D259): 404 outside the workspace (was 403).
   it("another user cannot make their agent callable by someone else's agent (POST /agents/:id/links on Alice's agent)", async () => {
     const { alice, bob, agent } = await setup();
     const bobAgent = await createAgent(prisma, { userId: bob.id });
@@ -142,7 +143,7 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
       payload: { calleeAgentId: bobAgent.id },
     });
 
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(404);
     expect(await prisma.agentLink.count()).toBe(0);
     expect(alice.id).not.toBe(bob.id);
   });
