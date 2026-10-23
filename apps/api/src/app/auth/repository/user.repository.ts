@@ -57,6 +57,11 @@ export class UserRepository {
     });
   }
 
+  /** The id and email of each of these users that exists (RNX-228: the users of a usage report, emails masked there). */
+  findEmails(userIds: readonly string[], tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, email: true } });
+  }
+
   /** The id and email of this user, if there is one (the chat portal's signed-in user). */
   findPortalUser(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).user.findUnique({

@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { NewApiKeyRow } from "../types/new-api-key-row";
@@ -12,6 +13,8 @@ const VIEW_FIELDS = {
   lastUsedAt: true,
   revokedAt: true,
   expiresAt: true,
+  allowedTiers: true,
+  monthlyCreditCap: true,
 } as const;
 
 /** The queries on `api_keys` (RNX-18). Every method takes the transaction as its last argument, optional. */
@@ -37,7 +40,14 @@ export class ApiKeyRepository {
   findKeyByPrefix(prefix: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).apiKey.findUnique({
       where: { prefix },
-      select: { id: true, keyHash: true, revokedAt: true, expiresAt: true, user: { select: { id: true, email: true } } },
+      select: {
+        id: true,
+        keyHash: true,
+        revokedAt: true,
+        expiresAt: true,
+        allowedTiers: true,
+        user: { select: { id: true, email: true } },
+      },
     });
   }
 
@@ -67,5 +77,15 @@ export class ApiKeyRepository {
   /** Sets the key's last use to `now`. */
   async touchLastUsed(keyId: string, now: Date, tx?: DbTransaction): Promise<void> {
     await (tx ?? this.prisma).apiKey.update({ where: { id: keyId }, data: { lastUsedAt: now } });
+  }
+
+  /**
+   * RNX-232: locks the key's row until the transaction ends (SELECT ... FOR UPDATE), so the reservations of one key
+   * check its monthly cap one at a time, and returns the cap (null: no cap). Raw SQL: Prisma has no FOR UPDATE.
+   */
+  async lockKeyCap(keyId: string, tx: DbTransaction): Promise<Prisma.Decimal | null> {
+    await tx.$queryRaw`SELECT "id" FROM "api_keys" WHERE "id" = ${keyId} FOR UPDATE`;
+    const key = await tx.apiKey.findUniqueOrThrow({ where: { id: keyId }, select: { monthlyCreditCap: true } });
+    return key.monthlyCreditCap;
   }
 }

@@ -9,13 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Upload,
   Smile,
   Image as ImageIcon,
@@ -231,47 +224,6 @@ export function IdentityStep({ form }: IdentityStepProps) {
                 </div>
               </>
             )}
-          </div>
-        )}
-      </form.Field>
-
-      {/* Agent Type */}
-      <form.Field name="agentType">
-        {(field) => (
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Agent Type</label>
-            <Select
-              value={field.state.value}
-              onValueChange={(val) => field.handleChange(val as any)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="standalone">Standalone</SelectItem>
-                <SelectItem value="parent">
-                  Parent (can have sub-agents)
-                </SelectItem>
-                <form.Field name="parentAgentId">
-                  {(parentField) =>
-                    parentField.state.value ? (
-                      <SelectItem value="sub_agent">Sub-agent</SelectItem>
-                    ) : null
-                  }
-                </form.Field>
-              </SelectContent>
-            </Select>
-            <form.Field name="parentAgentId">
-              {(parentField) =>
-                field.state.value === "sub_agent" &&
-                parentField.state.value ? (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    This agent will be linked to its parent automatically after
-                    creation.
-                  </p>
-                ) : null
-              }
-            </form.Field>
           </div>
         )}
       </form.Field>

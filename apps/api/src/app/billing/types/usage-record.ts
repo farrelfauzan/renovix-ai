@@ -8,7 +8,7 @@ import type { CallTokens } from "./call-tokens";
  * `callId` is also the entry's idempotency key; `modelId` is the model's slug. In an agent run (section 13) the call
  * also names the run, the agent that made it and the caller's model call that started this hop (null for the root
  * agent's calls); outside a run they are left out. RNX-162: `cost` is what the call's model_call_costs row is written
- * from (not part of the entry); without it no row is written.
+ * from (not part of the entry); without it no row is written. RNX-232: a call made with an API key names the key.
  */
 export type UsageRecord = {
   readonly reservationId: string;
@@ -24,4 +24,5 @@ export type UsageRecord = {
   readonly agentId?: string;
   readonly parentCallId?: string | null;
   readonly cost?: CallCostSource;
+  readonly apiKeyId?: string;
 };

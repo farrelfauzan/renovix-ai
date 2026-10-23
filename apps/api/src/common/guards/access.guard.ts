@@ -8,6 +8,7 @@ import {
 import { Reflector } from "@nestjs/core";
 import { ADMIN_COOKIES } from "../../app/admin-auth/config/admin-cookies";
 import { AdminSessionService } from "../../app/admin-auth/service/admin-session.service";
+import { ApiKeyRateLimitService } from "../../app/auth/service/api-key-rate-limit.service";
 import { readCookie } from "../../app/admin-auth/utils/read-cookie";
 import { PortalGuard } from "../../app/portal/guard/portal.guard";
 import { Access } from "../decorators/access.decorator";
@@ -37,6 +38,7 @@ export class AccessGuard implements CanActivate {
     private readonly apiKeyGuard: ApiKeyGuard,
     private readonly portalGuard: PortalGuard,
     private readonly adminSessions: AdminSessionService,
+    private readonly apiKeyRateLimit: ApiKeyRateLimitService,
   ) {}
 
   /**
@@ -44,7 +46,8 @@ export class AccessGuard implements CanActivate {
    * (`plan`, `webhook`; `permissions`, `reauth` or `staffScope` without
    * `staff`; `staff` next to another method); a `staff` route goes to
    * `attemptStaff`; 401 when no listed method accepts the request; 403 when a
-   * method the route does not list does (not on a portal route).
+   * method the route does not list does (not on a portal route). RNX-232: a request accepted by its API key is then
+   * counted against the key's rate limit (429 over it).
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const access = this.reflector.getAllAndOverride(Access, [
@@ -65,6 +68,9 @@ export class AccessGuard implements CanActivate {
     let rejection: UnauthorizedException | undefined;
     for (const method of accepted) {
       const result = await this.attempt(method, context);
+      if (result === true && method === "apiKey") {
+        await this.apiKeyRateLimit.consume(context.switchToHttp().getRequest().user.apiKeyId);
+      }
       if (result === true) return true;
       rejection ??= result || undefined;
     }

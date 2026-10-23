@@ -17,6 +17,8 @@ import { AdminPackagesController } from "./admin-catalog/controller/admin-packag
 import { AdminSettingsController } from "./admin-catalog/controller/admin-settings.controller";
 import { AdminTopUpPacksController } from "./admin-catalog/controller/admin-top-up-packs.controller";
 import { AdminCreditsController } from "./admin-credits/controller/admin-credits.controller";
+import { AdminReconciliationController } from "./admin-usage/controller/admin-reconciliation.controller";
+import { AdminUsageController } from "./admin-usage/controller/admin-usage.controller";
 import { AdminProviderModelsController } from "./admin-providers/controller/admin-provider-models.controller";
 import { AdminProvidersController } from "./admin-providers/controller/admin-providers.controller";
 import { AgentLinkController } from "./agent/controller/agent-link.controller";
@@ -145,6 +147,8 @@ const ROWS: readonly Row[] = [
   { route: "POST /admin/codes", body: NOT_AN_OBJECT },
   { route: "PATCH /admin/codes/:id", body: NOT_AN_OBJECT },
   { route: "PUT /admin/settings/:name", body: NOT_AN_OBJECT },
+  { route: "POST /admin/usage/users/:userId/email", body: NOT_AN_OBJECT },
+  { route: "POST /admin/reconciliation/entries", body: { day: "2026-10-20", portalBalanceUsd: "10" }, details: ["providerId"] },
   // ─── the rest of the product API ───
   { route: "POST /agents", body: NOT_AN_OBJECT },
   { route: "POST /agents/clone/:templateId", body: NOT_AN_OBJECT },
@@ -212,6 +216,7 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
         AdminAdminsController, AdminAuthController, AdminInvitationsController, AdminRolesController,
         AdminCodesController, AdminEnterpriseBundlesController, AdminPackagesController, AdminSettingsController,
         AdminTopUpPacksController, AdminCreditsController, AdminProviderModelsController, AdminProvidersController,
+        AdminUsageController, AdminReconciliationController,
         AgentLinkController, AgentRunController, AgentController, ApiKeyController, AuthController, BillingController,
         ChannelController, GowaWebhookController, ChatController, CodesController, DocumentController,
         KnowledgeController, McpUserController, WebSearchController, PortalController, ReminderController,

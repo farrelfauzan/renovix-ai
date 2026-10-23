@@ -21,7 +21,10 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // database). Roles: owner | admin | member | viewer; membership status
 // active | removed. Checks: WorkspaceService.requireMembership / requireRole,
 // WorkspaceChannelController.resolveWorkspace. Embeddings are a zero-vector
-// stub (no provider call); email sending is never reached.
+// stub (no provider call); email sending is never reached. RNX-260 (D259, D81):
+// requireRole decides by workspace.ownerId, so an "admin" or "viewer" row is a
+// collaborator (member): every owner-or-admin route is the owner's only, and
+// the member DTOs accept only "member" (400 for "admin" or "viewer").
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 jest.mock("../../email/service/email-job.service", () => ({ EmailJobService: class {} }));
 jest.mock("../../knowledge/service/embedding.service", () => ({ EmbeddingService: class {} }));
@@ -133,7 +136,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
       expect([members.statusCode, quota.statusCode]).toEqual([expected, expected]);
     });
 
-    it.each([...MEMBERS, ...NON_MEMBERS])("PATCH /workspaces/:id as %s (owner, admin)", async (actor) => {
+    it.each([...MEMBERS, ...NON_MEMBERS])("PATCH /workspaces/:id as %s (owner only; RNX-260: an admin row is 403)", async (actor) => {
       const { workspace, as } = await setup();
 
       const res = await app.inject({
@@ -143,7 +146,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         payload: { description: `changed by ${actor}` },
       });
 
-      const expected = expectFor({ owner: 200, admin: 200 }, actor);
+      const expected = expectFor({ owner: 200 }, actor);
       expect(res.statusCode).toBe(expected);
       const after = await prisma.workspace.findUnique({ where: { id: workspace.id } });
       expect(after?.description).toBe(expected === 200 ? `changed by ${actor}` : null);
@@ -160,7 +163,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
       expect(after?.status).toBe(expected === 200 ? "archived" : "active");
     });
 
-    it.each([...MEMBERS, ...NON_MEMBERS])("PATCH and DELETE a member (the viewer) as %s (owner, admin)", async (actor) => {
+    it.each([...MEMBERS, ...NON_MEMBERS])("PATCH and DELETE a member (the viewer) as %s (owner only; RNX-260: an admin row is 403)", async (actor) => {
       const { workspace, memberIds, as } = await setup();
 
       const patch = await app.inject({
@@ -175,7 +178,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         headers: as(actor),
       });
 
-      const expected = expectFor({ owner: 200, admin: 200 }, actor);
+      const expected = expectFor({ owner: 200 }, actor);
       expect([patch.statusCode, del.statusCode]).toEqual([expected, expected]);
       const viewer = await prisma.workspaceMember.findUnique({ where: { id: memberIds.viewer } });
       expect(viewer).toMatchObject(
@@ -183,7 +186,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
       );
     });
 
-    it.each([...MEMBERS, ...NON_MEMBERS])("GET invites as %s (owner, admin); POST invites is denied before validation for others", async (actor) => {
+    it.each([...MEMBERS, ...NON_MEMBERS])("GET invites as %s (owner only; RNX-260: an admin row is 403); POST invites is denied before validation for others", async (actor) => {
       const { workspace, as } = await setup();
 
       const list = await app.inject({ method: "GET", url: `/workspaces/${workspace.id}/invites`, headers: as(actor) });
@@ -194,20 +197,20 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         payload: {},
       });
 
-      const expected = expectFor({ owner: 200, admin: 200 }, actor);
+      const expected = expectFor({ owner: 200 }, actor);
       expect(list.statusCode).toBe(expected);
-      // owner/admin pass the role check and then fail body validation (400)
+      // the owner passes the role check and then fails body validation (400)
       expect(create.statusCode).toBe(expected === 200 ? 400 : 403);
     });
 
-    it("an admin cannot change or remove the owner (400)", async () => {
+    it("an admin row cannot change or remove the owner (RNX-260: 403, was 400 after the role check)", async () => {
       const { workspace, memberIds, as } = await setup();
 
       const patch = await app.inject({
         method: "PATCH",
         url: `/workspaces/${workspace.id}/members/${memberIds.owner}`,
         headers: as("admin"),
-        payload: { role: "viewer" },
+        payload: { role: "member" },
       });
       const del = await app.inject({
         method: "DELETE",
@@ -215,26 +218,84 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         headers: as("admin"),
       });
 
+      expect([patch.statusCode, del.statusCode]).toEqual([403, 403]);
+      expect(await prisma.workspaceMember.findUnique({ where: { id: memberIds.owner } })).toMatchObject({
+        role: "owner",
+        status: "active",
+      });
+    });
+
+    it("the owner's own member row cannot be changed or removed (400)", async () => {
+      const { workspace, memberIds, as } = await setup();
+
+      const patch = await app.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspace.id}/members/${memberIds.owner}`,
+        headers: as("owner"),
+        payload: { role: "member" },
+      });
+      const del = await app.inject({
+        method: "DELETE",
+        url: `/workspaces/${workspace.id}/members/${memberIds.owner}`,
+        headers: as("owner"),
+      });
+
       expect([patch.statusCode, del.statusCode]).toEqual([400, 400]);
     });
 
-    it("an admin can promote a member to admin and demote another admin (no rank check between admins)", async () => {
+    it("an admin row can no longer promote or demote anyone (RNX-260: 403, was 200), and the rows stay", async () => {
       const { workspace, memberIds, as } = await setup();
 
       const promote = await app.inject({
         method: "PATCH",
         url: `/workspaces/${workspace.id}/members/${memberIds.member}`,
         headers: as("admin"),
-        payload: { role: "admin" },
+        payload: { role: "member" },
       });
       const demote = await app.inject({
         method: "PATCH",
         url: `/workspaces/${workspace.id}/members/${memberIds.admin}`,
         headers: as("admin"),
-        payload: { role: "viewer" },
+        payload: { status: "removed" },
       });
 
-      expect([promote.statusCode, demote.statusCode]).toEqual([200, 200]);
+      expect([promote.statusCode, demote.statusCode]).toEqual([403, 403]);
+      const rows = await prisma.workspaceMember.findMany({ where: { id: { in: [memberIds.member, memberIds.admin] } } });
+      expect(rows.map((r) => [r.role, r.status]).sort()).toEqual([
+        ["admin", "active"],
+        ["member", "active"],
+      ]);
+    });
+
+    it.each(["admin", "viewer"])(
+      "RNX-260: the owner giving a member the role %s → 400, the row unchanged (only \"member\" is accepted)",
+      async (role) => {
+        const { workspace, memberIds, as } = await setup();
+
+        const res = await app.inject({
+          method: "PATCH",
+          url: `/workspaces/${workspace.id}/members/${memberIds.member}`,
+          headers: as("owner"),
+          payload: { role },
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(await prisma.workspaceMember.findUnique({ where: { id: memberIds.member } })).toMatchObject({ role: "member" });
+      },
+    );
+
+    it.each(["admin", "viewer"])("RNX-260: the owner inviting with the role %s → 400, no invite stored", async (role) => {
+      const { workspace, as } = await setup();
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/workspaces/${workspace.id}/invites`,
+        headers: as("owner"),
+        payload: { email: "new-person@test.local", role },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(await prisma.workspaceInvite.count()).toBe(0);
     });
 
     it("the owner of one workspace cannot change a member of another workspace through their own (404)", async () => {
@@ -248,12 +309,13 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         method: "PATCH",
         url: `/workspaces/${workspace.id}/members/${otherMember.id}`,
         headers: as("owner"),
-        payload: { role: "viewer" },
+        payload: { status: "removed" },
       });
 
       expect(res.statusCode).toBe(404);
       expect(await prisma.workspaceMember.findUnique({ where: { id: otherMember.id } })).toMatchObject({
         role: "member",
+        status: "active",
       });
     });
   });
@@ -310,7 +372,9 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
       expect(await prisma.knowledgeBase.count()).toBe(res.statusCode === 201 ? 1 : 0);
     });
 
-    it.each([...MEMBERS, ...NON_MEMBERS])("POST knowledge chunks as %s (owner, admin, member)", async (actor) => {
+    // RNX-260: an admin or viewer row is a collaborator (member), so every active member adds chunks (RNX-218 makes it
+    // owner-only later); the viewer was 403 before.
+    it.each([...MEMBERS, ...NON_MEMBERS])("POST knowledge chunks as %s (every active member)", async (actor) => {
       const { channel, workspace, as, users } = await setup();
       const kb = await prisma.knowledgeBase.create({
         data: { workspaceId: workspace.id, userId: users.owner.id, name: "Team KB" },
@@ -323,12 +387,12 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         payload: { chunks: [{ content: `from ${actor}` }] },
       });
 
-      const expected = expectFor({ owner: 201, admin: 201, member: 201 }, actor);
+      const expected = expectFor({ owner: 201, admin: 201, member: 201, viewer: 201 }, actor);
       expect(res.statusCode).toBe(expected);
       expect(await prisma.knowledgeChunk.count({ where: { knowledgeBaseId: kb.id } })).toBe(expected === 201 ? 1 : 0);
     });
 
-    it.each([...MEMBERS, ...NON_MEMBERS])("DELETE a knowledge base as %s (owner, admin)", async (actor) => {
+    it.each([...MEMBERS, ...NON_MEMBERS])("DELETE a knowledge base as %s (owner only; RNX-260: an admin row is 403)", async (actor) => {
       const { channel, workspace, as, users } = await setup();
       const kb = await prisma.knowledgeBase.create({
         data: { workspaceId: workspace.id, userId: users.owner.id, name: "Team KB" },
@@ -340,7 +404,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         headers: as(actor),
       });
 
-      const expected = expectFor({ owner: 200, admin: 200 }, actor);
+      const expected = expectFor({ owner: 200 }, actor);
       expect(res.statusCode).toBe(expected);
       expect(await prisma.knowledgeBase.count({ where: { id: kb.id } })).toBe(expected === 200 ? 0 : 1);
     });
@@ -367,7 +431,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
       expect(await prisma.knowledgeBase.count({ where: { id: foreignKb.id } })).toBe(1);
     });
 
-    it.each([...MEMBERS, ...NON_MEMBERS])("PATCH a member (the viewer) through the channel as %s (owner, admin)", async (actor) => {
+    it.each([...MEMBERS, ...NON_MEMBERS])("PATCH a member (the viewer) through the channel as %s (owner only; RNX-260: an admin row is 403)", async (actor) => {
       const { channel, memberIds, as } = await setup();
 
       const res = await app.inject({
@@ -377,7 +441,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         payload: { role: "member" },
       });
 
-      expect(res.statusCode).toBe(expectFor({ owner: 200, admin: 200 }, actor));
+      expect(res.statusCode).toBe(expectFor({ owner: 200 }, actor));
     });
   });
 });

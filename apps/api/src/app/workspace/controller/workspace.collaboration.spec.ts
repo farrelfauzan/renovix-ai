@@ -270,7 +270,7 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
       ).toMatchObject({ role: "member", status: "active" });
     });
 
-    it("an admin and a member (non-owners) use the workspace routes (200)", async () => {
+    it("an admin and a member (non-owners) use the workspace read routes (200); RNX-260: the admin row's invites list is 403", async () => {
       const ctx = await setup(enterprise());
 
       const statuses = [];
@@ -282,7 +282,8 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
       const invites = await app.inject({ method: "GET", url: `/workspaces/${ctx.workspace.id}/invites`, headers: auth(ctx.admin) });
 
       expect(statuses).toEqual([200, 200, 200, 200, 200, 200]);
-      expect(invites.statusCode).toBe(200);
+      // RNX-260 (D259): requireRole decides by workspace.ownerId; a stale "admin" row is a collaborator (was 200)
+      expect(invites.statusCode).toBe(403);
     });
 
     it("the owner reactivates a removed member (200)", async () => {

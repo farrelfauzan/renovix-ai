@@ -87,7 +87,7 @@ export class AgentRunService {
     // Verify agent access (RNX-119: the run policy)
     const agent = await this.agents.findAgentForRun(agentId);
     if (!agent) throw new NotFoundException("Agent not found");
-    const scope = await this.policy.assertRunScope(agent, userId);
+    const scope = await this.policy.assertRunStart(agent, userId);
 
     // Input guardrail check — soft decline, never blocks the user
     const inputCheck = await this.guardrail.checkInput(
@@ -185,10 +185,11 @@ export class AgentRunService {
     };
   }
 
-  /** RNX-119: the caller's own runs of the agent; 404 for anyone outside its workspace. */
+  /**
+   * The caller's own runs of the agent (RNX-119). RNX-260 (D259, 78): only "this run is mine", not current run access,
+   * so an outsider or a former collaborator still lists their own runs; nobody sees another person's.
+   */
   async listRuns(userId: string, agentId: string) {
-    await this.assertInsideAgentWorkspace(userId, agentId);
-
     return this.prisma.agentRun.findMany({
       where: { agentId, userId },
       orderBy: { updatedAt: "desc" },
@@ -204,10 +205,8 @@ export class AgentRunService {
     });
   }
 
-  /** RNX-119: one of the caller's own runs; 404 outside the workspace or for no such run, 403 for another person's. */
+  /** One of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. */
   async getRun(userId: string, agentId: string, runId: string) {
-    await this.assertInsideAgentWorkspace(userId, agentId);
-
     const run = await this.prisma.agentRun.findFirst({
       where: { id: runId, agentId },
       include: {
@@ -215,18 +214,15 @@ export class AgentRunService {
       },
     });
 
-    assertOwnRun(run, userId);
-    return run;
+    return this.assertCallerRun(run, userId, agentId);
   }
 
-  /** RNX-119: deletes one of the caller's own runs; 404 outside the workspace or for no such run, 403 for another person's. */
+  /** Deletes one of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. */
   async deleteRun(userId: string, agentId: string, runId: string) {
-    await this.assertInsideAgentWorkspace(userId, agentId);
-
     const run = await this.prisma.agentRun.findFirst({
       where: { id: runId, agentId },
     });
-    assertOwnRun(run, userId);
+    await this.assertCallerRun(run, userId, agentId);
 
     await this.prisma.agentRun.delete({ where: { id: runId } });
     return { deleted: true };
@@ -234,12 +230,28 @@ export class AgentRunService {
 
   // ─── Private Helpers ───
 
-  /** RNX-119: 404 "Agent not found" unless the agent exists and the caller is inside its workspace (run policy). */
-  private async assertInsideAgentWorkspace(userId: string, agentId: string): Promise<void> {
-    const agent = await this.agents.findAgentWorkspaceId(agentId);
-    if (!agent || !(await this.policy.isInsideWorkspace(agent.workspaceId, userId))) {
-      throw new NotFoundException("Agent not found");
+  /**
+   * The run, when it is the caller's: a run (by id) is read or deleted only by the person who ran it. RNX-260 (D259,
+   * 78): the caller's own run needs no current access; 404 "Run not found" for no such run, and for another person's
+   * run when the caller is not inside the agent's workspace (run policy); 403 for another person's run inside it
+   * (RNX-119).
+   */
+  private async assertCallerRun<T extends { readonly userId: string }>(
+    run: T | null,
+    userId: string,
+    agentId: string,
+  ): Promise<T> {
+    if (run && run.userId !== userId && !(await this.isInsideAgentWorkspace(userId, agentId))) {
+      throw new NotFoundException("Run not found");
     }
+    assertOwnRun(run, userId);
+    return run;
+  }
+
+  /** RNX-119: whether the agent exists and the caller is inside its workspace (run policy). */
+  private async isInsideAgentWorkspace(userId: string, agentId: string): Promise<boolean> {
+    const agent = await this.agents.findAgentWorkspaceId(agentId);
+    return agent !== null && (await this.policy.isInsideWorkspace(agent.workspaceId, userId));
   }
 
   /**
@@ -534,7 +546,8 @@ export class AgentRunService {
   /**
    * The refusals of an agent message, checked before any work on the chat route (the classifier call, the SSE
    * headers, the run and the message), reads only. RX-178 (review B1): 404 for an agent the user cannot run (RNX-119:
-   * the run policy), then the fixed 400 (ModelUnavailableException) for a model that cannot be resolved. RNX-200: then
+   * the run policy), RNX-260: then 409 in an archived or deleted workspace, then the fixed 400
+   * (ModelUnavailableException) for a model that cannot be resolved. RNX-200: then
    * 403 without an active subscription (D192) and the run's own pre-checks (the 400 for a model without credit rates,
    * 402 RUN_CAP_EXCEEDED, 402 CREDITS_EXHAUSTED) on a lower bound of the first call: the agent's system prompt, the
    * message and max_tokens.
@@ -542,7 +555,7 @@ export class AgentRunService {
   async assertRunCanStart(userId: string, agentId: string, message: string): Promise<void> {
     const agent = await this.agents.findAgentForRun(agentId);
     if (!agent) throw new NotFoundException("Agent not found");
-    await this.policy.assertRunScope(agent, userId);
+    await this.policy.assertRunStart(agent, userId);
     const modelConfig = await this.registry.resolveModel(agent.model);
     if (!modelConfig) throw new ModelUnavailableException();
     const connection = await this.registry.resolveConnection(modelConfig.slug);

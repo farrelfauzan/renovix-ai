@@ -132,14 +132,20 @@ export class WorkspaceService {
     });
   }
 
+  /**
+   * An active member whose workspace role is in `allowedRoles` (403 otherwise). RNX-260 (D259, D81): the role is
+   * decided by `workspace.ownerId`, not by the member row: the owner is "owner", everyone else is "member" (a
+   * stale "admin" or "viewer" row counts as a collaborator), so an owner-or-admin list means the owner only.
+   */
   async requireRole(
     workspaceId: string,
     userId: string,
     allowedRoles: string[],
   ) {
     const member = await this.requireMembership(workspaceId, userId);
+    const ownedWorkspace = await this.workspaces.findOwnedWorkspace(workspaceId, userId);
 
-    if (!allowedRoles.includes(member.role)) {
+    if (!allowedRoles.includes(ownedWorkspace ? "owner" : "member")) {
       throw new ForbiddenException("Insufficient workspace permissions");
     }
 

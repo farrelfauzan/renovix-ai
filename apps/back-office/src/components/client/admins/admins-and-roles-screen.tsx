@@ -73,11 +73,11 @@ export function AdminsAndRolesScreen({ api = defaultAdminsApi, sessionApi = defa
     if (outcome.ok) setIssued(outcome.value);
     else setActionError(outcome.message);
   };
-  if (loadError) return <p role="alert" className="mt-4 text-sm text-red-700">{loadError}</p>;
-  if (!profile) return <p className="mt-4 text-sm text-neutral-600">Loading…</p>;
+  if (loadError) return <p role="alert" className="mt-4 text-sm text-rx-red-bar">{loadError}</p>;
+  if (!profile) return <p className="mt-4 text-sm text-rx-muted">Loading…</p>;
   return (
     <div className="mt-4">
-      {actionError && <p role="alert" className="text-sm text-red-700">{actionError}</p>}
+      {actionError && <p role="alert" className="text-sm text-rx-red-bar">{actionError}</p>}
       {prompt && <ReauthPrompt prompt={prompt} />}
       {issued && <InvitationLinkDialog issued={issued} onClose={() => setIssued(null)} />}
       {admins && (

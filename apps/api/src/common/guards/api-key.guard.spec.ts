@@ -32,13 +32,14 @@ describe("ApiKeyGuard (RNX-18, test database)", () => {
     ({ headers: { authorization } }) as { headers: Record<string, string>; user?: unknown };
   const check = (authorization: string) => guard.canActivate(contextFor(requestWith(authorization)));
 
-  it("control: allows a user's own key, attaches the user and records the key's last use", async () => {
+  it("control: allows a user's own key, attaches the user (RNX-232: with the key and its tiers) and records the key's last use", async () => {
     const user = await createUser(prisma);
-    await createApiKey(prisma, user.id, { apiKey: VALID_KEY });
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY, allowedTiers: ["standard"] });
     const request = requestWith(`Bearer ${VALID_KEY}`);
 
     await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
-    expect(request.user).toEqual({ id: user.id, email: user.email });
+    const key = await prisma.apiKey.findFirstOrThrow();
+    expect(request.user).toEqual({ id: user.id, email: user.email, apiKeyId: key.id, allowedTiers: ["standard"] });
     expect((await prisma.apiKey.findFirstOrThrow()).lastUsedAt).toBeInstanceOf(Date);
   });
 
