@@ -55,7 +55,7 @@ export function SignInScreen({ api = defaultSignInApi }: { api?: SignInApi }) {
       ) : (
         <SignInSecondFactorForm isSubmitting={isSubmitting} onSubmit={signIn} onBack={back} />
       )}
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
     </div>
   );
 }

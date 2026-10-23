@@ -6,8 +6,9 @@ import { seedAdminRoles } from "../../../../test/admin-auth";
 import { BUILT_IN_ROLES } from "./built-in-roles";
 import { STAFF_PERMISSIONS } from "./staff-permissions";
 
-// RX-96: the built-in roles the migrations seed (the baseline INSERT and RX-164's `audit:read` grant, both run
-// by seedAdminRoles) are PRD 09 F5's table, plus `audit:read` for every role but Support (D138).
+// RX-96: the built-in roles the migrations seed (the baseline INSERT, RX-164's `audit:read` grant and RNX-228's
+// profit grants, all run by seedAdminRoles) are PRD 09 F5's table, plus `audit:read` for every role but Support (D138),
+// plus `profit:read` and `reconciliation:write` for owner and finance (RNX-228).
 const READS = [
   "users:read",
   "companies:read",
@@ -32,7 +33,7 @@ const EXPECTED: Record<string, string[]> = {
   ],
   // "Packages, credits, adjustments, usage and cost, exports; read-only elsewhere."
   finance: [
-    ...READS, "packages:write", "credits:adjust", "exports:create", "audit:read",
+    ...READS, "packages:write", "credits:adjust", "exports:create", "audit:read", "profit:read", "reconciliation:write",
   ],
   // "Users and companies with personal data masked, read-only; can open a support note."
   support: ["users:read", "companies:read", "support_notes:write"],
@@ -79,6 +80,14 @@ describe("built-in roles (RX-96, PRD 09 F5, test database)", () => {
     const rows = await prisma.adminRole.findMany({ where: { permissions: { has: "audit:read" } } });
 
     expect(rows.map((row) => row.name).sort()).toEqual(["finance", "operations", "owner", "viewer"]);
+  });
+
+  it("RNX-228: owner and finance hold profit:read and reconciliation:write; no other built-in role does", async () => {
+    for (const permission of ["profit:read", "reconciliation:write"]) {
+      const rows = await prisma.adminRole.findMany({ where: { builtIn: true, permissions: { has: permission } } });
+
+      expect(rows.map((row) => row.name).sort()).toEqual(["finance", "owner"]);
+    }
   });
 
   it("RX-164: the audit log screen's indexes exist (keyset newest first, action filter)", async () => {

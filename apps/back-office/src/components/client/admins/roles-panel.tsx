@@ -30,13 +30,13 @@ export function RolesPanel({ roles, api, canWrite, run, onAct }: RolesPanelProps
   return (
     <section aria-label="Roles" className="mt-6">
       <h2 className="text-lg font-semibold">Roles</h2>
-      {canWrite && <button type="button" onClick={() => setForm({})} className="mt-2 rounded border border-neutral-300 px-3 py-1 text-sm">Create role</button>}
+      {canWrite && <button type="button" onClick={() => setForm({})} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm">Create role</button>}
       {form && <RoleForm key={form.role?.name ?? "new"} role={form.role} onSave={save} onClose={() => setForm(null)} />}
       <table aria-label="Roles" className="mt-2 w-full border-collapse text-left text-sm">
         <thead>
           <tr>
             {COLUMNS.map((column) => (
-              <th key={column} className="border-b border-neutral-200 px-2 py-1 font-medium">{column}</th>
+              <th key={column} className="border-b border-rx-line px-2 py-1 font-medium">{column}</th>
             ))}
           </tr>
         </thead>

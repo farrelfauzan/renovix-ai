@@ -141,9 +141,6 @@ export default function NewAgentPageClient() {
         temperature: values.temperature,
         maxTokens: values.maxTokens || undefined,
         isPublic: values.isPublic,
-        agentType: values.agentType,
-        parentAgentId:
-          values.agentType === "sub_agent" ? values.parentAgentId : undefined,
       });
 
       // Auto-attach selected tools

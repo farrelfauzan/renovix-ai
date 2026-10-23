@@ -29,7 +29,6 @@ import {
   Loader2,
   Wrench,
   Database,
-  Users,
   Home,
   Trash2,
   Power,
@@ -39,7 +38,6 @@ import { toast } from "sonner";
 import { AgentSettingsTab } from "@/components/agents/agent-detail/agent-settings-tab";
 import { AgentToolsTab } from "@/components/agents/agent-detail/agent-tools-tab";
 import { AgentKnowledgeTab } from "@/components/agents/agent-detail/agent-knowledge-tab";
-import { AgentSubAgentsTab } from "@/components/agents/agent-detail/agent-subagents-tab";
 
 export default function AgentDetailPageClient({
   params,
@@ -58,7 +56,6 @@ export default function AgentDetailPageClient({
     { id: "tools", label: "Tools", icon: Wrench },
     { id: "knowledge", label: "Knowledge", icon: Database },
     // { id: "deployments", label: "Deployments", icon: Radio },
-    { id: "subagents", label: "Sub-Agents", icon: Users },
   ] as const;
 
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]["id"]>("settings");
@@ -230,13 +227,6 @@ export default function AgentDetailPageClient({
         {/* {activeTab === "integrations" && <IntegrationsTab agent={agent} agentId={id} />} */}
         {activeTab === "knowledge" && <AgentKnowledgeTab agent={agent} agentId={id} />}
         {/* {activeTab === "deployments" && <AgentDeploymentsTab agent={agent} />} */}
-        {activeTab === "subagents" && (
-          <AgentSubAgentsTab
-            agent={agent}
-            agentId={id}
-            onViewAgentAction={(agentId) => router.push(`/agents/${agentId}`)}
-          />
-        )}
       </div>
     </div>
   );
