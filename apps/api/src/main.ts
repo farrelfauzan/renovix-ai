@@ -9,7 +9,7 @@ import { createAppLogger } from "./common/utils/create-app-logger";
 import { createFastifyAdapter } from "./common/utils/create-fastify-adapter";
 import { assertRequiredSecrets } from "./common/utils/assert-required-secrets";
 import { handleFatalStart } from "./common/utils/handle-fatal-start";
-import { resolveCorsOrigins } from "./common/utils/resolve-cors-origins";
+import { buildCorsOptions } from "./common/utils/build-cors-options";
 import { ConfigService } from "@nestjs/config";
 
 async function bootstrap(): Promise<NestFastifyApplication> {
@@ -19,12 +19,13 @@ async function bootstrap(): Promise<NestFastifyApplication> {
   resolvePaymentProviderName(process.env);
   // RX-110: refuse missing, placeholder or too-short auth and encryption secrets, before anything starts.
   assertRequiredSecrets(process.env);
+  // RNX-70: outside development and test, refuse a missing or invalid CORS_ORIGIN (never every origin with credentials).
+  const corsOptions = buildCorsOptions(process.env);
   // RNX-233: AppModule is loaded only now, so a throw while its modules are evaluated (e.g. lib/auth reading a secret)
   // reaches handleFatalStart (masked, one JSON line) instead of Node's raw uncaught dump. Eager: no separate chunk.
   const { AppModule } = await import(/* webpackMode: "eager" */ "./app/app.module.js");
 
   const isDev = process.env.NODE_ENV === "development";
-  const corsOrigins = resolveCorsOrigins(process.env);
 
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
@@ -32,12 +33,7 @@ async function bootstrap(): Promise<NestFastifyApplication> {
       bodyLimit: isDev ? 50 * 1024 * 1024 : 1024 * 1024,
     }),
     {
-      cors: {
-        origin: isDev ? true : corsOrigins,
-        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization", "X-Portal-Session"],
-        credentials: true,
-      },
+      cors: corsOptions,
       // RNX-17: JSON lines (readable in development) with the request's id, route and account; secrets masked.
       logger: createAppLogger(process.env),
       rawBody: true,

@@ -15,7 +15,7 @@ function refererOrigin(referer: string | undefined): string | undefined {
 
 /**
  * True when a request to a cookie-authenticated user route may proceed (RNX-272): a GET, HEAD or OPTIONS always;
- * any request while the allowed list is `true` (CORS_ORIGIN unset: unchanged until RNX-70); otherwise only when
+ * any request while the allowed list is `true` (CORS_ORIGIN unset in development or test, RNX-70); otherwise only when
  * the Origin header, or without one the origin of the Referer header, is an allowed origin. A Referer that is not
  * a URL is foreign, and a POST, PUT, PATCH or DELETE with neither header is refused (as on /admin, RX-156).
  */
