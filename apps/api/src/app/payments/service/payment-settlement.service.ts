@@ -6,6 +6,7 @@ import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
 import { MAX_UNKNOWN_CHECKS } from "../config/max-unknown-checks";
 import { PAYMENT_PROVIDER } from "../config/payment-provider.token";
+import { WEBHOOK_STATUS_TIMEOUT_MS } from "../config/webhook-status-timeout-ms";
 import { PaymentOrderChangeRepository } from "../repository/payment-order-change.repository";
 import { PaymentOrderRepository } from "../repository/payment-order.repository";
 import { PaymentUnmatchedPaymentRepository } from "../repository/payment-unmatched-payment.repository";
@@ -47,7 +48,7 @@ export class PaymentSettlementService {
   async checkOrder(order: PaymentOrder, check: OrderCheck): Promise<CheckOutcome> {
     if (!order.providerRef) return "no_reference";
     if (!(await this.paymentSettings.isEnabled())) return "paused";
-    const status = await this.queryStatus(order.id, order.providerRef);
+    const status = await this.queryStatus(order.id, order.providerRef, check);
     if (status.state === "paid") {
       return status.amountRupiah === order.amountRupiah ? this.grant(order, order.providerRef, status, check) : this.rejectAmount(order, order.providerRef, status, check);
     }
@@ -56,10 +57,14 @@ export class PaymentSettlementService {
     return this.countUnknown(order, check);
   }
 
-  /** The provider's answer; a thrown error counts as unknown (only the error's class is logged). */
-  private async queryStatus(orderId: string, providerRef: string): Promise<ProviderPaymentStatus> {
+  /**
+   * The provider's answer; a thrown error counts as unknown (only the error's class is logged). On the webhook path the
+   * check has a shorter timeout, so the reply fits the provider's deadline (D280); the job and the admin keep the
+   * provider's own.
+   */
+  private async queryStatus(orderId: string, providerRef: string, check: OrderCheck): Promise<ProviderPaymentStatus> {
     try {
-      return await this.provider.getStatus(providerRef);
+      return await this.provider.getStatus(providerRef, check.source === "webhook" ? { timeoutMs: WEBHOOK_STATUS_TIMEOUT_MS } : {});
     } catch (err) {
       this.logger.warn(`Payment order ${orderId}: the status check failed (${errorNameOf(err)})`);
       return { state: "unknown", amountRupiah: null, paidAt: null };

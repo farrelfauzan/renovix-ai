@@ -5,11 +5,12 @@ import type { PrismaService } from "../src/app/prisma/prisma.service";
 import { AdminAuthModule } from "../src/app/admin-auth/admin-auth.module";
 import { PAYMENT_PROVIDER } from "../src/app/payments/config/payment-provider.token";
 import { PaymentsModule } from "../src/app/payments/payments.module";
-import { FakePaymentProvider } from "../src/app/payments/providers/fake-payment.provider";
+import type { PaymentProvider } from "../src/app/payments/types/payment-provider";
 import { createFastifyAdapter } from "../src/common/utils/create-fastify-adapter";
 import { createTestModule } from "./test-module";
 
-// Shared tooling of the payment specs (RNX-35). FakePaymentProvider only: no network, no provider key, no money.
+// Shared tooling of the payment specs (RNX-35). FakePaymentProvider, or AutoGoPay over a scripted transport (RNX-229):
+// no network, no provider key, no money.
 // Every value is an obviously fake test value; the limits are test values, not the Tech Lead's.
 
 /** The fake provider's webhook signing key in tests; never a real key. */
@@ -38,10 +39,10 @@ export function sessionFromCookie({ headers }: { headers: Headers }): { user: { 
 }
 
 /**
- * The payments module (and the back-office auth for the admin routes) on the test database with this fake provider,
- * as a Fastify app with the raw body kept (as main.ts does).
+ * The payments module (and the back-office auth for the admin routes) on the test database with this provider (the fake,
+ * or AutoGoPay over a scripted transport, RNX-229), as a Fastify app with the raw body kept (as main.ts does).
  */
-export async function createPaymentsApp(fake: FakePaymentProvider, imports: unknown[] = []) {
+export async function createPaymentsApp(fake: PaymentProvider, imports: unknown[] = []) {
   const { moduleRef, prisma } = await createTestModule(
     { imports: [PaymentsModule, AdminAuthModule, ...(imports as [])] },
     (builder) => builder.overrideProvider(PAYMENT_PROVIDER).useValue(fake),
