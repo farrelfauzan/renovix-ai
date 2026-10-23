@@ -20,6 +20,8 @@ import { TotpCodeDto } from "../../app/admin-auth/dto/totp-code.dto";
 import { AuditLogQueryDto } from "../../app/admin-auth/dto/audit-log-query.dto";
 import { AuditLogExportQueryDto } from "../../app/admin-auth/dto/audit-log-export-query.dto";
 import { CreditAdjustmentDto } from "../../app/admin-credits/dto/credit-adjustment.dto";
+import { EmailRevealBodyDto } from "../../app/admin-usage/dto/email-reveal-body.dto";
+import { ReconciliationEntryBodyDto } from "../../app/admin-usage/dto/reconciliation-entry-body.dto";
 import { CreateProviderDto } from "../../app/admin-providers/dto/create-provider.dto";
 import { UpdateProviderDto } from "../../app/admin-providers/dto/update-provider.dto";
 import { TestProviderDto } from "../../app/admin-providers/dto/test-provider.dto";
@@ -93,6 +95,8 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /admin/codes", CreateCodeDto],
   ["PATCH /admin/codes/:id", DeactivateCodeBodyDto],
   ["PUT /admin/settings/:name", SaveSettingBodyDto],
+  ["POST /admin/usage/users/:userId/email", EmailRevealBodyDto],
+  ["POST /admin/reconciliation/entries", ReconciliationEntryBodyDto],
   // ─── chat and agents ───
   ["POST /chat/completions", ApiChatCompletionRequestSchema],
   ["POST /agents", CreateAgentSchema],

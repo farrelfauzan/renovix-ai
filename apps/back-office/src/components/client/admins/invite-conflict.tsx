@@ -13,8 +13,8 @@ export function InviteConflict({ pending, onResend, onRevoke }: InviteConflictPr
   return (
     <div className="flex items-center gap-2 text-sm">
       <span>{pending.email} already has a pending invitation:</span>
-      <button type="button" onClick={onResend} className="rounded border border-neutral-300 px-2 py-1">Resend invitation</button>
-      <button type="button" onClick={onRevoke} className="rounded border border-neutral-300 px-2 py-1">Revoke invitation</button>
+      <button type="button" onClick={onResend} className="rounded-rx border border-rx-line px-2 py-1">Resend invitation</button>
+      <button type="button" onClick={onRevoke} className="rounded-rx border border-rx-line px-2 py-1">Revoke invitation</button>
     </div>
   );
 }

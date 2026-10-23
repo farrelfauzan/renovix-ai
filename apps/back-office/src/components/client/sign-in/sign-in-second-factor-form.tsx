@@ -29,12 +29,12 @@ export function SignInSecondFactorForm({ isSubmitting, onSubmit, onBack }: SignI
       <label className="flex flex-col gap-1 text-sm">
         {usesRecoveryCode ? "Recovery code" : "Authenticator code"}
         {usesRecoveryCode ? (
-          <input key="recovery-code" type="text" name="recoveryCode" autoComplete="one-time-code" required maxLength={64} value={code} onChange={(event) => setCode(event.target.value)} className="rounded border border-neutral-300 px-2 py-1" />
+          <input key="recovery-code" type="text" name="recoveryCode" autoComplete="one-time-code" required maxLength={64} value={code} onChange={(event) => setCode(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
         ) : (
-          <input key="totp" type="text" name="totp" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required value={code} onChange={(event) => setCode(event.target.value)} className="rounded border border-neutral-300 px-2 py-1" />
+          <input key="totp" type="text" name="totp" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required value={code} onChange={(event) => setCode(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
         )}
       </label>
-      <button type="submit" disabled={isSubmitting} className="self-start rounded border border-neutral-300 px-3 py-1 text-sm">
+      <button type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
         Sign in
       </button>
       <button type="button" onClick={switchFactor} className="self-start text-sm underline">

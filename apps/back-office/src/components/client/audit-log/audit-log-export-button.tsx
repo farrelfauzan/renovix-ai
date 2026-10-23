@@ -28,10 +28,10 @@ export function AuditLogExportButton({ api, filters }: { api: AuditLogApi; filte
   };
   return (
     <div className="flex items-center gap-2">
-      <button type="button" onClick={download} disabled={isExporting} className="rounded border border-neutral-300 px-3 py-1 text-sm">
+      <button type="button" onClick={download} disabled={isExporting} className="rounded-rx border border-rx-line px-3 py-1 text-sm">
         Export CSV
       </button>
-      {hasFailed && <span role="alert" className="text-sm text-red-700">The export failed.</span>}
+      {hasFailed && <span role="alert" className="text-sm text-rx-red-bar">The export failed.</span>}
     </div>
   );
 }

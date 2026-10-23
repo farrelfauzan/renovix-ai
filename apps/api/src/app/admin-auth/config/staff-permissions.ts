@@ -33,4 +33,8 @@ export const STAFF_PERMISSIONS = [
   "settings:write",
   // RX-164 (D138): read the audit log and export it as CSV; granted by migration 20261015200000_audit_read_permission.
   "audit:read",
+  // RNX-228: read cost, revenue, profit and margin, and enter a provider's portal balance; granted to owner and finance
+  // by migration 20261022040000_profit_reconciliation_permissions.
+  "profit:read",
+  "reconciliation:write",
 ] as const;
