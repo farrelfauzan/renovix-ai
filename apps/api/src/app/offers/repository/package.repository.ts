@@ -55,6 +55,14 @@ export class PackageRepository {
     });
   }
 
+  /** The active, visible package with this id and its current version (the highest version number in effect at `now`), for a checkout (RNX-35). */
+  findPurchasable(id: string, now: Date) {
+    return this.prisma.package.findFirst({
+      where: { id, active: true, visible: true },
+      include: { versions: { where: { effectiveFrom: { lte: now } }, orderBy: { versionNumber: "desc" }, take: 1 } },
+    });
+  }
+
   /** Inserts a package version. */
   createVersion(data: Prisma.PackageVersionUncheckedCreateInput, tx?: DbTransaction) {
     return (tx ?? this.prisma).packageVersion.create({ data });
