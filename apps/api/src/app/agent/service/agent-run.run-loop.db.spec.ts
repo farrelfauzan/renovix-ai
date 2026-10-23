@@ -153,7 +153,7 @@ describe("RNX-16: agent run loop scenarios (test database, fake provider, real t
     await assertCreditLedgerInvariants(prisma);
   });
 
-  it("RNX-16 tool not offered (AR): a call to a tool outside the offered schemas runs nothing; the next request carries the 'not available' tool result and the run ends with the final answer", async () => {
+  it("RNX-16 unknown tool name (AR): a call to a name that is neither a built-in nor an MCP tool runs nothing; the next request carries the 'not available' tool result and the run ends with the final answer", async () => {
     await seedModel();
     const { bob, agent } = await seed();
     const executeTool = jest.spyOn(moduleRef.get(AgentToolService), "executeTool");
@@ -174,6 +174,23 @@ describe("RNX-16: agent run loop scenarios (test database, fake provider, real t
       ["user", "Hi", null],
       ["assistant", "Final answer", 110],
     ]);
+  });
+
+  it("RNX-16 built-in tool not offered (AR), pins a [BUG] on RNX-16: the agent was not given calculator, yet a call to it runs (executeTool dispatches built-ins by name); flip this test when the fix lands", async () => {
+    await seedModel();
+    const { bob, agent } = await seed();
+    const executeTool = jest.spyOn(moduleRef.get(AgentToolService), "executeTool");
+    fake.enqueue(
+      { toolCalls: [{ id: "call_1", name: "calculator", arguments: { expression: "2+2" } }], usage: { prompt_tokens: 40, completion_tokens: 2 } },
+      { content: "Final answer", usage: { prompt_tokens: 60, completion_tokens: 8 } },
+    );
+
+    const actual = await service.chat(bob.id, agent.id, "Hi");
+
+    expect(actual.message.content).toBe("Final answer");
+    expect(offeredToolNames(0)).toEqual(["create_document"]);
+    expect(executeTool.mock.calls.map(([name]) => name)).toEqual(["calculator"]);
+    expect(fake.requests[1].messages.at(-1)).toEqual({ role: "tool", tool_call_id: "call_1", content: "Result: 4" });
   });
 
   it("RNX-16 tool call and follow-up (AR): only the user message and the final answer are stored (no tool messages), and the ledger has one usage entry per model call", async () => {
