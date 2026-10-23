@@ -8,7 +8,7 @@ Renovix AI -- unified AI platform (multi-LLM API + chat portal + back-office + l
 
 ## Monorepo Layout
 
-Nx 22 monorepo. Package manager: **Bun** (Docker builds fall back to npm with `--legacy-peer-deps`).
+Nx 22 monorepo. Package manager: **Bun** (Docker images also install with Bun 1.3.11 from `bun.lock`, `--frozen-lockfile`).
 
 | Path | What | Framework | Dev port |
 |------|------|-----------|----------|
@@ -155,7 +155,7 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 - **`infra/`** (Terraform for GCP) and the GCP files (`.github/workflows/deploy.yml`, `cloudbuild.yaml`, `toggle-*.bash`, `docs/GCP_DEPLOYMENT_*.md`, `docs/CICD_STRATEGY.md`) are kept for reference only. The GCP setup had region `asia-southeast2`, Terraform state in GCS bucket `renovix-ai-terraform-state`, and modules networking, database, storage, security, oauth, cloud-run, cdn.
 - **Deploy workflow** (GCP, retired): a `v*` tag runs `.github/workflows/deploy.yml` (`v<semver>` all apps, `v<semver>-<app>` one app).
 - **CI** (PRs/push to main, `.github/workflows/ci.yml`): Docker build validation only -- no tests or lint in pipeline
-- **Docker builds**: multi-stage, non-root user, `dumb-init` PID 1, build context is always monorepo root; the API image installs with `npm --legacy-peer-deps` and runs `prisma generate` in the image
+- **Docker builds**: multi-stage, non-root user, `dumb-init` PID 1, build context is always monorepo root; each image installs dependencies in a `mirror.gcr.io/oven/bun:1.3.11-alpine` stage with `bun install --frozen-lockfile --ignore-scripts --linker hoisted` (it copies `bun.lock` and every workspace `package.json`; the build fails if `bun.lock` does not match them), the Node stages copy that `node_modules`, and the API image runs `prisma generate` in the image
 
 ## Testing
 
@@ -205,7 +205,7 @@ Key variables:
 | `LLM_KEY_VERSION` | -- | Version stamped on each sealed provider key (`credential_key_version`), a positive integer; default 1 |
 | `MCP_OAUTH_STATE_SECRET` | Yes | HMAC key that signs the state of the MCP OAuth flows (RX-151); no fallback, no flow starts without it. At least 32 characters; generate with `openssl rand -base64 48` |
 | `MCP_OAUTH_STATE_TTL_SECONDS` | -- | How long a started MCP OAuth flow stays valid (default 600); its one-time value is in `mcp_oauth_states` |
-| `CORS_ORIGIN` | Prod | Comma-separated allowed origins of the product apps; unset, every origin is accepted. Required by the production compose stack |
+| `CORS_ORIGIN` | Prod | Comma-separated allowed origins of the product apps, each an exact origin (`https://host[:port]`; `http` only for localhost or 127.0.0.1; no path or `*`). Required outside development and test: the API refuses to start without it (RNX-70); in development and test an unset list still accepts every origin. It is also the list a POST/PUT/PATCH/DELETE to a `session` or `portal` route must come from (RNX-272 `UserOriginGuard`). Required by the production compose stack |
 | `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |
 
