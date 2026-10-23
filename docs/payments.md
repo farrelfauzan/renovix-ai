@@ -136,7 +136,7 @@ Codes keep working. A credits-only (`topup`) code is redeemed only by an account
 | `getStatus` | `POST /qris/status` `{ transaction_id }` | `transaction_status`, `amount`, `paid_at` (null when absent). A non-2xx answer or a failed call throws (counted as `unknown`); a body it cannot read is `unknown`. |
 | `cancel` | `POST /qris/cancel` `{ transaction_id }` | A non-2xx answer throws. |
 
-**Status mapping.** `settlement` → `paid`, `pending` → `pending`, `expire` → `expired`, `cancel` → `cancelled`; anything else → `unknown`. The webhook's own `PAID` also maps to `paid` (only a reason to check; it never grants).
+**Status mapping.** `settlement` → `paid`, `pending` → `pending`, `expire` → `expired`, `cancel` → `cancelled`; anything else → `unknown`. A `settlement` without an amount is `unknown` too (it cannot be checked against the order; the next check retries it). The webhook's own `PAID` also maps to `paid` (only a reason to check; it never grants). A correctly signed webhook body that is not the expected shape is refused (401) and logged as one line, without the body.
 
 **Webhook.** `POST /api/v1/webhooks/payments` with `X-Signature` = the hex HMAC-SHA256 of the **raw** body bytes, keyed with the API key, compared in constant time (the other documented headers, `X-Callback-Event: transaction.received` and `User-Agent: AutoGopay-Callback/1.0`, are not relied on). A missing or wrong signature, a body that differs by one byte (re-serialised JSON included), or a signed body that is not the documented shape (`transaction { transaction_id, status, amount }`) is not verified (401). AutoGoPay asks for a 200 within 10 s.
 
