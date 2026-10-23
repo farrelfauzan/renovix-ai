@@ -9,7 +9,8 @@ import type { AutoGoPayTransport } from "../types/autogopay-transport";
 import { AutoGoPayProvider } from "./autogopay.provider";
 import { FetchAutoGoPayTransport } from "./fetch-autogopay.transport";
 
-// RNX-229: the AutoGoPay adapter over a fake transport answering recorded fixtures. No network, no real key (D240).
+// RNX-229, RNX-273: the AutoGoPay adapter over a fake transport answering recorded fixtures taken from the official
+// docs (every answer in the `{ success, message, data }` envelope). No network, no real key (D240).
 type Call = { readonly path: string; readonly body: Readonly<Record<string, unknown>>; readonly options: AutoGoPayRequestOptions };
 
 /** A transport that records each call and answers the given responses in order (an Error is thrown). */
@@ -40,6 +41,8 @@ const webhook = (raw: string, signature?: string) => ({
   headers: signature === undefined ? { ...fx.webhook.headers } : { ...fx.webhook.headers, "x-signature": signature },
 });
 const charge = { orderId: "order-1", amountRupiah: 165_000, expiresAt: new Date("2026-10-23T03:15:00Z"), description: "test" };
+const wrapInEnvelope = (data: unknown, isSuccess: boolean = true): AutoGoPayResponse => ({ status: 200, body: { success: isSuccess, message: "test", data } });
+const toIgnoredLine = (method: string): string => `AutoGoPay webhook: payment_method ${JSON.stringify(method)} is not QRIS (ignored, not recorded)`;
 
 describe("AutoGoPayProvider (RNX-229)", () => {
   afterEach(() => jest.restoreAllMocks());
@@ -51,19 +54,32 @@ describe("AutoGoPayProvider (RNX-229)", () => {
   });
 
   describe("createCharge", () => {
-    it("POSTs /qris/generate with the exact amount and a 10 s timeout, and maps transaction_id, qr_string and expiry_time", async () => {
+    it("RNX-273: POSTs /qris/generate with the exact amount and a 10 s timeout, and maps the docs' example answer from data (expiry 20:49 WIB = 13:49Z)", async () => {
       const { calls, provider } = providerWith(fx.generate.success);
 
       const actual = await provider.createCharge(charge);
 
       expect(calls).toEqual([{ path: "/qris/generate", body: { amount: 165_000 }, options: { timeoutMs: 10_000 } }]);
-      expect(actual).toEqual({ providerRef: "agp-test-txn-0001", paymentCode: fx.generate.success.body.qr_string, expiresAt: new Date("2026-10-23T03:15:00Z") });
+      expect(actual).toEqual({ providerRef: "53bc6ed2-441d-4bd0-bc39-11fdfff5fedb", paymentCode: "00020101021226610014COM.GO-JEK.WWW...", expiresAt: new Date("2026-03-27T13:49:00Z") });
+    });
+
+    it.each([
+      ["2026-10-23 19:15:00", new Date("2026-10-23T12:15:00Z")],
+      ["2026-10-23T19:15:00+07:00", new Date("2026-10-23T12:15:00Z")],
+      ["2026-10-23T12:15:00Z", new Date("2026-10-23T12:15:00Z")],
+    ])("RNX-273: an expiry_time %s (no offset: WIB; an explicit offset still accepted) is %s", async (expiryTime, expected) => {
+      const { provider } = providerWith(wrapInEnvelope({ ...fx.generate.success.body.data, expiry_time: expiryTime }));
+
+      expect((await provider.createCharge(charge)).expiresAt).toEqual(expected);
     });
 
     it.each([
       ["an HTTP error", fx.generate.error, "AutoGoPay /qris/generate: unexpected answer (HTTP 400)"],
-      ["a 200 whose body is not the documented shape", { status: 200, body: { success: true } }, "AutoGoPay /qris/generate: unexpected answer (HTTP 200)"],
-      ["a 200 whose expiry has no offset", fx.generate.expiryWithoutOffset, "AutoGoPay /qris/generate: unexpected answer (HTTP 200)"],
+      ["RNX-273: a 200 with success: false", fx.generate.refusedOn200, "AutoGoPay /qris/generate: unexpected answer (HTTP 200)"],
+      ["RNX-273: a 200 with success: false and the fields in data", wrapInEnvelope(fx.generate.success.body.data, false), "AutoGoPay /qris/generate: unexpected answer (HTTP 200)"],
+      ["RNX-273: the fields at the top level, not in the envelope", fx.generate.notEnveloped, "AutoGoPay /qris/generate: unexpected answer (HTTP 200)"],
+      ["a 200 without data", { status: 200, body: { success: true, message: "QRIS created successfully" } }, "AutoGoPay /qris/generate: unexpected answer (HTTP 200)"],
+      ["RNX-273: an expiry in neither documented form", fx.generate.expiryUnreadable, "AutoGoPay /qris/generate: unexpected answer (HTTP 200)"],
       ["a timeout", timeout(), "AutoGoPay /qris/generate: the request failed (TimeoutError)"],
     ])("throws on %s, once (never retried)", async (_case, answer, message) => {
       const { calls, provider } = providerWith(answer as AutoGoPayResponse | Error);
@@ -90,17 +106,27 @@ describe("AutoGoPayProvider (RNX-229)", () => {
       expect(calls[0].options).toEqual({ timeoutMs: 5_000 });
     });
 
+    const unknown = { state: "unknown", amountRupiah: null, paidAt: null };
+
     it.each([
-      ["settlement", fx.status.settlement, { state: "paid", amountRupiah: 165_000, paidAt: new Date("2026-10-23T03:05:00Z") }],
-      ["pending", fx.status.pending, { state: "pending", amountRupiah: 165_000, paidAt: null }],
-      ["expire", fx.status.expire, { state: "expired", amountRupiah: 165_000, paidAt: null }],
-      ["cancel", fx.status.cancel, { state: "cancelled", amountRupiah: 165_000, paidAt: null }],
-      ["an unmapped status", fx.status.unknownStatus, { state: "unknown", amountRupiah: 165_000, paidAt: null }],
-      ["a prototype key as status", { status: 200, body: { transaction_status: "constructor" } }, { state: "unknown", amountRupiah: null, paidAt: null }],
-      ["a malformed body", fx.status.malformed, { state: "unknown", amountRupiah: null, paidAt: null }],
-      ["a settlement without an amount (review round 1)", { status: 200, body: { transaction_status: "settlement", paid_at: "2026-10-23T10:05:00+07:00" } }, { state: "unknown", amountRupiah: null, paidAt: null }],
-      ["a settlement with a null amount (review round 1)", { status: 200, body: { transaction_status: "settlement", amount: null } }, { state: "unknown", amountRupiah: null, paidAt: null }],
-      ["a body that is not JSON", { status: 200, body: undefined }, { state: "unknown", amountRupiah: null, paidAt: null }],
+      ["settlement (paid_at 20:40 WIB = 13:40Z)", fx.status.settlement, { state: "paid", amountRupiah: 10_000, paidAt: new Date("2026-03-27T13:40:00Z") }],
+      ["RNX-273: settlement in data.status instead of data.transaction_status", fx.status.settlementAsStatus, { state: "paid", amountRupiah: 10_000, paidAt: new Date("2026-03-27T13:40:00Z") }],
+      ["RNX-273: transaction_status wins over status when both are present", wrapInEnvelope({ transaction_status: "pending", status: "settlement", amount: 10_000 }), { state: "pending", amountRupiah: 10_000, paidAt: null }],
+      ["RNX-273: paid_at 2024-03-29 14:30:40 (WIB) as 07:30:40Z", wrapInEnvelope({ transaction_status: "settlement", amount: 50_000, paid_at: "2024-03-29 14:30:40" }), { state: "paid", amountRupiah: 50_000, paidAt: new Date("2024-03-29T07:30:40Z") }],
+      ["paid_at with an explicit offset", wrapInEnvelope({ transaction_status: "settlement", amount: 50_000, paid_at: "2024-03-29T14:30:40+07:00" }), { state: "paid", amountRupiah: 50_000, paidAt: new Date("2024-03-29T07:30:40Z") }],
+      ["an unreadable paid_at (null, the core takes now)", wrapInEnvelope({ transaction_status: "settlement", amount: 50_000, paid_at: "29/03/2024" }), { state: "paid", amountRupiah: 50_000, paidAt: null }],
+      ["pending", fx.status.pending, { state: "pending", amountRupiah: 10_000, paidAt: null }],
+      ["expire", fx.status.expire, { state: "expired", amountRupiah: 10_000, paidAt: null }],
+      ["cancel", fx.status.cancel, { state: "cancelled", amountRupiah: 10_000, paidAt: null }],
+      ["an unmapped status", fx.status.unknownStatus, { state: "unknown", amountRupiah: 10_000, paidAt: null }],
+      ["RNX-273: success: false while pending", fx.status.pendingRefused, unknown],
+      ["RNX-273: success: false whose data says settlement with the amount", fx.status.settlementRefused, unknown],
+      ["RNX-273: the fields at the top level, not in the envelope", fx.status.notEnveloped, unknown],
+      ["a prototype key as status", wrapInEnvelope({ transaction_status: "constructor" }), unknown],
+      ["no status field", fx.status.malformed, unknown],
+      ["a settlement without an amount (review round 1)", wrapInEnvelope({ transaction_status: "settlement", paid_at: "2026-10-23 10:05:00" }), unknown],
+      ["a settlement with a null amount (review round 1)", wrapInEnvelope({ transaction_status: "settlement", amount: null }), unknown],
+      ["a body that is not JSON", { status: 200, body: undefined }, unknown],
     ])("maps %s", async (_case, answer, expected) => {
       const { provider } = providerWith(answer as AutoGoPayResponse);
 
@@ -118,11 +144,12 @@ describe("AutoGoPayProvider (RNX-229)", () => {
   });
 
   describe("cancel", () => {
-    it("POSTs /qris/cancel with the transaction id; throws on an HTTP error", async () => {
-      const { calls, provider } = providerWith(fx.cancel.success, fx.cancel.error);
+    it("POSTs /qris/cancel with the transaction id; throws on an HTTP error and (RNX-273) on a 200 with success: false", async () => {
+      const { calls, provider } = providerWith(fx.cancel.success, fx.cancel.error, fx.cancel.refusedOn200);
 
       await provider.cancel("agp-test-txn-0001");
       await expect(provider.cancel("agp-test-txn-0001")).rejects.toThrow("AutoGoPay /qris/cancel: unexpected answer (HTTP 404)");
+      await expect(provider.cancel("agp-test-txn-0001")).rejects.toThrow("AutoGoPay /qris/cancel: unexpected answer (HTTP 200)");
 
       expect(calls[0]).toEqual({ path: "/qris/cancel", body: { transaction_id: "agp-test-txn-0001" }, options: { timeoutMs: 10_000 } });
     });
@@ -131,15 +158,39 @@ describe("AutoGoPayProvider (RNX-229)", () => {
   describe("verifyWebhook", () => {
     const raw = fx.webhook.rawBody;
 
-    it("verifies X-Signature (HMAC-SHA256 of the raw bytes, keyed with the API key) and reads the transaction", async () => {
+    it("verifies X-Signature (HMAC-SHA256 of the raw bytes, keyed with the API key) and reads the transaction of the docs' example", async () => {
       const { provider } = providerWith();
 
-      expect(await provider.verifyWebhook(webhook(raw, sign(raw)))).toEqual({ isVerified: true, providerRef: "agp-test-txn-0001", reportedState: "paid", reportedAmountRupiah: 165_000 });
+      expect(await provider.verifyWebhook(webhook(raw, sign(raw)))).toEqual({ isVerified: true, providerRef: "TRX-001", reportedState: "paid", reportedAmountRupiah: 50_000 });
+    });
+
+    it.each(["QRIS_SHOPEEPAY", "QRIS_INTERACTIVE", "qris"])("RNX-273: a signed webhook with payment_method %s is ignored, with one log line naming only the method", async (method) => {
+      const { provider } = providerWith();
+      const otherProduct = raw.replace('"payment_method": "QRIS"', `"payment_method": ${JSON.stringify(method)}`);
+      const warn = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+
+      expect(await provider.verifyWebhook(webhook(otherProduct, sign(otherProduct)))).toEqual({ isVerified: true, isIgnored: true });
+      expect(warn.mock.calls).toEqual([[toIgnoredLine(method)]]);
+    });
+
+    it("RNX-273: a signed webhook without payment_method is taken as QRIS (the docs always send it)", async () => {
+      const { provider } = providerWith();
+      const noMethod = raw.replace('    "payment_method": "QRIS",\n', "");
+
+      expect(noMethod).not.toContain("payment_method");
+      expect(await provider.verifyWebhook(webhook(noMethod, sign(noMethod)))).toEqual({ isVerified: true, providerRef: "TRX-001", reportedState: "paid", reportedAmountRupiah: 50_000 });
+    });
+
+    it("RNX-273: an ignored method is checked only after the signature (a forged one is not verified)", async () => {
+      const { provider } = providerWith();
+      const otherProduct = raw.replace('"payment_method": "QRIS"', '"payment_method": "QRIS_SHOPEEPAY"');
+
+      expect(await provider.verifyWebhook(webhook(otherProduct, sign(otherProduct, "another-test-key-not-real")))).toEqual({ isVerified: false });
     });
 
     it.each([
       ["signed with another key", () => webhook(raw, sign(raw, "another-test-key-not-real"))],
-      ["a tampered body", () => webhook(raw.replace("165000", "165001"), sign(raw))],
+      ["a tampered body", () => webhook(raw.replace("50000", "50001"), sign(raw))],
       ["no X-Signature", () => webhook(raw)],
       ["the body re-serialised (other whitespace), signed as re-serialised by the sender", () => webhook(raw, sign(JSON.stringify(JSON.parse(raw))))],
       ["the body with another key order, under the original body's signature", () => webhook(fx.webhook.reorderedBody, sign(raw))],

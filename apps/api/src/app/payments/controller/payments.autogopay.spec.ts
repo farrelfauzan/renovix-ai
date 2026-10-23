@@ -3,6 +3,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AutoGoPayProvider } from "../providers/autogopay.provider";
+import type { AutoGoPayResponse } from "../types/autogopay-response";
 import { PaymentReconciliationService } from "../service/payment-reconciliation.service";
 import { autoGoPayFixtures as fx } from "../../../../test/autogopay-fixtures";
 import { captureLogLines } from "../../../../test/capture-log-lines";
@@ -20,10 +21,11 @@ import {
   sessionFromCookie,
 } from "../../../../test/payments";
 
-// RNX-229: the acceptance criteria through the AutoGoPay adapter: real HTTP (Fastify inject, raw body kept as in
-// main.ts), the real AccessGuard (better-auth's session lookup mocked: the cookie names the user), the real services and
-// repositories on the test database, and AutoGoPayProvider over a scripted transport answering the recorded fixtures.
-// No network (fetch is stubbed and the transport never calls it), a dummy key, made-up values only (D240).
+// RNX-229, RNX-273: the acceptance criteria through the AutoGoPay adapter: real HTTP (Fastify inject, raw body kept as
+// in main.ts), the real AccessGuard (better-auth's session lookup mocked: the cookie names the user), the real services
+// and repositories on the test database, and AutoGoPayProvider over a scripted transport answering the recorded
+// fixtures (the official docs' shapes: every answer in the `{ success, message, data }` envelope, WIB date-times).
+// No network (fetch is stubbed and the transport never calls it), a dummy key, the docs' example values only (D240).
 const mockGetSession = jest.fn();
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: (...args: unknown[]) => mockGetSession(...args) } } }));
 
@@ -31,6 +33,8 @@ const STARTER_CREDITS = "100";
 const MINUTE = 60_000;
 const GENERATE = "/qris/generate";
 const STATUS = "/qris/status";
+/** An AutoGoPay answer in the documented envelope. */
+const wrapInEnvelope = (data: unknown, isSuccess: boolean = true): AutoGoPayResponse => ({ status: 200, body: { success: isSuccess, message: "test", data } });
 
 describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)", () => {
   const transport = new ScriptedAutoGoPayTransport();
@@ -77,9 +81,9 @@ describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)
   const orderOf = (id: string) => prisma.paymentOrder.findUniqueOrThrow({ where: { id } });
   const grants = () => prisma.creditLedgerEntry.findMany({ orderBy: { createdAt: "asc" } });
   const expireOrder = (id: string) => prisma.paymentOrder.update({ where: { id }, data: { expiresAt: new Date(Date.now() - 5 * MINUTE) } });
-  /** The recorded webhook fixture's exact layout, for this transaction and amount. */
-  const webhookBody = (reference: string, amount: number = STARTER_PRICE_RUPIAH): string =>
-    fx.webhook.rawBody.replace('"agp-test-txn-0001"', JSON.stringify(reference)).replace("165000", String(amount));
+  /** The docs' webhook example's exact layout, for this transaction, amount and payment method. */
+  const webhookBody = (reference: string, amount: number = STARTER_PRICE_RUPIAH, paymentMethod: string = "QRIS"): string =>
+    fx.webhook.rawBody.replace('"TRX-001"', JSON.stringify(reference)).replace("50000", String(amount)).replace('"payment_method": "QRIS"', `"payment_method": ${JSON.stringify(paymentMethod)}`);
   const sign = (raw: string, key: string = fx.apiKey): string => createHmac("sha256", key).update(raw).digest("hex");
   /** POST /webhooks/payments with the documented headers and these exact bytes; null: no X-Signature. */
   const webhook = (raw: string, signature: string | null = sign(raw)) =>
@@ -100,11 +104,12 @@ describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)
       expect(res.statusCode).toBe(201);
       const order = await prisma.paymentOrder.findFirstOrThrow();
       expect(transport.callsTo(GENERATE)).toEqual([{ path: GENERATE, body: { amount: STARTER_PRICE_RUPIAH }, options: { timeoutMs: 10_000 } }]);
-      expect(order).toMatchObject({ amountRupiah: STARTER_PRICE_RUPIAH, provider: "autogopay", providerRef: expect.stringMatching(/^agp-test-txn-\d+$/), paymentCode: fx.generate.success.body.qr_string, status: "pending" });
+      expect(order).toMatchObject({ amountRupiah: STARTER_PRICE_RUPIAH, provider: "autogopay", providerRef: expect.stringMatching(/^agp-test-txn-\d+$/), paymentCode: fx.generate.success.body.data.qr_string, status: "pending" });
       expect(order.expiresAt.getTime()).toBeGreaterThan(Date.now() + 14 * MINUTE);
-      expect(res.json()).toMatchObject({ orderId: order.id, state: "pending", amountRupiah: STARTER_PRICE_RUPIAH, paymentCode: fx.generate.success.body.qr_string, expiresAt: order.expiresAt.toISOString() });
+      expect(order.expiresAt.getTime()).toBeLessThan(Date.now() + 16 * MINUTE);
+      expect(res.json()).toMatchObject({ orderId: order.id, state: "pending", amountRupiah: STARTER_PRICE_RUPIAH, paymentCode: fx.generate.success.body.data.qr_string, expiresAt: order.expiresAt.toISOString() });
       expect(JSON.stringify(res.json())).not.toContain("checkout_url");
-      expect(JSON.stringify(res.json())).not.toContain(fx.generate.success.body.checkout_url);
+      expect(JSON.stringify(res.json())).not.toContain(fx.generate.success.body.data.checkout_url);
       expect(await paidBalanceOf(prisma, user.id)).toBe("0");
     });
 
@@ -139,8 +144,33 @@ describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)
       await expectNoCharge();
     });
 
+    it("RNX-273: the docs' exact generate answer (in the envelope): pending with its transaction_id, QR string and expiry (20:49 WIB = 13:49Z), returned by checkout", async () => {
+      const user = await createUser(prisma);
+      transport.answerNextGenerate(fx.generate.success);
+
+      const res = await buyStarter(user.id);
+
+      expect(res.statusCode).toBe(201);
+      const order = await prisma.paymentOrder.findFirstOrThrow();
+      expect(order).toMatchObject({ status: "pending", providerRef: "53bc6ed2-441d-4bd0-bc39-11fdfff5fedb", paymentCode: "00020101021226610014COM.GO-JEK.WWW...", expiresAt: new Date("2026-03-27T13:49:00Z") });
+      expect(res.json()).toMatchObject({ orderId: order.id, state: "pending", paymentCode: "00020101021226610014COM.GO-JEK.WWW...", expiresAt: "2026-03-27T13:49:00.000Z" });
+    });
+
+    it("RNX-273: an expiry_time 2026-10-23 19:15:00 (no offset) is stored as 2026-10-23T12:15:00Z (WIB = UTC+7)", async () => {
+      const user = await createUser(prisma);
+      transport.answerNextGenerate(wrapInEnvelope({ ...fx.generate.success.body.data, expiry_time: "2026-10-23 19:15:00" }));
+
+      const res = await buyStarter(user.id);
+
+      expect(res.statusCode).toBe(201);
+      expect((await prisma.paymentOrder.findFirstOrThrow()).expiresAt).toEqual(new Date("2026-10-23T12:15:00Z"));
+    });
+
     it.each([
       ["an error answer", fx.generate.error],
+      ["RNX-273: a 200 with success: false", fx.generate.refusedOn200],
+      ["RNX-273: a 200 with success: false and the fields in data", wrapInEnvelope(fx.generate.success.body.data, false)],
+      ["RNX-273: a 200 with the fields at the top level (not in the envelope)", fx.generate.notEnveloped],
       ["a timeout", "timeout" as const],
     ])("AC3: generate gets %s: 502, the order failed, one call (no retry), no credit", async (_case, answer) => {
       const user = await createUser(prisma);
@@ -239,6 +269,51 @@ describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)
       expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
     });
 
+    it("RNX-273: the docs' exact webhook example with a valid X-Signature verifies (200), is recorded and triggers the status check", async () => {
+      const user = await createUser(prisma);
+      transport.answerNextGenerate(wrapInEnvelope({ ...fx.generate.success.body.data, transaction_id: "TRX-001" }));
+      const { orderId } = (await buyStarter(user.id)).json();
+
+      const res = await webhook(fx.webhook.rawBody);
+
+      expect(res.statusCode).toBe(200);
+      expect(await prisma.paymentWebhookEvent.findMany()).toEqual([
+        expect.objectContaining({ provider: "autogopay", providerRef: "TRX-001", orderId, reportedStatus: "paid", reportedAmountRupiah: 50_000, bodySha256: createHash("sha256").update(fx.webhook.rawBody).digest("hex") }),
+      ]);
+      expect(transport.callsTo(STATUS).map((call) => call.body)).toEqual([{ transaction_id: "TRX-001" }]);
+      expect(await orderOf(orderId)).toMatchObject({ status: "pending", isUnconfirmed: true });
+    });
+
+    it.each(["QRIS_SHOPEEPAY", "QRIS_INTERACTIVE"])("RNX-273: a validly signed webhook with payment_method %s: 200, nothing recorded, no unmatched row, no status check, no grant, one log line naming only the method", async (method) => {
+      const { orderId, reference } = await pendingStarterOrder();
+      transport.setStatus(reference, "settlement", STARTER_PRICE_RUPIAH);
+      const { lines } = captureLogLines();
+
+      const res = await webhook(webhookBody(reference, STARTER_PRICE_RUPIAH, method));
+
+      expect(res.statusCode).toBe(200);
+      expect(await prisma.paymentWebhookEvent.count()).toBe(0);
+      expect(await prisma.paymentUnmatchedPayment.count()).toBe(0);
+      expect(transport.callsTo(STATUS)).toHaveLength(0);
+      expect(await orderOf(orderId)).toMatchObject({ status: "pending", isUnconfirmed: false, lastWebhookAt: null });
+      expect(await grants()).toHaveLength(0);
+      expect(lines.filter((line) => line.includes("AutoGoPay webhook"))).toEqual([`AutoGoPay webhook: payment_method "${method}" is not QRIS (ignored, not recorded)`]);
+    });
+
+    it("RNX-273 control: the same webhook with payment_method QRIS is recorded, checked and grants once", async () => {
+      const { user, orderId, reference } = await pendingStarterOrder();
+      transport.setStatus(reference, "settlement", STARTER_PRICE_RUPIAH);
+
+      const res = await webhook(webhookBody(reference, STARTER_PRICE_RUPIAH, "QRIS"));
+
+      expect(res.statusCode).toBe(200);
+      expect(await prisma.paymentWebhookEvent.count()).toBe(1);
+      expect(transport.callsTo(STATUS)).toHaveLength(1);
+      expect(await orderOf(orderId)).toMatchObject({ status: "paid" });
+      expect(await grants()).toHaveLength(1);
+      expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
+    });
+
     it("AC7, AC13: a settlement webhook for a transaction_id with no order (a second payment of the same QR): 200, unmatched, no grant", async () => {
       await pendingStarterOrder();
       const raw = webhookBody("agp-test-txn-no-order");
@@ -250,6 +325,39 @@ describe("RNX-229 AutoGoPay adapter (Fastify, test database, scripted transport)
         expect.objectContaining({ provider: "autogopay", providerRef: "agp-test-txn-no-order", reason: "unknown_reference", orderId: null, amountRupiah: STARTER_PRICE_RUPIAH }),
       ]);
       expect(transport.callsTo(STATUS)).toHaveLength(0);
+      expect(await grants()).toHaveLength(0);
+    });
+  });
+
+  describe("RNX-273: the status answer in the envelope", () => {
+    it.each([
+      ["data.status", { status: "settlement" }],
+      ["data.transaction_status", { transaction_status: "settlement" }],
+    ])("checkout, then the webhook, then a settlement in %s with the order's amount and paid_at 19:05 WIB: granted once, paid_at stored as 12:05Z", async (_case, statusField) => {
+      const { user, orderId, reference } = await pendingStarterOrder();
+      transport.answerStatus(reference, wrapInEnvelope({ transaction_id: reference, ...statusField, amount: STARTER_PRICE_RUPIAH, paid_at: "2026-10-23 19:05:00" }));
+
+      const res = await webhook(webhookBody(reference));
+
+      expect(res.statusCode).toBe(200);
+      expect(await orderOf(orderId)).toMatchObject({ status: "paid", paidAt: new Date("2026-10-23T12:05:00Z") });
+      const entries = await grants();
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({ type: "plan_grant", reference, idempotencyKey: `payment:autogopay:${reference}` });
+      expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
+    });
+
+    it.each([
+      ["while pending", (reference: string) => wrapInEnvelope({ transaction_id: reference, status: "pending" }, false)],
+      ["whose data says settlement with the order's amount", (reference: string) => wrapInEnvelope({ transaction_id: reference, transaction_status: "settlement", amount: STARTER_PRICE_RUPIAH, paid_at: "2026-10-23 19:05:00" }, false)],
+    ])("a 200 with success: false %s counts as unknown: the order stays pending, no grant", async (_case, answer) => {
+      const { orderId, reference } = await pendingStarterOrder();
+      transport.answerStatus(reference, answer(reference));
+
+      const res = await webhook(webhookBody(reference));
+
+      expect(res.statusCode).toBe(200);
+      expect(await orderOf(orderId)).toMatchObject({ status: "pending", unknownChecks: 1, paidAt: null });
       expect(await grants()).toHaveLength(0);
     });
   });
