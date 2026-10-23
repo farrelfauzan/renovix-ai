@@ -138,7 +138,7 @@ Next.js apps bake env vars at build time. These MUST be passed as `--build-arg`:
 
 | Requirement | Reason |
 |-------------|--------|
-| `--legacy-peer-deps` in npm install | React 19 vs `@emoji-mart/react@1.1.1` peer dependency conflict |
+| `bun install --frozen-lockfile --ignore-scripts --linker hoisted` (Bun 1.3.11) in each Dockerfile's install stage | Images get exactly the versions in the committed `bun.lock` (the build fails if it does not match the manifests); the stage copies every workspace `package.json` because a frozen install needs them all. Bun does not fail on the React 19 vs `@emoji-mart/react@1.1.1` peer range, so npm's `--legacy-peer-deps` is gone |
 | Prisma generate before webpack | Webpack resolves `@generated/prisma/client.js` at compile time |
 | Build context must be monorepo root | Dockerfiles use `COPY . .` to access all workspace files |
 | `E2_HIGHCPU_8` machine type | Webpack bundling + Next.js build are memory/CPU intensive |
