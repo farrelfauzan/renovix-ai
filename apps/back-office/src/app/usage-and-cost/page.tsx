@@ -2,7 +2,7 @@ import { UsageAndCostScreen } from "@/components/client/usage/usage-and-cost-scr
 
 export default function UsageAndCostPage() {
   return (
-    <section>
+    <section className="w-0 min-w-full">
       <h1 className="text-xl font-semibold">Usage and cost</h1>
       <UsageAndCostScreen />
     </section>
