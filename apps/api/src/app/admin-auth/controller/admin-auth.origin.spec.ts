@@ -24,8 +24,12 @@ import {
 // RX-156 (D117 item 73): every /admin route answers only the back-office's own origin (ADMIN_ORIGIN).
 // Real HTTP (Fastify `inject`), the global guards of createTestModule, the test database.
 const PRODUCT_ORIGIN = "https://chat.renovix.id";
-/** Production mode needs a real-length JWT_SECRET (RX-110), so these rows fail on ADMIN_ORIGIN only. */
-const PRODUCTION = { NODE_ENV: "production", JWT_SECRET: "rx156-production-mode-jwt-secret-".padEnd(64, "x") };
+/** Production mode needs a real-length JWT_SECRET (RX-110) and CORS_ORIGIN (RNX-70), so these rows fail on ADMIN_ORIGIN only. */
+const PRODUCTION = {
+  NODE_ENV: "production",
+  JWT_SECRET: "rx156-production-mode-jwt-secret-".padEnd(64, "x"),
+  CORS_ORIGIN: PRODUCT_ORIGIN,
+};
 const FOREIGN_ORIGINS = [PRODUCT_ORIGIN, "https://evil.example", "null", "http://admin.renovix.test.evil.example"];
 
 @Controller("product-origin-probe")

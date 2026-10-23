@@ -15,8 +15,8 @@ const COOKIE_METHODS: readonly AccessMethod[] = ["session", "portal"];
  * A global guard (APP_GUARD) registered right after AdminOriginGuard, before the throttler and AccessGuard: on a
  * route whose `@Access` lists `session` or `portal` (read as AccessGuard reads it), a POST, PUT, PATCH or DELETE
  * answers 403 unless its Origin, or without one its Referer's origin, is in `resolveCorsOrigins(process.env)`
- * (main.ts's CORS list). With neither header it answers 403. While CORS_ORIGIN is unset that list is `true` and
- * every request passes (unchanged until RNX-70). Reads, public routes (webhooks, Better Auth), API key and
+ * (main.ts's CORS list). With neither header it answers 403. That list is `true` only in development and test with
+ * CORS_ORIGIN unset (RNX-70), and then every request passes. Reads, public routes (webhooks, Better Auth), API key and
  * `staff` routes (AdminOriginGuard) pass untouched.
  */
 @Injectable()
