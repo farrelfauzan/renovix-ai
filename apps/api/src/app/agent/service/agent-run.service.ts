@@ -75,7 +75,8 @@ export class AgentRunService {
   /**
    * One agent message as one run; RNX-222: the result carries the document its own `create_document` made. RNX-119:
    * the run policy decides who may run it (404 otherwise) and whether the run is inside the workspace; the run belongs
-   * to the runner, who pays.
+   * to the runner, who pays. RNX-275: the reply, the stored answer and the memory input are the output guardrail's
+   * final content; a blocked answer is not memorised.
    */
   async chat(
     userId: string,
@@ -151,31 +152,24 @@ export class AgentRunService {
       options?.documentFormat,
     );
 
-    const { run, result, document } = await this.runMessage(context, messages, agent, runSessionId, message);
+    const { run, result, isAnswerBlocked, document } =
+      await this.runMessage(context, messages, agent, runSessionId, message);
 
-    // Extract and store memory asynchronously
-    this.memoryService
-      .extractAndStore(agentId, userId, message, result.content, scope)
-      .catch((err: any) =>
-        this.logger.error(`Memory extraction failed: ${err.message}`),
-      );
-
-    // Output guardrail check
-    const outputCheck = await this.guardrail.checkOutput(
-      result.content,
-      userId,
-      agentId,
-    );
-    const finalContent = outputCheck.blocked
-      ? outputCheck.sanitized || "I'm unable to provide that response."
-      : outputCheck.content || result.content;
+    // Extract and store memory asynchronously (RNX-275: the guardrail's final answer; a blocked one is not remembered)
+    if (!isAnswerBlocked) {
+      this.memoryService
+        .extractAndStore(agentId, userId, message, result.content, scope)
+        .catch((err: any) =>
+          this.logger.error(`Memory extraction failed: ${err.message}`),
+        );
+    }
 
     return {
       runId: run.id,
       sessionId: run.sessionId,
       message: {
         role: "assistant",
-        content: finalContent,
+        content: result.content,
       },
       usage: {
         totalTokens: result.totalTokens,
@@ -262,7 +256,9 @@ export class AgentRunService {
    * reservation holds, so a refused message writes neither; the MCP connections opened for the run are closed on
    * every path (success, refusal, provider error, budget stop). RNX-217: they are this run's own (mcpSession);
    * closing them closes no other run's. RNX-222: the document its `create_document` call generated (mcpSession) is
-   * returned with it.
+   * returned with it. RNX-275: the answer (or the budget-stop message) goes through the output guardrail once, before it
+   * is stored; the stored and returned content is the guardrail's final content, and `isAnswerBlocked` tells the caller
+   * the guardrail blocked it.
    */
   private async runMessage(context: AgentContext, messages: any[], agent: any, sessionId: string, message: string) {
     const injectCallAgent = context.callableAgents.length > 0;
@@ -296,7 +292,7 @@ export class AgentRunService {
           };
         },
       );
-      const { run, ...result } =
+      const { run, ...rawResult } =
         metered.status === "completed"
           ? metered.value
           : {
@@ -305,6 +301,14 @@ export class AgentRunService {
               totalTokens: 0,
               totalCost: undefined,
             };
+      // RNX-275: the run's one output guardrail check, before the answer is stored (and memorised by chat)
+      const outputCheck = await this.guardrail.checkOutput(rawResult.content, context.userId, context.agentId);
+      const result = {
+        ...rawResult,
+        content: outputCheck.blocked
+          ? outputCheck.sanitized || "I'm unable to provide that response."
+          : outputCheck.content || rawResult.content,
+      };
       // Save assistant message
       await this.prisma.agentMessage.create({
         data: {
@@ -315,7 +319,7 @@ export class AgentRunService {
           cost: result.totalCost,
         },
       });
-      return { run, result, document: mcpSession.document };
+      return { run, result, isAnswerBlocked: outputCheck.blocked, document: mcpSession.document };
     } finally {
       await this.toolService.cleanupMcpConnections(mcpSession);
     }
