@@ -5,6 +5,6 @@ export type UserOriginCheck = {
   readonly origin: string | undefined;
   /** The Referer header, if any: read only when there is no Origin. */
   readonly referer: string | undefined;
-  /** `resolveCorsOrigins(process.env)`: the listed origins, or `true` (CORS_ORIGIN unset: every origin). */
+  /** `resolveCorsOrigins(process.env)`: the listed origins, or `true` (CORS_ORIGIN unset in development or test: every origin). */
   readonly allowedOrigins: readonly string[] | true;
 };

@@ -1,3 +1,5 @@
+import { isRelaxedMode } from "./is-relaxed-mode";
+
 /** Fewest characters a secret may have outside development and test. */
 const MIN_SECRET_LENGTH = 32;
 
@@ -18,10 +20,6 @@ const KNOWN_PLACEHOLDERS: ReadonlySet<string> = new Set([
   "dev-only-api-key-hash-secret-never-use-in-production",
   "0000000000000000000000000000000000000000000000000000000000000001",
 ]);
-
-/** True when NODE_ENV is development or test; anything else, unset included, is treated as production. */
-const isRelaxedMode = (env: NodeJS.ProcessEnv): boolean =>
-  env.NODE_ENV === "development" || env.NODE_ENV === "test";
 
 /**
  * The value of a required secret (RX-110). Missing or empty is refused in every mode: there is no
