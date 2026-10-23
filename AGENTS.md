@@ -21,7 +21,7 @@ Nx 22 monorepo. Package manager: **Bun** (Docker images also install with Bun 1.
 | `infra/` | Terraform IaC (7 modules), kept for reference (see Infrastructure & Deploy) | GCP, >= Terraform 1.7 | -- |
 | `docs/` | Strategy/design docs; finished ones are in `docs/archive/` | Markdown | -- |
 
-No workspace packages exist yet; the shared UI package (D287: the shadcn primitives and the shared token layer, imported by chat, back-office and landing) will be the first, and its build ticket sets its name and path.
+No shared library packages (`libs/`) exist yet; the shared UI package (D287: the shadcn primitives and the shared token layer, imported by chat, back-office and landing) will be the first, and its build ticket sets its name and path.
 
 ## Dev Commands
 
