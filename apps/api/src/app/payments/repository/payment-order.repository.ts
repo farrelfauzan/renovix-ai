@@ -130,6 +130,7 @@ export class PaymentOrderRepository {
   /**
    * Claims up to `limit` of the provider's pending orders that need a status check (past their expiry, or named by a
    * webhook) and are not in review, skipping rows another instance holds (FOR UPDATE SKIP LOCKED, and the claim time).
+   * A claim is not released: the row is claimable again once `reconcile_claimed_until` is before `now` (RNX-271).
    */
   async claimForReconcile(claim: ReconcileClaim): Promise<PaymentOrder[]> {
     const rows = await this.prisma.$queryRaw<{ id: string }[]>`
@@ -142,11 +143,6 @@ export class PaymentOrderRepository {
         ORDER BY "expires_at" LIMIT ${claim.limit} FOR UPDATE SKIP LOCKED)
       RETURNING "id"`;
     return this.prisma.paymentOrder.findMany({ where: { id: { in: rows.map((row) => row.id) } }, orderBy: { expiresAt: "asc" } });
-  }
-
-  /** Ends the reconciliation claim on the order. */
-  async releaseClaim(id: string): Promise<void> {
-    await this.prisma.paymentOrder.update({ where: { id }, data: { reconcileClaimedUntil: null } });
   }
 
   /** The orders created in `range`, oldest first; with `state`, only those in that status or with that flag ("unmatched": none). */
