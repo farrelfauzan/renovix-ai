@@ -12,6 +12,7 @@ import { AccessModule } from "../src/common/access.module";
 import { GlobalExceptionFilter } from "../src/common/filters/global-exception.filter";
 import { AccessGuard } from "../src/common/guards/access.guard";
 import { AdminOriginGuard } from "../src/common/guards/admin-origin.guard";
+import { UserOriginGuard } from "../src/common/guards/user-origin.guard";
 import { createFastifyAdapter } from "../src/common/utils/create-fastify-adapter";
 import { testDatabaseUrl } from "./test-database";
 
@@ -19,7 +20,8 @@ import { testDatabaseUrl } from "./test-database";
  * Builds a Nest testing module with the real PrismaService on the test
  * database, every repository (RepositoriesModule, as in AppModule), the global
  * AdminOriginGuard (RX-156: an /admin route answers only the back-office
- * Origin), the global AccessGuard (a route
+ * Origin), the global UserOriginGuard (RNX-272: a session or portal write answers only an allowed Origin once
+ * CORS_ORIGIN is set), the global AccessGuard (a route
  * without `@Access` answers 403) and the global back-office audit hook
  * (RX-97) and the global exception filter (RNX-171), registered the way AppModule does it, and the global
  * ModelCallCostsModule (RNX-162: CreditService writes each call's model_call_costs row through it). `override` gets the builder for
@@ -37,6 +39,7 @@ export async function createTestModule(
       imports: [PrismaModule, RepositoriesModule, AccessModule, AdminAuditModule, ModelCallCostsModule, ...(metadata.imports ?? [])],
       providers: [
         { provide: APP_GUARD, useExisting: AdminOriginGuard },
+        { provide: APP_GUARD, useExisting: UserOriginGuard },
         { provide: APP_GUARD, useExisting: AccessGuard },
         { provide: APP_INTERCEPTOR, useExisting: AdminAuditInterceptor },
         { provide: APP_FILTER, useClass: GlobalExceptionFilter },

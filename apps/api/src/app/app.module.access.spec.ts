@@ -1,4 +1,4 @@
-import { Controller, Delete, ExecutionContext, Get, Module, Patch, Post, Put, RequestMethod, Type, UnauthorizedException } from "@nestjs/common";
+import { Controller, Delete, ExecutionContext, ForbiddenException, Get, Module, Patch, Post, Put, RequestMethod, Type, UnauthorizedException } from "@nestjs/common";
 import {
   GUARDS_METADATA,
   METHOD_METADATA,
@@ -15,6 +15,7 @@ import { Access } from "../common/decorators/access.decorator";
 import { AccessGuard } from "../common/guards/access.guard";
 import { ApiKeyGuard } from "../common/guards/api-key.guard";
 import { CombinedAuthGuard } from "../common/guards/combined-auth.guard";
+import { UserOriginGuard } from "../common/guards/user-origin.guard";
 import { AccessOptions } from "../common/types/access-options";
 import { STAFF_PERMISSIONS } from "./admin-auth/config/staff-permissions";
 import { AdminAudit } from "./admin-auth/decorator/admin-audit.decorator";
@@ -653,6 +654,94 @@ describe("RX-114: every route of AppModule declares its access", () => {
       AUDITED_READ_ROUTES,
     );
     expect(labels(routes.filter((route) => AUDITED_READ_ROUTES.includes(route.label) && isHooked(route)))).toEqual(AUDITED_READ_ROUTES);
+  });
+
+  // RNX-272: UserOriginGuard refuses a cross-origin write to a cookie-authenticated user route. Covered: every POST,
+  // PUT, PATCH and DELETE of a route whose @Access lists `session` or `portal`, derived from the declarations, so a
+  // new route is classified as soon as it declares its access. Every other route is exempt, for the first reason
+  // below that matches it. The real guard runs on each route's own declaration (allowed list: one chat origin).
+  describe("RNX-272: which routes the user Origin check covers, and why the others are exempt", () => {
+    const CHAT_ORIGIN = "https://chat.example.test";
+    const EVIL_ORIGIN = "https://evil.example.test";
+    const UNSAFE_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+    const listsCookieMethod = (route: Route) =>
+      !route.access?.public && (route.access?.auth ?? []).some((method) => method === "session" || method === "portal");
+    const isCovered = (route: Route) => listsCookieMethod(route) && UNSAFE_METHODS.includes(route.method);
+    const ORIGIN_EXEMPT: readonly { readonly reason: string; readonly matches: (route: Route) => boolean }[] = [
+      {
+        reason: "public: no cookie identity is used (webhooks check their own signature, Better Auth its own requests)",
+        matches: (route) => route.access?.public === true,
+      },
+      {
+        reason: "staff (/admin): AdminOriginGuard checks the back-office origin (RX-156)",
+        matches: (route) => !route.access?.public && route.access?.auth?.includes("staff") === true,
+      },
+      {
+        reason: "apiKey: the key is an Authorization header, which a foreign page cannot send without a CORS preflight",
+        matches: (route) => declares(route, ["apiKey"]),
+      },
+      {
+        reason: "a read (GET, HEAD, OPTIONS) of a session or portal route changes nothing",
+        matches: (route) => listsCookieMethod(route) && !UNSAFE_METHODS.includes(route.method),
+      },
+    ];
+    /** True when the guard, with this allowed list, refuses a request of the route's method with these headers. */
+    const isRefused = (route: Route, headers: Record<string, string>, allowedOrigins: string[] | true = [CHAT_ORIGIN]): boolean => {
+      const request = { method: route.method === "ALL" ? "POST" : route.method, headers };
+      const context = {
+        switchToHttp: () => ({ getRequest: () => request }),
+        getHandler: () => route.handler,
+        getClass: () => route.controller,
+      } as unknown as ExecutionContext;
+      try {
+        return !new UserOriginGuard(new Reflector(), allowedOrigins).canActivate(context);
+      } catch (err) {
+        if (err instanceof ForbiddenException) return true;
+        throw err;
+      }
+    };
+
+    it("AC5: covers exactly the session and portal writes, refused with a foreign Origin or with no header", () => {
+      const covered = labels(routes.filter(isCovered));
+
+      expect(covered.length).toBeGreaterThan(0);
+      expect(covered).toEqual([...SESSION_ROUTES, ...PORTAL_ROUTES].filter((label) => UNSAFE_METHODS.includes(label.split(" ")[0])).sort());
+      expect(labels(routes.filter((route) => isRefused(route, { origin: EVIL_ORIGIN })))).toEqual(covered);
+      expect(labels(routes.filter((route) => isRefused(route, {})))).toEqual(covered);
+      expect(labels(routes.filter((route) => isRefused(route, { origin: CHAT_ORIGIN })))).toEqual([]);
+    });
+
+    it("AC5: every other route is exempt for one of the stated reasons", () => {
+      expect(labels(routes.filter((route) => !isCovered(route) && !ORIGIN_EXEMPT.some((group) => group.matches(route))))).toEqual([]);
+    });
+
+    it.each(ORIGIN_EXEMPT.map((group) => [group.reason, group] as const))(
+      "AC5: exempt, %s: no route of the group is refused, with a foreign Origin or with no header",
+      (_reason, group) => {
+        const exempt = routes.filter((route) => !isCovered(route) && group.matches(route));
+
+        expect(exempt.length).toBeGreaterThan(0);
+        expect(labels(exempt.filter((route) => isRefused(route, { origin: EVIL_ORIGIN }) || isRefused(route, {})))).toEqual([]);
+      },
+    );
+
+    it.each([
+      "POST /webhooks/gowa (GowaWebhookController.handleInbound)",
+      "POST /webhooks/payments (PaymentWebhookController.receive)",
+      "POST /v1/knowledge/bases (KnowledgeController.createKnowledgeBase)",
+      "POST /v1/knowledge/bases/:id/upload (KnowledgeController.uploadMarkdown)",
+      "GET /channels (ChannelController.list)",
+    ])("AC4: %s is not refused, without Origin or with a foreign Origin", (label) => {
+      const route = routes.find((found) => found.label === label);
+
+      expect(route).toBeDefined();
+      expect(isRefused(route as Route, {})).toBe(false);
+      expect(isRefused(route as Route, { origin: EVIL_ORIGIN })).toBe(false);
+    });
+
+    it("CORS_ORIGIN unset (the list is `true`): no route is refused, until RNX-70", () => {
+      expect(labels(routes.filter((route) => isRefused(route, { origin: EVIL_ORIGIN }, true) || isRefused(route, {}, true)))).toEqual([]);
+    });
   });
 });
 
