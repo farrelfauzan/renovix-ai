@@ -159,11 +159,14 @@ describe("RNX-203: agent runs through the workspace owner (test database, fake p
     const seedRun = (agentId: string, userId: string) =>
       prisma.agentRun.create({ data: { agentId, userId, sessionId: "s-1", channelType: "web" } });
 
-    it("the creator who does not own the workspace: 404 Agent not found, the run kept", async () => {
+    // RNX-260 (D259, 78): run reads need only "this run is mine", so the owner's run is not the creator's: an empty
+    // list, or 404 Run not found (was 404 Agent not found).
+    it("the creator who does not own the workspace: not the owner's run (empty list or 404 Run not found), the run kept", async () => {
       const { owner, creator, agent } = await seedAgentInOwnersWorkspace();
       const agentRun = await seedRun(agent.id, owner.id);
 
-      await expect(call(creator.id, agent.id, agentRun.id)).rejects.toThrow(new NotFoundException("Agent not found"));
+      if (method === "listRuns") await expect(call(creator.id, agent.id, agentRun.id)).resolves.toEqual([]);
+      else await expect(call(creator.id, agent.id, agentRun.id)).rejects.toThrow(new NotFoundException("Run not found"));
 
       expect(await prisma.agentRun.count({ where: { id: agentRun.id } })).toBe(1);
     });

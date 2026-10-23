@@ -1,13 +1,14 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { AgentRepository } from "../repository/agent.repository";
 import { AgentLinkRepository } from "../repository/agent-link.repository";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 import type { CallableAgent } from "../types/callable-agent";
 import type { RunScope } from "../types/run-scope";
 
 /**
  * RNX-118 (PRD 10, D81): agent links ("Can call"). Only the workspace owner of the caller agent (RNX-203:
- * `workspace.ownerId`) lists, adds or removes its links (403 for anyone else), and both agents are in one workspace
- * (403 otherwise). At run time the linked callees are callable only in a run inside the workspace (RNX-119: the run
+ * `workspace.ownerId`) lists, adds or removes its links (403 for anyone else inside the workspace, 404 outside it,
+ * RNX-260), and both agents are in one workspace (403 otherwise). At run time the linked callees are callable only in a run inside the workspace (RNX-119: the run
  * policy's scope, AgentRunPolicyService); anyone else runs the agent stand-alone (R17).
  */
 @Injectable()
@@ -15,9 +16,10 @@ export class AgentLinkService {
   constructor(
     private readonly agents: AgentRepository,
     private readonly links: AgentLinkRepository,
+    private readonly policy: AgentRunPolicyService,
   ) {}
 
-  /** The links of this agent, each with the callee's public fields: 404 for no agent, 403 for a non-owner. */
+  /** The links of this agent, each with the callee's public fields: as findOwnedAgent. */
   async listLinks(userId: string, agentId: string) {
     await this.findOwnedAgent(userId, agentId);
     return this.links.listLinks(agentId);
@@ -55,13 +57,17 @@ export class AgentLinkService {
     return this.links.listCallableAgents(agent.id, agent.workspaceId);
   }
 
-  /** The agent if this user owns its workspace: 404 when it does not exist, 403 when someone else owns it. */
+  /**
+   * The agent if this user owns its workspace: 404 when it does not exist; when someone else owns it, 403 for a
+   * person inside the workspace (run policy) and 404 for anyone outside it (RNX-260, D259).
+   */
   private async findOwnedAgent(userId: string, agentId: string) {
     const agent = await this.agents.findAgentWorkspaceOwner(agentId);
     if (!agent) throw new NotFoundException("Agent not found");
-    if (agent.workspace.ownerId !== userId) {
+    if (agent.workspace.ownerId === userId) return agent;
+    if (await this.policy.isInsideWorkspace(agent.workspaceId, userId)) {
       throw new ForbiddenException("Only the workspace owner can change this agent's links");
     }
-    return agent;
+    throw new NotFoundException("Agent not found");
   }
 }

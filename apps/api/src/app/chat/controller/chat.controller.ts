@@ -35,12 +35,12 @@ export class ChatController {
     }
 
     if (!parsed.data.stream) {
-      return res.send(
-        await this.chatService.createCompletion(
-          parsed.data as ChatCompletionRequest,
-          req.user,
-        ),
+      const { completion, creditsUsed } = await this.chatService.createCompletion(
+        parsed.data as ChatCompletionRequest,
+        req.user,
       );
+      // RNX-232 (D47): the credits this call used.
+      return res.header("X-Credits-Used", creditsUsed).send(completion);
     }
 
     // RNX-196: the streamed answer. RNX-171: an error after the SSE headers ends that stream, not the process.

@@ -20,6 +20,18 @@ export class CreditLedgerEntryRepository {
   }
 
   /**
+   * RNX-232: the credits this API key's usage entries charged since `since` (the amounts are negative; the sum is
+   * returned as a positive number, 0 without entries), through the (apiKeyId, createdAt) index.
+   */
+  async sumKeyUsageSince(apiKeyId: string, since: Date, tx?: DbTransaction): Promise<Prisma.Decimal> {
+    const { _sum } = await (tx ?? this.prisma).creditLedgerEntry.aggregate({
+      where: { apiKeyId, type: "usage", createdAt: { gte: since } },
+      _sum: { amount: true },
+    });
+    return (_sum.amount ?? new Prisma.Decimal(0)).negated();
+  }
+
+  /**
    * Inserts an entry. A 409 when a unique key is taken: its call already has a usage entry (I3), or its seq or
    * idempotency key is already on the account.
    */

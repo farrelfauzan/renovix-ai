@@ -24,6 +24,7 @@ import { AgentToolRepository } from "../repository/agent-tool.repository";
 import { AgentIntegrationRepository } from "../repository/agent-integration.repository";
 import { AgentKnowledgeBaseRepository } from "../repository/agent-knowledge-base.repository";
 import { AgentChannelRepository } from "../repository/agent-channel.repository";
+import { AgentRunPolicyService } from "./agent-run-policy.service";
 
 /** RNX-118: the tool type that call_agent replaced; a template row of it is not cloned. */
 const REMOVED_DELEGATE_TOOL = "delegate_to_subagent";
@@ -43,6 +44,7 @@ export class AgentService {
     private readonly workspaceService: WorkspaceService,
     private readonly registry: ModelRegistryService,
     private readonly workspaces: WorkspaceRepository,
+    private readonly policy: AgentRunPolicyService,
   ) {}
 
   private async generateUniqueSlug(
@@ -103,11 +105,7 @@ export class AgentService {
   }
 
   async update(userId: string, agentId: string, dto: UpdateAgentDto) {
-    const agent = await this.agents.findUserAgent(agentId, userId);
-
-    if (!agent) {
-      throw new NotFoundException("Agent not found");
-    }
+    const agent = await this.verifyOwnership(userId, agentId);
 
     const data: Record<string, any> = {};
 
@@ -129,32 +127,20 @@ export class AgentService {
   }
 
   async delete(userId: string, agentId: string) {
-    const agent = await this.agents.findUserAgent(agentId, userId);
-
-    if (!agent) {
-      throw new NotFoundException("Agent not found");
-    }
+    await this.verifyOwnership(userId, agentId);
 
     await this.agents.deleteAgent(agentId);
     return { deleted: true };
   }
 
   async publish(userId: string, agentId: string) {
-    const agent = await this.agents.findUserAgent(agentId, userId);
-
-    if (!agent) {
-      throw new NotFoundException("Agent not found");
-    }
+    await this.verifyOwnership(userId, agentId);
 
     return this.agents.updateAgentStatus(agentId, "active");
   }
 
   async updateStatus(userId: string, agentId: string, status: string) {
-    const agent = await this.agents.findUserAgent(agentId, userId);
-
-    if (!agent) {
-      throw new NotFoundException("Agent not found");
-    }
+    await this.verifyOwnership(userId, agentId);
 
     return this.agents.updateAgentStatus(agentId, status);
   }
@@ -287,17 +273,13 @@ export class AgentService {
     if (!kb) throw new NotFoundException("Knowledge base not found");
 
     if (kb.workspaceId) {
-      // A workspace base: only to an agent in the same workspace, by a
-      // current owner or admin of that workspace (RX-113)
-      // RNX-203: verifyOwnership already requires the workspace owner, so the
-      // admin case cannot be reached through the agent routes today; kept for
-      // RX-119 (collaborators managing agents), which owns that branch.
+      // A workspace base: only to an agent in the same workspace, by its
+      // owner (RX-113; RNX-260: collaborators do not manage agents, D259)
       if (agent.workspaceId !== kb.workspaceId) {
         throw new NotFoundException("Knowledge base not found");
       }
       await this.workspaceService.requireRole(kb.workspaceId, userId, [
         "owner",
-        "admin",
       ]);
     } else if (kb.userId !== userId) {
       // A personal base: only its owner's own agents
@@ -498,10 +480,18 @@ export class AgentService {
 
   // ─── Helpers ───
 
+  /**
+   * The agent, when this user owns its workspace (RNX-203), for a write. RNX-260 (D259): 403 for anyone else inside
+   * the agent's workspace (a collaborator, run policy), 404 for anyone outside it (as for an agent they cannot see).
+   */
   private async verifyOwnership(userId: string, agentId: string) {
     const agent = await this.agents.findUserAgent(agentId, userId);
-    if (!agent) throw new NotFoundException("Agent not found");
-    return agent;
+    if (agent) return agent;
+    const target = await this.agents.findAgentWorkspaceId(agentId);
+    if (target && (await this.policy.isInsideWorkspace(target.workspaceId, userId))) {
+      throw new ForbiddenException("Only the workspace owner can change this agent");
+    }
+    throw new NotFoundException("Agent not found");
   }
 
   /**
