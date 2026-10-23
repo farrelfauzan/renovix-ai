@@ -22,6 +22,18 @@ export class CreditReservationRepository {
     return (tx ?? this.prisma).creditReservation.findUniqueOrThrow({ where: { id } });
   }
 
+  /**
+   * RNX-232: what this API key's open reservations still hold (amountHeld - consumed, summed; 0 without any), through
+   * the (apiKeyId, status) index.
+   */
+  async sumOpenKeyHolds(apiKeyId: string, tx?: DbTransaction): Promise<Prisma.Decimal> {
+    const { _sum } = await (tx ?? this.prisma).creditReservation.aggregate({
+      where: { apiKeyId, status: "open" },
+      _sum: { amountHeld: true, consumed: true },
+    });
+    return (_sum.amountHeld ?? new Prisma.Decimal(0)).minus(_sum.consumed ?? 0);
+  }
+
   /** Adds `amount` to the credits charged against the hold of an open reservation (I4 keeps it at most amountHeld). */
   async addConsumed(id: string, amount: Prisma.Decimal, tx: DbTransaction): Promise<void> {
     await tx.creditReservation.update({ where: { id }, data: { consumed: { increment: amount } } });

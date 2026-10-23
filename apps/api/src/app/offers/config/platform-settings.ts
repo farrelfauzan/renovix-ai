@@ -62,4 +62,6 @@ export const PLATFORM_SETTINGS = {
   paymentGatewayFeePercent: z.number().min(0).max(100),
   /** A provider's day is flagged when its portal drop is above our high estimate by more than this percentage of it (RNX-228). */
   reconciliationDriftThresholdPercent: z.number().nonnegative().max(1000),
+  /** Requests per minute per API key, counted in memory on each API instance (D47: 60; RNX-232). */
+  apiKeyRequestsPerMinute: AT_LEAST_ONE,
 } as const;

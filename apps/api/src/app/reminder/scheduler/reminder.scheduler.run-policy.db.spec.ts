@@ -174,6 +174,72 @@ describe("RNX-119: the run policy at reminder fire time (test database, fake pro
     expect(lines.filter((line) => line.includes(`Skipped reminder ${reminder.id}: no_subscription`))).toHaveLength(1);
   });
 
+  /** A due daily reminder of the workspace owner on their own channel, with the agent added. */
+  const ownerReminder = async (ownerId: string, agentId: string) => {
+    const channel = await prisma.channel.create({ data: { userId: ownerId, name: "Owner room" } });
+    await prisma.channelAgent.create({ data: { channelId: channel.id, agentId } });
+    const room = await prisma.channelChatRoom.create({ data: { channelId: channel.id } });
+    return prisma.reminder.create({
+      data: {
+        userId: ownerId,
+        agentId,
+        channelId: channel.id,
+        chatRoomId: room.id,
+        prompt: PROMPT,
+        cronExpression: "0 8 * * *",
+        timezone: "UTC",
+        nextRunAt: new Date(Date.now() - 60_000),
+      },
+    });
+  };
+
+  describe("RNX-260 (D259)", () => {
+    it.each(["draft", "archived"])(
+      "AC5: the agent is %s before the fire time of a collaborator's reminder: the fire is skipped, nothing charged",
+      async (status) => {
+        const { agent, reminder } = await seed();
+        await prisma.agent.update({ where: { id: agent.id }, data: { status } });
+        const { lines } = captureLogLines();
+
+        await scheduler.processReminders();
+
+        await expectSkipped(reminder.id, reminder.nextRunAt);
+        expect(lines.filter((line) => line.includes(`Skipped reminder ${reminder.id}: not_runnable`))).toHaveLength(1);
+      },
+    );
+
+    it("AC5: the owner's reminder of a draft agent fires (control: the owner runs an agent of any status)", async () => {
+      const { owner, agent, reminder: collaboratorReminder } = await seed();
+      await prisma.reminder.delete({ where: { id: collaboratorReminder.id } });
+      await prisma.agent.update({ where: { id: agent.id }, data: { status: "draft" } });
+      const reminder = await ownerReminder(owner.id, agent.id);
+      fake.enqueue({ content: "Here is your summary", usage: { prompt_tokens: 100, completion_tokens: 10 } });
+
+      await scheduler.processReminders();
+
+      expect(fake.requests).toHaveLength(1);
+      expect((await prisma.reminder.findUniqueOrThrow({ where: { id: reminder.id } })).lastRunAt).not.toBeNull();
+    });
+
+    it.each(["archived", "deleted"])(
+      "AC6: the workspace is %s: the owner's and the collaborator's fires are skipped, nothing charged",
+      async (status) => {
+        const { owner, workspace, agent, reminder } = await seed();
+        const ownersReminder = await ownerReminder(owner.id, agent.id);
+        await prisma.workspace.update({ where: { id: workspace.id }, data: { status } });
+        const { lines } = captureLogLines();
+
+        await scheduler.processReminders();
+
+        await expectSkipped(reminder.id, reminder.nextRunAt);
+        await expectSkipped(ownersReminder.id, ownersReminder.nextRunAt);
+        for (const id of [reminder.id, ownersReminder.id]) {
+          expect(lines.filter((line) => line.includes(`Skipped reminder ${id}: workspace_closed`))).toHaveLength(1);
+        }
+      },
+    );
+  });
+
   it("a skipped reminder is not picked again in the next minute (no retry loop)", async () => {
     const { membership, reminder } = await seed();
     await prisma.workspaceMember.update({ where: { id: membership!.id }, data: { status: "removed" } });

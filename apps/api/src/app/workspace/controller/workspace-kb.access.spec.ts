@@ -15,6 +15,7 @@ import { EmbeddingService } from "../../knowledge/service/embedding.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { AgentController } from "../../agent/controller/agent.controller";
 import { AgentService } from "../../agent/service/agent.service";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { PortalController } from "../../portal/controller/portal.controller";
 import { PortalTierService } from "../../portal/service/portal-tier.service";
 import { ConversationService } from "../../chat/service/conversation.service";
@@ -86,6 +87,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
         WorkspaceQuotaService,
         WorkspaceKnowledgeService,
         AgentService,
+        AgentRunPolicyService,
         ConversationService,
         { provide: EmbeddingService, useValue: embedding },
         { provide: S3Service, useValue: {} },
@@ -326,14 +328,15 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
     });
 
     // RNX-203: an agent belongs to its workspace's owner; an admin or member who created it there no longer reaches it
-    // (RX-113 answered 201 for an admin and 403 for a member).
-    it.each(["admin", "member"] as const)("a current %s cannot attach the workspace base to an agent they created there (404)", async (actor) => {
+    // (RX-113 answered 201 for an admin and 403 for a member). RNX-260 (D259): a collaborator inside the workspace gets
+    // 403 on an agent write (was 404); 404 is for people outside it.
+    it.each(["admin", "member"] as const)("a current %s cannot attach the workspace base to an agent they created there (403)", async (actor) => {
       const ctx = await setup();
       const agent = await createAgent(prisma, { userId: ctx[actor].id, workspaceId: ctx.workspace.id });
 
       const res = await attach(agent.id, ctx.kb.id, ctx[actor]);
 
-      expect(res.statusCode).toBe(404);
+      expect(res.statusCode).toBe(403);
       expect(await prisma.agentKnowledgeBase.count()).toBe(0);
     });
 
