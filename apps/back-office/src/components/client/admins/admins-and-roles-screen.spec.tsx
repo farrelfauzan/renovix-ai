@@ -434,6 +434,21 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       expect(screen.queryByRole("dialog", { name: "Create a role" })).toBeNull();
     });
 
+    it("offers profit:read and reconciliation:write and sends them with a custom role (RNX-269)", async () => {
+      const fake = createFakeApi();
+      await renderScreen(fake);
+      click("Create role");
+      const form = screen.getByRole("dialog", { name: "Create a role" });
+      fireEvent.change(within(form).getByLabelText("Role name"), { target: { value: "profit_viewer" } });
+      fireEvent.click(within(form).getByLabelText("profit:read"));
+      fireEvent.click(within(form).getByLabelText("reconciliation:write"));
+
+      fireEvent.click(within(form).getByRole("button", { name: "Save role" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Create a role" })).toBeNull());
+      expect(fake.state.roles.at(-1)).toMatchObject({ name: "profit_viewer", permissions: ["profit:read", "reconciliation:write"] });
+    });
+
     it("edits a custom role after re-authentication, sending only what changed", async () => {
       const fake = createFakeApi();
       await renderScreen(fake);
