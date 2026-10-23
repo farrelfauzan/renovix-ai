@@ -2,6 +2,7 @@ import type { AutoGoPayRequestOptions } from "../src/app/payments/types/autogopa
 import type { AutoGoPayResponse } from "../src/app/payments/types/autogopay-response";
 import type { AutoGoPayTransport } from "../src/app/payments/types/autogopay-transport";
 import { autoGoPayFixtures as fx } from "./autogopay-fixtures";
+import { toAutoGoPayTime } from "./to-autogopay-time";
 
 type Answer = AutoGoPayResponse | Error | "timeout" | "slow";
 type Call = { readonly path: string; readonly body: Readonly<Record<string, unknown>>; readonly options: AutoGoPayRequestOptions };
@@ -9,8 +10,9 @@ type Call = { readonly path: string; readonly body: Readonly<Record<string, unkn
 const QUARTER_HOUR_MS = 15 * 60_000;
 
 /**
- * RNX-229: a scriptable AutoGoPay transport for the payments specs, answering the recorded fixtures (no network).
- * Each generate answers a new transaction id (`agp-test-txn-<n>`) expiring in 15 minutes; a status check answers what
+ * RNX-229, RNX-273: a scriptable AutoGoPay transport for the payments specs, answering the recorded fixtures (no
+ * network), every answer in the documented envelope `{ success, message, data }` with WIB date-times. Each generate
+ * answers a new transaction id (`agp-test-txn-<n>`) expiring in 15 minutes; a status check answers what
  * was set for its transaction id (pending by default). "timeout" rejects at once as AbortSignal.timeout does; "slow"
  * answers nothing and rejects only when the call's own timeout runs out; an Error is thrown as it is. Every call is recorded.
  */
@@ -34,8 +36,8 @@ export class ScriptedAutoGoPayTransport implements AutoGoPayTransport {
 
   /** The status check of this transaction answers `transaction_status` with the amount (and paid_at now for a settlement). */
   setStatus(transactionId: string, transactionStatus: string, amount?: number): void {
-    const paidAt = transactionStatus === "settlement" ? { paid_at: new Date().toISOString() } : {};
-    this.statuses.set(transactionId, { status: 200, body: { transaction_id: transactionId, transaction_status: transactionStatus, amount, ...paidAt } });
+    const paidAt = transactionStatus === "settlement" ? { paid_at: toAutoGoPayTime(new Date()) } : {};
+    this.statuses.set(transactionId, { status: 200, body: { success: true, message: "Status retrieved", data: { transaction_id: transactionId, transaction_status: transactionStatus, amount, ...paidAt } } });
   }
 
   /** The status check of this transaction answers this (a raw answer, "timeout" or "slow"). */
@@ -62,7 +64,8 @@ export class ScriptedAutoGoPayTransport implements AutoGoPayTransport {
   private newCharge(amount: number): AutoGoPayResponse {
     this.count += 1;
     const transactionId = `agp-test-txn-${this.count}`;
-    return { status: 200, body: { ...fx.generate.success.body, transaction_id: transactionId, amount, expiry_time: new Date(Date.now() + QUARTER_HOUR_MS).toISOString() } };
+    const data = { ...fx.generate.success.body.data, transaction_id: transactionId, amount, expiry_time: toAutoGoPayTime(new Date(Date.now() + QUARTER_HOUR_MS)) };
+    return { status: 200, body: { ...fx.generate.success.body, data } };
   }
 
   private settle(answer: Answer, options: AutoGoPayRequestOptions): Promise<AutoGoPayResponse> {
