@@ -54,11 +54,14 @@ export class BackOfficeProbeController {
 const ROLES_MIGRATION = resolve(__dirname, "../../../prisma/migrations/20261014200000_baseline/migration.sql");
 /** The migration that grants `audit:read` to the built-in roles but Support (RX-164, D138). */
 const AUDIT_READ_MIGRATION = resolve(__dirname, "../../../prisma/migrations/20261015200000_audit_read_permission/migration.sql");
+/** The migration that grants `profit:read` and `reconciliation:write` to owner and finance (RNX-228). */
+const PROFIT_PERMISSIONS_MIGRATION = resolve(__dirname, "../../../prisma/migrations/20261022040000_profit_reconciliation_permissions/migration.sql");
 
 /**
  * Inserts the built-in roles again, with the migrations' own statements: the baseline INSERT, then
- * RX-164's `audit:read` grant (resetDatabase empties `admin_roles` like every other table). Roles that
- * exist are left as they are, and a role that holds `audit:read` already does not get it twice.
+ * RX-164's `audit:read` grant and RNX-228's `profit:read` and `reconciliation:write` grants (resetDatabase
+ * empties `admin_roles` like every other table). Roles that exist are left as they are, and a role that
+ * holds a granted permission already does not get it twice.
  */
 export async function seedAdminRoles(prisma: PrismaService): Promise<void> {
   const insert = /INSERT INTO "admin_roles"[\s\S]*?ON CONFLICT \("name"\) DO NOTHING;/.exec(readFileSync(ROLES_MIGRATION, "utf8"));
@@ -67,6 +70,9 @@ export async function seedAdminRoles(prisma: PrismaService): Promise<void> {
   const grant = /UPDATE "admin_roles"[\s\S]*?;/.exec(readFileSync(AUDIT_READ_MIGRATION, "utf8"));
   if (!grant) throw new Error(`no UPDATE "admin_roles" in ${AUDIT_READ_MIGRATION}`);
   await prisma.$executeRawUnsafe(grant[0]);
+  const profitGrants = readFileSync(PROFIT_PERMISSIONS_MIGRATION, "utf8").match(/UPDATE "admin_roles"[\s\S]*?;/g) ?? [];
+  if (profitGrants.length !== 2) throw new Error(`expected two UPDATE "admin_roles" in ${PROFIT_PERMISSIONS_MIGRATION}`);
+  for (const statement of profitGrants) await prisma.$executeRawUnsafe(statement);
 }
 
 /** Creates an admin with ADMIN_PASSWORD (built-in roles seeded first); `enrolled` gives them an active TOTP secret (returned). */

@@ -198,10 +198,13 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/providers (AdminProvidersController.list)",
     "GET /admin/providers/:id (AdminProvidersController.get)",
     "GET /admin/providers/:providerId/models (AdminProviderModelsController.list)",
+    "GET /admin/reconciliation (AdminReconciliationController.report)",
     "GET /admin/roles (AdminRolesController.list)",
     "GET /admin/settings (AdminSettingsController.list)",
     "GET /admin/top-up-packs (AdminTopUpPacksController.list)",
     "GET /admin/top-up-packs/:id (AdminTopUpPacksController.get)",
+    "GET /admin/usage/daily (AdminUsageController.daily)",
+    "GET /admin/usage/profit (AdminUsageController.profit)",
     "PATCH /admin/codes/:id (AdminCodesController.deactivate)",
     "PATCH /admin/enterprise-bundles/:id (AdminEnterpriseBundlesController.update)",
     "PATCH /admin/packages/:id (AdminPackagesController.update)",
@@ -224,8 +227,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
     "POST /admin/providers/:id/test (AdminProvidersController.test)",
     "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)",
+    "POST /admin/reconciliation/entries (AdminReconciliationController.record)",
     "POST /admin/roles (AdminRolesController.create)",
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)",
+    "POST /admin/usage/users/:userId/email (AdminUsageController.revealEmail)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
     "PUT /admin/settings/:name (AdminSettingsController.save)",
   ];
@@ -294,6 +299,13 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/top-up-packs/:id (AdminTopUpPacksController.get)": ["packages:read"],
     "PATCH /admin/top-up-packs/:id (AdminTopUpPacksController.update)": ["packages:write"],
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)": ["packages:write"],
+    // RNX-228: token counts need usage:read; cost, revenue, profit, margin and the reconciliation report need
+    // profit:read; a portal balance entry needs reconciliation:write; an email reveal needs users:read_pii too.
+    "GET /admin/usage/daily (AdminUsageController.daily)": ["usage:read"],
+    "GET /admin/usage/profit (AdminUsageController.profit)": ["profit:read"],
+    "POST /admin/usage/users/:userId/email (AdminUsageController.revealEmail)": ["usage:read", "users:read_pii"],
+    "GET /admin/reconciliation (AdminReconciliationController.report)": ["profit:read"],
+    "POST /admin/reconciliation/entries (AdminReconciliationController.record)": ["reconciliation:write"],
   };
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
@@ -432,8 +444,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/providers (AdminProvidersController.create)",
     "POST /admin/providers/:id/activate (AdminProvidersController.activate)",
     "POST /admin/providers/:providerId/models (AdminProviderModelsController.create)",
+    "POST /admin/reconciliation/entries (AdminReconciliationController.record)",
     "POST /admin/roles (AdminRolesController.create)",
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)",
+    "POST /admin/usage/users/:userId/email (AdminUsageController.revealEmail)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
     "PUT /admin/settings/:name (AdminSettingsController.save)",
   ];
