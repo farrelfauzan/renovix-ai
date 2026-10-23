@@ -1474,6 +1474,25 @@
                       "1y",
                       "never"
                     ]
+                  },
+                  "allowedTiers": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "standard",
+                        "advanced",
+                        "premium",
+                        "frontier"
+                      ]
+                    }
+                  },
+                  "monthlyCreditCap": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "exclusiveMaximum": 1000000000000,
+                    "multipleOf": 0.000001
                   }
                 },
                 "required": [

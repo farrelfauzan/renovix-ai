@@ -26,7 +26,8 @@
     "perRunCreditCapFloor": 1,
     "seatCeiling": 100,
     "projectionMinSpendCredits": null,
-    "projectionMaxDays": null
+    "projectionMaxDays": null,
+    "apiKeyRequestsPerMinute": 60
   },
   "packages": [
     { "name": "Starter", "displayOrder": 1, "active": false, "visible": false, "version": null },
