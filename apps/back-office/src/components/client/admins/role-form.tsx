@@ -29,10 +29,10 @@ export function RoleForm({ role, onSave, onClose }: RoleFormProps) {
     setError(message);
   };
   return (
-    <form role="dialog" aria-label={role ? `Edit role ${role.name}` : "Create a role"} onSubmit={submit} className="mt-4 flex max-w-xl flex-col gap-3 rounded border border-neutral-300 p-4">
+    <form role="dialog" aria-label={role ? `Edit role ${role.name}` : "Create a role"} onSubmit={submit} className="mt-4 flex max-w-xl flex-col gap-3 rounded-rx border border-rx-line p-4">
       <label className="flex flex-col gap-1 text-sm">
         Role name
-        <input name="name" required pattern="[a-z][a-z0-9_\-]{0,63}" value={name} onChange={(event) => setName(event.target.value)} className="rounded border border-neutral-300 px-2 py-1" />
+        <input name="name" required pattern="[a-z][a-z0-9_\-]{0,63}" value={name} onChange={(event) => setName(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
       </label>
       <fieldset className="grid grid-cols-2 gap-1 text-sm">
         <legend className="mb-1">Permissions (admins:write and roles:write stay with the Owner role)</legend>
@@ -43,10 +43,10 @@ export function RoleForm({ role, onSave, onClose }: RoleFormProps) {
           </label>
         ))}
       </fieldset>
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       <div className="flex gap-2">
-        <button type="submit" className="rounded border border-neutral-300 px-3 py-1 text-sm">Save role</button>
-        <button type="button" onClick={onClose} className="rounded border border-neutral-300 px-3 py-1 text-sm">Cancel</button>
+        <button type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm">Save role</button>
+        <button type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Cancel</button>
       </div>
     </form>
   );
