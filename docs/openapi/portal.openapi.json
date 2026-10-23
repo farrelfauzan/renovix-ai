@@ -4672,7 +4672,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
@@ -4703,7 +4703,7 @@
         },
         "security": [
           {
-            "JwtOrSession": []
+            "SessionCookie": []
           }
         ],
         "tags": [
