@@ -2297,6 +2297,94 @@
         ]
       }
     },
+    "/api/v1/admin/reconciliation": {
+      "get": {
+        "description": "Back-office route (staff permissions: profit:read)",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions profit:read"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/reconciliation/entries": {
+      "post": {
+        "description": "Back-office route (staff permissions: reconciliation:write)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "providerId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "day": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "portalBalanceUsd": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+                  },
+                  "topUpUsd": {
+                    "default": "0",
+                    "type": "string",
+                    "pattern": "^(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+                  }
+                },
+                "required": [
+                  "providerId",
+                  "day",
+                  "portalBalanceUsd"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions reconciliation:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/roles": {
       "get": {
         "description": "Back-office route (staff permissions: roles:read)",
@@ -2334,7 +2422,7 @@
                     "pattern": "^[a-z][a-z0-9_-]{0,63}$"
                   },
                   "permissions": {
-                    "maxItems": 28,
+                    "maxItems": 30,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -2366,7 +2454,9 @@
                         "roles:write",
                         "settings:read",
                         "settings:write",
-                        "audit:read"
+                        "audit:read",
+                        "profit:read",
+                        "reconciliation:write"
                       ]
                     }
                   }
@@ -2429,7 +2519,7 @@
                     "pattern": "^[a-z][a-z0-9_-]{0,63}$"
                   },
                   "permissions": {
-                    "maxItems": 28,
+                    "maxItems": 30,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -2461,7 +2551,9 @@
                         "roles:write",
                         "settings:read",
                         "settings:write",
-                        "audit:read"
+                        "audit:read",
+                        "profit:read",
+                        "reconciliation:write"
                       ]
                     }
                   }
@@ -2798,6 +2890,113 @@
           },
           "403": {
             "description": "Forbidden: needs staff permissions packages:write"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/usage/daily": {
+      "get": {
+        "description": "Back-office route (staff permissions: usage:read)",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions usage:read"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/usage/profit": {
+      "get": {
+        "description": "Back-office route (staff permissions: profit:read)",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions profit:read"
+          }
+        },
+        "security": [
+          {
+            "BackOfficeSession": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/usage/users/:userId/email": {
+      "post": {
+        "description": "Back-office route (staff permissions: usage:read, users:read_pii)",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "403": {
+            "description": "Forbidden: needs staff permissions usage:read, users:read_pii"
           }
         },
         "security": [

@@ -9,6 +9,8 @@ import { AdminSessionRepository } from "../admin-auth/repository/admin-session.r
 import { AdminUserRepository } from "../admin-auth/repository/admin-user.repository";
 import { ProviderRepository } from "../admin-providers/repository/provider.repository";
 import { ProviderKeyCryptoService } from "../admin-providers/service/provider-key-crypto.service";
+import { ProviderReconciliationRepository } from "../admin-usage/repository/provider-reconciliation.repository";
+import { UsageRollupRepository } from "../admin-usage/repository/usage-rollup.repository";
 import { AgentChannelRepository } from "../agent/repository/agent-channel.repository";
 import { AgentIntegrationRepository } from "../agent/repository/agent-integration.repository";
 import { AgentKnowledgeBaseRepository } from "../agent/repository/agent-knowledge-base.repository";
@@ -65,6 +67,8 @@ const REPOSITORIES = [
   AdminSessionRepository,
   AdminUserRepository,
   ProviderRepository,
+  ProviderReconciliationRepository,
+  UsageRollupRepository,
   AgentChannelRepository,
   AgentIntegrationRepository,
   AgentKnowledgeBaseRepository,

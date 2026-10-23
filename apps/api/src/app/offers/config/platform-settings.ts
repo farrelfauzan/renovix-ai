@@ -56,4 +56,10 @@ export const PLATFORM_SETTINGS = {
   graceDays: COUNT,
   /** High-severity guardrail violations within a fixed 7-day window that make a repeat offender (D59, PRD 09 F9; no value). */
   repeatOffenderThreshold: AT_LEAST_ONE,
+  // RNX-228: the profit report and the provider reconciliation. No values (D46, D250): until set, the net margin and the
+  // reconciliation flag are not computed.
+  /** The payment gateway's fee, as a percentage (0 to 100) of the gross amount charged; the net margin deducts it (RNX-228). */
+  paymentGatewayFeePercent: z.number().min(0).max(100),
+  /** A provider's day is flagged when its portal drop is above our high estimate by more than this percentage of it (RNX-228). */
+  reconciliationDriftThresholdPercent: z.number().nonnegative().max(1000),
 } as const;
