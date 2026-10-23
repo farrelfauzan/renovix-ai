@@ -1,6 +1,4 @@
 import { Module } from "@nestjs/common";
-import { ConfigModule, ConfigService } from "@nestjs/config";
-import { JwtModule } from "@nestjs/jwt";
 import { AdminSessionModule } from "../app/admin-auth/admin-session.module";
 import { ApiKeyRateLimitService } from "../app/auth/service/api-key-rate-limit.service";
 import { ApiKeyService } from "../app/auth/service/api-key.service";
@@ -17,17 +15,7 @@ import { CombinedAuthGuard } from "./guards/combined-auth.guard";
  * module both import it and register `AdminOriginGuard`, then `AccessGuard`, as APP_GUARDs.
  */
 @Module({
-  imports: [
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.getOrThrow<string>("JWT_SECRET"),
-        signOptions: { expiresIn: "7d" },
-      }),
-    }),
-    AdminSessionModule,
-  ],
+  imports: [AdminSessionModule],
   providers: [
     AccessGuard,
     AdminOriginGuard,

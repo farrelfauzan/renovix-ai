@@ -20,9 +20,9 @@ import { CombinedAuthGuard } from "./combined-auth.guard";
 /**
  * The methods that carry a credential. A valid one that the route does not
  * list answers 403 instead of 401. `X-Portal-Session` alone is not one: it is
- * an unverified id, not a signed-in user.
+ * an unverified id, not a signed-in user. A login JWT is no credential at all (RNX-225).
  */
-const CREDENTIAL_METHODS: readonly AccessMethod[] = ["jwt", "session", "apiKey"];
+const CREDENTIAL_METHODS: readonly AccessMethod[] = ["session", "apiKey"];
 
 /**
  * The one global guard (APP_GUARD): reads the route's `@Access` declaration
@@ -74,8 +74,8 @@ export class AccessGuard implements CanActivate {
       if (result === true) return true;
       rejection ??= result || undefined;
     }
-    // A portal route takes the login JWT or the session as its optional user:
-    // without `X-Portal-Session` it answers 401 whatever else the request carries.
+    // A portal route takes the session as its optional user and refuses no other credential. Since
+    // RNX-225 PortalGuard always accepts (a request without a portal session gets a new one).
     const others = accepted.includes("portal")
       ? []
       : CREDENTIAL_METHODS.filter((method) => !accepted.includes(method));
@@ -126,8 +126,6 @@ export class AccessGuard implements CanActivate {
   ): Promise<boolean | UnauthorizedException> {
     try {
       switch (method) {
-        case "jwt":
-          return this.combinedAuthGuard.tryJwt(context);
         case "session":
           return await this.combinedAuthGuard.trySession(context);
         case "apiKey":

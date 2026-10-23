@@ -28,7 +28,7 @@ export class WorkspaceInviteController {
 
   @Post("accept")
   @HttpCode(200)
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async acceptInvite(@Body() body: unknown, @Req() req: any) {
     const parsed = AcceptInviteSchema.safeParse(body);
     if (!parsed.success) {

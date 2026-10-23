@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { WorkspaceController } from "./workspace.controller";
 import { WorkspaceService } from "../service/workspace.service";
 import { WorkspaceMemberService } from "../service/workspace-member.service";
@@ -11,6 +10,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-117 (D219, second decision, option a): the default workspace is hidden from the workspace routes.
 // GET /workspaces leaves it out, and every /workspaces/:id route answers 404 "Workspace not found" for it and
@@ -19,8 +19,6 @@ import { createAgent, createPlan, createSubscription, createUser, createWorkspac
 // (RX-113). Real controller and services, test database; email sending is a stub.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 jest.mock("../../email/service/email-job.service", () => ({ EmailJobService: class {} }));
-
-process.env.JWT_SECRET = "rnx117-hidden-test-jwt-secret";
 
 type Ids = { workspaceId: string; memberId: string; inviteId: string };
 type Route = { method: "GET" | "PATCH" | "DELETE" | "POST"; url: (ids: Ids) => string; payload?: object };
@@ -66,9 +64,7 @@ describe("RNX-117: the default workspace is hidden from the workspace routes (Fa
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   const readRows = () =>
     Promise.all([

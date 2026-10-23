@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { WorkspaceController } from "./workspace.controller";
 import { WorkspaceChannelController } from "./workspace-channel.controller";
 import { WorkspaceService } from "../service/workspace.service";
@@ -15,9 +14,10 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-15 characterization: workspace membership and roles as they are today,
-// through the real controllers and services (CombinedAuthGuard JWT path, test
+// through the real controllers and services (CombinedAuthGuard session path, test
 // database). Roles: owner | admin | member | viewer; membership status
 // active | removed. Checks: WorkspaceService.requireMembership / requireRole,
 // WorkspaceChannelController.resolveWorkspace. Embeddings are a zero-vector
@@ -29,8 +29,6 @@ jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => n
 jest.mock("../../email/service/email-job.service", () => ({ EmailJobService: class {} }));
 jest.mock("../../knowledge/service/embedding.service", () => ({ EmbeddingService: class {} }));
 jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }));
-
-process.env.JWT_SECRET = "rx15-test-jwt-secret";
 
 type Actor = "owner" | "admin" | "member" | "viewer" | "removed" | "outsider";
 const MEMBERS: Actor[] = ["owner", "admin", "member", "viewer"];
@@ -66,9 +64,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   // One workspace (linked to the owner's channel) with one user per actor.
   const setup = async () => {

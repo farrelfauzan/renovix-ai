@@ -106,8 +106,6 @@ const ROWS: readonly Row[] = [
   { route: "POST /chat/portal/completions", body: { messages: 1 }, details: ["messages"] },
   { route: "POST /export", body: { markdown: 1, format: "pdf" }, details: ["markdown"] },
   // ─── auth ───
-  { route: "POST /auth/register", body: { email: "not-an-email" }, details: ["email", "password"] },
-  { route: "POST /auth/login", body: { email: 1 }, details: ["email", "password"] },
   { route: "PATCH /auth/me", body: NOT_AN_OBJECT },
   { route: "POST /auth/keys", body: NOT_AN_OBJECT },
   // ─── billing ───

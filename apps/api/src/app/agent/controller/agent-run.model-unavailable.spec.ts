@@ -4,7 +4,6 @@ import { AddressInfo } from "node:net";
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentRunController } from "./agent-run.controller";
 import { AgentRunService } from "../service/agent-run.service";
 import { AgentRunMeterService } from "../service/agent-run-meter.service";
@@ -31,6 +30,7 @@ import { captureLogs, sseErrorMessages } from "../../../../test/sse-client";
 import { AgentLinkService } from "../service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-178 review B1: POST /agents/:id/chat answers 400 with the fixed text for an agent whose model cannot be resolved
 // (an old slug with no model row, or a model on an inactive provider), BEFORE the document-intent classifier call, the
@@ -165,11 +165,11 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
     const plan = await createPlan(prisma);
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
     const agent = await createAgent(prisma, { userId: user.id, model: slug });
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+    const session = asSessionUser(user);
 
     const res = await send({
       url: `${appUrl}/agents/${agent.id}/chat`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: session,
       body: { message: "Hi" },
     });
 
@@ -196,9 +196,9 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id, model: "fake/usable-standard" });
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+    const session = asSessionUser(user);
 
-    const res = await send({ url: `${appUrl}/agents/${agent.id}/chat`, headers: { authorization: `Bearer ${token}` }, body: { message: "Hi" } });
+    const res = await send({ url: `${appUrl}/agents/${agent.id}/chat`, headers: session, body: { message: "Hi" } });
 
     expect(provider.requests.length).toBeGreaterThan(1); // the classifier and the run both reached the stub
     expect({

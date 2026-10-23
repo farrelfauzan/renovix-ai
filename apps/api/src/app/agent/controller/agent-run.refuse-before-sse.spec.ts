@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentRunController } from "./agent-run.controller";
 import { AgentRunService } from "../service/agent-run.service";
 import { AgentRunMeterService } from "../service/agent-run-meter.service";
@@ -30,6 +29,7 @@ import { requestOverSocket } from "../../../../test/sse-client";
 import { AgentLinkService } from "../service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-200: POST /agents/:id/chat answers its refusals (no subscription, no credits, a first call over the per-run cap)
 // as real HTTP answers with their JSON body and code, before the document-intent classifier call and the SSE headers;
@@ -114,21 +114,21 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
     await app?.close();
   });
 
-  /** A user (subscribed unless `subscribed` is false) funded with `credits` (none for "0"), with an agent and a token. */
+  /** A user (subscribed unless `subscribed` is false) funded with `credits` (none for "0"), with an agent and a session cookie. */
   const seed = async ({ credits, subscribed = true }: { credits: string; subscribed?: boolean }) => {
     const user = await createUser(prisma);
     if (subscribed) await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
     if (credits !== "0") await fundPaidWallet(prisma, user.id, credits);
     const agent = await createAgent(prisma, { userId: user.id });
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
-    return { user, agent, token };
+    const session = asSessionUser(user);
+    return { user, agent, session };
   };
 
-  const postChat = (agentId: string, token: string) =>
+  const postChat = (agentId: string, session: { cookie: string }) =>
     requestOverSocket(app, {
       method: "POST",
       path: `/agents/${agentId}/chat`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: session,
       body: { message: "Hi" },
     });
 
@@ -140,10 +140,10 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
   });
 
   it("AC1: a subscribed user with 0 ledger credits → HTTP 402 CREDITS_EXHAUSTED, no SSE header, no model call (classifier included), nothing saved", async () => {
-    const { agent, token } = await seed({ credits: "0" });
+    const { agent, session } = await seed({ credits: "0" });
     const providerChat = jest.spyOn(moduleRef.get(ProviderRouter), "chat");
 
-    const res = await postChat(agent.id, token);
+    const res = await postChat(agent.id, session);
 
     expect([res.statusCode, res.contentType]).toEqual([402, expect.stringContaining("application/json")]);
     expect(JSON.parse(res.body)).toEqual({ statusCode: 402, code: "CREDITS_EXHAUSTED", message: "Not enough credits" });
@@ -153,11 +153,11 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
   });
 
   it("AC2: a first call over the per-run cap → HTTP 402 RUN_CAP_EXCEEDED naming the cap, no SSE header, no model call, nothing saved", async () => {
-    const { agent, token } = await seed({ credits: "1" });
+    const { agent, session } = await seed({ credits: "1" });
     await setRunCap(prisma, 0.001);
     const providerChat = jest.spyOn(moduleRef.get(ProviderRouter), "chat");
 
-    const res = await postChat(agent.id, token);
+    const res = await postChat(agent.id, session);
 
     expect([res.statusCode, res.contentType]).toEqual([402, expect.stringContaining("application/json")]);
     expect(JSON.parse(res.body)).toEqual({
@@ -171,9 +171,9 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
   });
 
   it("no active subscription → HTTP 403 before the SSE header and any model call, nothing saved", async () => {
-    const { agent, token } = await seed({ credits: "1", subscribed: false });
+    const { agent, session } = await seed({ credits: "1", subscribed: false });
 
-    const res = await postChat(agent.id, token);
+    const res = await postChat(agent.id, session);
 
     expect([res.statusCode, res.contentType]).toEqual([403, expect.stringContaining("application/json")]);
     expect(fake.requests).toHaveLength(0);
@@ -182,11 +182,11 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
   });
 
   it("AC3: a refusal after the SSE headers (the run's reservation refused, forced) → the SSE error event carries CREDITS_EXHAUSTED; no run or message; MCP cleaned up once", async () => {
-    const { agent, token } = await seed({ credits: "1" });
+    const { agent, session } = await seed({ credits: "1" });
     fake.enqueue({ content: "none" }); // the document-intent classifier
     jest.spyOn(moduleRef.get(CreditService), "reserveRun").mockRejectedValueOnce(new CreditsExhaustedException());
 
-    const res = await postChat(agent.id, token);
+    const res = await postChat(agent.id, session);
 
     expect([res.statusCode, res.contentType, res.ended]).toEqual([200, "text/event-stream", true]);
     expect(sseErrors(res.body)).toEqual([{ code: "CREDITS_EXHAUSTED", message: "Not enough credits" }]);
@@ -197,10 +197,10 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
   });
 
   it("AC5: a funded subscribed user → 200 SSE with the reply, the classifier then the run, one settled reservation, both messages saved", async () => {
-    const { user, agent, token } = await seed({ credits: "1" });
+    const { user, agent, session } = await seed({ credits: "1" });
     fake.enqueue({ content: "none" }, { content: "Hello there", usage: { prompt_tokens: 10, completion_tokens: 5 } });
 
-    const res = await postChat(agent.id, token);
+    const res = await postChat(agent.id, session);
 
     expect([res.statusCode, res.contentType, res.ended]).toEqual([200, "text/event-stream", true]);
     expect(res.body).toContain(JSON.stringify({ choices: [{ delta: { content: "Hello there" } }] }));

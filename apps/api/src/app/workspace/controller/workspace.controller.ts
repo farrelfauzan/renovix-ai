@@ -23,7 +23,7 @@ import { UpdateMemberSchema } from "../dto/update-member.dto";
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("workspaces")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class WorkspaceController {
   constructor(
     private readonly workspaceService: WorkspaceService,

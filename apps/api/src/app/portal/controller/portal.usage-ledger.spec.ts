@@ -1,5 +1,4 @@
 import { ConfigModule } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
@@ -25,6 +24,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-186: GET /chat/portal/usage is the chat app's one balance read (header and top-up page): the ledger's paid
 // wallet, never User.balance (gone). The second case is the top-up page's flow: a code redemption grants on the
@@ -97,7 +97,7 @@ describe("RNX-186: the chat balance read is the ledger account (Fastify, test da
 
   const headersOf = (user: { id: string; email: string }) => ({
     "x-portal-session": SESSION,
-    authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: user.email })}`,
+    ...asSessionUser(user),
   });
 
   /** The user's paid account row: available credits (balance - held), as the API formats them. */

@@ -9,27 +9,20 @@ jest.mock("../../lib/auth", () => ({
   auth: { api: { getSession: (...args: unknown[]) => mockGetSession(...args) } },
 }));
 
-const SECRET = "rx15-test-jwt-secret";
 
 type TestRequest = { headers: Record<string, string>; user?: unknown };
 const contextFor = (request: TestRequest) =>
   ({ switchToHttp: () => ({ getRequest: () => request }) }) as unknown as ExecutionContext;
 
-const sign = (payload: object, secret = SECRET, options: jwt.SignOptions = {}) =>
+/** A JWT signed like a login token of POST /auth/login before RNX-225: with the app's JWT_SECRET (setup-env.ts's test value). */
+const sign = (payload: object, secret = process.env.JWT_SECRET!, options: jwt.SignOptions = {}) =>
   jwt.sign(payload, secret, options);
 
 describe("CombinedAuthGuard (RX-15 characterization)", () => {
   let guard: CombinedAuthGuard;
-  const savedSecret = process.env.JWT_SECRET;
 
   beforeAll(() => {
-    process.env.JWT_SECRET = SECRET; // read once, in the constructor
     guard = new CombinedAuthGuard();
-  });
-
-  afterAll(() => {
-    if (savedSecret === undefined) delete process.env.JWT_SECRET;
-    else process.env.JWT_SECRET = savedSecret;
   });
 
   beforeEach(() => {
@@ -42,47 +35,14 @@ describe("CombinedAuthGuard (RX-15 characterization)", () => {
     return { request, result: guard.canActivate(contextFor(request)) };
   };
 
-  describe("JWT path", () => {
-    it("valid JWT: allowed, req.user = { userId, email } from the token", async () => {
-      const token = sign({ userId: "user-a", email: "a@test.local" });
-      const { request, result } = run({ authorization: `Bearer ${token}` });
-
-      await expect(result).resolves.toBe(true);
-      expect(request.user).toEqual({ userId: "user-a", email: "a@test.local" });
-      expect(mockGetSession).not.toHaveBeenCalled();
-    });
-
-    it("valid JWT for a user id that does not exist: still allowed (no database lookup in the guard)", async () => {
-      const token = sign({ userId: "00000000-0000-4000-8000-000000000000", email: "gone@test.local" });
-      const { request, result } = run({ authorization: `Bearer ${token}` });
-
-      await expect(result).resolves.toBe(true);
-      expect(request.user).toEqual({
-        userId: "00000000-0000-4000-8000-000000000000",
-        email: "gone@test.local",
-      });
-    });
-
-    // NOTE (RX-15): the payload shape is not checked. A token signed with the
-    // secret but without userId passes with userId undefined. Only the API
-    // signs tokens ({ userId, email }), so this needs the secret; hardening note.
-    it("signed JWT without userId: allowed with userId undefined", async () => {
-      const token = sign({ sub: "someone" });
-      const { request, result } = run({ authorization: `Bearer ${token}` });
-
-      await expect(result).resolves.toBe(true);
-      expect(request.user).toEqual({ userId: undefined, email: undefined });
-    });
-
+  // RNX-225: the login JWT is retired as an access method; a JWT signed with JWT_SECRET is no credential.
+  describe("no JWT path (RNX-225)", () => {
     it.each([
+      ["a valid login JWT", { authorization: `Bearer ${sign({ userId: "user-a", email: "a@test.local" })}` }],
       ["no Authorization header and no cookie", {}],
       ["an expired JWT", { authorization: `Bearer ${sign({ userId: "u", exp: Math.floor(Date.now() / 1000) - 60 })}` }],
       ["a JWT signed with another secret", { authorization: `Bearer ${sign({ userId: "u" }, "another-secret")}` }],
-      ["an unsigned JWT (alg none)", { authorization: `Bearer ${sign({ userId: "u" }, "", { algorithm: "none" })}` }],
       ["an API key (wrong credential type)", { authorization: "Bearer rnx_live_some-api-key" }],
-      ["a lowercase bearer scheme", { authorization: `bearer ${sign({ userId: "u" })}` }],
-      ["a Basic scheme", { authorization: `Basic ${Buffer.from("a:b").toString("base64")}` }],
-      ["Bearer with no token", { authorization: "Bearer " }],
       ["a garbage token", { authorization: "Bearer not.a.jwt" }],
     ])("401 with %s", async (_case, headers: Record<string, string>) => {
       const { request, result } = run(headers);
@@ -93,12 +53,13 @@ describe("CombinedAuthGuard (RX-15 characterization)", () => {
       expect(mockGetSession).not.toHaveBeenCalled();
     });
 
-    it("refuses to be built when JWT_SECRET is unset (RX-110: required, no empty fallback)", () => {
+    it("is built without JWT_SECRET (it reads no JWT any more)", () => {
+      const savedSecret = process.env.JWT_SECRET;
       delete process.env.JWT_SECRET;
       try {
-        expect(() => new CombinedAuthGuard()).toThrow("JWT_SECRET is required and is not set");
+        expect(() => new CombinedAuthGuard()).not.toThrow();
       } finally {
-        process.env.JWT_SECRET = SECRET;
+        process.env.JWT_SECRET = savedSecret;
       }
     });
   });
@@ -150,18 +111,7 @@ describe("CombinedAuthGuard (RX-15 characterization)", () => {
       expect(request.user).toEqual({ userId: "user-s", email: "s@test.local" });
     });
 
-    it("an invalid JWT falls through to the cookie session", async () => {
-      mockGetSession.mockResolvedValue(session());
-      const { request, result } = run({
-        authorization: `Bearer ${sign({ userId: "u" }, "another-secret")}`,
-        cookie: "better-auth.session_token=abc",
-      });
-
-      await expect(result).resolves.toBe(true);
-      expect(request.user).toEqual({ userId: "user-s", email: "s@test.local" });
-    });
-
-    it("a valid JWT wins over a cookie session (getSession not called)", async () => {
+    it("a login JWT next to the cookie: the cookie session decides, the JWT is ignored", async () => {
       mockGetSession.mockResolvedValue(session());
       const { request, result } = run({
         authorization: `Bearer ${sign({ userId: "user-a", email: "a@test.local" })}`,
@@ -169,8 +119,8 @@ describe("CombinedAuthGuard (RX-15 characterization)", () => {
       });
 
       await expect(result).resolves.toBe(true);
-      expect(request.user).toEqual({ userId: "user-a", email: "a@test.local" });
-      expect(mockGetSession).not.toHaveBeenCalled();
+      expect(request.user).toEqual({ userId: "user-s", email: "s@test.local" });
+      expect(mockGetSession).toHaveBeenCalledTimes(1);
     });
   });
 });

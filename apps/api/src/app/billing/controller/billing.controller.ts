@@ -29,7 +29,7 @@ export class BillingController {
   }
 
   @Post("checkout")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async createCheckout(@Req() req: any, @Body() body: unknown) {
     if (
       !this.configService.get<string>("STRIPE_ENABLED") ||

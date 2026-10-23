@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
@@ -12,13 +11,12 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-115: a whatsapp (GOWA) channel cannot be saved without a webhookSecret, because the
 // webhook refuses every call for a channel that has none. Other channel types are unaffected.
 // Made-up secrets only. The user has no subscription, so every channel type is allowed.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-
-process.env.JWT_SECRET = "rx115-test-jwt-secret";
 
 const REQUIRED = "webhookSecret is required for a whatsapp (GOWA) channel";
 
@@ -42,9 +40,7 @@ describe("RX-115: saving a whatsapp (GOWA) channel needs a webhookSecret (Fastif
   const setup = async () => {
     const user = await createUser(prisma);
     const agent = await createAgent(prisma, { userId: user.id });
-    const headers = {
-      authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-    };
+    const headers = asSessionUser(user);
     return { agent, headers };
   };
 

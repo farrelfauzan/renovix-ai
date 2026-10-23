@@ -41,7 +41,7 @@ export class McpUserController {
    * for the provider (RX-152), so only this browser can complete the flow.
    */
   @Get("oauth/start")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async startOAuth(
     @Req() req: any,
     @Query("provider") provider: string,
@@ -121,7 +121,7 @@ export class McpUserController {
    * Connect a token-based MCP provider (e.g., Notion with API key).
    */
   @Post("connect")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async connectWithToken(
     @Req() req: any,
     @Body() body: unknown,
@@ -141,7 +141,7 @@ export class McpUserController {
    * List current user's connected credentials for a workspace.
    */
   @Get("credentials")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async listCredentials(
     @Req() req: any,
     @Query("workspaceId") workspaceId: string,
@@ -157,7 +157,7 @@ export class McpUserController {
    * Disconnect (revoke) a provider for the current user.
    */
   @Delete("credentials/:provider")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async disconnect(
     @Req() req: any,
     @Param("provider") provider: string,

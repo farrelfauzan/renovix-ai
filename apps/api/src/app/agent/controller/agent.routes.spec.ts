@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
@@ -17,14 +16,13 @@ import {
   createSubscription,
   createUser,
 } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-133: the agent routes that the ownership suites (RX-15 agent.ownership.spec.ts, RX-112
 // agent.parent-owner.spec.ts) and RX-115 (agent.whatsapp-channel.spec.ts) do not cover, written
 // against the code before its queries moved into repositories. Real controller and service, test
 // database. No route used here calls a model, so ProviderRouter is an empty stub.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-
-process.env.JWT_SECRET = "rx133-test-jwt-secret";
 
 const UNKNOWN_ID = "00000000-0000-4000-8000-000000000000";
 
@@ -45,9 +43,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   const subscribed = async (plan: Parameters<typeof createPlan>[1] = {}, status = "active") => {
     const user = await createUser(prisma);

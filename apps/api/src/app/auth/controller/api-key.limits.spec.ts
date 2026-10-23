@@ -2,13 +2,13 @@ import { Controller, Get } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AuthModule } from "../auth.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createApiKey, createUser } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // better-auth is ESM-only; BetterAuthController and the guards import it.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
@@ -46,9 +46,7 @@ describe("RNX-232: per-key tiers, cap and rate limit on the key routes (Fastify,
 
   afterAll(() => app?.close());
 
-  const signedIn = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET as string)}`,
-  });
+  const signedIn = (user: { id: string; email: string }) => asSessionUser(user);
   const createKey = (user: { id: string; email: string }, payload: object) =>
     app.inject({ method: "POST", url: "/auth/keys", headers: signedIn(user), payload: { name: "k", expiresIn: "never", ...payload } });
   const probe = (apiKey: string) =>

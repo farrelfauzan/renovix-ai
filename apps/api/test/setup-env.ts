@@ -7,10 +7,10 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL
   ? testDatabaseUrl()
   : "postgresql://none@127.0.0.1:1/no_test_database_test";
 
-// Every test module has the global AccessGuard (test-module.ts). Its JWT check
-// needs a secret (a spec may set its own before it builds its module), and its
-// session check loads better-auth, which is ESM-only: no session, unless the
-// spec mocks lib/auth itself.
+// Every test module has the global AccessGuard (test-module.ts). Its session check
+// loads better-auth, which is ESM-only: no session, unless the spec mocks lib/auth
+// itself or signs a user in with test/as-session-user.ts. JWT_SECRET is still a
+// required secret (until RNX-257); no route accepts a JWT any more (RNX-225).
 process.env.JWT_SECRET = "test-jwt-secret";
 // AccessGuard's staff method and the back-office sign-in (RX-94) need their own keys, with no
 // fallback: obviously fake test values (a spec may set its own before it builds its module).

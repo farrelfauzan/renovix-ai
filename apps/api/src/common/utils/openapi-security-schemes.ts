@@ -5,30 +5,32 @@
  * a key or token example.
  */
 import { ADMIN_COOKIES } from "../../app/admin-auth/config/admin-cookies";
+import { PORTAL_SESSION_COOKIE } from "../../app/portal/config/portal-session-cookie";
 import type { OpenApiSecuritySchemes } from "./openapi-security-scheme";
 
 export const OPENAPI_SECURITY_SCHEMES: OpenApiSecuritySchemes = {
-  // `Authorization: Bearer <API key>` (the legacy JWT uses the same header, so the scheme name
-  // says what the caller puts in the header, not which guard checks it).
+  // `Authorization: Bearer <API key>`.
   BearerApiKey: {
     type: "apiKey",
     in: "header",
     name: "Authorization",
     description: "API key: 'Bearer ' followed by the account's API key",
   },
-  // The chat portal's anonymous-or-linked session (`X-Portal-Session`, RX).
+  // The chat portal's anonymous-or-linked session (RNX-225): the httpOnly `portal_session` cookie, which the API
+  // sets when a portal request has none; the `X-Portal-Session` header is still read when there is no cookie.
   PortalSession: {
     type: "apiKey",
-    in: "header",
-    name: "X-Portal-Session",
-    description: "Portal session id (chat portal)",
+    in: "cookie",
+    name: PORTAL_SESSION_COOKIE.name,
+    description: "Portal session id (chat portal; set by the API when missing, http-only; X-Portal-Session header accepted as a fallback)",
   },
-  // Signed-in product users: a legacy JWT Bearer token or a Better Auth session cookie.
-  JwtOrSession: {
-    type: "http",
-    scheme: "bearer",
-    bearerFormat: "JWT",
-    description: "JWT Bearer token or Better Auth session cookie",
+  // Signed-in product users (RNX-225): the Better Auth session cookie only (no JWT). In production its name has
+  // the __Secure- prefix.
+  SessionCookie: {
+    type: "apiKey",
+    in: "cookie",
+    name: "better-auth.session_token",
+    description: "Better Auth session cookie (set by sign-up/sign-in under /api/auth/better; http-only)",
   },
   // The back office's own session cookie (RX-94). The refresh cookie is http-only machinery of
   // `POST /api/v1/admin/auth/refresh`; documenting it as a scheme would suggest clients set it.

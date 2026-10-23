@@ -28,7 +28,7 @@ import { SearchWorkspaceKnowledgeSchema } from "../dto/search-workspace-knowledg
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("channels/:channelId/workspace")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class WorkspaceChannelController {
   constructor(
     private readonly prisma: PrismaService,

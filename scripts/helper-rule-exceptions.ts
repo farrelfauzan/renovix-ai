@@ -13,7 +13,6 @@ const SRC = "apps/api/src/app";
 
 export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
   // Entry points (test 3)
-  [`${SRC}/auth/controller/auth.controller.ts AuthController.logout`]: "test 3: route handler",
   [`${SRC}/auth/controller/better-auth.controller.ts BetterAuthController.handleAuth`]: "test 3: route handler (also test 2: await, process.env)",
   [`${SRC}/agent/controller/agent.controller.ts AgentController.getAvailableTools`]: "test 3: route handler",
 

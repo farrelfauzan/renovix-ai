@@ -48,7 +48,7 @@ class StaffProbeController {
   }
 
   @Get("mixed")
-  @Access({ auth: ["staff", "jwt"] })
+  @Access({ auth: ["staff", "session"] })
   mixed(@Req() request: ProbeRequest) {
     return seen(request);
   }
@@ -63,7 +63,7 @@ class StaffProbeController {
 @Controller("product-probe")
 class ProductProbeController {
   @Get("login")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   login(@Req() request: ProbeRequest) {
     return seen(request);
   }
@@ -75,13 +75,13 @@ class ProductProbeController {
   }
 
   @Get("reauth")
-  @Access({ auth: ["jwt"], reauth: true })
+  @Access({ auth: ["session"], reauth: true })
   reauth(@Req() request: ProbeRequest) {
     return seen(request);
   }
 
   @Get("scope")
-  @Access({ auth: ["jwt"], staffScope: "any" })
+  @Access({ auth: ["session"], staffScope: "any" })
   scope(@Req() request: ProbeRequest) {
     return seen(request);
   }
@@ -349,7 +349,7 @@ describe("AccessGuard staff method (RX-94, Fastify, test database)", () => {
   describe("declarations the guard refuses", () => {
     it.each([
       ["a full admin session", async () => ({ cookie: (await adminCookie("full")).cookie })],
-      ["a valid login JWT", async () => ({ authorization: loginJwt() })],
+      ["a valid session", async () => (withValidBetterAuthSession(), { cookie: BETTER_AUTH_COOKIE })],
       ["nothing", async () => ({})],
     ])("staff next to another method: 403 with %s", async (_case, headers) => {
       const res = await get("/staff-probe/mixed", await headers());
@@ -363,8 +363,10 @@ describe("AccessGuard staff method (RX-94, Fastify, test database)", () => {
       expect((await get("/staff-probe/permissions", { cookie })).statusCode).toBe(403);
     });
 
-    it.each(["/product-probe/reauth", "/product-probe/scope"])("%s without staff: 403 with a valid login JWT", async (url) => {
-      const res = await get(url, { authorization: loginJwt() });
+    it.each(["/product-probe/reauth", "/product-probe/scope"])("%s without staff: 403 with a valid session", async (url) => {
+      withValidBetterAuthSession();
+
+      const res = await get(url, { cookie: BETTER_AUTH_COOKIE });
 
       expect(res.statusCode).toBe(403);
     });

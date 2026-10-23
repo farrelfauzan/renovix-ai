@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Module, Patch, Post, Put, RequestMethod, Type } from "@nestjs/common";
+import { Controller, Delete, ExecutionContext, Get, Module, Patch, Post, Put, RequestMethod, Type, UnauthorizedException } from "@nestjs/common";
 import {
   GUARDS_METADATA,
   METHOD_METADATA,
@@ -10,11 +10,19 @@ import {
   NestFactory,
   Reflector,
 } from "@nestjs/core";
+import * as jwt from "jsonwebtoken";
 import { Access } from "../common/decorators/access.decorator";
+import { AccessGuard } from "../common/guards/access.guard";
+import { ApiKeyGuard } from "../common/guards/api-key.guard";
+import { CombinedAuthGuard } from "../common/guards/combined-auth.guard";
 import { AccessOptions } from "../common/types/access-options";
 import { STAFF_PERMISSIONS } from "./admin-auth/config/staff-permissions";
 import { AdminAudit } from "./admin-auth/decorator/admin-audit.decorator";
 import type { AdminAuditOptions } from "./admin-auth/types/admin-audit-options";
+import type { AdminSessionService } from "./admin-auth/service/admin-session.service";
+import type { ApiKeyRateLimitService } from "./auth/service/api-key-rate-limit.service";
+import type { ApiKeyService } from "./auth/service/api-key.service";
+import type { PortalGuard } from "./portal/guard/portal.guard";
 
 // RX-114 coverage: the route table of the real AppModule, as Nest's own
 // scanner sees it (preview mode: every module reachable from AppModule is
@@ -36,6 +44,9 @@ type Route = {
   /** The RX-97 audit declaration (`@AdminAudit`), on the handler or its controller. */
   readonly audit: AdminAuditOptions | undefined;
   readonly usesGuards: boolean;
+  /** The handler and its controller, for an ExecutionContext of the route (RNX-225). */
+  readonly handler: () => unknown;
+  readonly controller: object;
 };
 
 const hasGuards = (target: object): boolean =>
@@ -63,6 +74,8 @@ function listRoutes(modules: ModulesContainer): Route[] {
           access: reflector.getAllAndOverride(Access, [handler, controller]),
           audit: reflector.getAllAndOverride(AdminAudit, [handler, controller]),
           usesGuards: hasGuards(controller) || hasGuards(handler),
+          handler,
+          controller,
         });
       }
     }
@@ -127,7 +140,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
 
   // The decided declaration of every route (RX-114 inventory; 12 public routes per D112, plus the
   // back-office sign-in and refresh of RX-94).
-  // A route that changes kind, or a new route that is not jwt/session, must be added here on purpose.
+  // A route that changes kind, or a new route, must be added here on purpose.
   const PUBLIC_ROUTES = [
     "ALL /auth/better/* (BetterAuthController.handleAuth)",
     "GET / (AppController.getData)",
@@ -141,9 +154,6 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/auth/sign-in (AdminAuthController.signIn)",
     "POST /admin/invitations/accept (AdminInvitationsController.accept)",
     "POST /admin/invitations/preview (AdminInvitationsController.preview)",
-    "POST /auth/login (AuthController.login)",
-    "POST /auth/logout (AuthController.logout)",
-    "POST /auth/register (AuthController.register)",
     "POST /webhooks/gowa (GowaWebhookController.handleInbound)",
     "POST /webhooks/payments (PaymentWebhookController.receive)",
     "POST /webhooks/stripe (WebhookController.handleStripeWebhook)",
@@ -179,11 +189,6 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /chat/portal/knowledge (PortalController.createKnowledgeBase)",
     "POST /chat/portal/knowledge/:id/upload (PortalController.uploadToKnowledgeBase)",
     "POST /chat/portal/link-session (PortalController.linkSession)",
-  ];
-  // RNX-35: the buyer's payment routes take the product session only (no "jwt": RNX-225 retires it).
-  const SESSION_ROUTES = [
-    "GET /payments/orders/:id (PaymentsController.getOrder)",
-    "POST /payments/checkout (PaymentsController.startCheckout)",
   ];
   // Back-office routes (RX-94): `staff` only, full sessions unless a scope is declared.
   const STAFF_ROUTES = [
@@ -313,16 +318,123 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/reconciliation (AdminReconciliationController.report)": ["profit:read"],
     "POST /admin/reconciliation/entries (AdminReconciliationController.record)": ["reconciliation:write"],
   };
+  // RNX-225 (D113): every route that accepted the login JWT or the session now accepts the session only (the
+  // login JWT is retired as an access method). This is the full list of the routes whose @Access changed, plus
+  // RNX-35's two buyer payment routes, which took the session only from the start.
+  const SESSION_ROUTES = [
+    "DELETE /agents/:id (AgentController.delete)",
+    "DELETE /agents/:id/channels/:channelId (AgentController.removeChannel)",
+    "DELETE /agents/:id/integrations/:integrationId (AgentController.removeIntegration)",
+    "DELETE /agents/:id/knowledge-bases/:kbId (AgentController.removeKnowledgeBase)",
+    "DELETE /agents/:id/links/:calleeAgentId (AgentLinkController.removeLink)",
+    "DELETE /agents/:id/runs/:runId (AgentRunController.deleteRun)",
+    "DELETE /agents/:id/tools/:toolId (AgentController.removeTool)",
+    "DELETE /auth/keys/:id (ApiKeyController.revoke)",
+    "DELETE /channels/:channelId/workspace/knowledge/:kbId (WorkspaceChannelController.deleteKnowledgeBase)",
+    "DELETE /channels/:channelId/workspace/knowledge/:kbId/chunks/:chunkId (WorkspaceChannelController.deleteChunk)",
+    "DELETE /channels/:channelId/workspace/members/:memberId (WorkspaceChannelController.removeMember)",
+    "DELETE /channels/:id (ChannelController.delete)",
+    "DELETE /channels/:id/agents/:agentId (ChannelController.removeAgent)",
+    "DELETE /channels/:id/agents/:agentId/messages (ChannelController.clearMessages)",
+    "DELETE /integrations/web-search/brave/key (WebSearchController.deleteBraveKey)",
+    "DELETE /mcp/servers/:id (McpController.deleteServer)",
+    "DELETE /mcp/user/credentials/:provider (McpUserController.disconnect)",
+    "DELETE /reminders/:id (ReminderController.delete)",
+    "DELETE /workspaces/:id (WorkspaceController.archive)",
+    "DELETE /workspaces/:id/members/:memberId (WorkspaceController.removeMember)",
+    "GET /agents (AgentController.list)",
+    "GET /agents/:id (AgentController.findById)",
+    "GET /agents/:id/links (AgentLinkController.listLinks)",
+    "GET /agents/:id/runs (AgentRunController.listRuns)",
+    "GET /agents/:id/runs/:runId (AgentRunController.getRun)",
+    "GET /agents/public (AgentController.listPublic)",
+    "GET /agents/subscription (AgentController.getSubscription)",
+    "GET /agents/tools/available (AgentController.getAvailableTools)",
+    "GET /auth/keys (ApiKeyController.list)",
+    "GET /auth/me (AuthController.getProfile)",
+    "GET /channels (ChannelController.list)",
+    "GET /channels/:channelId/workspace (WorkspaceChannelController.getWorkspace)",
+    "GET /channels/:channelId/workspace/invites (WorkspaceChannelController.listInvites)",
+    "GET /channels/:channelId/workspace/knowledge (WorkspaceChannelController.listKnowledgeBases)",
+    "GET /channels/:channelId/workspace/knowledge/:kbId/chunks (WorkspaceChannelController.listChunks)",
+    "GET /channels/:channelId/workspace/members (WorkspaceChannelController.listMembers)",
+    "GET /channels/:channelId/workspace/quota (WorkspaceChannelController.getQuota)",
+    "GET /channels/:id (ChannelController.findById)",
+    "GET /channels/:id/agents/:agentId/messages (ChannelController.getMessages)",
+    "GET /codes/history (CodesController.getHistory)",
+    "GET /integrations/web-search/policy (WebSearchController.getPolicy)",
+    "GET /integrations/web-search/status (WebSearchController.getStatus)",
+    "GET /mcp/registry (McpController.getRegistry)",
+    "GET /mcp/servers (McpController.listServers)",
+    "GET /mcp/user/credentials (McpUserController.listCredentials)",
+    "GET /mcp/user/oauth/start (McpUserController.startOAuth)",
+    "GET /payments/orders/:id (PaymentsController.getOrder)",
+    "GET /reminders (ReminderController.list)",
+    "GET /reminders/:id (ReminderController.findById)",
+    "GET /usage (UsageController.getUsage)",
+    "GET /workspaces (WorkspaceController.list)",
+    "GET /workspaces/:id (WorkspaceController.getById)",
+    "GET /workspaces/:id/invites (WorkspaceController.listInvites)",
+    "GET /workspaces/:id/members (WorkspaceController.listMembers)",
+    "GET /workspaces/:id/quota (WorkspaceController.getQuota)",
+    "PATCH /agents/:id (AgentController.update)",
+    "PATCH /agents/:id/channels/:channelId (AgentController.updateChannel)",
+    "PATCH /agents/:id/status (AgentController.updateStatus)",
+    "PATCH /auth/me (AuthController.updateProfile)",
+    "PATCH /channels/:channelId/workspace/members/:memberId (WorkspaceChannelController.updateMember)",
+    "PATCH /channels/:id (ChannelController.update)",
+    "PATCH /reminders/:id (ReminderController.update)",
+    "PATCH /workspaces/:id (WorkspaceController.update)",
+    "PATCH /workspaces/:id/members/:memberId (WorkspaceController.updateMember)",
+    "POST /agents (AgentController.create)",
+    "POST /agents/:id/channels (AgentController.deployChannel)",
+    "POST /agents/:id/chat (AgentRunController.chat)",
+    "POST /agents/:id/integrations (AgentController.attachIntegration)",
+    "POST /agents/:id/knowledge-bases (AgentController.attachKnowledgeBase)",
+    "POST /agents/:id/links (AgentLinkController.addLink)",
+    "POST /agents/:id/publish (AgentController.publish)",
+    "POST /agents/:id/tools (AgentController.attachTool)",
+    "POST /agents/clone/:templateId (AgentController.cloneFromTemplate)",
+    "POST /agents/generate-prompt (AgentController.generatePrompt)",
+    "POST /auth/keys (ApiKeyController.create)",
+    "POST /auth/keys/regenerate (ApiKeyController.regenerate)",
+    "POST /billing/checkout (BillingController.createCheckout)",
+    "POST /channels (ChannelController.create)",
+    "POST /channels/:channelId/workspace (WorkspaceChannelController.createWorkspace)",
+    "POST /channels/:channelId/workspace/invites (WorkspaceChannelController.createInvite)",
+    "POST /channels/:channelId/workspace/invites/:inviteId/resend (WorkspaceChannelController.resendInvite)",
+    "POST /channels/:channelId/workspace/invites/:inviteId/revoke (WorkspaceChannelController.revokeInvite)",
+    "POST /channels/:channelId/workspace/knowledge (WorkspaceChannelController.createKnowledgeBase)",
+    "POST /channels/:channelId/workspace/knowledge/:kbId/chunks (WorkspaceChannelController.addChunks)",
+    "POST /channels/:channelId/workspace/knowledge/search (WorkspaceChannelController.searchKnowledge)",
+    "POST /channels/:id/agents (ChannelController.addAgent)",
+    "POST /channels/:id/agents/:agentId/chat (ChannelController.chat)",
+    "POST /channels/:id/icon (ChannelController.uploadIcon)",
+    "POST /channels/upload-icon (ChannelController.uploadIconStandalone)",
+    "POST /codes/redeem (CodesController.redeemCode)",
+    "POST /mcp/servers/:id/test (McpController.testConnection)",
+    "POST /mcp/user/connect (McpUserController.connectWithToken)",
+    "POST /payments/checkout (PaymentsController.startCheckout)",
+    "POST /reminders (ReminderController.create)",
+    "POST /workspace-invites/accept (WorkspaceInviteController.acceptInvite)",
+    "POST /workspaces (WorkspaceController.create)",
+    "POST /workspaces/:id/invites (WorkspaceController.createInvite)",
+    "POST /workspaces/:id/invites/:inviteId/resend (WorkspaceController.resendInvite)",
+    "POST /workspaces/:id/invites/:inviteId/revoke (WorkspaceController.revokeInvite)",
+    "PUT /integrations/web-search/brave/key (WebSearchController.upsertBraveKey)",
+    "PUT /integrations/web-search/policy (WebSearchController.updatePolicy)",
+    "PUT /integrations/web-search/providers/:provider/key (WebSearchController.upsertProviderKey)",
+  ];
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);
   const declaresStaff = (route: Route, staffScope: string | undefined) =>
     declares(route, ["staff"]) && !route.access?.public && route.access?.staffScope === staffScope;
 
-  it("each route declares the methods decided for it; every other route is jwt/session", () => {
+  it("each route declares the methods decided for it; there is no other route", () => {
     expect(labels(routes.filter((route) => route.access?.public))).toEqual(PUBLIC_ROUTES);
+    expect(labels(routes.filter((route) => declares(route, ["session"])))).toEqual(SESSION_ROUTES);
     expect(labels(routes.filter((route) => declares(route, ["apiKey"])))).toEqual(API_KEY_ROUTES);
     expect(labels(routes.filter((route) => declares(route, ["portal"])))).toEqual(PORTAL_ROUTES);
-    expect(labels(routes.filter((route) => declares(route, ["session"])))).toEqual(SESSION_ROUTES);
     expect(labels(routes.filter((route) => declaresStaff(route, undefined)))).toEqual(STAFF_ROUTES);
     expect(labels(routes.filter((route) => declaresStaff(route, "enrolment")))).toEqual(STAFF_ENROLMENT_ROUTES);
     expect(labels(routes.filter((route) => declaresStaff(route, "any")))).toEqual(STAFF_ANY_SCOPE_ROUTES);
@@ -333,33 +445,67 @@ describe("RX-114: every route of AppModule declares its access", () => {
     );
     const known = [
       ...PUBLIC_ROUTES,
+      ...SESSION_ROUTES,
       ...API_KEY_ROUTES,
       ...PORTAL_ROUTES,
-      ...SESSION_ROUTES,
       ...STAFF_ROUTES,
       ...STAFF_ENROLMENT_ROUTES,
       ...STAFF_ANY_SCOPE_ROUTES,
       ...STAFF_PASSWORD_CHANGE_ROUTES,
     ];
     const others = routes.filter((route) => !known.includes(route.label));
-    expect(labels(others.filter((route) => !declares(route, ["jwt", "session"])))).toEqual([]);
+    expect(labels(others)).toEqual([]);
   });
 
-  // RNX-118: the agent link routes are product routes (jwt/session); the owner-only rule is in AgentLinkService.
+  // RNX-225 AC1: a login JWT (signed with JWT_SECRET, as POST /auth/login issued them) sent to every former
+  // jwt/session route gets 401: the real AccessGuard with the route's own declaration, as the global guard runs
+  // it before the handler. No session (setup-env.ts: getSession answers null) and no API key lookup (the token
+  // is not an API key, so the key check refuses it before any lookup).
+  describe("RNX-225 AC1: a login JWT is no credential on any former jwt/session route", () => {
+    const refusingKeys = { authenticate: () => Promise.reject(new Error("no API key lookup expected")) };
+    const guard = new AccessGuard(
+      new Reflector(),
+      new CombinedAuthGuard(),
+      new ApiKeyGuard(refusingKeys as unknown as ApiKeyService),
+      {} as PortalGuard,
+      {} as AdminSessionService,
+      {} as ApiKeyRateLimitService,
+    );
+    const loginJwt = jwt.sign({ userId: "00000000-0000-4000-8000-000000000001", email: "user@renovix.test" }, process.env.JWT_SECRET!);
+
+    it("the table is the session route list (every listed route is in the app)", () => {
+      expect(labels(routes.filter((route) => SESSION_ROUTES.includes(route.label)))).toEqual(SESSION_ROUTES);
+    });
+
+    it.each(SESSION_ROUTES)("%s: 401, nothing attached", async (label) => {
+      const route = routes.find((found) => found.label === label);
+      const request: { headers: Record<string, string>; user?: unknown } = { headers: { authorization: `Bearer ${loginJwt}` } };
+      const context = {
+        switchToHttp: () => ({ getRequest: () => request }),
+        getHandler: () => route?.handler,
+        getClass: () => route?.controller,
+      } as unknown as ExecutionContext;
+
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(request.user).toBeUndefined();
+    });
+  });
+
+  // RNX-118: the agent link routes are product routes (session, RNX-225); the owner-only rule is in AgentLinkService.
   const AGENT_LINK_ROUTES = [
     "DELETE /agents/:id/links/:calleeAgentId (AgentLinkController.removeLink)",
     "GET /agents/:id/links (AgentLinkController.listLinks)",
     "POST /agents/:id/links (AgentLinkController.addLink)",
   ];
 
-  it("RNX-118: the agent link routes exist and declare jwt/session", () => {
+  it("RNX-118: the agent link routes exist and declare session", () => {
     expect(labels(routes.filter((route) => route.path.startsWith("/agents/:id/links")))).toEqual(AGENT_LINK_ROUTES);
-    expect(labels(routes.filter((route) => AGENT_LINK_ROUTES.includes(route.label) && declares(route, ["jwt", "session"])))).toEqual(
+    expect(labels(routes.filter((route) => AGENT_LINK_ROUTES.includes(route.label) && declares(route, ["session"])))).toEqual(
       AGENT_LINK_ROUTES,
     );
   });
 
-  // RNX-18: the API key routes are the signed-in user's (jwt/session); an API key cannot manage keys.
+  // RNX-18: the API key routes are the signed-in user's (session, RNX-225); an API key cannot manage keys.
   const API_KEY_MANAGEMENT_ROUTES = [
     "DELETE /auth/keys/:id (ApiKeyController.revoke)",
     "GET /auth/keys (ApiKeyController.list)",
@@ -367,10 +513,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /auth/keys/regenerate (ApiKeyController.regenerate)",
   ];
 
-  it("RNX-18: the API key routes exist and declare jwt/session", () => {
+  it("RNX-18: the API key routes exist and declare session", () => {
     expect(labels(routes.filter((route) => route.path.startsWith("/auth/keys")))).toEqual(API_KEY_MANAGEMENT_ROUTES);
     expect(
-      labels(routes.filter((route) => API_KEY_MANAGEMENT_ROUTES.includes(route.label) && declares(route, ["jwt", "session"]))),
+      labels(routes.filter((route) => API_KEY_MANAGEMENT_ROUTES.includes(route.label) && declares(route, ["session"]))),
     ).toEqual(API_KEY_MANAGEMENT_ROUTES);
   });
 
