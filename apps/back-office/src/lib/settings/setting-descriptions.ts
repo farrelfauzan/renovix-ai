@@ -2,6 +2,7 @@ import type { SettingDescription } from "./setting-description";
 
 const credits = (label: string, min = 0): SettingDescription => ({ label, unit: "credits", min });
 const count = (label: string, min = 1, isNotAppliedYet = false): SettingDescription => ({ label, unit: "count", min, isNotAppliedYet });
+const percent = (label: string): SettingDescription => ({ label, unit: "percent", min: 0 });
 
 /** The registry of apps/api (offers/config/platform-settings.ts) by name: label, unit and lowest value. */
 export const SETTING_DESCRIPTIONS: Readonly<Record<string, SettingDescription>> = {
@@ -26,4 +27,6 @@ export const SETTING_DESCRIPTIONS: Readonly<Record<string, SettingDescription>> 
   anonymousRequestsGlobalPerDay: count("Anonymous requests in total per day", 1, true),
   graceDays: count("Enterprise grace period, days (D27)", 0, true),
   repeatOffenderThreshold: count("Repeat-offender threshold, violations in 7 days (D59)", 1, true),
+  paymentGatewayFeePercent: percent("Payment gateway fee, % of gross (RNX-228)"),
+  reconciliationDriftThresholdPercent: percent("Reconciliation drift threshold, % of the high estimate (D84, RNX-228)"),
 };

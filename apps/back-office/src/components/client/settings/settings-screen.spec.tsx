@@ -37,4 +37,18 @@ describe("SettingsScreen", () => {
     await waitFor(() => expect(screen.getByText("value: too large")).toBeTruthy());
     expect(save).toHaveBeenCalledWith("seatCeiling", 90, "contract");
   });
+
+  it("lets a decimal percentage be entered and saved (RNX-228's gateway fee: step any, not whole numbers)", async () => {
+    const save = jest.fn(async () => undefined);
+    const api: SettingsApi = { listSettings: async () => [{ name: "paymentGatewayFeePercent", value: null }], saveSetting: save };
+    render(<SettingsScreen api={api} sessionApi={sessionOf(["settings:read", "settings:write"])} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Payment gateway fee, % of gross (RNX-228)" }));
+    const input = screen.getByLabelText("Payment gateway fee, % of gross (RNX-228)");
+    fireEvent.change(input, { target: { value: "2.5" } });
+    fireEvent.change(screen.getByLabelText("Reason (required, audited)"), { target: { value: "gateway contract" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save setting" }));
+
+    expect(input.getAttribute("step")).toBe("any");
+    await waitFor(() => expect(save).toHaveBeenCalledWith("paymentGatewayFeePercent", 2.5, "gateway contract"));
+  });
 });
