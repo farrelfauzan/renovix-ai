@@ -96,12 +96,15 @@ export class PaymentOrderRepository {
     return rows[0]?.from_status ?? null;
   }
 
-  /** Fails a pending or expired order with the amount_mismatch flag; returns the status it had, null when it was neither. */
+  /**
+   * Fails a pending, expired or cancelled order with the amount_mismatch flag (a wrong-amount paid answer after the
+   * provider said cancelled is recorded too; review round 1). Returns the status it had; null when it was none of them.
+   */
   async markAmountMismatch(id: string, tx: DbTransaction): Promise<PaymentOrderStatus | null> {
     const rows = await tx.$queryRaw<{ from_status: PaymentOrderStatus }[]>`
       WITH "before" AS (SELECT "id", "status" FROM "payment_orders" WHERE "id" = ${id} FOR UPDATE)
       UPDATE "payment_orders" AS o SET "status" = 'failed', "is_amount_mismatch" = true, "updated_at" = now()
-      FROM "before" WHERE o."id" = "before"."id" AND "before"."status" IN ('pending', 'expired')
+      FROM "before" WHERE o."id" = "before"."id" AND "before"."status" IN ('pending', 'expired', 'cancelled')
       RETURNING "before"."status"::text AS "from_status"`;
     return rows[0]?.from_status ?? null;
   }

@@ -274,6 +274,29 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
       expect(await prisma.paymentUnmatchedPayment.findFirstOrThrow()).toMatchObject({ providerRef: reference, reason: "amount_mismatch", orderId, amountRupiah: paidAmount, status: "open" });
       expect((await http.getOrder(user.id, orderId)).json()).toMatchObject({ state: "unmatched" });
     });
+
+    it.each([
+      ["one rupiah less", STARTER_PRICE_RUPIAH - 1],
+      ["one rupiah more", STARTER_PRICE_RUPIAH + 1],
+    ])("review round 1: %s after the provider said cancelled: no grant; failed with amount_mismatch (audited from cancelled), listed unmatched, the buyer sees unmatched", async (_case, paidAmount) => {
+      const { user, orderId, reference } = await pendingStarterOrder();
+      await expireOrder(orderId);
+      fake.simulateState(orderId, "cancelled");
+      await reconcile();
+      expect((await orderOf(orderId)).status).toBe("cancelled");
+      fake.simulatePaid(orderId, { amountRupiah: paidAmount });
+
+      const res = await paidWebhook(reference, paidAmount);
+
+      expect(res.statusCode).toBe(200);
+      expect(await orderOf(orderId)).toMatchObject({ status: "failed", isAmountMismatch: true, paidAt: null });
+      expect(await grants()).toHaveLength(0);
+      expect(await prisma.purchaseSnapshot.count()).toBe(0);
+      expect(await prisma.paymentUnmatchedPayment.findFirstOrThrow()).toMatchObject({ providerRef: reference, reason: "amount_mismatch", orderId, amountRupiah: paidAmount, status: "open" });
+      const change = await prisma.paymentOrderChange.findFirstOrThrow({ where: { orderId, event: "amount_mismatch" } });
+      expect(change).toMatchObject({ fromStatus: "cancelled", toStatus: "failed", source: "webhook" });
+      expect((await http.getOrder(user.id, orderId)).json()).toMatchObject({ state: "unmatched" });
+    });
   });
 
   describe("AC5: expiry and late payment", () => {

@@ -43,7 +43,7 @@ Table `payment_orders`: the buyer, the offer version (a package version or a top
 | `pending` | Created; waiting for the payment. |
 | `paid` | A status check said paid with the order's exact amount; credits granted once. |
 | `expired` | The provider said expired. A payment that still arrives later grants (flagged `late`). |
-| `cancelled` | The provider said cancelled. A payment that still arrives later with the order's amount grants once (flagged `late` when after the expiry): the money arrived. |
+| `cancelled` | The provider said cancelled. A payment that still arrives later with the order's amount grants once (flagged `late` when after the expiry): the money arrived. With another amount it fails with `amount_mismatch`, as a pending order would. |
 | `failed` | The provider refused the charge, or a paid amount did not match (`amount_mismatch`). |
 
 | Flag | Set when |
