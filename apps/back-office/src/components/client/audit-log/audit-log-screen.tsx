@@ -40,10 +40,10 @@ export function AuditLogScreen({ api = defaultAuditLogApi }: { api?: AuditLogApi
     <div className="mt-4 flex flex-col gap-4">
       <AuditLogFiltersForm onApply={apply} />
       <AuditLogExportButton api={api} filters={filters} />
-      {hasFailed && <p role="alert" className="text-sm text-red-700">The audit log could not be loaded.</p>}
+      {hasFailed && <p role="alert" className="text-sm text-rx-red-bar">The audit log could not be loaded.</p>}
       {page && <AuditLogTable rows={page.rows} />}
       {page?.nextCursor && (
-        <button type="button" onClick={() => load(filters, page.nextCursor)} className="self-start rounded border border-neutral-300 px-3 py-1 text-sm">
+        <button type="button" onClick={() => load(filters, page.nextCursor)} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
           Next page
         </button>
       )}

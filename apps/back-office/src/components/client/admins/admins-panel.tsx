@@ -28,7 +28,7 @@ export function AdminsPanel({ admins, roles, api, currentAdminId, canWriteAdmins
   return (
     <section aria-label="Admins" className="mt-4">
       <h2 className="text-lg font-semibold">Admins</h2>
-      {canWriteAdmins && <button type="button" onClick={() => setIsInviting(true)} className="mt-2 rounded border border-neutral-300 px-3 py-1 text-sm">Invite admin</button>}
+      {canWriteAdmins && <button type="button" onClick={() => setIsInviting(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm">Invite admin</button>}
       {isInviting && <InviteDialog api={api} roles={roles} admins={admins} run={run} onIssued={onIssued} onClose={() => setIsInviting(false)} />}
       <AdminsTable admins={admins} api={api} roles={roles} currentAdminId={currentAdminId} canWriteAdmins={canWriteAdmins} canWriteRoles={canWriteRoles} onAct={onAct} onResend={onResend} />
     </section>
