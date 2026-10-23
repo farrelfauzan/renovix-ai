@@ -42,6 +42,7 @@ import { AccessModule } from "../common/access.module";
 import { GlobalExceptionFilter } from "../common/filters/global-exception.filter";
 import { AccessGuard } from "../common/guards/access.guard";
 import { AdminOriginGuard } from "../common/guards/admin-origin.guard";
+import { UserOriginGuard } from "../common/guards/user-origin.guard";
 import { clientIp } from "../common/utils/client-ip";
 
 @Module({
@@ -96,6 +97,8 @@ import { clientIp } from "../common/utils/client-ip";
     AppService,
     // RX-156: first, so a refused /admin request reaches neither the throttler's count nor a session check.
     { provide: APP_GUARD, useExisting: AdminOriginGuard },
+    // RNX-272: next, so a cross-origin write to a session or portal route is refused before the count and the session lookup.
+    { provide: APP_GUARD, useExisting: UserOriginGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useExisting: AccessGuard },
     // RX-97: the back-office audit hook, on every route that declares @AdminAudit.
