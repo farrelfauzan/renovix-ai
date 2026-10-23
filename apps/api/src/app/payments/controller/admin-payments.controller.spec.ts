@@ -6,6 +6,7 @@ import { AdminSessionService } from "../../admin-auth/service/admin-session.serv
 import { AdminCreditsModule } from "../../admin-credits/admin-credits.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { FakePaymentProvider } from "../providers/fake-payment.provider";
+import { PaymentReconciliationService } from "../service/payment-reconciliation.service";
 import { toJakartaDay } from "../utils/to-jakarta-day";
 import { createUser } from "../../../../test/factories";
 import { resetDatabase } from "../../../../test/test-database";
@@ -241,6 +242,28 @@ describe("RNX-35a admin payments (Fastify, test database, fake provider)", () =>
       expect(await prisma.creditLedgerEntry.count()).toBe(0);
       expect(await prisma.paymentOrder.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "pending" });
       expect(await prisma.adminAuditLog.count()).toBe(0);
+    });
+
+    it("RNX-271 AC5: on an order the reconciliation job has claimed (claim kept after its check), the admin's check runs at once: a status check, the grant applied", async () => {
+      const user = await createUser(prisma);
+      const order = await chargedOrder(user.id);
+      await prisma.paymentOrder.update({ where: { id: order.id }, data: { expiresAt: new Date(Date.now() - 5 * MINUTE) } });
+      const job = await moduleRef.get(PaymentReconciliationService).reconcile();
+      const claimed = await prisma.paymentOrder.findUniqueOrThrow({ where: { id: order.id } });
+      fake.simulatePaid(order.id);
+      const getStatus = jest.spyOn(fake, "getStatus");
+      const { cookie } = await signedIn("finance");
+
+      const res = await confirm(cookie, order.id);
+
+      expect(job).toMatchObject({ claimed: 1, outcomes: { unknown: 1 } });
+      expect(claimed.reconcileClaimedUntil?.getTime()).toBeGreaterThan(Date.now());
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ orderId: order.id, outcome: "granted", status: "paid" });
+      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(await prisma.creditLedgerEntry.count()).toBe(1);
+      expect(await paidBalanceOf(prisma, user.id)).toBe("100");
+      expect(await prisma.paymentOrderChange.findFirstOrThrow({ where: { orderId: order.id, event: "paid" } })).toMatchObject({ source: "admin" });
     });
 
     it("an unknown order: 404, no audit row; with payments off: 503, nothing checked or granted", async () => {

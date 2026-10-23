@@ -11,8 +11,10 @@ import { createUser } from "../../../../test/factories";
 import { resetDatabase } from "../../../../test/test-database";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { captureLogLines } from "../../../../test/capture-log-lines";
+import { advance } from "../../../../test/admin-auth";
 import {
   STARTER_PRICE_RUPIAH,
+  TEST_PAYMENT_SETTINGS,
   TEST_WEBHOOK_SECRET,
   createPaymentsApp,
   fakeSignature,
@@ -23,6 +25,7 @@ import {
   seedPaymentSettings,
   seedRate,
   sessionFromCookie,
+  useFakeDateFromNow,
 } from "../../../../test/payments";
 
 // RNX-35a: the webhook, the one settlement (grant) path and the reconciliation job, through real HTTP (Fastify inject,
@@ -33,6 +36,10 @@ jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: (...args: unk
 
 const STARTER_CREDITS = "100";
 const MINUTE = 60_000;
+const SECOND = 1_000;
+/** The reconciliation interval of the test settings, and the slack its claim ends before it (RECONCILE_BATCH, RNX-271). */
+const INTERVAL = TEST_PAYMENT_SETTINGS.paymentsReconcileEveryMinutes * MINUTE;
+const CLAIM_SLACK = 30 * SECOND;
 
 describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fake provider)", () => {
   const fake = new FakePaymentProvider({ webhookSecret: TEST_WEBHOOK_SECRET });
@@ -59,12 +66,18 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
 
   afterEach(() => {
     jest.restoreAllMocks();
+    jest.useRealTimers();
     delete process.env.PAYMENTS_FORCE_OFF;
   });
 
   afterAll(() => app?.close());
 
   const reconcile = () => moduleRef.get(PaymentReconciliationService).reconcile();
+  /** The next interval's run: the fake clock moves one reconciliation interval on (the last run's claims have ended). */
+  const reconcileNextInterval = () => {
+    advance(INTERVAL);
+    return reconcile();
+  };
   /** A user with a pending Starter order (through the real checkout); its id and reference. */
   const pendingStarterOrder = async () => {
     const user = await createUser(prisma);
@@ -308,7 +321,7 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
       const summary = await reconcile();
 
       expect(summary).toMatchObject({ claimed: 1, outcomes: { expired: 1 } });
-      expect(await orderOf(orderId)).toMatchObject({ status: "expired", reconcileClaimedUntil: null });
+      expect(await orderOf(orderId)).toMatchObject({ status: "expired" });
       expect(await grants()).toHaveLength(0);
       expect((await http.getOrder(user.id, orderId)).json()).toMatchObject({ state: "expired", paymentCode: null });
     });
@@ -410,11 +423,12 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
 
   describe("reconciliation: unknown answers", () => {
     it("an unknown answer keeps the order pending and is counted; after 3 the order is listed for manual review and the job stops claiming it", async () => {
+      useFakeDateFromNow();
       const { orderId } = await pendingStarterOrder();
       await expireOrder(orderId);
       fake.simulateState(orderId, "unknown");
 
-      const runs = [await reconcile(), await reconcile(), await reconcile(), await reconcile()];
+      const runs = [await reconcile(), await reconcileNextInterval(), await reconcileNextInterval(), await reconcileNextInterval()];
 
       expect(runs.map((r) => r.outcomes)).toEqual([{ unknown: 1 }, { unknown: 1 }, { needs_review: 1 }, {}]);
       expect(await orderOf(orderId)).toMatchObject({ status: "pending", unknownChecks: 3, needsReview: true });
@@ -450,7 +464,7 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
 
       expect(summary).toMatchObject({ claimed: 2, outcomes: { error: 1, granted: 1 } });
       expect(await orderOf(second.orderId)).toMatchObject({ status: "paid", isWebhookMissed: true });
-      expect(await orderOf(first.orderId)).toMatchObject({ status: "pending", reconcileClaimedUntil: null });
+      expect(await orderOf(first.orderId)).toMatchObject({ status: "pending", reconcileClaimedUntil: expect.any(Date) });
       expect(error).toHaveBeenCalledWith(`Payment order ${first.orderId}: the reconciliation check failed (RangeError)`);
       expect(JSON.stringify(error.mock.calls)).not.toContain(TEST_WEBHOOK_SECRET);
     });
@@ -468,6 +482,172 @@ describe("RNX-35a webhook, grant and reconciliation (Fastify, test database, fak
       expect(a.claimed + b.claimed).toBe(3);
       expect(getStatus).toHaveBeenCalledTimes(3);
       expect(await grants()).toHaveLength(3);
+    });
+  });
+
+  describe("RNX-271: a reconciliation claim holds until the next interval's run (not released after the check)", () => {
+    beforeEach(() => useFakeDateFromNow());
+
+    /** The references the provider was asked about, sorted (one entry per status check). */
+    const checkedReferences = (getStatus: jest.SpyInstance) => getStatus.mock.calls.map(([reference]) => reference as string).sort();
+    /** Pending orders past their expiry whose status check answers pending (counted unknown): claimable each interval. */
+    const expiredPendingOrders = async (count: number) => {
+      const orders = [];
+      for (let i = 0; i < count; i += 1) orders.push(await pendingStarterOrder());
+      for (const { orderId } of orders) await expireOrder(orderId);
+      return orders;
+    };
+
+    it("AC1: two runs at the same moment (two instances): each claimable order gets exactly one status check", async () => {
+      const inputOrders = await expiredPendingOrders(3);
+      const getStatus = jest.spyOn(fake, "getStatus");
+
+      const [a, b] = await Promise.all([reconcile(), reconcile()]);
+
+      expect(a.claimed + b.claimed).toBe(3);
+      expect(checkedReferences(getStatus)).toEqual(inputOrders.map((order) => order.reference).sort());
+    });
+
+    it("AC1: a run one minute later in the same interval (another instance) claims and checks nothing; control: the next interval's run checks each order once more", async () => {
+      const inputOrders = await expiredPendingOrders(3);
+      const expectedReferences = inputOrders.map((order) => order.reference).sort();
+      const getStatus = jest.spyOn(fake, "getStatus");
+
+      const first = await reconcile();
+      advance(MINUTE);
+      const sameInterval = await reconcile();
+      const actualAfterSameInterval = checkedReferences(getStatus);
+      advance(INTERVAL - MINUTE);
+      const nextInterval = await reconcile();
+
+      expect([first.claimed, sameInterval.claimed, nextInterval.claimed]).toEqual([3, 0, 3]);
+      expect(actualAfterSameInterval).toEqual(expectedReferences);
+      expect(checkedReferences(getStatus)).toEqual([...expectedReferences, ...expectedReferences].sort());
+    });
+
+    it("the claim holds for the interval minus 30 s: a run 1 s before its end skips the order (no check); a run 1 s after it checks it", async () => {
+      await expiredPendingOrders(1);
+      const getStatus = jest.spyOn(fake, "getStatus");
+      await reconcile();
+
+      advance(INTERVAL - CLAIM_SLACK - SECOND);
+      const justBefore = await reconcile();
+      advance(2 * SECOND);
+      const justAfter = await reconcile();
+
+      expect([justBefore.claimed, justAfter.claimed]).toEqual([0, 1]);
+      expect(getStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ["every 5 minutes: 5 minutes minus 30 s", async () => seedPaymentSettings(prisma, { paymentsReconcileEveryMinutes: 5 }), 5 * MINUTE - CLAIM_SLACK],
+      ["every minute (the shortest): 30 s, still after now", async () => seedPaymentSettings(prisma, { paymentsReconcileEveryMinutes: 1 }), MINUTE - CLAIM_SLACK],
+      ["not set (the job does not run; reconcile() called directly): the 5-minute fallback", async () => void (await prisma.platformSetting.delete({ where: { name: "paymentsReconcileEveryMinutes" } })), 5 * MINUTE],
+    ])("the claim kept after the check, interval %s", async (_case, setEveryMinutes, expectedClaimMs) => {
+      const [{ orderId }] = await expiredPendingOrders(1);
+      await setEveryMinutes();
+      const now = Date.now();
+
+      const summary = await reconcile();
+
+      expect(summary.claimed).toBe(1);
+      expect((await orderOf(orderId)).reconcileClaimedUntil?.getTime()).toBe(now + expectedClaimMs);
+    });
+
+    it("AC2: an unknown answer, two runs at once and one more a minute later in each interval: unknown_checks rises by exactly 1 per interval; needs_review only at the 3rd interval", async () => {
+      const [{ orderId }] = await expiredPendingOrders(1);
+      fake.simulateState(orderId, "unknown");
+      /** One interval: two runs racing, a third a minute later; the order after them; then the clock moves to the next interval. */
+      const runInterval = async () => {
+        await Promise.all([reconcile(), reconcile()]);
+        advance(MINUTE);
+        await reconcile();
+        const { unknownChecks, needsReview } = await orderOf(orderId);
+        advance(INTERVAL - MINUTE);
+        return { unknownChecks, needsReview };
+      };
+
+      const actual = [await runInterval(), await runInterval(), await runInterval()];
+
+      expect(actual).toEqual([
+        { unknownChecks: 1, needsReview: false },
+        { unknownChecks: 2, needsReview: false },
+        { unknownChecks: 3, needsReview: true },
+      ]);
+      expect(await prisma.paymentOrderChange.count({ where: { orderId, event: "unknown_status" } })).toBe(2);
+      expect(await prisma.paymentOrderChange.count({ where: { orderId, event: "needs_review" } })).toBe(1);
+      expect(await grants()).toHaveLength(0);
+    });
+
+    it("AC3: a webhook names a claimed order: the job does not check it again in this interval; at the next interval it is checked and, paid, grants once through the normal path", async () => {
+      const { user, orderId, reference } = await pendingStarterOrder();
+      await paidWebhook(reference);
+      const first = await reconcile();
+      advance(MINUTE);
+      await paidWebhook(reference);
+      const getStatus = jest.spyOn(fake, "getStatus");
+
+      const sameInterval = await reconcile();
+      const actualChecksInInterval = getStatus.mock.calls.length;
+      fake.simulatePaid(orderId);
+      advance(INTERVAL - MINUTE);
+      const nextInterval = await reconcile();
+
+      expect(first).toMatchObject({ claimed: 1, outcomes: { pending: 1 } });
+      expect(sameInterval).toMatchObject({ claimed: 0, outcomes: {} });
+      expect(actualChecksInInterval).toBe(0);
+      expect(nextInterval).toMatchObject({ claimed: 1, outcomes: { granted: 1 } });
+      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(await orderOf(orderId)).toMatchObject({ status: "paid", isWebhookMissed: false });
+      expect(await prisma.paymentOrderChange.findFirstOrThrow({ where: { orderId, event: "paid" } })).toMatchObject({ source: "reconcile" });
+      expect(await grants()).toHaveLength(1);
+      expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
+    });
+
+    it("AC4 (regression): a paid answer, two runs at once and one more in the same interval: one status check, exactly one ledger entry", async () => {
+      const [{ user, orderId }] = await expiredPendingOrders(1);
+      fake.simulatePaid(orderId);
+      const getStatus = jest.spyOn(fake, "getStatus");
+
+      const racing = await Promise.all([reconcile(), reconcile()]);
+      advance(MINUTE);
+      const later = await reconcile();
+
+      expect([...racing, later].map((run) => run.outcomes.granted ?? 0).reduce((sum, granted) => sum + granted, 0)).toBe(1);
+      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(await grants()).toHaveLength(1);
+      expect(await paidBalanceOf(prisma, user.id)).toBe(STARTER_CREDITS);
+    });
+
+    it("review round 1: a batch slower than its claim (each check 10 s, a provider timing out): the run stops before its claim ends and the next interval's run, overlapping it, checks no order twice within one claim window", async () => {
+      const inputOrders = await expiredPendingOrders(8);
+      await seedPaymentSettings(prisma, { paymentsReconcileEveryMinutes: 1 });
+      for (const { orderId } of inputOrders) fake.simulateState(orderId, "unknown");
+      const start = Date.now();
+      const checks: { reference: string; at: number }[] = [];
+      const realGetStatus = fake.getStatus.bind(fake);
+      let nextRun: Promise<unknown> | null = null;
+      // Each status check takes 10 s; the next interval's run (another tick, same or other instance) starts one minute
+      // after the first while the first is still checking (the scheduler does not stop overlapping runs).
+      jest.spyOn(fake, "getStatus").mockImplementation(async (reference: string) => {
+        if (nextRun === null && Date.now() - start >= MINUTE) {
+          nextRun = reconcile();
+          await nextRun;
+        }
+        checks.push({ reference, at: Date.now() });
+        advance(10 * SECOND);
+        return realGetStatus(reference);
+      });
+
+      await reconcile();
+      if (nextRun === null) {
+        advance(start + MINUTE - Date.now());
+        await reconcile();
+      }
+
+      const timesOf = (reference: string) => checks.filter((check) => check.reference === reference).map((check) => check.at).sort((a, b) => a - b);
+      const actualGaps = inputOrders.flatMap(({ reference }) => timesOf(reference).slice(1).map((at, i) => ({ reference, gapMs: at - timesOf(reference)[i] })));
+      expect(actualGaps.filter(({ gapMs }) => gapMs < MINUTE - CLAIM_SLACK)).toEqual([]);
     });
   });
 
