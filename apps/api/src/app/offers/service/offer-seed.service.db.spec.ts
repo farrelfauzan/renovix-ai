@@ -73,6 +73,7 @@ describe("OfferSeedService (RX-86, test database)", () => {
       perRunCreditCap: 10,
       perRunCreditCapFloor: 1,
       seatCeiling: 100,
+      apiKeyRequestsPerMinute: 60,
     });
     expect(actual.packages.map((p) => [p.name, p.version])).toEqual([
       ["Starter", null],
@@ -93,7 +94,7 @@ describe("OfferSeedService (RX-86, test database)", () => {
     const expected = await countRows();
     await seeder.applySeed(readShippedSeed(), "test");
     expect(await countRows()).toEqual(expected);
-    expect(expected).toMatchObject({ packages: 3, packageVersions: 0, packs: 3, packVersions: 3, settings: 12, changes: 21 });
+    expect(expected).toMatchObject({ packages: 3, packageVersions: 0, packs: 3, packVersions: 3, settings: 13, changes: 22 });
     expect(await prisma.catalogChange.count({ where: { NOT: { changedBy: "seed:test" } } })).toBe(0);
   });
 

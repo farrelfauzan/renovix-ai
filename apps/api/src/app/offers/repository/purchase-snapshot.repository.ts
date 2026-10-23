@@ -18,4 +18,13 @@ export class PurchaseSnapshotRepository {
     const found = await (tx ?? this.prisma).purchaseSnapshot.findFirst({ where: { buyerUserId: userId, packageVersionId: { not: null } }, select: { id: true } });
     return found !== null;
   }
+
+  /** RNX-232: the allowed tiers of the buyer's newest package purchase (top-up packs carry none), if there is one. */
+  findLatestPackageTiers(buyerUserId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).purchaseSnapshot.findFirst({
+      where: { buyerUserId, packageVersionId: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { allowedTiers: true },
+    });
+  }
 }

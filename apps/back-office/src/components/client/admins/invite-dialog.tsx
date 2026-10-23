@@ -46,24 +46,24 @@ export function InviteDialog({ api, roles, admins, run, onIssued, onClose }: Inv
     if (outcome.status === CONFLICT) setPending(admins.find((entry) => entry.status === "invited" && entry.email.toLowerCase() === email.toLowerCase()) ?? null);
   };
   return (
-    <form role="dialog" aria-label="Invite an admin" onSubmit={submit} className="mt-4 flex max-w-sm flex-col gap-3 rounded border border-neutral-300 p-4">
+    <form role="dialog" aria-label="Invite an admin" onSubmit={submit} className="mt-4 flex max-w-sm flex-col gap-3 rounded-rx border border-rx-line p-4">
       <label className="flex flex-col gap-1 text-sm">
         Email
-        <input type="email" name="email" autoComplete="off" required value={email} onChange={(event) => setEmail(event.target.value)} className="rounded border border-neutral-300 px-2 py-1" />
+        <input type="email" name="email" autoComplete="off" required value={email} onChange={(event) => setEmail(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Role
-        <select name="role" value={role} onChange={(event) => setRole(event.target.value)} className="rounded border border-neutral-300 px-2 py-1">
+        <select name="role" value={role} onChange={(event) => setRole(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1">
           {roles.map((entry) => (
             <option key={entry.name} value={entry.name}>{entry.name}</option>
           ))}
         </select>
       </label>
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       {pending && <InviteConflict pending={pending} onResend={() => finish(() => api.resendInvitation(pending.id), onIssued)} onRevoke={() => finish(() => api.revokeInvitation(pending.id), () => undefined)} />}
       <div className="flex gap-2">
-        <button type="submit" className="rounded border border-neutral-300 px-3 py-1 text-sm">Send invitation</button>
-        <button type="button" onClick={onClose} className="rounded border border-neutral-300 px-3 py-1 text-sm">Cancel</button>
+        <button type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm">Send invitation</button>
+        <button type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Cancel</button>
       </div>
     </form>
   );

@@ -79,6 +79,10 @@ model ApiKey {
   lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz()
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz()
   expiresAt  DateTime? @map("expires_at") @db.Timestamptz()
+  /// RNX-232 (D47): the model tiers this key may call, set at creation from the tiers the user's package allows.
+  allowedTiers     String[] @default([]) @map("allowed_tiers")
+  /// RNX-232 (D47): the most credits this key may use in an Asia/Jakarta calendar month; null: no cap.
+  monthlyCreditCap Decimal? @map("monthly_credit_cap") @db.Decimal(18, 6)
 
   @@index([userId, createdAt])
   @@map("api_keys")
@@ -1420,6 +1424,8 @@ model CreditLedgerEntry {
   outcome        CreditCallOutcome?
   reference      String?
   idempotencyKey String             @map("idempotency_key")
+  /// RNX-232: the API key the call was made with (ledger attribution, the key's monthly cap); null otherwise.
+  apiKeyId       String?            @map("api_key_id")
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz()
 
   @@unique([accountId, seq])
@@ -1429,6 +1435,7 @@ model CreditLedgerEntry {
   /// RNX-228: credits sold per day reads the purchase entries (top_up, plan_grant) of a day. Written as Postgres prints
   /// the predicate, so `migrate diff` sees no drift.
   @@index([createdAt], map: "credit_ledger_entries_purchase_created_at_idx", where: raw("type = ANY (ARRAY['top_up'::\"CreditEntryType\", 'plan_grant'::\"CreditEntryType\"])"))
+  @@index([apiKeyId, createdAt])
   @@map("credit_ledger_entries")
 }
 
@@ -1442,6 +1449,8 @@ model CreditReservation {
   wallet     CreditWallet
   requestId  String                  @map("request_id")
   runId      String?                 @map("run_id")
+  /// RNX-232: the API key of the request (its open holds count against the key's monthly cap); null otherwise.
+  apiKeyId   String?                 @map("api_key_id")
   amountHeld Decimal                 @map("amount_held") @db.Decimal(18, 6)
   consumed   Decimal                 @default(0) @db.Decimal(18, 6)
   status     CreditReservationStatus @default(open)
@@ -1450,6 +1459,7 @@ model CreditReservation {
   updatedAt  DateTime                @updatedAt @map("updated_at") @db.Timestamptz()
 
   @@index([status, expiresAt])
+  @@index([apiKeyId, status])
   @@map("credit_reservations")
 }
 

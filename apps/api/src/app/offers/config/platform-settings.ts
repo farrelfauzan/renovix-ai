@@ -76,4 +76,6 @@ export const PLATFORM_SETTINGS = {
   paymentsReconcileEveryMinutes: AT_LEAST_ONE,
   /** The pilot allow-list: the user ids that may check out (RNX-35, AC23). Not set or empty: everyone. */
   paymentsAllowedUserIds: z.array(z.string().trim().min(1)),
+  /** Requests per minute per API key, counted in memory on each API instance (D47: 60; RNX-232). */
+  apiKeyRequestsPerMinute: AT_LEAST_ONE,
 } as const;

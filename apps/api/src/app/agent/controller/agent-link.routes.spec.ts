@@ -4,6 +4,7 @@ import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentLinkController } from "./agent-link.controller";
 import { AgentService } from "../service/agent.service";
+import { AgentRunPolicyService } from "../service/agent-run-policy.service";
 import { AgentLinkService } from "../service/agent-link.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -15,11 +16,12 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createApiKey, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 
 // RNX-118 (PRD 10, D81; replaces RX-112's parent-owner suite): an agent's links ("Can call") are listed, added and
-// removed by the workspace owner of the agent only (RNX-203: workspace.ownerId). A collaborator, another user and
-// another user's API key get 403 and the links stay as they were; both agents must be in one workspace (403), and an
-// agent never links to itself (400). Run on a Starter, a Pro and an Enterprise owner; collaborators exist only on
-// Enterprise (D64), so on Starter and Pro the member row is written straight to the database. Real controllers and
-// services, test database.
+// removed by the workspace owner of the agent only (RNX-203: workspace.ownerId). RNX-260 (D259): a collaborator
+// inside the workspace gets 403; another user, and a member row of a workspace without collaboration (Starter, Pro:
+// not inside, D64), get 404 (was 403); another user's API key gets 403 from the access guard. The links stay as they
+// were; both agents must be in one workspace (403), and an agent never links to itself (400). Run on a Starter, a Pro
+// and an Enterprise owner; collaborators exist only on Enterprise (D64), so on Starter and Pro the member row is
+// written straight to the database. Real controllers and services, test database.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 
 process.env.JWT_SECRET = "rnx118-test-jwt-secret";
@@ -36,6 +38,7 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
       controllers: [AgentController, AgentLinkController],
       providers: [
         AgentService,
+        AgentRunPolicyService,
         AgentLinkService,
         WorkspaceService,
         WorkspaceQuotaService,
@@ -136,38 +139,42 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
       },
     );
 
+    // RNX-260 (D259): 403 inside the workspace (the admin row is a collaborator only where the plan allows it, D64),
+    // 404 outside it.
+    const insideStatus = planSlug === "enterprise" ? 403 : 404;
     const intruders = [
-      ["a collaborator (admin member of the workspace)", (s: Seeded) => bearer(s.collaborator)],
-      ["another user", (s: Seeded) => bearer(s.outsider)],
-      ["another user's API key", (s: Seeded) => apiKey(s.outsider.apiKey)],
+      ["a collaborator (admin member of the workspace)", (s: Seeded) => bearer(s.collaborator), insideStatus],
+      ["another user", (s: Seeded) => bearer(s.outsider), 404],
+      // an API key is refused by the access guard before the service (the link routes are jwt/session only): 403
+      ["another user's API key", (s: Seeded) => apiKey(s.outsider.apiKey), 403],
     ] as const;
 
-    it.each(intruders)("%s adding a link on A: 403, no link stored", async (_label, headersOf) => {
+    it.each(intruders)("%s adding a link on A: refused, no link stored", async (_label, headersOf, expected) => {
       const seeded = await setup();
 
       const res = await post(headersOf(seeded), seeded.a.id, { calleeAgentId: seeded.b.id });
 
-      expect(res.statusCode).toBe(403);
+      expect(res.statusCode).toBe(expected);
       expect(await links()).toEqual([]);
     });
 
-    it.each(intruders)("%s removing A's link: 403, the link kept", async (_label, headersOf) => {
+    it.each(intruders)("%s removing A's link: refused, the link kept", async (_label, headersOf, expected) => {
       const seeded = await setup();
       await prisma.agentLink.create({ data: { callerAgentId: seeded.a.id, calleeAgentId: seeded.b.id } });
 
       const res = await remove(headersOf(seeded), seeded.a.id, seeded.b.id);
 
-      expect(res.statusCode).toBe(403);
+      expect(res.statusCode).toBe(expected);
       expect(await links()).toEqual([{ callerAgentId: seeded.a.id, calleeAgentId: seeded.b.id }]);
     });
 
-    it.each(intruders)("%s listing A's links: 403", async (_label, headersOf) => {
+    it.each(intruders)("%s listing A's links: refused", async (_label, headersOf, expected) => {
       const seeded = await setup();
       await prisma.agentLink.create({ data: { callerAgentId: seeded.a.id, calleeAgentId: seeded.b.id } });
 
       const res = await app.inject({ method: "GET", url: `/agents/${seeded.a.id}/links`, headers: headersOf(seeded) });
 
-      expect(res.statusCode).toBe(403);
+      expect(res.statusCode).toBe(expected);
       expect(res.body).not.toContain(seeded.b.id);
     });
 

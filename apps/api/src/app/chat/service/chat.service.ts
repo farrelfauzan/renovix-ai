@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ForbiddenException,
   InternalServerErrorException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
@@ -36,9 +37,12 @@ import { completionChunk } from "../utils/completion-chunk";
 import { completionUsageOf } from "../utils/completion-usage-of";
 import { readCompletionDelta } from "../utils/read-completion-delta";
 
+/** RNX-232: an API-key request also names the key and its allowed tiers (ApiKeyGuard); the per-key limits apply then. */
 interface AuthenticatedUser {
   id: string;
   email: string;
+  apiKeyId?: string;
+  allowedTiers?: readonly string[];
 }
 
 @Injectable()
@@ -55,6 +59,7 @@ export class ChatService {
     private readonly documentService: DocumentService,
   ) {}
 
+  /** The JSON answer of POST /chat/completions and, for the X-Credits-Used header (RNX-232), the credits it used. */
   async createCompletion(body: ChatCompletionRequest, user: AuthenticatedUser) {
     const startTime = Date.now();
     const { connection, request, matchedTemplate, call } = await this.openCall(body, user);
@@ -158,7 +163,7 @@ export class ChatService {
       : undefined;
 
     // 11. Return response
-    return {
+    const completion = {
       id: providerResponse.id,
       object: "chat.completion",
       model: body.model,
@@ -171,6 +176,7 @@ export class ChatService {
         total_tokens: providerResponse.usage.total_tokens,
       },
     };
+    return { completion, creditsUsed: actualCost.toFixed(6) };
   }
 
   /**
@@ -179,6 +185,7 @@ export class ChatService {
    * `stream_options.include_usage`, a last chunk carries the ledger entry's tokens). The one usage entry is written
    * when the stream ends: a client that goes away aborts the upstream request; a provider error is charged 0 and ends
    * the stream with its fixed text (D197, D208). The conversation (`store`) is saved only after a completed stream.
+   * RNX-232: the last chunk before `data: [DONE]` carries `credits_used`, the credits the call used.
    */
   async streamCompletion(body: ApiChatCompletionRequest, user: AuthenticatedUser, response: ServerResponse): Promise<void> {
     const startTime = Date.now();
@@ -229,8 +236,14 @@ export class ChatService {
       .catch((err) => this.logger.error("Failed to log usage", err));
     if (outcome === "completed" && body.store) await this.storeConversation(body, user.id, { content: received.content });
     if (outcome === "completed") {
-      response.write(completionChunk(head, { choices: [{ index: 0, delta: {}, finish_reason: received.finishReason }] }));
-      if (body.stream_options?.include_usage) response.write(completionChunk(head, { choices: [], usage: completionUsageOf(entry) }));
+      const finish = { index: 0, delta: {}, finish_reason: received.finishReason };
+      const credits = { credits_used: entry.amount.negated().toFixed(6) };
+      if (body.stream_options?.include_usage) {
+        response.write(completionChunk(head, { choices: [finish] }));
+        response.write(completionChunk(head, { choices: [], usage: completionUsageOf(entry), ...credits }));
+      } else {
+        response.write(completionChunk(head, { choices: [finish], ...credits }));
+      }
       response.write("data: [DONE]\n\n");
     }
     response.end();
@@ -250,6 +263,11 @@ export class ChatService {
       throw new BadRequestException(
         `Model "${body.model}" is not supported. Available models: ${available.map((m) => m.slug).join(", ")}`,
       );
+    }
+
+    // RNX-232: an API key calls only the tiers it allows (403, nothing reserved).
+    if (user.allowedTiers && !user.allowedTiers.includes(modelConfig.tier)) {
+      throw new ForbiddenException(`This API key may not use ${modelConfig.tier} models`);
     }
 
     // 2. The tier's credit rates (RX-21), not price x multiplier.
@@ -282,6 +300,7 @@ export class ChatService {
       userId: user.id,
       requestId,
       amount: estimateCallCredits(countPromptTokens(tunedMessages), maxTokens, rates),
+      apiKeyId: user.apiKeyId,
     });
     const call = {
       reservationId: reservation.id,
@@ -291,6 +310,7 @@ export class ChatService {
       modelId: modelConfig.slug,
       tier: modelConfig.tier,
       rates,
+      apiKeyId: user.apiKeyId,
     };
     const request: ChatRequest = {
       model: body.model,

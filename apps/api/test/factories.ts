@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Prisma, PrismaClient } from "@generated/prisma/client.js";
 import { ProviderKeyCryptoService } from "../src/app/admin-providers/service/provider-key-crypto.service";
 import { API_KEY_FORMAT } from "../src/app/auth/config/api-key-format";
+import { MODEL_TIERS } from "../src/app/offers/config/model-tiers";
 import { hashApiKey } from "../src/app/auth/utils/hash-api-key";
 import { ensureDefaultWorkspace } from "../src/app/workspace/repository/ensure-default-workspace";
 
@@ -31,12 +32,18 @@ export function testApiKey(seed: string): string {
 /**
  * An API key of this user (RNX-18), stored as the API stores one: its prefix and its HMAC under the test
  * API_KEY_HASH_SECRET (setup-env.ts), never the plaintext. Returns the plaintext: `apiKey` when given (e.g. from
- * `testApiKey`), else a random key. `revokedAt`, `expiresAt` and `name` can be set.
+ * `testApiKey`), else a random key. `revokedAt`, `expiresAt` and `name` can be set. RNX-232: the key may call every
+ * tier unless `allowedTiers` is given, and has no monthly cap unless `monthlyCreditCap` is given.
  */
 export async function createApiKey(
   prisma: PrismaClient,
   userId: string,
-  { apiKey, ...data }: Partial<Pick<Prisma.ApiKeyUncheckedCreateInput, "name" | "revokedAt" | "expiresAt">> & { apiKey?: string } = {},
+  {
+    apiKey,
+    ...data
+  }: Partial<Pick<Prisma.ApiKeyUncheckedCreateInput, "name" | "revokedAt" | "expiresAt" | "allowedTiers" | "monthlyCreditCap">> & {
+    apiKey?: string;
+  } = {},
 ): Promise<string> {
   const plaintext = apiKey ?? `${API_KEY_FORMAT.marker}${randomBytes(API_KEY_FORMAT.randomBytes).toString("hex")}`;
   const prefixStart = API_KEY_FORMAT.marker.length;
@@ -46,6 +53,7 @@ export async function createApiKey(
       name: `key-${unique()}`,
       prefix: plaintext.slice(prefixStart, prefixStart + API_KEY_FORMAT.prefixLength),
       keyHash: hashApiKey(plaintext, process.env.API_KEY_HASH_SECRET as string),
+      allowedTiers: [...MODEL_TIERS],
       ...data,
     },
   });

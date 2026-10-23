@@ -6,10 +6,16 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { ReminderStatus } from "@generated/prisma/client.js";
 import { CronExpressionParser } from "cron-parser";
+import { AgentRepository } from "../../agent/repository/agent.repository";
+import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 
 @Injectable()
 export class ReminderService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly agents: AgentRepository,
+    private readonly policy: AgentRunPolicyService,
+  ) {}
 
   async create(
     userId: string,
@@ -49,6 +55,11 @@ export class ReminderService {
     if (!channelAgent) {
       throw new BadRequestException("Agent is not assigned to this channel");
     }
+
+    // RNX-260 (D259, 76): only an agent the caller may run now (the run policy; 404 otherwise), as when it was added
+    const agent = await this.agents.findAgentForRun(data.agentId);
+    if (!agent) throw new NotFoundException("Agent not found");
+    await this.policy.assertRunScope(agent, userId);
 
     // Verify chat room belongs to channel
     const chatRoom = await this.prisma.channelChatRoom.findFirst({
@@ -204,8 +215,9 @@ export class ReminderService {
   }
 
   /**
-   * RNX-119: a fire the run policy refused (the agent is no longer runnable by the reminder's owner, or the owner has
-   * no active subscription) is skipped: only the next fire time is set. It is not a run and not a failure.
+   * RNX-119: a fire the run policy refused (the agent is no longer runnable by the reminder's owner, its workspace is
+   * archived or deleted (RNX-260), or the owner has no active subscription) is skipped: only the next fire time is
+   * set. It is not a run and not a failure.
    */
   async markSkipped(id: string, cronExpression: string, timezone: string) {
     const nextRunAt = CronExpressionParser.parse(cronExpression, { tz: timezone }).next().toDate();
