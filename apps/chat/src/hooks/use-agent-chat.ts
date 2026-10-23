@@ -41,17 +41,11 @@ export function useAgentChat(agentId: string) {
       abortControllerRef.current = controller;
 
       try {
-        const jwt =
-          typeof window !== "undefined" ? localStorage.getItem("jwt") : null;
-
         const response = await fetch(
           `${config.apiUrl}/agents/${agentId}/chat`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               message,
               sessionId: activeRunId || undefined,

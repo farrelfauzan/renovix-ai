@@ -18,7 +18,7 @@ import { CreateReminderSchema, UpdateReminderSchema } from "../dto/reminder.dto"
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("reminders")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class ReminderController {
   constructor(private readonly reminderService: ReminderService) {}
 

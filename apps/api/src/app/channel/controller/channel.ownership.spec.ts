@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { ChannelController } from "./channel.controller";
 import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
@@ -15,9 +14,10 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-15 characterization: channel ownership through the real controller and
-// ChannelService (CombinedAuthGuard JWT path, test database). The chat, upload
+// ChannelService (CombinedAuthGuard session path, test database). The chat, upload
 // and document collaborators are not used by these routes: empty stubs, and
 // their modules are replaced because they load ESM-only packages.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
@@ -25,8 +25,6 @@ jest.mock("../service/channel-chat.service", () => ({ ChannelChatService: class 
 jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }));
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
-
-process.env.JWT_SECRET = "rx15-test-jwt-secret";
 
 describe("Channels: ownership (RX-15, Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -54,9 +52,7 @@ describe("Channels: ownership (RX-15, Fastify, test database)", () => {
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   const setup = async () => {
     const alice = await createUser(prisma);

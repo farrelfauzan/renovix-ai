@@ -10,7 +10,7 @@ import { Access } from "../../../common/decorators/access.decorator";
 import { McpService } from "../service/mcp.service";
 
 @Controller("mcp")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class McpController {
   constructor(private readonly mcpService: McpService) {}
 

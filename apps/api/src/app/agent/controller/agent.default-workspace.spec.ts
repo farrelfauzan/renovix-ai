@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
@@ -13,12 +12,11 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-117: every agent lives in a workspace. Create and clone put the agent in the caller's default workspace,
 // created on the first agent of an account that has none yet. Real controller and service, test database.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-
-process.env.JWT_SECRET = "rnx117-test-jwt-secret";
 
 describe("RNX-117: agents go into the caller's default workspace (Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -37,9 +35,7 @@ describe("RNX-117: agents go into the caller's default workspace (Fastify, test 
 
   afterAll(() => app?.close());
 
-  const auth = (user: { id: string; email: string }) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
   /** A subscribed user with no workspace at all (an account from before RNX-117). */
   const subscribedUser = async () => {

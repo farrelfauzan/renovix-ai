@@ -1,3 +1,4 @@
+import type { ModuleMetadata } from "@nestjs/common";
 import type { TestingModule } from "@nestjs/testing";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import type { LightMyRequestResponse } from "fastify";
@@ -22,11 +23,13 @@ export interface BetterAuthTestApp {
 }
 
 /**
- * Starts BetterAuthController on the test database (emptied first) under /api, as main.ts does (better-auth's
- * basePath is /api/auth/better). Close with `app.close()`.
+ * Starts BetterAuthController (or the given module metadata, RNX-225) on the test database (emptied first) under
+ * /api, as main.ts does (better-auth's basePath is /api/auth/better). Close with `app.close()`.
  */
-export async function startBetterAuthApp(): Promise<BetterAuthTestApp> {
-  const { moduleRef, prisma } = await createTestModule({ controllers: [BetterAuthController] });
+export async function startBetterAuthApp(
+  metadata: ModuleMetadata = { controllers: [BetterAuthController] },
+): Promise<BetterAuthTestApp> {
+  const { moduleRef, prisma } = await createTestModule(metadata);
   await resetDatabase(prisma);
   const app = moduleRef.createNestApplication<NestFastifyApplication>(createFastifyAdapter());
   app.setGlobalPrefix("api");

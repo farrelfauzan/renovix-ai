@@ -1,5 +1,4 @@
 import { ConfigModule } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Decimal } from "@prisma/client/runtime/client";
@@ -31,6 +30,7 @@ import {
   StubHttpServer,
 } from "../../../../test/llm-stub";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-221: POST /chat/portal/completions passes response_format and reasoning_effort upstream, free and paid, as
 // /chat/completions does (RNX-199). The real portal route (Fastify, test database) and the real OpenRouterAdapter talk
@@ -120,11 +120,11 @@ describe("RNX-221: the portal route passes response_format and reasoning_effort 
   const paidChat = async (payload: Record<string, unknown>) => {
     const user = await createUser(prisma);
     await fundPaidWallet(prisma, user.id, 5);
-    const token = moduleRef.get(JwtService).sign({ userId: user.id, email: user.email });
+    const session = asSessionUser(user);
     return app.inject({
       method: "POST",
       url: "/chat/portal/completions",
-      headers: { "x-portal-session": "22222222-2222-4222-8222-222222222221", authorization: `Bearer ${token}` },
+      headers: { "x-portal-session": "22222222-2222-4222-8222-222222222221", ...session },
       payload: { model: PLAIN_SLUG, messages: [{ role: "user", content: "Hi" }], ...payload },
     });
   };

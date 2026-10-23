@@ -17,7 +17,7 @@ import { WebSearchKeySchema } from "../dto/web-search-key.dto";
 import { UpdateWebSearchPolicySchema } from "../dto/update-web-search-policy.dto";
 
 @Controller("integrations/web-search")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class WebSearchController {
   constructor(
     private readonly webSearchService: WebSearchService,

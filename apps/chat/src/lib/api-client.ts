@@ -1,7 +1,6 @@
 import axios, {
   type AxiosError,
   type AxiosInstance,
-  type InternalAxiosRequestConfig,
   type AxiosResponse,
   type AxiosRequestConfig,
   type CreateAxiosDefaults,
@@ -63,29 +62,6 @@ const axiosConfig: CreateAxiosDefaults = {
 
 export const apiClient: TypedAxiosInstance = axios.create(axiosConfig);
 
-function getOrCreateSessionToken(): string {
-  if (typeof window === "undefined") return "";
-  let token = localStorage.getItem("portal_session");
-  if (!token) {
-    token = crypto.randomUUID();
-    localStorage.setItem("portal_session", token);
-  }
-  return token;
-}
-
-apiClient.interceptors.request.use((reqConfig: InternalAxiosRequestConfig) => {
-  const sessionToken = getOrCreateSessionToken();
-  const jwt =
-    typeof window !== "undefined" ? localStorage.getItem("jwt") : null;
-
-  reqConfig.headers["X-Portal-Session"] = sessionToken;
-  if (jwt) {
-    reqConfig.headers["Authorization"] = `Bearer ${jwt}`;
-  }
-
-  return reqConfig;
-});
-
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response.data,
   (error: AxiosError) => {
@@ -96,9 +72,6 @@ apiClient.interceptors.response.use(
       "An unexpected error occurred";
 
     if (status === 401) {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("jwt");
-      }
       toast.error("Session expired. Please log in again.");
     } else if (status === 403) {
       toast.error("You do not have permission to perform this action.");

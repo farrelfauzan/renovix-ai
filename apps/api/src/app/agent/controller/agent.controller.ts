@@ -29,7 +29,7 @@ import {
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 @Controller("agents")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class AgentController {
   constructor(private readonly agentService: AgentService) {}
 

@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { ChannelController } from "./channel.controller";
 import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
@@ -14,6 +13,7 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser } from "../../../../test/factories";
 import { captureLogs, requestOverSocket, sseErrorMessages } from "../../../../test/sse-client";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-171 AC3/AC4: POST /channels/:id/agents/:agentId/chat is wrapped by the SSE stream guard. The channel chat throws
 // a plain Error after the SSE headers, and the route's own catch then throws too (its "Channel chat error" log line
@@ -60,7 +60,8 @@ describe("RNX-171: the channel chat stream guard (Fastify, real socket)", () => 
 
   it("the channel chat throws after the headers, then the route's catch throws → error event, stream ends, health answers, no secret logged", async () => {
     const user = await createUser(prisma);
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
+    const session = asSessionUser(user);
+    const sessionToken = session.cookie.slice(session.cookie.indexOf("=") + 1);
     const logs = captureLogs({ when: /^Channel chat error/, error: new Error(`the route's catch failed, cookie=${MARKER_COOKIE}`) });
     const roomChat = jest.spyOn(moduleRef.get(ChannelChatService), "chat").mockImplementation(async () => {
       throw new Error("planted collaborator failure");
@@ -69,7 +70,7 @@ describe("RNX-171: the channel chat stream guard (Fastify, real socket)", () => 
     const res = await requestOverSocket(app, {
       method: "POST",
       path: `/channels/${CHANNEL_ID}/agents/${AGENT_ID}/chat`,
-      headers: { authorization: `Bearer ${token}`, cookie: `better-auth.session_token=${MARKER_COOKIE}` },
+      headers: session,
       body: { message: "Hi" },
     });
 
@@ -78,7 +79,7 @@ describe("RNX-171: the channel chat stream guard (Fastify, real socket)", () => 
     expect([res.statusCode, res.contentType, res.ended]).toEqual([200, "text/event-stream", true]);
     expect(sseErrorMessages(res.body)).toEqual(["The response failed. Please try again."]);
     expect(logs.lines).toContain("SSE stream ended by an error after its headers were sent (Error)");
-    expect(logs.lines.filter((l) => [MARKER_KEY, MARKER_COOKIE, token].some((s) => l.includes(s)) || l.includes("ERR_HTTP_HEADERS_SENT"))).toEqual([]);
+    expect(logs.lines.filter((l) => [MARKER_KEY, MARKER_COOKIE, sessionToken].some((s) => l.includes(s)) || l.includes("ERR_HTTP_HEADERS_SENT"))).toEqual([]);
     const health = await requestOverSocket(app, { method: "GET", path: "/health" });
     expect([health.statusCode, JSON.parse(health.body)]).toEqual([200, { status: "ok", database: "connected" }]);
   }, 15000);

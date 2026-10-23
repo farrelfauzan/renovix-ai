@@ -2,7 +2,6 @@ import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { McpUserController } from "./mcp-user.controller";
 import { McpUserService } from "../service/mcp-user.service";
 import { McpOAuthStateRepository } from "../repository/mcp-oauth-state.repository";
@@ -12,6 +11,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-152: the public OAuth callback completes a flow only in the browser that started it. The start
 // response sets the flow's one-time value (the `n` of RX-151's signed state) as a cookie per provider;
@@ -122,9 +122,7 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
 
   afterAll(() => app?.close());
 
-  const auth = (user: Actor) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: Actor) => asSessionUser(user);
 
   const start = (user: Actor, provider: string = GMAIL) =>
     app.inject({

@@ -6,12 +6,11 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createPlan, createUser } from "../../../../test/factories";
+import { asSessionUser } from "../../../../test/as-session-user";
 
-// CombinedAuthGuard runs for real (JWT path); better-auth is ESM-only, so its
-// session lookup is replaced by "no session".
+// CombinedAuthGuard runs for real (session path); better-auth is ESM-only, so its
+// session lookup is a mock: "no session", except for a cookie of test/as-session-user.ts.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-
-process.env.JWT_SECRET = "rx8-test-jwt-secret";
 
 describe("GET /codes/history (Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -42,12 +41,12 @@ describe("GET /codes/history (Fastify, test database)", () => {
     const bob = await createUser(prisma);
     await redeemed(alice.id, "PERF-ALIC-0001", plan.id);
     await redeemed(bob.id, "PERF-BOBB-0001", plan.id);
-    const token = jwt.sign({ userId: alice.id, email: alice.email }, process.env.JWT_SECRET!);
+    const session = asSessionUser(alice);
 
     const res = await app.inject({
       method: "GET",
       url: "/codes/history",
-      headers: { authorization: `Bearer ${token}` },
+      headers: session,
     });
 
     expect(res.statusCode).toBe(200);
@@ -63,6 +62,8 @@ describe("GET /codes/history (Fastify, test database)", () => {
   it.each([
     ["no token", {}],
     ["a token signed with another secret", { authorization: `Bearer ${jwt.sign({ userId: "x" }, "wrong")}` }],
+    // RNX-225: a login JWT signed with JWT_SECRET is no credential any more.
+    ["a login JWT", { authorization: `Bearer ${jwt.sign({ userId: "x", email: "x@test.local" }, process.env.JWT_SECRET!)}` }],
   ])("is 401 with %s", async (_case, headers: Record<string, string>) => {
     const res = await app.inject({ method: "GET", url: "/codes/history", headers });
 

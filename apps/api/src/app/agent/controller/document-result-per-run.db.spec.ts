@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentRunController } from "./agent-run.controller";
 import { ChannelController } from "../../channel/controller/channel.controller";
 import { AgentRunService } from "../service/agent-run.service";
@@ -39,6 +38,7 @@ import { requestOverSocket } from "../../../../test/sse-client";
 import { AgentLinkService } from "../service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-222: the document a run's `create_document` call generates belongs to that run. Two users' runs overlap; the
 // agent and channel chat routes are called over a real socket, so each controller's read of the document is part of
@@ -58,7 +58,7 @@ jest.setTimeout(30_000);
 const EXPIRES_AT = "2026-10-22T00:00:00.000Z";
 
 type Owner = "u1" | "u2";
-type Runner = { owner: Owner; userId: string; agentId: string; channelId: string; token: string };
+type Runner = { owner: Owner; userId: string; agentId: string; channelId: string; session: { cookie: string } };
 type Gate = { arrived: Promise<void>; arrive: () => void; released: Promise<void>; release: () => void };
 type Script = { fake: FakeProviderAdapter; calls: number; holdAt?: number; gate: Gate };
 type Route = (runner: Runner) => Promise<string>;
@@ -211,7 +211,7 @@ describe("RNX-222: the generated document belongs to its run (agent and channel 
     toolCalls: [{ name: "create_document", arguments: { content: `# Report ${owner}`, format: "pdf", filename: owner } }],
   });
 
-  /** A subscribed, funded user with a channel (its workspace's), an active agent in it and a token. */
+  /** A subscribed, funded user with a channel (its workspace's), an active agent in it and a session cookie. */
   const seedUser = async (owner: Owner): Promise<Runner> => {
     const user = await createUser(prisma);
     await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
@@ -220,8 +220,8 @@ describe("RNX-222: the generated document belongs to its run (agent and channel 
     const workspace = await createWorkspace(prisma, { ownerId: user.id, channelId: channel.id });
     const agent = await createAgent(prisma, { userId: user.id, workspaceId: workspace.id, status: "active" });
     await prisma.channelAgent.create({ data: { channelId: channel.id, agentId: agent.id } });
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!);
-    return { owner, userId: user.id, agentId: agent.id, channelId: channel.id, token };
+    const session = asSessionUser(user);
+    return { owner, userId: user.id, agentId: agent.id, channelId: channel.id, session };
   };
 
   /** POSTs one message to a chat route over a real socket; resolves with the SSE body once the stream ends. */
@@ -229,7 +229,7 @@ describe("RNX-222: the generated document belongs to its run (agent and channel 
     const res = await requestOverSocket(app, {
       method: "POST",
       path,
-      headers: { authorization: `Bearer ${runner.token}` },
+      headers: runner.session,
       body: { message: `Write my report [${runner.owner}]` },
     });
     expect([res.statusCode, res.ended]).toEqual([200, true]);

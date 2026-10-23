@@ -1,5 +1,4 @@
 import { ConfigModule } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
@@ -20,6 +19,7 @@ import { createUser } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-162 AC8: a paid portal stream (POST /chat/portal/completions, the portal's only completion route; it has no
 // JSON answer) writes one model_call_costs row for its call, right after its usage entry. Fake provider, test database.
@@ -93,7 +93,7 @@ describe("RNX-162: model call costs on the paid portal stream (Fastify, test dat
       url: "/chat/portal/completions",
       headers: {
         "x-portal-session": SESSION,
-        authorization: `Bearer ${moduleRef.get(JwtService).sign({ userId: user.id, email: user.email })}`,
+        ...asSessionUser(user),
       },
       payload: { model: SLUG, messages: [{ role: "user", content: "Hi" }] },
     });

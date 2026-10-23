@@ -1,18 +1,5 @@
 import { z } from "zod";
 
-export const RegisterDto = z.object({
-  email: z.string().email(),
-  password: z.string().min(8).max(128),
-  name: z.string().max(100).optional(),
-});
-export type RegisterDto = z.infer<typeof RegisterDto>;
-
-export const LoginDto = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-});
-export type LoginDto = z.infer<typeof LoginDto>;
-
 export const UpdateProfileDto = z.object({
   name: z.string().max(100).optional(),
   firstName: z.string().max(50).optional(),

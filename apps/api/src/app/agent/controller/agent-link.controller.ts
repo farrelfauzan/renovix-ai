@@ -16,7 +16,7 @@ import { createInvalidBodyException } from "../../../common/utils/create-invalid
 
 /** RNX-118: an agent's links ("Can call"), for the workspace owner of the agent only (AgentLinkService). */
 @Controller("agents")
-@Access({ auth: ["jwt", "session"] })
+@Access({ auth: ["session"] })
 export class AgentLinkController {
   constructor(private readonly linkService: AgentLinkService) {}
 

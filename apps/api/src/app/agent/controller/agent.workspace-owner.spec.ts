@@ -1,6 +1,5 @@
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
-import * as jwt from "jsonwebtoken";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
@@ -13,13 +12,12 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
+import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-203: a user owns an agent when they own its workspace (agent.workspace.ownerId); agent.userId is only the
 // creator. The rows where the two rules differ (creator B, workspace owned by A) are written straight to the database.
 // Create and clone take an optional workspaceId the caller must own (403). Real controller and service, test database.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
-
-process.env.JWT_SECRET = "rnx203-test-jwt-secret";
 
 type User = { id: string; email: string };
 
@@ -40,9 +38,7 @@ describe("RNX-203: agent ownership through the workspace owner (Fastify, test da
 
   afterAll(() => app?.close());
 
-  const auth = (user: User) => ({
-    authorization: `Bearer ${jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET!)}`,
-  });
+  const auth = (user: User) => asSessionUser(user);
 
   const subscribe = async (user: User) => {
     const plan = await createPlan(prisma, { maxAgents: 50 });

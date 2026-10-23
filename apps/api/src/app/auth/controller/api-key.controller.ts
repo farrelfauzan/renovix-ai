@@ -21,7 +21,7 @@ export class ApiKeyController {
    * the package does not allow are a 403); answers its fields and `apiKey`, once.
    */
   @Post()
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async create(@Req() req: SignedInUserRequest, @Body() body: unknown): Promise<CreatedApiKey> {
     const parsed = CreateApiKeyDto.safeParse(body);
     if (!parsed.success) throw createInvalidBodyException(parsed.error);
@@ -33,14 +33,14 @@ export class ApiKeyController {
    * monthlyCreditCap.
    */
   @Get()
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   list(@Req() req: SignedInUserRequest): Promise<ApiKeyView[]> {
     return this.apiKeys.list(req.user.userId);
   }
 
   /** Revokes one of the user's keys (204); another user's key or an unknown id is a 404. */
   @Delete(":id")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   @HttpCode(204)
   async revoke(@Req() req: SignedInUserRequest, @Param("id") id: string): Promise<void> {
     await this.apiKeys.revoke(req.user.userId, id);
@@ -48,7 +48,7 @@ export class ApiKeyController {
 
   /** Compatibility route until RX-82: a new key that never expires, the user's other keys revoked; `{ apiKey, apiKeyWarning }`. */
   @Post("regenerate")
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   @HttpCode(200)
   regenerate(@Req() req: SignedInUserRequest): Promise<RegeneratedApiKey> {
     return this.apiKeys.regenerate(req.user.userId);

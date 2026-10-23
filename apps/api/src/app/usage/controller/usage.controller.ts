@@ -7,7 +7,7 @@ export class UsageController {
   constructor(private readonly usageService: UsageService) {}
 
   @Get()
-  @Access({ auth: ["jwt", "session"] })
+  @Access({ auth: ["session"] })
   async getUsage(
     @Req() req: any,
     @Query("limit") limit?: string,

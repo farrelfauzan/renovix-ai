@@ -52,7 +52,7 @@ import { CreatePortalKnowledgeBaseSchema } from "../../app/portal/dto/create-por
 import { CreateWorkspaceKnowledgeBaseSchema } from "../../app/workspace/dto/create-workspace-knowledge-base.dto";
 import { AddWorkspaceChunksSchema } from "../../app/workspace/dto/add-workspace-chunks.dto";
 import { SearchWorkspaceKnowledgeSchema } from "../../app/workspace/dto/search-workspace-knowledge.dto";
-import { RegisterDto, LoginDto, UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
+import { UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
 import { CreateApiKeyDto } from "../../app/auth/dto/create-api-key.dto";
 import { ApiChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
 import { CreateCodeDto, RedeemCodeDto } from "../../app/codes/dto/redeem-code.dto";
@@ -138,8 +138,6 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /chat/portal/completions", PortalCompletionSchema],
   ["POST /chat/portal/knowledge", CreatePortalKnowledgeBaseSchema],
   // ─── the rest of the product API ───
-  ["POST /auth/register", RegisterDto],
-  ["POST /auth/login", LoginDto],
   ["POST /auth/keys", CreateApiKeyDto],
   ["PATCH /auth/me", UpdateProfileDto],
   ["POST /codes/redeem", RedeemCodeDto],

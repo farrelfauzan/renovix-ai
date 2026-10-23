@@ -4,50 +4,22 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from "@nestjs/common";
-import * as jwt from "jsonwebtoken";
 import { auth } from "../../lib/auth";
-import { readRequiredSecret } from "../utils/read-required-secret";
 
 /**
- * Combined auth guard that accepts either:
- * 1. JWT Bearer token (legacy email/password flow)
- * 2. Better Auth cookie session (SSO flow)
+ * The `session` method of AccessGuard: a Better Auth cookie session (email and password or SSO). The login JWT
+ * is not accepted any more (RNX-225).
  *
  * Attaches { userId, email } to request.user for downstream use.
- * Does NOT require JwtModule — uses jsonwebtoken directly.
  */
 @Injectable()
 export class CombinedAuthGuard implements CanActivate {
-  private readonly jwtSecret: string;
-
-  constructor() {
-    this.jwtSecret = readRequiredSecret(process.env, "JWT_SECRET");
-  }
-
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // 1. Try JWT first, 2. then the Better Auth session (cookie-based)
-    if (this.tryJwt(context) || (await this.trySession(context))) {
+    if (await this.trySession(context)) {
       return true;
     }
 
     throw new UnauthorizedException("Authentication required");
-  }
-
-  /** Accepts a valid JWT Bearer token and attaches request.user; false otherwise. */
-  tryJwt(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.slice(7);
-      try {
-        const payload = jwt.verify(token, this.jwtSecret) as any;
-        request.user = { userId: payload.userId, email: payload.email };
-        return true;
-      } catch {
-        // JWT invalid
-      }
-    }
-    return false;
   }
 
   /** Accepts a valid Better Auth cookie session and attaches request.user; false otherwise. */
