@@ -40,16 +40,16 @@ export function ChangePasswordScreen({ api = defaultSessionApi }: { api?: Sessio
       <form aria-label="Change password" onSubmit={submit} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           New password
-          <input type="password" name="newPassword" autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="rounded border border-neutral-300 px-2 py-1" />
+          <input type="password" name="newPassword" autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
         </label>
-        <button type="submit" disabled={isSubmitting} className="self-start rounded border border-neutral-300 px-3 py-1 text-sm">
+        <button type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
           Change password
         </button>
       </form>
       <button type="button" disabled={isSubmitting} onClick={() => run(api.signOut, "/sign-in")} className="self-start text-sm underline">
         Sign out
       </button>
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
     </div>
   );
 }

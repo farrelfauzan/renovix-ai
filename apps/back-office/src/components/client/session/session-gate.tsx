@@ -14,6 +14,8 @@ type CheckedRoute = { readonly pathname: string; readonly decision?: GateDecisio
 
 type SessionGateProps = {
   readonly sideNavigation: ReactNode;
+  /** The brand block above the public screens (sign-in, accept-invitation). */
+  readonly publicHeader: ReactNode;
   readonly children: ReactNode;
   /** Replaced in tests only. */
   readonly api?: SessionApi;
@@ -26,7 +28,7 @@ type SessionGateProps = {
  * refresh failed, as for a suspended admin) goes to sign-in; what else a session reaches is `decideGate`'s.
  * Nothing of a gated route renders until its own answer is in; if the API cannot be asked, nothing renders.
  */
-export function SessionGate({ sideNavigation, children, api = defaultSessionApi }: SessionGateProps) {
+export function SessionGate({ sideNavigation, publicHeader, children, api = defaultSessionApi }: SessionGateProps) {
   const pathname = usePathname();
   const router = useRouter();
   const isPublic = isPublicPath(pathname);
@@ -47,13 +49,20 @@ export function SessionGate({ sideNavigation, children, api = defaultSessionApi 
   useEffect(() => {
     if (redirectTo) router.replace(redirectTo);
   }, [redirectTo, router]);
-  if (isPublic) return <main className="min-h-screen p-6">{children}</main>;
-  if (!current) return <p className="p-6 text-sm text-neutral-600">Checking your session…</p>;
-  if (!current.decision) return <p role="alert" className="p-6 text-sm text-red-700">Your session could not be checked. Reload the page to try again.</p>;
+  if (isPublic) {
+    return (
+      <main className="min-h-screen p-6">
+        <header className="mb-6">{publicHeader}</header>
+        {children}
+      </main>
+    );
+  }
+  if (!current) return <p className="p-6 text-sm text-rx-muted">Checking your session…</p>;
+  if (!current.decision) return <p role="alert" className="p-6 text-sm text-rx-red-bar">Your session could not be checked. Reload the page to try again.</p>;
   if ("redirectTo" in current.decision) return null;
   if (!current.decision.showsNavigation) return <main className="min-h-screen p-6">{children}</main>;
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col md:flex-row">
       {sideNavigation}
       <main className="flex-1 p-6">{children}</main>
     </div>

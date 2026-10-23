@@ -1,2 +1,13 @@
 @import "tailwindcss";
 @import "./tokens.css";
+
+/* Back-office tokens that StyleGuide does not name (RNX-244): the ink sidebar's hover and active fills. */
+:root {
+  --rx-ink-hover: #262D36;
+  --rx-ink-active: #2A313A;
+}
+
+@theme inline {
+  --color-rx-ink-hover: var(--rx-ink-hover);
+  --color-rx-ink-active: var(--rx-ink-active);
+}

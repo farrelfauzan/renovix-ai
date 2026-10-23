@@ -25,7 +25,7 @@ export function AdminsTable({ admins, api, roles, currentAdminId, canWriteAdmins
       <thead>
         <tr>
           {COLUMNS.map((column) => (
-            <th key={column} className="border-b border-neutral-200 px-2 py-1 font-medium">{column}</th>
+            <th key={column} className="border-b border-rx-line px-2 py-1 font-medium">{column}</th>
           ))}
         </tr>
       </thead>

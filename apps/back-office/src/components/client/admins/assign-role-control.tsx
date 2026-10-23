@@ -15,12 +15,12 @@ export function AssignRoleControl({ email, currentRole, roles, onAssign }: Assig
   const [role, setRole] = useState(currentRole);
   return (
     <span className="inline-flex gap-1">
-      <select aria-label={`Role for ${email}`} value={role} onChange={(event) => setRole(event.target.value)} className="rounded border border-neutral-300 px-1 py-1 text-sm">
+      <select aria-label={`Role for ${email}`} value={role} onChange={(event) => setRole(event.target.value)} className="rounded-rx border border-rx-line px-1 py-1 text-sm">
         {roles.map((entry) => (
           <option key={entry.name} value={entry.name}>{entry.name}</option>
         ))}
       </select>
-      <button type="button" aria-label={`Assign role to ${email}`} onClick={() => onAssign(role)} className="rounded border border-neutral-300 px-2 py-1 text-sm">Assign</button>
+      <button type="button" aria-label={`Assign role to ${email}`} onClick={() => onAssign(role)} className="rounded-rx border border-rx-line px-2 py-1 text-sm">Assign</button>
     </span>
   );
 }
