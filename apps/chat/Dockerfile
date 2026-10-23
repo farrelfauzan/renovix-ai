@@ -1,14 +1,28 @@
 # Build context: monorepo root
 # Usage: docker build -f apps/chat/Dockerfile .
 
-# ─── Stage 1: Install dependencies ───
+# ─── Stage 1a: Install dependencies from bun.lock ───
+# Same Bun version as CI; alpine (musl) to match the node:alpine stages.
+FROM mirror.gcr.io/oven/bun:1.3.11-alpine AS install
+WORKDIR /app
+
+# A frozen install of the workspace root needs every workspace manifest bun.lock lists.
+COPY package.json bun.lock bunfig.toml ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/api-e2e/package.json ./apps/api-e2e/
+COPY apps/back-office/package.json ./apps/back-office/
+COPY apps/chat/package.json ./apps/chat/
+COPY apps/landing/package.json ./apps/landing/
+
+# --frozen-lockfile fails the build when bun.lock does not match the manifests.
+# --linker hoisted gives the flat, npm-style node_modules the build and runtime stages expect.
+RUN bun install --frozen-lockfile --ignore-scripts --linker hoisted
+
+# ─── Stage 1b: Node base with the installed dependencies ───
 FROM mirror.gcr.io/library/node:22-alpine AS deps
 WORKDIR /app
 
-COPY package.json ./
-COPY apps/chat/package.json ./apps/chat/
-
-RUN npm install --ignore-scripts --legacy-peer-deps
+COPY --from=install /app ./
 
 # ─── Stage 2: Build ───
 FROM deps AS builder
