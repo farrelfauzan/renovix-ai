@@ -68,6 +68,12 @@ services:
       API_PUBLIC_URL: ${API_PUBLIC_URL:?}
       CHAT_APP_URL: ${CHAT_APP_URL:?}
       APP_BASE_URL: ${APP_BASE_URL:?}
+      # RNX-278: payments (docs/payments.md; .env.example's payments block). The API refuses to start in production
+      # without PAYMENT_PROVIDER ("autogopay", or "fake" only with PAYMENTS_FORCE_OFF=true). The AutoGoPay key is
+      # required by the API when PAYMENT_PROVIDER=autogopay; compose allows it empty for the fake provider.
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:?}
+      PAYMENT_PROVIDER_API_KEY: ${PAYMENT_PROVIDER_API_KEY:-}
+      PAYMENTS_FORCE_OFF: ${PAYMENTS_FORCE_OFF:-false}
       # Must be set, may be empty (empty keeps signed download URLs as they are).
       S3_CDN_DOMAIN: ${S3_CDN_DOMAIN?}
       # Optional: passed only when set; unset, the API uses its default.
