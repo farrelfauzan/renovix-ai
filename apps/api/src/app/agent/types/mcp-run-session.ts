@@ -10,5 +10,11 @@ import type { StoredDocumentResult } from "../../document/service/document.servi
 export type McpRunSession = {
   readonly connections: McpConnection[];
   readonly toolConnections: Map<string, McpConnection>;
+  /**
+   * RNX-276: the names of every tool schema offered to this run (built-ins, call_agent, MCP tools).
+   * `executeTool` runs a tool only when its name is here: a built-in the run never offered must
+   * not run, whoever asks for it (a user message, knowledge content or a web page steering the model).
+   */
+  readonly offeredToolNames: Set<string>;
   document: StoredDocumentResult | null;
 };

@@ -176,7 +176,7 @@ describe("RNX-16: agent run loop scenarios (test database, fake provider, real t
     ]);
   });
 
-  it("RNX-16 built-in tool not offered (AR), pins a [BUG] on RNX-16: the agent was not given calculator, yet a call to it runs (executeTool dispatches built-ins by name); flip this test when the fix lands", async () => {
+  it("RNX-276 built-in tool not offered (AR): the agent was not given calculator, so a call to it runs nothing; the model gets 'not available' (flipped from RNX-16's pin)", async () => {
     await seedModel();
     const { bob, agent } = await seed();
     const executeTool = jest.spyOn(moduleRef.get(AgentToolService), "executeTool");
@@ -190,6 +190,88 @@ describe("RNX-16: agent run loop scenarios (test database, fake provider, real t
     expect(actual.message.content).toBe("Final answer");
     expect(offeredToolNames(0)).toEqual(["create_document"]);
     expect(executeTool.mock.calls.map(([name]) => name)).toEqual(["calculator"]);
+    expect(fake.requests[1].messages.at(-1)).toEqual({
+      role: "tool",
+      tool_call_id: "call_1",
+      content: 'Tool "calculator" is not available. It may require an MCP integration to be connected.',
+    });
+  });
+
+  it("RNX-276 web_search not offered (AR): a call to it runs no web search and spends nothing on it; the model gets 'not available' and the run finishes", async () => {
+    await seedModel();
+    const { bob, agent } = await seed();
+    fake.enqueue(
+      { toolCalls: [{ id: "call_1", name: "web_search", arguments: { query: "prices" } }], usage: { prompt_tokens: 40, completion_tokens: 2 } },
+      { content: "Final answer", usage: { prompt_tokens: 60, completion_tokens: 8 } },
+    );
+
+    const actual = await service.chat(bob.id, agent.id, "Hi");
+
+    expect(actual.message.content).toBe("Final answer");
+    expect(offeredToolNames(0)).toEqual(["create_document"]);
+    expect(mockWebSearch.mock.calls.length).toBe(0);
+    expect(fake.requests[1].messages.at(-1)).toEqual({
+      role: "tool",
+      tool_call_id: "call_1",
+      content: 'Tool "web_search" is not available. It may require an MCP integration to be connected.',
+    });
+    expect(fake.requests).toHaveLength(2);
+  });
+
+  it.each(["memory_store", "create_reminder"] as const)(
+    "RNX-276 %s not offered (AR): a call to it writes nothing; the model gets 'not available' and the run finishes",
+    async (tool) => {
+      await seedModel();
+      const { bob, agent } = await seed();
+      fake.enqueue(
+        { toolCalls: [{ id: "call_1", name: tool, arguments: {} }], usage: { prompt_tokens: 40, completion_tokens: 2 } },
+        { content: "Final answer", usage: { prompt_tokens: 60, completion_tokens: 8 } },
+      );
+
+      const actual = await service.chat(bob.id, agent.id, "Hi");
+
+      expect(actual.message.content).toBe("Final answer");
+      expect(fake.requests[1].messages.at(-1)).toEqual({
+        role: "tool",
+        tool_call_id: "call_1",
+        content: `Tool "${tool}" is not available. It may require an MCP integration to be connected.`,
+      });
+      expect(await prisma.reminder.count()).toBe(0);
+      expect(await prisma.userMemory.count()).toBe(0);
+      expect(mockGenerateDocument.mock.calls.length).toBe(0);
+    },
+  );
+
+  it("RNX-276 knowledge_retrieval not offered (AR): a call to it returns 'not available' and the run finishes", async () => {
+    await seedModel();
+    const { bob, agent } = await seed();
+    fake.enqueue(
+      { toolCalls: [{ id: "call_1", name: "knowledge_retrieval", arguments: { query: "prices" } }], usage: { prompt_tokens: 40, completion_tokens: 2 } },
+      { content: "Final answer", usage: { prompt_tokens: 60, completion_tokens: 8 } },
+    );
+
+    const actual = await service.chat(bob.id, agent.id, "Hi");
+
+    expect(actual.message.content).toBe("Final answer");
+    expect(fake.requests[1].messages.at(-1)).toEqual({
+      role: "tool",
+      tool_call_id: "call_1",
+      content: 'Tool "knowledge_retrieval" is not available. It may require an MCP integration to be connected.',
+    });
+  });
+
+  it("RNX-276 control (AR): a built-in that WAS offered still runs", async () => {
+    await seedModel();
+    const { bob, agent } = await seed(["calculator"]);
+    fake.enqueue(
+      { toolCalls: [{ id: "call_1", name: "calculator", arguments: { expression: "2+2" } }], usage: { prompt_tokens: 40, completion_tokens: 2 } },
+      { content: "It is 4.", usage: { prompt_tokens: 60, completion_tokens: 8 } },
+    );
+
+    const actual = await service.chat(bob.id, agent.id, "Hi");
+
+    expect(actual.message.content).toBe("It is 4.");
+    expect(offeredToolNames(0)).toEqual(["calculator", "create_document"]);
     expect(fake.requests[1].messages.at(-1)).toEqual({ role: "tool", tool_call_id: "call_1", content: "Result: 4" });
   });
 
