@@ -38,7 +38,9 @@ export function loadLibAuth(clientIpHeader?: string): unknown {
 /**
  * The real lib/auth with the allowed-origins variables set (RNX-277): `origins` is written into process.env
  * (CORS_ORIGIN, ADMIN_ORIGIN, ...) before lib/auth loads, and undone afterwards, so its trustedOrigins come
- * from resolveTrustedOrigins (the CORS list) exactly as in production.
+ * from resolveTrustedOrigins (the CORS list) exactly as in production. Assumption: trustedOrigins and the
+ * origin-check toggle are resolved at module load time (lib/auth pins advanced.disableOriginCheck: false, so
+ * better-auth's test-mode skip never applies), before this helper restores the variables.
  */
 export function loadLibAuthWithOrigins(origins: Record<string, string>): unknown {
   const saved: Record<string, string | undefined> = {};

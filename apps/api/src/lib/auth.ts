@@ -60,6 +60,11 @@ export const auth = betterAuth({
     },
   },
   advanced: {
+    // RNX-277: never let better-auth disable its origin check. better-auth's default turns the check off under
+    // NODE_ENV=test (skipOriginCheck: isTest(), @better-auth/core create-context), which would also disable it in
+    // our test runs (nx's executor sets NODE_ENV=test, CI included) — the one place the check is hard to see.
+    // Explicitly false keeps the origin check on in every mode; production already ran with it on.
+    disableOriginCheck: false,
     // RNX-168 (D48, D148): the client IP for better-auth's rate limiter and the session's ipAddress is
     // CLIENT_IP_HEADER only, never X-Forwarded-For. Without it no IP is tracked: better-auth's limiter
     // then skips its checks and the Nest throttler (RX-155) limits /api/auth/better/* per socket address.
