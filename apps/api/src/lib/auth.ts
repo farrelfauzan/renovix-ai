@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { getCookieDomain } from "./cookie-domain";
 import { readRequiredSecret } from "../common/utils/read-required-secret";
 import { readClientIpHeader } from "../common/utils/client-ip-header";
+import { resolveTrustedOrigins } from "../common/utils/resolve-trusted-origins";
 import { ensureDefaultWorkspace } from "../app/workspace/repository/ensure-default-workspace";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -78,11 +79,10 @@ export const auth = betterAuth({
     },
   },
   secret: readRequiredSecret(process.env, "BETTER_AUTH_SECRET"),
-  trustedOrigins: [
-    process.env.DASHBOARD_URL || "http://localhost:4200",
-    process.env.CHAT_APP_URL || "http://localhost:4201",
-    process.env.APP_BASE_URL || "http://localhost:3000",
-  ],
+  // RNX-277: the same allowed-origins list as CORS and UserOriginGuard (resolveCorsOrigins: CORS_ORIGIN +
+  // ADMIN_ORIGIN, required outside development and test), never a localhost fallback. Development and test with
+  // CORS_ORIGIN unset trust the local origins (localhost:3000/4200/4201 and API_PUBLIC_URL's origin).
+  trustedOrigins: resolveTrustedOrigins(process.env),
   // Every new account gets its default workspace (RNX-117): social and email sign-up both create the user
   // here. Better Auth runs `after` hooks once the user's transaction has committed.
   databaseHooks: {
