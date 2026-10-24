@@ -16,15 +16,8 @@ import type { McpToolSchema } from "../../mcp/service/mcp-client.service";
 import type { McpConnection } from "../../mcp/types/mcp-connection";
 import type { McpRunSession } from "../types/mcp-run-session";
 import type { RunScope } from "../types/run-scope";
-
-interface ToolSchema {
-  type: "function";
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, any>;
-  };
-}
+import type { ToolSchema } from "../types/tool-schema";
+import { rememberOfferedTools } from "../utils/remember-offered-tools";
 
 @Injectable()
 export class AgentToolService {
@@ -280,6 +273,9 @@ export class AgentToolService {
     // 1. Built-in tools
     const schemas = this.buildToolSchemas(agentTools, options);
 
+    // RNX-276: record what this run was offered (also when MCP discovery below is skipped or fails).
+    rememberOfferedTools(options?.mcpSession, schemas);
+
     // 2. Discover MCP tools from user's connected providers
     if (!executingUserId || !workspaceId || !(await this.isSharedWorkspace(workspaceId))) {
       this.logger.warn(
@@ -346,6 +342,7 @@ export class AgentToolService {
             this.stripSchemaDescriptions(schema.function.parameters);
             schemas.push(schema);
             options.mcpSession.toolConnections.set(tool.name, connection);
+            options.mcpSession.offeredToolNames.add(tool.name);
           }
         } catch (err: any) {
           this.logger.warn(
@@ -365,6 +362,10 @@ export class AgentToolService {
   /**
    * RNX-217: an MCP tool runs only on a connection of the calling run's own `mcpSession`. RNX-119: `scope` is the run
    * policy's answer for the run; a run outside the agent's workspace gets no workspace memory tool (R17).
+   * RNX-276: a tool runs only when its name is among the tool schemas offered to this run
+   * (`mcpSession.offeredToolNames`, filled by buildToolSchemasWithMcp): a built-in the run never offered
+   * gets the "not available" text and nothing runs, whoever steered the model to call it. The 30 s
+   * timeout timer is cleared when the tool finishes or fails, so no call leaves a pending timer.
    */
   async executeTool(
     toolName: string,
@@ -375,7 +376,15 @@ export class AgentToolService {
     userId?: string,
     channelId?: string,
   ): Promise<string> {
+    if (!mcpSession.offeredToolNames.has(toolName)) {
+      this.logger.warn(
+        `[executeTool] Refused "${toolName}" for agent ${agent?.id}: not offered to this run (RNX-276)`,
+      );
+      return `Tool "${toolName}" is not available. It may require an MCP integration to be connected.`;
+    }
+
     const timeout = 30000; // 30s timeout per tool
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const executeWithTimeout = async (): Promise<string> => {
       // Check if it's an MCP tool
@@ -403,12 +412,19 @@ export class AgentToolService {
       }
     };
 
-    return Promise.race([
-      executeWithTimeout(),
-      new Promise<string>((_, reject) =>
-        setTimeout(() => reject(new Error("Tool execution timeout")), timeout),
-      ),
-    ]);
+    try {
+      return await Promise.race([
+        executeWithTimeout(),
+        new Promise<string>((_, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error("Tool execution timeout")),
+            timeout,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
   }
 
   /**
