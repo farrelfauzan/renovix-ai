@@ -30,6 +30,31 @@ describe("RNX-277: Better Auth refuses foreign-origin sign-in and sign-out (trus
     started = await startBetterAuthApp({ imports: [AuthModule] });
     app = started.app;
     app.useLogger(createAppLogger({ NODE_ENV: "production" }));
+    // RNX-277 CI diagnostic (temporary): CI answers 200 where local answers 403. Log the environment
+    // and the trusted origins the loaded lib/auth would resolve now, plus the response of one refused
+    // request, so the CI log shows which list the running instance actually holds.
+    // eslint-disable-next-line no-console
+    console.error("[RNX-277-DIAG] env:", JSON.stringify({
+      NODE_ENV: process.env.NODE_ENV,
+      CI: process.env.CI,
+      GITHUB_ACTIONS: process.env.GITHUB_ACTIONS,
+      API_PUBLIC_URL: process.env.API_PUBLIC_URL,
+      CORS_ORIGIN: process.env.CORS_ORIGIN,
+      ADMIN_ORIGIN: process.env.ADMIN_ORIGIN,
+      DASHBOARD_URL: process.env.DASHBOARD_URL,
+      CHAT_APP_URL: process.env.CHAT_APP_URL,
+      APP_BASE_URL: process.env.APP_BASE_URL,
+      BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    }));
+    try {
+      const loadedAuth = (await import("../../../lib/auth")).auth as { $context: Promise<{ trustedOrigins: string[]; baseURL: string }> };
+      const ctx = await loadedAuth.$context;
+      // eslint-disable-next-line no-console
+      console.error("[RNX-277-DIAG] loaded auth context:", JSON.stringify({ baseURL: ctx.baseURL, trustedOrigins: ctx.trustedOrigins }));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[RNX-277-DIAG] context dump failed:", String(err));
+    }
   });
 
   afterAll(async () => {
@@ -71,6 +96,10 @@ describe("RNX-277: Better Auth refuses foreign-origin sign-in and sign-out (trus
     await signUp("foreign-sign-in@renovix.test");
     const res = await browserSignIn("foreign-sign-in@renovix.test", "https://evil.example");
 
+    if (res.statusCode !== 403) {
+      // eslint-disable-next-line no-console
+      console.error("[RNX-277-DIAG] foreign sign-in response:", res.statusCode, JSON.stringify(res.headers), res.body?.slice?.(0, 500));
+    }
     expect(res.statusCode).toBe(403);
     const setCookie = res.headers["set-cookie"];
     const lines = setCookie === undefined ? [] : Array.isArray(setCookie) ? setCookie : [setCookie];
