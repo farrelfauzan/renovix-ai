@@ -7,7 +7,7 @@ export type EntitlementSnapshotValues = {
   allowedTiers: string[] | null;
 };
 
-/** Provisional legacy normalization: nulls become zero/false/empty until policy is decided. */
+/** Legacy nulls contribute no grant: all-null aggregates become zero/false/empty. */
 export const normalizeEntitlementSnapshot = (values: EntitlementSnapshotValues) => ({
   maxAgents: values.maxAgents ?? 0,
   maxConnectedTools: values.maxConnectedTools ?? 0,

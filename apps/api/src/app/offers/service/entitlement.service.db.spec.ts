@@ -106,7 +106,7 @@ describe("EntitlementService (RNX-76 B1)", () => {
     expect(await service.getForUser(user.id)).toMatchObject({ maxAgents: 4, maxConnectedTools: 3, apiAccess: true, allowedChannels: ["web"] });
   });
 
-  it("provisionally normalizes legacy null numeric fields while preserving non-null values", async () => {
+  it("normalizes legacy null numeric fields while preserving non-null values", async () => {
     const user = await createUser(prisma);
     const version = await packageVersion(false, "Starter");
     await prisma.purchaseSnapshot.create({ data: { buyerUserId: user.id, packageVersionId: version.id, priceUsdCents: 1, exchangeRate: 1, exchangeRateDate: new Date("2026-01-01"), exchangeRateSource: "test", priceRupiah: 1, creditsGranted: 1, maxAgents: null, maxConnectedTools: 5, apiAccess: true, allowedChannels: [], allowedTiers: [], collaborationEnabled: null } });

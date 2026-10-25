@@ -174,7 +174,7 @@ describe("RNX-76 B1: package limits under parallel callers (AgentService, test d
     });
   });
 
-  describe("attachIntegration (maxConnectedTools, provisionally counted per agent)", () => {
+  describe("attachIntegration (maxConnectedTools, counted per agent)", () => {
     const attachParallel = (userId: string, agentIds: string[]) =>
       Promise.allSettled(
         agentIds.map((agentId, i) => service.attachIntegration(userId, agentId, `provider-${i}`, {}, ["read"])),
