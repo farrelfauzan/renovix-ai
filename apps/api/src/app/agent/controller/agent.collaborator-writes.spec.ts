@@ -3,6 +3,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AgentController } from "./agent.controller";
 import { AgentLinkController } from "./agent-link.controller";
 import { AgentService } from "../service/agent.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentLinkService } from "../service/agent-link.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -39,6 +40,7 @@ describe("RNX-260: agent writes are the workspace owner's (Fastify, test databas
       controllers: [AgentController, AgentLinkController],
       providers: [
         AgentService,
+        EntitlementService,
         AgentLinkService,
         AgentRunPolicyService,
         WorkspaceService,

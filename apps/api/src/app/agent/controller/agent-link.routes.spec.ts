@@ -3,6 +3,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AgentController } from "./agent.controller";
 import { AgentLinkController } from "./agent-link.controller";
 import { AgentService } from "../service/agent.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
 import { AgentLinkService } from "../service/agent-link.service";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -12,7 +13,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createApiKey, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createApiKey, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-118 (PRD 10, D81; replaces RX-112's parent-owner suite): an agent's links ("Can call") are listed, added and
@@ -36,6 +37,7 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
       controllers: [AgentController, AgentLinkController],
       providers: [
         AgentService,
+        EntitlementService,
         AgentRunPolicyService,
         AgentLinkService,
         WorkspaceService,
@@ -67,6 +69,8 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
       const outsider = { ...outsiderUser, apiKey: await createApiKey(prisma, outsiderUser.id) };
       await createSubscription(prisma, { userId: owner.id, planId: plan.id });
       await createSubscription(prisma, { userId: outsider.id, planId: plan.id });
+      await createPackageSnapshot(prisma, { userId: owner.id, maxAgents: 50 });
+      await createPackageSnapshot(prisma, { userId: outsider.id, maxAgents: 50 });
       const workspace = await createWorkspace(prisma, { ownerId: owner.id });
       await prisma.workspaceMember.create({
         data: { workspaceId: workspace.id, userId: collaborator.id, role: "admin", status: "active" },
@@ -190,6 +194,7 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
       const user = await createUser(prisma);
       const plan = await createPlan(prisma, { maxAgents: 50 });
       await createSubscription(prisma, { userId: user.id, planId: plan.id });
+      await createPackageSnapshot(prisma, { userId: user.id, maxAgents: 50 });
       return user;
     };
 

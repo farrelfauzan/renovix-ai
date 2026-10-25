@@ -25,6 +25,8 @@ import { AgentIntegrationRepository } from "../repository/agent-integration.repo
 import { AgentKnowledgeBaseRepository } from "../repository/agent-knowledge-base.repository";
 import { AgentChannelRepository } from "../repository/agent-channel.repository";
 import { AgentRunPolicyService } from "./agent-run-policy.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
+import { TransactionService } from "../../prisma/transaction.service";
 
 /** RNX-118: the tool type that call_agent replaced; a template row of it is not cloned. */
 const REMOVED_DELEGATE_TOOL = "delegate_to_subagent";
@@ -45,6 +47,8 @@ export class AgentService {
     private readonly registry: ModelRegistryService,
     private readonly workspaces: WorkspaceRepository,
     private readonly policy: AgentRunPolicyService,
+    private readonly entitlements: EntitlementService,
+    private readonly transactions: TransactionService,
   ) {}
 
   private async generateUniqueSlug(
@@ -64,29 +68,17 @@ export class AgentService {
   }
 
   async create(userId: string, dto: CreateAgentDto) {
-    // Check subscription
-    await this.checkSubscription(userId);
-
-    // Check agent limit
-    await this.checkAgentLimit(userId);
-
     // The workspace must be the caller's own (403); without one the agent goes into the caller's default
     // workspace (RNX-117), created here for an account without one (RNX-203).
+    if (dto.workspaceId) await this.resolveTargetWorkspace(userId, dto.workspaceId);
+    else await this.checkAgentLimit(userId);
     const workspaceId = await this.resolveTargetWorkspace(userId, dto.workspaceId);
-
     const slug = await this.generateUniqueSlug(userId, dto.name);
 
-    return this.agents.createAgent(userId, {
-      workspaceId,
-      name: dto.name,
-      slug,
-      description: dto.description,
-      avatar: dto.avatar,
-      systemPrompt: dto.systemPrompt,
-      model: dto.model,
-      temperature: dto.temperature ?? 0.7,
-      maxTokens: dto.maxTokens,
-      isPublic: dto.isPublic ?? false,
+    return this.transactions.run(async (tx) => {
+      await this.agents.acquireAccountEntitlementLock(userId, tx);
+      await this.checkAgentLimit(userId, tx);
+      return this.agents.createAgent(userId, { workspaceId, name: dto.name, slug, description: dto.description, avatar: dto.avatar, systemPrompt: dto.systemPrompt, model: dto.model, temperature: dto.temperature ?? 0.7, maxTokens: dto.maxTokens, isPublic: dto.isPublic ?? false }, tx);
     });
   }
 
@@ -160,13 +152,15 @@ export class AgentService {
       throw new NotFoundException("Template not found");
     }
 
-    await this.checkSubscription(userId);
-    await this.checkAgentLimit(userId);
-
+    if (dto.workspaceId) await this.resolveTargetWorkspace(userId, dto.workspaceId);
+    else await this.checkAgentLimit(userId);
     const workspaceId = await this.resolveTargetWorkspace(userId, dto.workspaceId);
     const slug = await this.generateUniqueSlug(userId, template.name);
 
-    const agent = await this.agents.createAgent(userId, {
+    const agent = await this.transactions.run(async (tx) => {
+      await this.agents.acquireAccountEntitlementLock(userId, tx);
+      await this.checkAgentLimit(userId, tx);
+      return this.agents.createAgent(userId, {
       workspaceId,
       name: template.name,
       slug,
@@ -177,6 +171,7 @@ export class AgentService {
       temperature: template.temperature,
       maxTokens: template.maxTokens,
       isPublic: false,
+      }, tx);
     });
 
     // Clone tools; RNX-118: never the old delegate_to_subagent row, and a clone gets no links
@@ -233,13 +228,10 @@ export class AgentService {
     scopes: string[],
   ) {
     await this.verifyOwnership(userId, agentId);
-    await this.checkIntegrationLimit(userId, agentId);
-
-    return this.agentIntegrations.createAgentIntegration(agentId, {
-      provider,
-      config,
-      scopes,
-      status: "connected",
+    return this.transactions.run(async (tx) => {
+      await this.agentIntegrations.acquireAccountEntitlementLock(userId, tx);
+      await this.checkIntegrationLimit(userId, agentId, tx);
+      return this.agentIntegrations.createAgentIntegration(agentId, { provider, config, scopes, status: "connected" }, tx);
     });
   }
 
@@ -510,47 +502,14 @@ export class AgentService {
     return owned.id;
   }
 
-  private async checkSubscription(userId: string) {
-    const subscription =
-      await this.subscriptions.findSubscriptionWithPlan(userId);
-
-    if (!subscription || subscription.status !== "active") {
-      throw new ForbiddenException(
-        "Active subscription required to use AI Agents. Please subscribe to access this feature.",
-      );
-    }
-
-    return subscription;
+  private async checkAgentLimit(userId: string, tx?: import("../../prisma/db-transaction").DbTransaction) {
+    const count = await this.agents.countAgentsByUser(userId, tx);
+    await this.entitlements.requireLimit(userId, "maxAgents", count, tx);
   }
 
-  private async checkAgentLimit(userId: string) {
-    const subscription =
-      await this.subscriptions.findSubscriptionWithPlan(userId);
-    if (!subscription) return;
-
-    const maxAgents = subscription.plan.maxAgents;
-    const count = await this.agents.countAgentsByUser(userId);
-
-    if (count >= maxAgents) {
-      throw new BadRequestException(
-        `Agent limit reached for your ${subscription.plan.name} plan (${maxAgents} agents). Please upgrade to create more.`,
-      );
-    }
-  }
-
-  private async checkIntegrationLimit(userId: string, agentId: string) {
-    const subscription =
-      await this.subscriptions.findSubscriptionWithPlan(userId);
-    if (!subscription) return;
-
-    const max = subscription.plan.maxIntegrations;
-    const count = await this.agentIntegrations.countAgentIntegrations(agentId);
-
-    if (count >= max) {
-      throw new BadRequestException(
-        `Integration limit reached for your ${subscription.plan.name} plan. Please upgrade.`,
-      );
-    }
+  private async checkIntegrationLimit(userId: string, agentId: string, tx?: import("../../prisma/db-transaction").DbTransaction) {
+    const count = await this.agentIntegrations.countAgentIntegrations(agentId, tx);
+    await this.entitlements.requireLimit(userId, "maxConnectedTools", count, tx);
   }
 
   private async checkChannelAccess(userId: string, channelType: string) {

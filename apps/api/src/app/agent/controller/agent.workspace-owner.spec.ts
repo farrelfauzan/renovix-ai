@@ -2,6 +2,7 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -10,7 +11,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
 import { asSessionUser } from "../../../../test/as-session-user";
 
@@ -29,7 +30,7 @@ describe("RNX-203: agent ownership through the workspace owner (Fastify, test da
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController],
-      providers: [AgentService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -43,6 +44,7 @@ describe("RNX-203: agent ownership through the workspace owner (Fastify, test da
   const subscribe = async (user: User) => {
     const plan = await createPlan(prisma, { maxAgents: 50 });
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id, maxAgents: 50 });
   };
 
   /** Workspace W owned by the owner; the agent in W was created by the creator, who is not a member of W. */

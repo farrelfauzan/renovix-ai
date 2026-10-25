@@ -13,6 +13,7 @@ import { EmbeddingService } from "../../knowledge/service/embedding.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { AgentController } from "../../agent/controller/agent.controller";
 import { AgentService } from "../../agent/service/agent.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { PortalController } from "../../portal/controller/portal.controller";
 import { PortalTierService } from "../../portal/service/portal-tier.service";
@@ -84,6 +85,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
         WorkspaceQuotaService,
         WorkspaceKnowledgeService,
         AgentService,
+        EntitlementService,
         AgentRunPolicyService,
         ConversationService,
         { provide: EmbeddingService, useValue: embedding },

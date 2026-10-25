@@ -1,6 +1,7 @@
 import { TestingModule } from "@nestjs/testing";
 import { AgentRunService } from "./agent-run.service";
 import { AgentService } from "./agent.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentLinkService } from "./agent-link.service";
 import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
@@ -18,7 +19,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -55,6 +56,7 @@ describe("RNX-118: agent runs call only linked agents (test database)", () => {
           AgentRunPolicyService,
           AgentLinkService,
           AgentService,
+          EntitlementService,
           WorkspaceService,
           WorkspaceQuotaService,
           AgentRunMeterService,
@@ -356,6 +358,7 @@ describe("RNX-118: agent runs call only linked agents (test database)", () => {
       });
       await prisma.agentLink.create({ data: { callerAgentId: template.id, calleeAgentId: helper.id } });
       const user = await payingUser();
+      await createPackageSnapshot(prisma, { userId: user.id });
 
       const clone = await moduleRef.get(AgentService).cloneFromTemplate(user.id, template.id);
       await prisma.agent.update({ where: { id: clone!.id }, data: { status: "active" } });

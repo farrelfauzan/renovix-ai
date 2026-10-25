@@ -94,6 +94,33 @@ export function createSubscription(
   });
 }
 
+/**
+ * A purchased package (RNX-76 B1): a package, its version and the buyer's purchase snapshot, which is what
+ * EntitlementService reads. Not a UserSubscription. Pass `maxAgents` / `maxConnectedTools` / `displayOrder` to override.
+ */
+export async function createPackageSnapshot(
+  prisma: PrismaClient,
+  { userId, maxAgents = 3, maxConnectedTools = 1, displayOrder = 1, name }: {
+    userId: string; maxAgents?: number; maxConnectedTools?: number; displayOrder?: number; name?: string;
+  },
+) {
+  const pkg = await prisma.package.create({ data: { name: name ?? `pkg-${unique()}`, displayOrder, active: true, visible: true } });
+  const version = await prisma.packageVersion.create({
+    data: {
+      packageId: pkg.id, versionNumber: 1, priceUsdCents: 100, creditsGranted: 10, billing: "one_time",
+      maxAgents, maxConnectedTools, apiAccess: false, allowedChannels: ["web"], allowedTiers: ["standard"],
+      createdBy: "test", reason: "RNX-76",
+    },
+  });
+  return prisma.purchaseSnapshot.create({
+    data: {
+      buyerUserId: userId, packageVersionId: version.id, priceUsdCents: 100, exchangeRate: 16500,
+      exchangeRateDate: new Date("2026-01-01"), exchangeRateSource: "test", priceRupiah: 165000, creditsGranted: 10,
+      maxAgents, maxConnectedTools, apiAccess: false, allowedChannels: ["web"], allowedTiers: ["standard"],
+    },
+  });
+}
+
 /** An agent; without a `workspaceId` it goes into its user's default workspace, created if needed (RNX-117). */
 export async function createAgent(
   prisma: PrismaClient,

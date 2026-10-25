@@ -3,6 +3,7 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
@@ -40,7 +41,7 @@ describe("RNX-190: provider error body on the agent prompt-generation route (Fas
     ({ moduleRef, prisma } = await createTestModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
       controllers: [AgentController],
-      providers: [AgentService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, ModelRegistryService],
+      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, ModelRegistryService],
     }));
     app = await createFastifyApp(moduleRef);
   });
