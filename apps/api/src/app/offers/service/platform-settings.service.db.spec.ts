@@ -60,6 +60,8 @@ describe("PlatformSettingsService (RX-86, test database)", () => {
     ["a threshold of 0 where at least 1 is required", "runOutAmberDays", 0],
     ["a per-run cap of 0 credits", "perRunCreditCap", 0],
     ["text instead of a number", "weeklyFreeAllowanceCredits", "2"],
+    ["negative anonymous session cap", "anonymousRequestsPerSession", -1],
+    ["non-numeric invitation grant", "invitationGrantCredits", "5"],
     ["an unknown setting name", "freeCreditsForEveryone", 1],
   ])("AC2: refuses %s and writes nothing (no row, no change record)", async (_case, inputName, inputValue) => {
     await expect(settings.saveSetting({ name: inputName, value: inputValue, author: AUTHOR })).rejects.toThrow(BadRequestException);

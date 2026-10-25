@@ -3,8 +3,10 @@ import { CodesService } from "./service/codes.service";
 import { CodesController } from "./controller/codes.controller";
 import { CreditLedgerService } from "../billing/service/credit-ledger.service";
 import { PackageOwnershipService } from "../billing/service/package-ownership.service";
+import { OffersModule } from "../offers/offers.module";
 
 @Module({
+  imports: [OffersModule],
   controllers: [CodesController],
   // CreditLedgerService needs only global providers (TransactionService, the repositories), so it is provided here
   // instead of importing BillingModule and its controller.

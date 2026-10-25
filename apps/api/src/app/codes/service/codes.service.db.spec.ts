@@ -10,6 +10,7 @@ import { createPlan, createSubscription, createUser } from "../../../../test/fac
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
 import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -19,11 +20,14 @@ describe("CodesService.redeemCode (test database)", () => {
   let service: CodesService;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ providers: [CodesService, CreditLedgerService, PackageOwnershipService] }));
+    ({ moduleRef, prisma } = await createTestModule({ providers: [CodesService, CreditLedgerService, PackageOwnershipService, PlatformSettingsService] }));
     service = moduleRef.get(CodesService);
   });
 
-  beforeEach(() => resetDatabase(prisma));
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+    await moduleRef.get(PlatformSettingsService).saveSetting({ name: "invitationGrantCredits", value: 5, author: { changedBy: "test", reason: "legacy code fixture" } });
+  });
 
   afterEach(() => jest.restoreAllMocks());
 
@@ -176,6 +180,31 @@ describe("CodesService.redeemCode (test database)", () => {
     ]);
     expect(await paidBalanceOf(user.id)).toBe(35);
     await assertCreditLedgerInvariants(prisma);
+  });
+
+  it("RNX-172: a credit-bearing code with no stored amount uses the invitationGrantCredits setting", async () => {
+    const user = await createPackageUser();
+    await moduleRef.get(PlatformSettingsService).saveSetting({
+      name: "invitationGrantCredits",
+      value: 7,
+      author: { changedBy: "test", reason: "RNX-172" },
+    });
+    const code = await prisma.invitationCode.create({
+      data: { code: "PERF-SETTING-0001", type: "topup", creditAmount: null, maxRedemptions: 1 },
+    });
+
+    await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({ creditsGranted: 7 });
+    expect((await prisma.creditLedgerEntry.findFirst({ where: { memberUserId: user.id } }))?.amount.toString()).toBe("7");
+  });
+
+  it("RNX-172: a missing invitation grant setting refuses before redemption/ledger write", async () => {
+    const user = await createPackageUser();
+    await prisma.platformSetting.delete({ where: { name: "invitationGrantCredits" } });
+    const code = await prisma.invitationCode.create({ data: { code: "PERF-SETTING-0002", type: "topup", creditAmount: null, maxRedemptions: 1 } });
+
+    await expect(service.redeemCode(user.id, code.code)).rejects.toThrow(/invitationGrantCredits/);
+    expect(await prisma.codeRedemption.count()).toBe(0);
+    expect(await prisma.creditLedgerEntry.count()).toBe(0);
   });
 
   // RNX-35 (D36): no credits-only state; a free account (no subscription, no bought package) cannot redeem a credits-only code.

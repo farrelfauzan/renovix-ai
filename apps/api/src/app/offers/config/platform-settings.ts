@@ -52,6 +52,12 @@ export const PLATFORM_SETTINGS = {
   anonymousRequestsPerIpPerDay: AT_LEAST_ONE,
   /** Anonymous free-tier chat requests across all IPs per Jakarta day (RNX-226). No value; the portal still reads ANON_DAILY_GLOBAL_CAP. */
   anonymousRequestsGlobalPerDay: AT_LEAST_ONE,
+  /** Anonymous free requests per portal session per day (RNX-172). */
+  anonymousRequestsPerSession: AT_LEAST_ONE,
+  /** Anonymous portal sessions allowed per hashed IP in the rolling window (RNX-172). */
+  anonymousSessionsPerIp: AT_LEAST_ONE,
+  /** Default credits granted by a credit-bearing invitation code (RNX-172). */
+  invitationGrantCredits: POSITIVE_CREDITS,
   /** Enterprise grace period before freezing, in days, may be 0; the contract field has the same name (D27, open: no value). */
   graceDays: COUNT,
   /** High-severity guardrail violations within a fixed 7-day window that make a repeat offender (D59, PRD 09 F9; no value). */

@@ -1,13 +1,12 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, InternalServerErrorException, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Cron } from "@nestjs/schedule";
 import { createHmac } from "node:crypto";
 import { TransactionService } from "../../prisma/transaction.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { AnonymousUsageCounterRepository } from "../repository/anonymous-usage-counter.repository";
 import { PortalSessionRepository } from "../repository/portal-session.repository";
 
-const FREE_REQUEST_LIMIT = 20;
-const MAX_SESSIONS_PER_IP = 3;
 const DEFAULT_DAILY_IP_CAP = 60;
 const DEFAULT_DAILY_GLOBAL_CAP = 2000;
 const COUNTER_RETENTION_DAYS = 7;
@@ -53,6 +52,7 @@ export class PortalTierService {
     private readonly counters: AnonymousUsageCounterRepository,
     private readonly transactions: TransactionService,
     config: ConfigService,
+    @Optional() private readonly settings?: PlatformSettingsService,
   ) {
     this.ipHashSecret = config.getOrThrow<string>("IP_HASH_SECRET");
     this.dailyIpCap = this.capFromEnv(
@@ -65,6 +65,12 @@ export class PortalTierService {
       "ANON_DAILY_GLOBAL_CAP",
       DEFAULT_DAILY_GLOBAL_CAP,
     );
+  }
+
+  private async setting(name: "anonymousRequestsPerSession" | "anonymousSessionsPerIp"): Promise<number> {
+    const value = await this.settings?.getSetting(name);
+    if (value == null) throw new InternalServerErrorException(`Platform setting "${name}" is not configured`);
+    return value;
   }
 
   private capFromEnv(
@@ -105,7 +111,7 @@ export class PortalTierService {
         new Date(Date.now() - 24 * 60 * 60 * 1000),
       );
 
-      if (recentSessions >= MAX_SESSIONS_PER_IP) {
+       if (recentSessions >= (await this.setting("anonymousSessionsPerIp"))) {
         return null; // signal that session creation is blocked
       }
     }
@@ -124,12 +130,13 @@ export class PortalTierService {
   ): Promise<FreeReservation> {
     const ipHash = this.hashIp(ip);
     const day = jakartaDay();
+    const freeRequestLimit = await this.setting("anonymousRequestsPerSession");
     try {
       await this.transactions.run(async (tx) => {
         if (
           !(await this.sessions.incrementFreeRequestCount(
             sessionToken,
-            FREE_REQUEST_LIMIT,
+            freeRequestLimit,
             tx,
           ))
         ) {
@@ -193,8 +200,8 @@ export class PortalTierService {
     return {
       tier: "free",
       used,
-      limit: FREE_REQUEST_LIMIT,
-      remaining: Math.max(0, FREE_REQUEST_LIMIT - used),
+        limit: await this.setting("anonymousRequestsPerSession"),
+        remaining: Math.max(0, (await this.setting("anonymousRequestsPerSession")) - used),
     };
   }
 
