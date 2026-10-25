@@ -50,10 +50,11 @@ export class OfferCatalogService {
   /** Creates the package's next version, unless its latest version has the same terms. Returns the version that holds them. */
   async savePackageVersion(input: VersionInput<PackageVersionTermsDto>, tx?: DbTransaction): Promise<PackageVersion> {
     const terms = parseOrRefuse(PackageVersionTermsDto, input.terms, "Package version");
+    const normalizedTerms = { ...terms, collaborationEnabled: terms.collaborationEnabled ?? false };
     return this.transactions.run(async (db) => {
       const before = await this.packages.findLatestVersion(input.ownerId, db);
-      if (before && hasSameValues(before, terms)) return before;
-      const after = await this.packages.createVersion({ ...terms, collaborationEnabled: terms.collaborationEnabled ?? false, packageId: input.ownerId, ...buildNextVersionColumns(before, input) }, db);
+      if (before && hasSameValues(before, normalizedTerms)) return before;
+      const after = await this.packages.createVersion({ ...normalizedTerms, packageId: input.ownerId, ...buildNextVersionColumns(before, input) }, db);
       await this.changes.create(buildCatalogChange({ entity: "package_version", entityId: after.id, before, after, author: input.author, effectiveFrom: after.effectiveFrom }), db);
       return after;
     }, undefined, tx);

@@ -80,6 +80,19 @@ describe("OfferCatalogService (RX-86, test database)", () => {
     expect(await prisma.packageVersion.count({ where: { packageId: pro.id } })).toBe(2);
   });
 
+  it.each([undefined, false, true])("RNX-76: collaboration flag default/control %s is normalized before equality", async (flag) => {
+    const pro = await catalog.savePackage(EXAMPLE_PRO, AUTHOR);
+    const first = await catalog.savePackageVersion({ ownerId: pro.id, terms: { ...EXAMPLE_PRO_TERMS, collaborationEnabled: true }, author: AUTHOR });
+    const omitted = { ...EXAMPLE_PRO_TERMS } as PackageVersionTermsDto;
+    if (flag === undefined) delete omitted.collaborationEnabled;
+    else omitted.collaborationEnabled = flag;
+    const second = await catalog.savePackageVersion({ ownerId: pro.id, terms: omitted, author: AUTHOR });
+    expect(typeof second.id).toBe("string");
+    if (flag === undefined || flag === false) expect(second.id).not.toBe(first.id);
+    const repeated = await catalog.savePackageVersion({ ownerId: pro.id, terms: omitted, author: AUTHOR });
+    expect(repeated.id).toBe(second.id);
+  });
+
   it("writes a change record for the new version, with the previous version as before and its effective time", async () => {
     const pro = await catalog.savePackage(EXAMPLE_PRO, AUTHOR);
     const oldVersion = await catalog.savePackageVersion({ ownerId: pro.id, terms: EXAMPLE_PRO_TERMS, author: AUTHOR });
