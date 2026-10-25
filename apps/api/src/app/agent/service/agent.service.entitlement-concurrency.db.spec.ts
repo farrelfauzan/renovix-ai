@@ -125,7 +125,7 @@ describe("RNX-76 B1: package limits under parallel callers (AgentService, test d
       expect(await prisma.agent.count({ where: { userId: user.id } })).toBeGreaterThan(3);
     });
 
-    it("another account at its own limit - 1 is not held up by the first account's lock", async () => {
+    it("two accounts racing at their own limit - 1 each admit exactly one caller", async () => {
       const first = await buyerAtLimitMinusOne(2, { maxAgents: 3 });
       const second = await buyerAtLimitMinusOne(2, { maxAgents: 3 });
       holdBeforeWrite(agentRepository, "createAgent", CALLERS * 2);
@@ -174,7 +174,7 @@ describe("RNX-76 B1: package limits under parallel callers (AgentService, test d
     });
   });
 
-  describe("attachIntegration (maxConnectedTools, counted per agent, D302)", () => {
+  describe("attachIntegration (maxConnectedTools, provisionally counted per agent)", () => {
     const attachParallel = (userId: string, agentIds: string[]) =>
       Promise.allSettled(
         agentIds.map((agentId, i) => service.attachIntegration(userId, agentId, `provider-${i}`, {}, ["read"])),
