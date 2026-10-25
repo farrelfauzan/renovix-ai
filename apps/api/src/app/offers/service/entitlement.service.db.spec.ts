@@ -29,7 +29,7 @@ describe("EntitlementService (RNX-76 PR-A, snapshot-only read model)", () => {
     });
   };
 
-  const snapshot = async (userId: string, versionId: string, collaborationEnabled: boolean) =>
+  const snapshot = async (userId: string, versionId: string, collaborationEnabled: boolean | null) =>
     prisma.purchaseSnapshot.create({
       data: {
         buyerUserId: userId, packageVersionId: versionId, priceUsdCents: 100,
@@ -52,6 +52,32 @@ describe("EntitlementService (RNX-76 PR-A, snapshot-only read model)", () => {
     expect((await service.getForUser(user.id))?.collaborationEnabled).toBe(flag);
   });
 
+  it("a legacy package snapshot with NULL collaborationEnabled resolves false", async () => {
+    const user = await createUser(prisma);
+    const version = await packageVersion(true);
+    await snapshot(user.id, version.id, null);
+    expect((await service.getForUser(user.id))?.collaborationEnabled).toBe(false);
+  });
+
+  it("a top-up snapshot has no package entitlement and never carries collaboration", async () => {
+    const user = await createUser(prisma);
+    const pack = await prisma.topUpPack.create({ data: { name: "Top-up test", active: true } });
+    const packVersion = await prisma.topUpPackVersion.create({ data: { packId: pack.id, versionNumber: 1, creditsGranted: 10, priceUsdCents: 1, createdBy: "test", reason: "test" } });
+    await prisma.purchaseSnapshot.create({
+      data: { buyerUserId: user.id, topUpPackVersionId: packVersion.id, priceUsdCents: 1, exchangeRate: 1, exchangeRateDate: new Date("2026-01-01"), exchangeRateSource: "test", priceRupiah: 1, creditsGranted: 10, allowedChannels: [], allowedTiers: [] },
+    });
+    expect(await service.getForUser(user.id)).toBeNull();
+  });
+
+  it("a later catalog version does not lower the purchased snapshot flag", async () => {
+    const user = await createUser(prisma);
+    const old = await packageVersion(true);
+    await snapshot(user.id, old.id, true);
+    const pkg = await prisma.package.findUniqueOrThrow({ where: { id: old.packageId } });
+    await prisma.packageVersion.create({ data: { packageId: pkg.id, versionNumber: 2, priceUsdCents: 100, creditsGranted: 10, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, apiAccess: false, allowedChannels: [], allowedTiers: ["standard"], collaborationEnabled: false, createdBy: "test", reason: "lowered" } });
+    expect((await service.getForUser(user.id))?.collaborationEnabled).toBe(true);
+  });
+
   it("paid snapshot without user_subscriptions is still the entitlement source", async () => {
     const user = await createUser(prisma);
     const version = await packageVersion(true);
@@ -64,5 +90,19 @@ describe("EntitlementService (RNX-76 PR-A, snapshot-only read model)", () => {
     const version = await packageVersion(true, "Renamed package");
     await snapshot(user.id, version.id, true);
     expect((await service.getForUser(user.id))?.collaborationEnabled).toBe(true);
+  });
+
+  it("D247 migration rollback control: failure after the first column leaves neither column", async () => {
+    await prisma.$executeRawUnsafe('CREATE TEMP TABLE "rnx76_rollback_probe" (id integer)');
+    await expect(prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('ALTER TABLE "rnx76_rollback_probe" ADD COLUMN "package_flag" boolean');
+      await tx.$executeRawUnsafe('ALTER TABLE "rnx76_rollback_probe" ADD COLUMN "snapshot_flag" boolean');
+      throw new Error("planted migration failure before commit");
+    })).rejects.toThrow("planted migration failure");
+    const columns = await prisma.$queryRawUnsafe<Array<{ column_name: string }>>(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = 'rnx76_rollback_probe' AND column_name IN ('package_flag', 'snapshot_flag')`,
+    );
+    expect(columns).toEqual([]);
+    await prisma.$executeRawUnsafe('DROP TABLE "rnx76_rollback_probe"');
   });
 });
