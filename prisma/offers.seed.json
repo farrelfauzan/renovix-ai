@@ -27,7 +27,10 @@
     "seatCeiling": 100,
     "projectionMinSpendCredits": null,
     "projectionMaxDays": null,
-    "apiKeyRequestsPerMinute": 60
+    "apiKeyRequestsPerMinute": 60,
+    "anonymousRequestsPerSession": 20,
+    "anonymousSessionsPerIp": 3,
+    "invitationGrantCredits": 5
   },
   "packages": [
     { "name": "Starter", "displayOrder": 1, "active": false, "visible": false, "version": null },

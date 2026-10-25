@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Optional,
   BadRequestException,
   NotFoundException,
   ConflictException,
@@ -16,6 +17,7 @@ import { SubscriptionPlanRepository } from "../../billing/repository/subscriptio
 import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
 import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 
 const CODE_DEACTIVATED = "This code has been deactivated";
 const CODE_EXPIRED = "This code has expired";
@@ -34,6 +36,7 @@ export class CodesService {
     private readonly creditLedger: CreditLedgerService,
     private readonly transactions: TransactionService,
     private readonly packageOwnership: PackageOwnershipService,
+    @Optional() private readonly settings?: PlatformSettingsService,
   ) {}
 
   /**
@@ -107,9 +110,9 @@ export class CodesService {
       // Credits to grant, if applicable: written to the ledger below, once the redemption row exists (RX-22)
       if (
         (code.type === "topup" || code.type === "both") &&
-        code.creditAmount?.greaterThan(0)
+        code.creditAmount === null || code.creditAmount?.greaterThan(0)
       ) {
-        creditsGranted = code.creditAmount;
+          creditsGranted = code.creditAmount ?? new Decimal(await this.settings?.getSetting("invitationGrantCredits") ?? 5);
       }
 
       // Grant subscription if applicable

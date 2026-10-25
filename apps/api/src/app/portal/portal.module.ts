@@ -8,6 +8,7 @@ import { ChatModule } from "../chat/chat.module";
 import { KnowledgeModule } from "../knowledge/knowledge.module";
 import { DocumentModule } from "../document/document.module";
 import { MemoryModule } from "../memory/memory.module";
+import { OffersModule } from "../offers/offers.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MemoryModule } from "../memory/memory.module";
     KnowledgeModule,
     DocumentModule,
     MemoryModule,
+    OffersModule,
   ],
   controllers: [PortalController],
   providers: [PortalTierService],

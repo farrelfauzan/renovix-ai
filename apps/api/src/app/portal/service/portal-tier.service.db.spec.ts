@@ -9,6 +9,7 @@ import { AnonymousUsageCounterRepository } from "../repository/anonymous-usage-c
 import { PortalSessionRepository } from "../repository/portal-session.repository";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 
 // ConfigService falls back to process.env: these tests must not depend on the shell.
 for (const key of ["IP_HASH_SECRET", "ANON_DAILY_IP_CAP", "ANON_DAILY_GLOBAL_CAP", "CLIENT_IP_HEADER"]) {
@@ -36,6 +37,7 @@ describe("RX-10: free-tier reservation (test database)", () => {
         ANON_DAILY_IP_CAP: String(caps.ip ?? 60),
         ANON_DAILY_GLOBAL_CAP: String(caps.global ?? 2000),
       }),
+      moduleRef.get(PlatformSettingsService),
     );
 
   /** A fresh session row (bypasses the 3-sessions-per-IP rule). */
@@ -78,6 +80,15 @@ describe("RX-10: free-tier reservation (test database)", () => {
     expect(
       await tier.reserveFreeRequest(await newSession(), "198.51.100.11"),
     ).toBe("ok");
+  });
+
+  it("RNX-172: the session free-request cap comes from the typed platform setting", async () => {
+    const settings = moduleRef.get(PlatformSettingsService);
+    await settings.saveSetting({ name: "anonymousRequestsPerSession", value: 5, author: { changedBy: "test", reason: "RNX-172" } });
+    const tier = tierService();
+    const session = await newSession();
+    for (let i = 0; i < 5; i++) expect(await tier.reserveFreeRequest(session, "198.51.100.44")).toBe("ok");
+    expect(await tier.reserveFreeRequest(session, "198.51.100.44")).toBe("free_limit_reached");
   });
 
   it("the session cap is still 20 a day", async () => {
