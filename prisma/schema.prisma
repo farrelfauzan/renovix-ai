@@ -1180,6 +1180,7 @@ model PackageVersion {
   apiAccess         Boolean            @map("api_access")
   allowedChannels   String[]           @map("allowed_channels")
   allowedTiers      String[]           @map("allowed_tiers")
+  collaborationEnabled Boolean          @default(false) @map("collaboration_enabled")
   effectiveFrom     DateTime           @default(now()) @map("effective_from") @db.Timestamptz()
   createdBy         String             @map("created_by")
   reason            String
@@ -1302,6 +1303,7 @@ model PurchaseSnapshot {
   apiAccess          Boolean?          @map("api_access")
   allowedChannels    String[]          @map("allowed_channels")
   allowedTiers       String[]          @map("allowed_tiers")
+  collaborationEnabled Boolean?        @map("collaboration_enabled")
   /// The payment it was bought with (RNX-35: the provider reference); unique, so one payment has one snapshot. Null for a code.
   paymentId          String?           @unique @map("payment_id")
   createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz()

@@ -7,6 +7,7 @@ import { OfferSeedService } from "./service/offer-seed.service";
 import { TierRateSeedService } from "./service/tier-rate-seed.service";
 import { PlatformSettingsService } from "./service/platform-settings.service";
 import { PurchaseSnapshotService } from "./service/purchase-snapshot.service";
+import { EntitlementService } from "./service/entitlement.service";
 import { PriceListService } from "./service/price-list.service";
 
 /**
@@ -23,9 +24,10 @@ import { PriceListService } from "./service/price-list.service";
     PlatformSettingsService,
     CompanyContractService,
     PurchaseSnapshotService,
+    EntitlementService,
     OfferSeedService,
     TierRateSeedService,
   ],
-  exports: [OfferCatalogService, PlatformSettingsService, CompanyContractService, PurchaseSnapshotService],
+  exports: [OfferCatalogService, PlatformSettingsService, CompanyContractService, PurchaseSnapshotService, EntitlementService],
 })
 export class OffersModule {}

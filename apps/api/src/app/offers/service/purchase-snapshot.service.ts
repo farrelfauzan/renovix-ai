@@ -33,8 +33,8 @@ export class PurchaseSnapshotService {
     return this.transactions.run(async (db) => {
       const version = await this.packages.findVersionById(input.versionId, db);
       if (!version) throw new NotFoundException("Package version not found");
-      const { priceUsdCents, creditsGranted, billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers } = version;
-      const copied = { creditsGranted, billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers, ...buildPurchasePriceColumns(priceUsdCents, purchaseRate) };
+      const { priceUsdCents, creditsGranted, billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers, collaborationEnabled } = version;
+      const copied = { creditsGranted, billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers, collaborationEnabled, ...buildPurchasePriceColumns(priceUsdCents, purchaseRate) };
       return this.snapshots.create({ ...copied, buyerUserId: input.buyerUserId, packageVersionId: version.id, paymentId: input.paymentId }, db);
     }, undefined, tx);
   }
@@ -59,8 +59,8 @@ export class PurchaseSnapshotService {
     if (packageVersionId) {
       const version = await this.packages.findVersionById(packageVersionId, tx);
       if (!version) throw new NotFoundException("Package version not found");
-      const { creditsGranted, billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers } = version;
-      return this.snapshots.create({ creditsGranted, billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers, ...price, buyerUserId, packageVersionId, paymentId }, tx);
+      const { creditsGranted, billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers, collaborationEnabled } = version;
+      return this.snapshots.create({ creditsGranted, billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers, collaborationEnabled, ...price, buyerUserId, packageVersionId, paymentId }, tx);
     }
     const version = topUpPackVersionId ? await this.packs.findVersionById(topUpPackVersionId, tx) : null;
     if (!version) throw new NotFoundException("Top-up pack version not found");

@@ -1674,6 +1674,9 @@
                       ]
                     }
                   },
+                  "collaborationEnabled": {
+                    "type": "boolean"
+                  },
                   "reason": {
                     "type": "string",
                     "minLength": 1,

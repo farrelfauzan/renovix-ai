@@ -27,4 +27,13 @@ export class PurchaseSnapshotRepository {
       select: { allowedTiers: true },
     });
   }
+
+  /** The newest package snapshot and its package/version identity for entitlement resolution (RNX-76 PR-A). */
+  findLatestPackageSnapshot(buyerUserId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).purchaseSnapshot.findFirst({
+      where: { buyerUserId, packageVersionId: { not: null } },
+      orderBy: { createdAt: "desc" },
+      include: { packageVersion: { include: { package: true } } },
+    });
+  }
 }

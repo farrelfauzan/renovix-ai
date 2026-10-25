@@ -25,6 +25,7 @@ const EXAMPLE_PRO_TERMS: PackageVersionTermsDto = {
   apiAccess: true,
   allowedChannels: ["web", "api"],
   allowedTiers: ["standard", "advanced", "premium", "frontier"],
+  collaborationEnabled: true,
 };
 const EXAMPLE_PRO_TERMS_AFTER_CHANGE: PackageVersionTermsDto = { ...EXAMPLE_PRO_TERMS, priceUsdCents: 2500, creditsGranted: 25, maxAgents: 12 };
 const EXAMPLE_PRO = { name: "Pro", displayOrder: 2, active: true, visible: true };
@@ -70,12 +71,26 @@ describe("OfferCatalogService (RX-86, test database)", () => {
       apiAccess: actualSnapshot.apiAccess,
       allowedChannels: actualSnapshot.allowedChannels,
       allowedTiers: actualSnapshot.allowedTiers,
+      collaborationEnabled: actualSnapshot.collaborationEnabled,
     }).toEqual(EXAMPLE_PRO_TERMS);
     expect(actualSnapshot.packageVersionId).toBe(oldVersion.id);
     expect(await prisma.packageVersion.findUniqueOrThrow({ where: { id: oldVersion.id } })).toEqual(oldVersion);
     expect(newVersion.id).not.toBe(oldVersion.id);
     expect({ versionNumber: newVersion.versionNumber, priceUsdCents: newVersion.priceUsdCents }).toEqual({ versionNumber: 2, priceUsdCents: 2500 });
     expect(await prisma.packageVersion.count({ where: { packageId: pro.id } })).toBe(2);
+  });
+
+  it.each([undefined, false, true])("RNX-76: collaboration flag default/control %s is normalized before equality", async (flag) => {
+    const pro = await catalog.savePackage(EXAMPLE_PRO, AUTHOR);
+    const first = await catalog.savePackageVersion({ ownerId: pro.id, terms: { ...EXAMPLE_PRO_TERMS, collaborationEnabled: true }, author: AUTHOR });
+    const omitted = { ...EXAMPLE_PRO_TERMS } as PackageVersionTermsDto;
+    if (flag === undefined) delete omitted.collaborationEnabled;
+    else omitted.collaborationEnabled = flag;
+    const second = await catalog.savePackageVersion({ ownerId: pro.id, terms: omitted, author: AUTHOR });
+    expect(typeof second.id).toBe("string");
+    if (flag === undefined || flag === false) expect(second.id).not.toBe(first.id);
+    const repeated = await catalog.savePackageVersion({ ownerId: pro.id, terms: omitted, author: AUTHOR });
+    expect(repeated.id).toBe(second.id);
   });
 
   it("writes a change record for the new version, with the previous version as before and its effective time", async () => {
