@@ -110,7 +110,7 @@ export class CodesService {
       // Credits to grant, if applicable: written to the ledger below, once the redemption row exists (RX-22)
       if (
         (code.type === "topup" || code.type === "both") &&
-        code.creditAmount === null || code.creditAmount?.greaterThan(0)
+        (code.creditAmount === null || code.creditAmount?.greaterThan(0))
       ) {
           const configuredGrant = await this.settings?.getSetting("invitationGrantCredits");
           if (configuredGrant == null) throw new Error('Platform setting "invitationGrantCredits" is not configured');

@@ -197,6 +197,46 @@ describe("CodesService.redeemCode (test database)", () => {
     expect((await prisma.creditLedgerEntry.findFirst({ where: { memberUserId: user.id } }))?.amount.toString()).toBe("7");
   });
 
+  it("RNX-172 regression: a subscription code carrying metadata creditAmount grants no bonus", async () => {
+    const user = await createUser(prisma);
+    const plan = await createPlan(prisma);
+    const code = await prisma.invitationCode.create({
+      data: {
+        code: "PERF-SUB-CREDIT-0001",
+        type: "subscription",
+        planId: plan.id,
+        durationDays: 30,
+        creditAmount: 100,
+        maxRedemptions: 1,
+      },
+    });
+
+    await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({
+      creditsGranted: null,
+      planGranted: plan.slug,
+    });
+    expect(await prisma.creditLedgerEntry.count()).toBe(0);
+  });
+
+  it.each(["topup", "both"] as const)("RNX-172 control: a %s code with null creditAmount uses the setting", async (type) => {
+    const user = await createPackageUser();
+    const plan = type === "both" ? await createPlan(prisma) : null;
+    const code = await prisma.invitationCode.create({
+      data: { code: `PERF-NULL-${type}`, type, creditAmount: null, maxRedemptions: 1, planId: plan?.id ?? null, durationDays: plan ? 30 : null },
+    });
+
+    await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({ creditsGranted: 5 });
+    expect(await prisma.creditLedgerEntry.count({ where: { memberUserId: user.id } })).toBe(1);
+  });
+
+  it("RNX-172 control: a topup code with zero creditAmount grants no credit", async () => {
+    const user = await createPackageUser();
+    const code = await prisma.invitationCode.create({ data: { code: "PERF-ZERO-TOPUP", type: "topup", creditAmount: 0, maxRedemptions: 1 } });
+
+    await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({ creditsGranted: null });
+    expect(await prisma.creditLedgerEntry.count({ where: { memberUserId: user.id } })).toBe(0);
+  });
+
   it("RNX-172: a missing invitation grant setting refuses before redemption/ledger write", async () => {
     const user = await createPackageUser();
     await prisma.platformSetting.delete({ where: { name: "invitationGrantCredits" } });
