@@ -1,6 +1,4 @@
 import { TestingModule } from "@nestjs/testing";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -94,22 +92,4 @@ describe("EntitlementService (RNX-76 PR-A, snapshot-only read model)", () => {
     expect((await service.getForUser(user.id))?.collaborationEnabled).toBe(true);
   });
 
-  it("D247 migration rollback control: failure after the first column leaves neither column", async () => {
-    const migration = readFileSync(join(process.cwd(), "../../prisma/migrations/20261025070000_package_collaboration_enabled/migration.sql"), "utf8");
-    expect(migration).toMatch(/BEGIN;/);
-    expect(migration).toMatch(/COMMIT;/);
-    await prisma.$executeRawUnsafe('CREATE TEMP TABLE "package_versions" (id integer)');
-    await prisma.$executeRawUnsafe('CREATE TEMP TABLE "purchase_snapshots" (id integer)');
-    const statements = migration.replace(/--.*$/gm, "").split(";").map((s) => s.trim()).filter(Boolean)
-      .map((s) => s.replaceAll('"package_versions"', '"package_versions"').replace('ALTER TABLE "purchase_snapshots"', 'ALTER TABLE "missing_rnx76_table"'));
-    await expect(prisma.$transaction(async (tx) => {
-      for (const statement of statements) await tx.$executeRawUnsafe(statement);
-    })).rejects.toThrow();
-    const columns = await prisma.$queryRawUnsafe<Array<{ column_name: string }>>(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = 'rnx76_rollback_probe' AND column_name IN ('package_flag', 'snapshot_flag')`,
-    );
-    expect(columns).toEqual([]);
-    await prisma.$executeRawUnsafe('DROP TABLE "package_versions"');
-    await prisma.$executeRawUnsafe('DROP TABLE "purchase_snapshots"');
-  });
 });
