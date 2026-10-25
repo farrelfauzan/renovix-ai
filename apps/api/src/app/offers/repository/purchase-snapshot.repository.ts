@@ -28,12 +28,30 @@ export class PurchaseSnapshotRepository {
     });
   }
 
-  /** The newest package snapshot and its package/version identity for entitlement resolution (RNX-76 PR-A). */
-  findLatestPackageSnapshot(buyerUserId: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).purchaseSnapshot.findFirst({
-      where: { buyerUserId, packageVersionId: { not: null } },
-      orderBy: { createdAt: "desc" },
-      include: { packageVersion: { include: { package: true } } },
-    });
+  /** All package snapshots aggregated independently of purchase order; top-ups are excluded. */
+  findPackageSnapshots(buyerUserId: string, tx?: DbTransaction) {
+    const db = tx ?? this.prisma;
+    return db.$queryRaw<[{ snapshotId: string; packageVersionId: string; packageName: string; displayOrder: number; maxAgents: number | null; maxConnectedTools: number | null; apiAccess: boolean | null; collaborationEnabled: boolean | null; allowedChannels: string[] | null; allowedTiers: string[] | null }]>`
+      WITH package_rows AS (
+        SELECT * FROM purchase_snapshots
+        WHERE buyer_user_id = ${buyerUserId} AND package_version_id IS NOT NULL
+      ), aggregated AS (
+          SELECT buyer_user_id, MAX(max_agents) AS "maxAgents", MAX(max_connected_tools) AS "maxConnectedTools",
+          BOOL_OR(api_access) AS "apiAccess", BOOL_OR(collaboration_enabled) AS "collaborationEnabled",
+          ARRAY(SELECT DISTINCT c FROM package_rows r CROSS JOIN LATERAL unnest(r.allowed_channels) c ORDER BY c) AS "allowedChannels",
+          ARRAY(SELECT DISTINCT t FROM package_rows r CROSS JOIN LATERAL unnest(r.allowed_tiers) t ORDER BY t) AS "allowedTiers"
+        FROM package_rows GROUP BY buyer_user_id
+      )
+      SELECT DISTINCT ON (ps.buyer_user_id)
+        ps.id AS "snapshotId", ps.package_version_id AS "packageVersionId",
+        p.name AS "packageName", p.display_order AS "displayOrder",
+        a."maxAgents", a."maxConnectedTools", a."apiAccess", a."collaborationEnabled", a."allowedChannels", a."allowedTiers"
+      FROM purchase_snapshots ps
+      JOIN package_versions pv ON pv.id = ps.package_version_id
+      JOIN packages p ON p.id = pv.package_id
+      JOIN aggregated a ON a.buyer_user_id = ps.buyer_user_id
+      WHERE ps.buyer_user_id = ${buyerUserId} AND ps.package_version_id IS NOT NULL
+      ORDER BY ps.buyer_user_id, p.display_order DESC, ps.created_at DESC, ps.id ASC
+    `;
   }
 }

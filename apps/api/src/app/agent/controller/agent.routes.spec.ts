@@ -2,6 +2,7 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AgentController } from "./agent.controller";
 import { AgentService } from "../service/agent.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -12,6 +13,7 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import {
   createAgent,
+  createPackageSnapshot,
   createPlan,
   createSubscription,
   createUser,
@@ -34,7 +36,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController],
-      providers: [AgentService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -52,26 +54,45 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
     return { user, plan: created };
   };
 
+  // RNX-76 B1: agent create/clone/integration limits come from the purchased package snapshot, not UserSubscription.
+  const packaged = async (limits: { maxAgents?: number; maxConnectedTools?: number; name?: string } = {}) => {
+    const user = await createUser(prisma);
+    await createPackageSnapshot(prisma, { userId: user.id, ...limits });
+    return user;
+  };
+
+  const limitReached = (used: number, limit: number, nextPackage: string | null = null) => ({
+    error: { type: "PACKAGE_LIMIT_REACHED", used, limit, nextPackage },
+  });
+
   const newAgent = { name: "My Agent", systemPrompt: "prompt", model: "test-model" };
 
   describe("POST /agents", () => {
     it.each([
-      ["no subscription", null],
-      ["a canceled subscription", "canceled"],
-    ])("with %s: 403, nothing stored", async (_name, status) => {
-      const user = status ? (await subscribed({}, status)).user : await createUser(prisma);
+      ["no package and no subscription", null],
+      ["no package and a canceled subscription", "canceled"],
+      ["no package and an active UserSubscription (the old gate no longer authorizes)", "active"],
+    ])("free account, %s: 400 PACKAGE_LIMIT_REACHED, nothing stored", async (_name, status) => {
+      const user = status ? (await subscribed({ maxAgents: 50 }, status)).user : await createUser(prisma);
 
       const res = await app.inject({ method: "POST", url: "/agents", headers: auth(user), payload: newAgent });
 
-      expect(res.statusCode).toBe(403);
-      expect(res.json().message).toBe(
-        "Active subscription required to use AI Agents. Please subscribe to access this feature.",
-      );
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toEqual(limitReached(0, 0).error);
       expect(await prisma.agent.count()).toBe(0);
     });
 
-    it("at the plan's agent limit (counting only the caller's agents): 400, nothing stored", async () => {
-      const { user, plan } = await subscribed({ maxAgents: 1, name: "Starter" });
+    it("a purchased package without any UserSubscription creates (201)", async () => {
+      const user = await packaged({ maxAgents: 1 });
+      expect(await prisma.userSubscription.count()).toBe(0);
+
+      const res = await app.inject({ method: "POST", url: "/agents", headers: auth(user), payload: newAgent });
+
+      expect(res.statusCode).toBe(201);
+    });
+
+    it("at the package's agent limit (counting only the caller's agents): 400, nothing more stored", async () => {
+      const user = await packaged({ maxAgents: 1, name: "Starter" });
       await createAgent(prisma, { userId: user.id });
       const other = await createUser(prisma);
       await createAgent(prisma, { userId: other.id });
@@ -79,15 +100,12 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       const res = await app.inject({ method: "POST", url: "/agents", headers: auth(user), payload: newAgent });
 
       expect(res.statusCode).toBe(400);
-      expect(res.json().message).toBe(
-        "Agent limit reached for your Starter plan (1 agents). Please upgrade to create more.",
-      );
+      expect(res.json().error).toEqual(limitReached(1, 1).error);
       expect(await prisma.agent.count({ where: { userId: user.id } })).toBe(1);
-      expect(plan.maxAgents).toBe(1);
     });
 
     it("only the caller's agents count toward the limit: another user's agent does not block (201)", async () => {
-      const { user } = await subscribed({ maxAgents: 1 });
+      const user = await packaged({ maxAgents: 1 });
       await createAgent(prisma, { userId: (await createUser(prisma)).id });
 
       const res = await app.inject({ method: "POST", url: "/agents", headers: auth(user), payload: newAgent });
@@ -96,7 +114,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
     });
 
     it("creates with the defaults and the relations; the slug is unique per user only", async () => {
-      const { user } = await subscribed({ maxAgents: 10 });
+      const user = await packaged({ maxAgents: 10 });
       const other = await createUser(prisma);
       await createAgent(prisma, { userId: other.id, slug: "my-agent" });
 
@@ -260,17 +278,19 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(await prisma.agent.count({ where: { userId: user.id } })).toBe(0);
     });
 
-    it("without a subscription: 403", async () => {
+    it("without a purchased package: 400 PACKAGE_LIMIT_REACHED, nothing stored", async () => {
       const user = await createUser(prisma);
       const tpl = await template();
 
       const res = await app.inject({ method: "POST", url: `/agents/clone/${tpl.id}`, headers: auth(user) });
 
-      expect(res.statusCode).toBe(403);
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toEqual(limitReached(0, 0).error);
+      expect(await prisma.agent.count({ where: { userId: user.id } })).toBe(0);
     });
 
     it("copies the template and its tools; the copy is private", async () => {
-      const { user } = await subscribed();
+      const user = await packaged();
       const tpl = await template();
 
       const res = await app.inject({ method: "POST", url: `/agents/clone/${tpl.id}`, headers: auth(user) });
@@ -384,8 +404,8 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
   describe("integrations", () => {
     const integration = { provider: "jira", config: { baseUrl: "https://jira.test.local" }, scopes: ["read"] };
 
-    it("owner without a subscription attaches (201, connected) and removes (204) one; no limit applies", async () => {
-      const user = await createUser(prisma);
+    it("owner with a purchased package and no UserSubscription attaches (201, connected) and removes (204) one", async () => {
+      const user = await packaged({ maxConnectedTools: 5 });
       const agent = await createAgent(prisma, { userId: user.id });
       await prisma.agentIntegration.create({ data: { agentId: agent.id, provider: "plane", config: {}, scopes: ["read"] } });
 
@@ -407,8 +427,8 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(await prisma.agentIntegration.count()).toBe(1);
     });
 
-    it("at the plan's integration limit (counted on this agent): 400, nothing stored", async () => {
-      const { user } = await subscribed({ maxIntegrations: 1, name: "Starter" });
+    it("at the package's connected-tools limit (counted on this agent): 400, nothing stored", async () => {
+      const user = await packaged({ maxConnectedTools: 1, name: "Starter" });
       const agent = await createAgent(prisma, { userId: user.id });
       const otherAgent = await createAgent(prisma, { userId: user.id });
       await prisma.agentIntegration.create({ data: { agentId: otherAgent.id, provider: "plane", config: {}, scopes: ["read"] } });
@@ -423,7 +443,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
 
       expect(first.statusCode).toBe(201);
       expect(second.statusCode).toBe(400);
-      expect(second.json().message).toBe("Integration limit reached for your Starter plan. Please upgrade.");
+      expect(second.json().error).toEqual(limitReached(1, 1).error);
       expect(await prisma.agentIntegration.count({ where: { agentId: agent.id } })).toBe(1);
     });
 

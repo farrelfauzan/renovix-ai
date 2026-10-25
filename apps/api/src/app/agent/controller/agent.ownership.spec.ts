@@ -3,6 +3,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AgentController } from "./agent.controller";
 import { AgentLinkController } from "./agent-link.controller";
 import { AgentService } from "../service/agent.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentRunPolicyService } from "../service/agent-run-policy.service";
 import { AgentLinkService } from "../service/agent-link.service";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -14,6 +15,7 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import {
   createAgent,
+  createPackageSnapshot,
   createPlan,
   createSubscription,
   createUser,
@@ -34,7 +36,7 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController, AgentLinkController],
       // RX-113: attaching a workspace knowledge base checks the workspace role
-      providers: [AgentService, AgentRunPolicyService, AgentLinkService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, EntitlementService, AgentRunPolicyService, AgentLinkService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -150,6 +152,7 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
     const { bob, agent } = await setup();
     const plan = await createPlan(prisma);
     await createSubscription(prisma, { userId: bob.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: bob.id });
 
     const created = await app.inject({
       method: "POST",

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@generated/prisma/client.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -53,6 +53,27 @@ export class PackageRepository {
       orderBy: { displayOrder: "asc" },
       include: { versions: { where: { effectiveFrom: { lte: now } }, orderBy: { versionNumber: "desc" }, take: 1 } },
     });
+  }
+
+  findNextListedAfter(displayOrder: number | null, limit: "maxAgents" | "maxConnectedTools", current: number, now: Date, tx?: DbTransaction) {
+    const db = tx ?? this.prisma;
+    const column = limit === "maxAgents" ? Prisma.raw('"max_agents"') : Prisma.raw('"max_connected_tools"');
+    return db.$queryRaw<Array<{ name: string; displayOrder: number; currentLimit: number }>>`
+      SELECT p.name, p.display_order AS "displayOrder", current_version."currentLimit"
+      FROM packages p
+      CROSS JOIN LATERAL (
+        SELECT pv.${column} AS "currentLimit"
+        FROM package_versions pv
+        WHERE pv.package_id = p.id AND pv.effective_from <= ${now}
+        ORDER BY pv.version_number DESC
+        LIMIT 1
+      ) current_version
+      WHERE p.active = true AND p.visible = true
+        AND (${displayOrder}::integer IS NULL OR p.display_order > ${displayOrder})
+        AND current_version."currentLimit" > ${current}
+      ORDER BY p.display_order ASC, p.id ASC
+      LIMIT 1
+    `;
   }
 
   /** The active, visible package with this id and its current version (the highest version number in effect at `now`), for a checkout (RNX-35). */

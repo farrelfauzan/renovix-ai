@@ -22,6 +22,11 @@ const AGENT_RELATIONS = {
 export class AgentRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Serializes account-scoped entitlement checks and agent inserts. */
+  acquireAccountEntitlementLock(userId: string, tx: DbTransaction) {
+    return tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('rnx76-entitlements:' || ${userId}))::text`;
+  }
+
   /** This user's agent with this slug, if there is one. */
   findAgentBySlug(userId: string, slug: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findUnique({

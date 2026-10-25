@@ -8,6 +8,11 @@ import { PrismaService } from "../../prisma/prisma.service";
 export class AgentIntegrationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Uses the same account lock as agent creation for account-scoped tool limits. */
+  acquireAccountEntitlementLock(userId: string, tx: DbTransaction) {
+    return tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('rnx76-entitlements:' || ${userId}))::text`;
+  }
+
   /** This agent's integration with this id, if there is one. */
   findAgentIntegration(
     integrationId: string,
