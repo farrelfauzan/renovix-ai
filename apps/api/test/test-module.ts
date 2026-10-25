@@ -15,6 +15,7 @@ import { AdminOriginGuard } from "../src/common/guards/admin-origin.guard";
 import { UserOriginGuard } from "../src/common/guards/user-origin.guard";
 import { createFastifyAdapter } from "../src/common/utils/create-fastify-adapter";
 import { testDatabaseUrl } from "./test-database";
+import { PlatformSettingsService } from "../src/app/offers/service/platform-settings.service";
 
 /**
  * Builds a Nest testing module with the real PrismaService on the test
@@ -43,6 +44,11 @@ export async function createTestModule(
         { provide: APP_GUARD, useExisting: AccessGuard },
         { provide: APP_INTERCEPTOR, useExisting: AdminAuditInterceptor },
         { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+        // RNX-172: controller specs that construct PortalTierService/CodesService directly get the historical
+        // decided fixture values. Offer-setting specs explicitly provide the real PlatformSettingsService below.
+        { provide: PlatformSettingsService, useValue: {
+          getSetting: async (name: string) => ({ anonymousRequestsPerSession: 20, anonymousSessionsPerIp: 3, invitationGrantCredits: 5 } as Record<string, number>)[name] ?? null,
+        } },
         ...(metadata.providers ?? []),
       ],
     }),

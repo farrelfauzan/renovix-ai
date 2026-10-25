@@ -112,7 +112,9 @@ export class CodesService {
         (code.type === "topup" || code.type === "both") &&
         code.creditAmount === null || code.creditAmount?.greaterThan(0)
       ) {
-          creditsGranted = code.creditAmount ?? new Decimal(await this.settings?.getSetting("invitationGrantCredits") ?? 5);
+          const configuredGrant = await this.settings?.getSetting("invitationGrantCredits");
+          if (configuredGrant == null) throw new Error('Platform setting "invitationGrantCredits" is not configured');
+          creditsGranted = code.creditAmount ?? new Decimal(configuredGrant);
       }
 
       // Grant subscription if applicable

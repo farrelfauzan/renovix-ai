@@ -23,7 +23,13 @@ describe("RX-10: free-tier reservation (test database)", () => {
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({}));
   });
-  beforeEach(() => resetDatabase(prisma));
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+    const settings = moduleRef.get(PlatformSettingsService);
+    for (const [name, value] of [["anonymousRequestsPerSession", 20], ["anonymousSessionsPerIp", 3]] as const) {
+      await settings.saveSetting({ name, value, author: { changedBy: "test", reason: "RX-10 fixture" } });
+    }
+  });
   afterEach(() => jest.restoreAllMocks());
   afterAll(() => moduleRef?.close());
 
@@ -89,6 +95,18 @@ describe("RX-10: free-tier reservation (test database)", () => {
     const session = await newSession();
     for (let i = 0; i < 5; i++) expect(await tier.reserveFreeRequest(session, "198.51.100.44")).toBe("ok");
     expect(await tier.reserveFreeRequest(session, "198.51.100.44")).toBe("free_limit_reached");
+  });
+
+  it("RNX-172: a missing session cap setting refuses instead of using a legacy default", async () => {
+    await prisma.platformSetting.delete({ where: { name: "anonymousRequestsPerSession" } });
+    const tier = tierService();
+    await expect(tier.getUsage("missing-setting-session")).rejects.toThrow(/anonymousRequestsPerSession/);
+  });
+
+  it("RNX-172: a missing IP session cap refuses instead of using a legacy default", async () => {
+    await prisma.platformSetting.delete({ where: { name: "anonymousSessionsPerIp" } });
+    const tier = tierService();
+    await expect(tier.getOrCreateSession("missing-setting-ip", "198.51.100.77")).rejects.toThrow(/anonymousSessionsPerIp/);
   });
 
   it("the session cap is still 20 a day", async () => {
@@ -206,7 +224,7 @@ describe("RX-10: free-tier reservation (test database)", () => {
     expect(JSON.stringify(warn.mock.calls)).not.toContain(ip);
   });
 
-  it("limits new sessions per hashed IP (MAX_SESSIONS_PER_IP)", async () => {
+  it("limits new sessions per hashed IP using anonymousSessionsPerIp", async () => {
     const tier = tierService();
     for (let i = 0; i < 3; i++) {
       expect(
@@ -232,6 +250,7 @@ describe("RX-10: free-tier reservation (test database)", () => {
         ANON_DAILY_IP_CAP: "-3",
         ANON_DAILY_GLOBAL_CAP: "lots",
       }),
+      moduleRef.get(PlatformSettingsService),
     );
 
     expect(warn).toHaveBeenCalledWith(

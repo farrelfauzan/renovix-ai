@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from "@nestjs/common";
+import { Injectable, InternalServerErrorException, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Cron } from "@nestjs/schedule";
 import { createHmac } from "node:crypto";
@@ -67,8 +67,10 @@ export class PortalTierService {
     );
   }
 
-  private async setting(name: "anonymousRequestsPerSession" | "anonymousSessionsPerIp", fallback: number): Promise<number> {
-    return (await this.settings?.getSetting(name)) ?? fallback;
+  private async setting(name: "anonymousRequestsPerSession" | "anonymousSessionsPerIp"): Promise<number> {
+    const value = await this.settings?.getSetting(name);
+    if (value == null) throw new InternalServerErrorException(`Platform setting "${name}" is not configured`);
+    return value;
   }
 
   private capFromEnv(
@@ -109,7 +111,7 @@ export class PortalTierService {
         new Date(Date.now() - 24 * 60 * 60 * 1000),
       );
 
-       if (recentSessions >= (await this.setting("anonymousSessionsPerIp", 3))) {
+       if (recentSessions >= (await this.setting("anonymousSessionsPerIp"))) {
         return null; // signal that session creation is blocked
       }
     }
@@ -128,7 +130,7 @@ export class PortalTierService {
   ): Promise<FreeReservation> {
     const ipHash = this.hashIp(ip);
     const day = jakartaDay();
-    const freeRequestLimit = await this.setting("anonymousRequestsPerSession", 20);
+    const freeRequestLimit = await this.setting("anonymousRequestsPerSession");
     try {
       await this.transactions.run(async (tx) => {
         if (
@@ -198,8 +200,8 @@ export class PortalTierService {
     return {
       tier: "free",
       used,
-        limit: await this.setting("anonymousRequestsPerSession", 20),
-        remaining: Math.max(0, (await this.setting("anonymousRequestsPerSession", 20)) - used),
+        limit: await this.setting("anonymousRequestsPerSession"),
+        remaining: Math.max(0, (await this.setting("anonymousRequestsPerSession")) - used),
     };
   }
 
