@@ -13,5 +13,6 @@ export const PackageVersionTermsDto = z.strictObject({
   apiAccess: z.boolean(),
   allowedChannels: z.array(z.string().min(1)),
   allowedTiers: z.array(z.enum(MODEL_TIERS)).min(1),
+  collaborationEnabled: z.boolean().optional(),
 });
 export type PackageVersionTermsDto = z.infer<typeof PackageVersionTermsDto>;

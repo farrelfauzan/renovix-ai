@@ -53,7 +53,7 @@ export class OfferCatalogService {
     return this.transactions.run(async (db) => {
       const before = await this.packages.findLatestVersion(input.ownerId, db);
       if (before && hasSameValues(before, terms)) return before;
-      const after = await this.packages.createVersion({ ...terms, packageId: input.ownerId, ...buildNextVersionColumns(before, input) }, db);
+      const after = await this.packages.createVersion({ ...terms, collaborationEnabled: terms.collaborationEnabled ?? false, packageId: input.ownerId, ...buildNextVersionColumns(before, input) }, db);
       await this.changes.create(buildCatalogChange({ entity: "package_version", entityId: after.id, before, after, author: input.author, effectiveFrom: after.effectiveFrom }), db);
       return after;
     }, undefined, tx);

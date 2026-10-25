@@ -25,6 +25,7 @@ const EXAMPLE_PRO_TERMS: PackageVersionTermsDto = {
   apiAccess: true,
   allowedChannels: ["web", "api"],
   allowedTiers: ["standard", "advanced", "premium", "frontier"],
+  collaborationEnabled: true,
 };
 const EXAMPLE_PRO_TERMS_AFTER_CHANGE: PackageVersionTermsDto = { ...EXAMPLE_PRO_TERMS, priceUsdCents: 2500, creditsGranted: 25, maxAgents: 12 };
 const EXAMPLE_PRO = { name: "Pro", displayOrder: 2, active: true, visible: true };
@@ -70,6 +71,7 @@ describe("OfferCatalogService (RX-86, test database)", () => {
       apiAccess: actualSnapshot.apiAccess,
       allowedChannels: actualSnapshot.allowedChannels,
       allowedTiers: actualSnapshot.allowedTiers,
+      collaborationEnabled: actualSnapshot.collaborationEnabled,
     }).toEqual(EXAMPLE_PRO_TERMS);
     expect(actualSnapshot.packageVersionId).toBe(oldVersion.id);
     expect(await prisma.packageVersion.findUniqueOrThrow({ where: { id: oldVersion.id } })).toEqual(oldVersion);
