@@ -31,6 +31,7 @@ import {
 import { fetchConversation } from "@/lib/api";
 import { toast } from "sonner";
 import type { ConversationSummary } from "@/lib/api";
+import { WorkspaceSwitcher } from "@/components/workspace/workspace-switcher";
 
 export function AppSidebar() {
   const hydrated = useHydrated();
@@ -71,6 +72,7 @@ export function AppSidebar() {
         <div className="px-2 pb-2 group-data-[collapsible=icon]:group-data-[state=collapsed]:hidden">
           <p className="truncate text-sm font-medium">{name || email || "Your account"}</p>
           <p className="truncate text-xs text-sidebar-foreground/60">{email}</p>
+          <WorkspaceSwitcher />
         </div>
         <SidebarMenu>
           <SidebarMenuItem>

@@ -1,2 +1,5 @@
-// Keep the existing account screen intact while the settings sections are moved.
-export { default } from "../profile/page";
+import { redirect } from "next/navigation";
+
+export default function SettingsPage() {
+  redirect("/settings/general");
+}

@@ -1,9 +1,10 @@
 /// <reference types="jest" />
 import { render, screen, cleanup } from '@testing-library/react';
 import { AppSidebar } from './chat-sidebar';
+jest.mock('@/components/workspace/workspace-switcher', () => ({ WorkspaceSwitcher: () => null }));
 
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
-jest.mock('next/navigation', () => ({ usePathname: () => '/', useRouter: () => ({ push: jest.fn() }) }));
+jest.mock('next/navigation', () => ({ redirect: jest.fn(), usePathname: () => '/', useRouter: () => ({ push: jest.fn() }) }));
 jest.mock('@/lib/stores', () => ({
   useHydrated: () => true,
   useAuthStore: () => ({ isLoggedIn: () => false, name: 'Test Account', email: 'test@example.test' }),
@@ -44,9 +45,10 @@ it('shows account identity and an empty credit slot, not an invented balance', (
   expect(slot.getAttribute('role')).not.toBe('progressbar');
 });
 
-it('resolves the settings entry to the existing protected account screen', () => {
+it('redirects the settings entry to general without a legacy redirect cycle', () => {
   jest.isolateModules(() => {
-    jest.doMock('../app/profile/page', () => ({ __esModule: true, default: function Profile() { return null; } }));
-    expect(require('../app/settings/page').default).toBe(require('../app/profile/page').default);
+    const { redirect } = require('next/navigation');
+    require('../app/settings/page').default();
+    expect(redirect).toHaveBeenCalledWith('/settings/general');
   });
 });
