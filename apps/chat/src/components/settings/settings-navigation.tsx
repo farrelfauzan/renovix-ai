@@ -14,6 +14,8 @@ export function SettingsNavigation() {
         { href: "/settings/general", label: "General" },
         { href: "/settings/workspace", label: companyOwner ? "Workspace and members" : "Workspace" },
         { href: "/settings/billing", label: companyOwner ? "Company and credits" : "Billing and credits" },
+        { href: "/settings/tools", label: "Connected tools" },
+        { href: "/settings/api-keys", label: "API keys" },
       ].map(({ href, label }) => (
         <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined} className="rounded-md px-3 py-2 text-sm hover:bg-secondary aria-[current=page]:bg-secondary">
           {label}
