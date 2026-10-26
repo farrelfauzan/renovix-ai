@@ -55,12 +55,12 @@ LLM_KEY_ENCRYPTION_KEY
 LLM_PROVIDER=fake
 PAYMENT_PROVIDER=fake
 PAYMENTS_FORCE_OFF=true
-S3_BUCKET
-S3_REGION
-S3_ACCESS_KEY_ID
-S3_SECRET_ACCESS_KEY
-S3_CDN_DOMAIN
-S3_ENDPOINT
+S3_BUCKET=rnx75-test
+S3_REGION=ap-southeast-1
+S3_ACCESS_KEY_ID=local-test
+S3_SECRET_ACCESS_KEY=local-test
+S3_CDN_DOMAIN=
+S3_ENDPOINT=http://127.0.0.1:59999
 ```
 
 Generate values locally, without putting them in this document: use
@@ -69,6 +69,11 @@ characters; use `openssl rand -base64 32` for `ADMIN_TOTP_ENCRYPTION_KEY`; and
 use `openssl rand -hex 32` for `MCP_ENCRYPTION_KEY` and
 `LLM_KEY_ENCRYPTION_KEY`. `ADMIN_JWT_SECRET` must differ from `JWT_SECRET`.
 The fake provider means no real LLM/OpenRouter key is needed.
+Unset `OPENROUTER_API_KEY`, `LLM_API_KEY`, and `EMBEDDING_API_KEY` before starting.
+No object store is started: the local S3 endpoint deliberately refuses connections;
+startup system-knowledge sync may log a warning. Uploads/completions are not tested.
+Replace every `<run-id>` with the same fresh `openssl rand -hex 4` output and every
+`<test-only-password>` with the same `openssl rand -hex 16` output for this run.
 
 From this worktree:
 
@@ -106,20 +111,21 @@ calls.
 
 ```bash
 API=http://127.0.0.1:3351
-curl -i -c /tmp/rnx75-owner.cookies -H 'Content-Type: application/json' \
+set -a; . "$HOME/.config/rnx75/local.env"; set +a
+curl --fail-with-body -i -c /tmp/rnx75-owner.cookies -H 'Origin: http://127.0.0.1:4351' -H 'Content-Type: application/json' \
   -X POST "$API/api/auth/better/sign-up/email" \
   --data '{"name":"RNX75 Individual","email":"rnx75-individual-<run-id>@local.test","password":"<test-only-password>"}'
 
-curl -i -c /tmp/rnx75-member.cookies -H 'Content-Type: application/json' \
+curl --fail-with-body -i -c /tmp/rnx75-member.cookies -H 'Origin: http://127.0.0.1:4351' -H 'Content-Type: application/json' \
   -X POST "$API/api/auth/better/sign-up/email" \
   --data '{"name":"RNX75 Enterprise Member","email":"rnx75-member-<run-id>@local.test","password":"<test-only-password>"}'
 
-curl -i -b /tmp/rnx75-owner.cookies -c /tmp/rnx75-owner.cookies \
+curl --fail-with-body -i -H 'Origin: http://127.0.0.1:4351' -b /tmp/rnx75-owner.cookies -c /tmp/rnx75-owner.cookies \
   -H 'Content-Type: application/json' -X POST "$API/api/auth/better/sign-in/email" \
     --data '{"email":"rnx75-individual-<run-id>@local.test","password":"<test-only-password>"}'
 
-curl -sS -c /tmp/rnx75-enterprise-owner.cookies -H 'Content-Type: application/json' -X POST "$API/api/auth/better/sign-up/email" --data '{"name":"RNX75 Enterprise Owner","email":"rnx75-enterprise-owner-<run-id>@local.test","password":"<test-only-password>"}'
-curl -sS -c /tmp/rnx75-enterprise-member.cookies -H 'Content-Type: application/json' -X POST "$API/api/auth/better/sign-up/email" --data '{"name":"RNX75 Enterprise Member","email":"rnx75-enterprise-member-<run-id>@local.test","password":"<test-only-password>"}'
+curl --fail-with-body -sS -H 'Origin: http://127.0.0.1:4351' -c /tmp/rnx75-enterprise-owner.cookies -H 'Content-Type: application/json' -X POST "$API/api/auth/better/sign-up/email" --data '{"name":"RNX75 Enterprise Owner","email":"rnx75-enterprise-owner-<run-id>@local.test","password":"<test-only-password>"}'
+curl --fail-with-body -sS -H 'Origin: http://127.0.0.1:4351' -c /tmp/rnx75-enterprise-member.cookies -H 'Content-Type: application/json' -X POST "$API/api/auth/better/sign-up/email" --data '{"name":"RNX75 Enterprise Member","email":"rnx75-enterprise-member-<run-id>@local.test","password":"<test-only-password>"}'
 RNX75_ENTERPRISE_OWNER_EMAIL="rnx75-enterprise-owner-<run-id>@local.test" \
 RNX75_ENTERPRISE_MEMBER_EMAIL="rnx75-enterprise-member-<run-id>@local.test" \
 bun scripts/rnx75-local-fixtures.ts
