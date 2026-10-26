@@ -2,11 +2,9 @@
 
 import {
   MessageSquare,
-  BookOpen,
-  Brain,
-  Plus,
   Trash2,
   Bot,
+  Settings,
   Sparkles,
   PanelLeft,
 } from "lucide-react";
@@ -33,13 +31,15 @@ import {
 import { fetchConversation } from "@/lib/api";
 import { toast } from "sonner";
 import type { ConversationSummary } from "@/lib/api";
+import { WorkspaceSwitcher } from "@/components/workspace/workspace-switcher";
 
 export function AppSidebar() {
   const hydrated = useHydrated();
   const { isLoggedIn } = useAuthStore();
   const loggedIn = hydrated && isLoggedIn();
   const { clearChat } = useChatStore();
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, setOpenMobile } = useSidebar();
+  const { email, name } = useAuthStore();
 
   return (
     <Sidebar collapsible="icon">
@@ -69,36 +69,35 @@ export function AppSidebar() {
             <PanelLeft className="h-4 w-4" />
           </button>
         </div>
+        <div className="px-2 pb-2 group-data-[collapsible=icon]:group-data-[state=collapsed]:hidden">
+          <p className="truncate text-sm font-medium">{name || email || "Your account"}</p>
+          <p className="truncate text-xs text-sidebar-foreground/60">{email}</p>
+          <WorkspaceSwitcher />
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => { clearChat(); }} className="gap-2 hover:bg-secondary/60 cursor-pointer">
-              <Plus className="h-4 w-4" />
-              <span>New Chat</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <Link href="/knowledge">
-              <SidebarMenuButton className="gap-2 cursor-pointer">
-                <BookOpen className="h-4 w-4" />
-                <span>Knowledge</span>
-              </SidebarMenuButton>
+              <SidebarMenuButton asChild className="gap-2 cursor-pointer">
+            <Link href="/" onClick={() => { clearChat(); setOpenMobile(false); }}>
+                <MessageSquare className="h-4 w-4" />
+                <span>Chat</span>
             </Link>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <Link href="/memory">
-              <SidebarMenuButton className="gap-2 cursor-pointer">
-                <Brain className="h-4 w-4" />
-                <span>Memory</span>
               </SidebarMenuButton>
-            </Link>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <Link href="/agents">
-              <SidebarMenuButton className="gap-2 cursor-pointer">
+              <SidebarMenuButton asChild className="gap-2 cursor-pointer">
+            <Link href="/agents" onClick={() => setOpenMobile(false)}>
                 <Bot className="h-4 w-4" />
-                <span>AI Agents</span>
-              </SidebarMenuButton>
+                <span>Agents</span>
             </Link>
+              </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+              <SidebarMenuButton asChild className="gap-2 cursor-pointer">
+            <Link href="/settings" onClick={() => setOpenMobile(false)}>
+                <Settings className="h-4 w-4" />
+                <span>Settings</span>
+            </Link>
+              </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -114,6 +113,10 @@ export function AppSidebar() {
           <ChatsContent />
         )}
       </SidebarContent>
+      <div className="border-t border-sidebar-border p-3 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:group-data-[state=collapsed]:hidden">
+        <div className="mb-1 flex items-center justify-between"><span>Credits</span><span>SLOT</span></div>
+        <div className="h-1.5 rounded-full bg-sidebar-accent" aria-label="Credit balance unavailable" />
+      </div>
     </Sidebar>
   );
 }

@@ -107,7 +107,11 @@ export class WorkspaceService {
       await this.quotaService.enforceCollaboration(workspaceId);
     }
 
-    return workspace;
+    return {
+      ...workspace,
+      collaborationAllowed: await this.quotaService.isCollaborationAllowed(workspaceId),
+      effectiveRole: workspace.ownerId === userId ? "owner" as const : "member" as const,
+    };
   }
 
   async update(workspaceId: string, userId: string, dto: UpdateWorkspaceDto) {
