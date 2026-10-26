@@ -37,7 +37,7 @@ export function AppSidebar() {
   const { isLoggedIn } = useAuthStore();
   const loggedIn = hydrated && isLoggedIn();
   const { clearChat } = useChatStore();
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, setOpenMobile } = useSidebar();
   const { email, name } = useAuthStore();
 
   return (
@@ -74,28 +74,28 @@ export function AppSidebar() {
         </div>
         <SidebarMenu>
           <SidebarMenuItem>
-            <Link href="/" onClick={() => clearChat()}>
-              <SidebarMenuButton className="gap-2 cursor-pointer">
+              <SidebarMenuButton asChild className="gap-2 cursor-pointer">
+            <Link href="/" onClick={() => { clearChat(); setOpenMobile(false); }}>
                 <MessageSquare className="h-4 w-4" />
                 <span>Chat</span>
-              </SidebarMenuButton>
             </Link>
+              </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <Link href="/agents">
-              <SidebarMenuButton className="gap-2 cursor-pointer">
+              <SidebarMenuButton asChild className="gap-2 cursor-pointer">
+            <Link href="/agents" onClick={() => setOpenMobile(false)}>
                 <Bot className="h-4 w-4" />
                 <span>Agents</span>
-              </SidebarMenuButton>
             </Link>
+              </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <Link href="/settings">
-              <SidebarMenuButton className="gap-2 cursor-pointer">
+              <SidebarMenuButton asChild className="gap-2 cursor-pointer">
+            <Link href="/settings" onClick={() => setOpenMobile(false)}>
                 <Settings className="h-4 w-4" />
                 <span>Settings</span>
-              </SidebarMenuButton>
             </Link>
+              </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
