@@ -208,6 +208,10 @@ Key variables:
 | `CORS_ORIGIN` | Prod | Comma-separated allowed origins of the product apps, each an exact origin (`https://host[:port]`; `http` only for localhost or 127.0.0.1; no path or `*`). Required outside development and test: the API refuses to start without it (RNX-70); in development and test an unset list still accepts every origin. It is also the list a POST/PUT/PATCH/DELETE to a `session` or `portal` route must come from (RNX-272 `UserOriginGuard`). Required by the production compose stack |
 | `COOKIE_DOMAIN` | Prod | Cross-subdomain cookies (`.renovix.id`) for the Better Auth session and the email-login `jwt` cookie (RX-68); optional, derived from `API_PUBLIC_URL` in production if unset |
 | `STRIPE_ENABLED` | -- | Currently `false`, billing uses invitation codes |
+| `PAYMENT_PROVIDER` | Prod | `autogopay` or `fake`; the API refuses to start in production without it. Required by the production compose stack; `fake` in production requires `PAYMENTS_FORCE_OFF=true` |
+| `PAYMENT_PROVIDER_API_KEY` | With autogopay | AutoGoPay API key, also the webhook signing key. Base URL, paths and timeouts are in code; webhook URL: `<API_PUBLIC_URL>/api/v1/webhooks/payments` |
+| `PAYMENTS_FORCE_OFF` | -- | Payment kill switch; default `false` |
+| `PAYMENT_FAKE_WEBHOOK_SECRET` | Local/test | Fake payment webhook signing secret; local development and tests only |
 
 API logs (RNX-17, `apps/api/src/common/logger/app-logger.ts`): `NODE_ENV` sets both level and format, no other variable. With `development` every level is logged in Nest's readable format. Any other value logs errors and warnings only, as one JSON object per line. A line written while a request is handled carries `requestId` (the Fastify request id), `route` (the route pattern, not the URL) and `accountId` (or `adminId` on a back-office route) once a guard has accepted the caller. Every line is masked centrally, whatever the call site passes: authorization and cookie headers, API and provider keys, passwords, tokens, Bearer credentials, JWTs and connection-string passwords become `[REDACTED]`, in strings, objects and errors. Every JSON line also carries `severity` (RNX-233: Cloud Logging's field, mapped from `level`: fatal CRITICAL, error ERROR, warn WARNING, log INFO, debug and verbose DEBUG; `level` is kept), and a startup failure is logged through the same logger (`handleFatalStart`, exit code 1), so it is masked and, outside development, one JSON line. No `console.*` call is left in `apps/api/src` outside specs, so none bypasses this logger.
 
@@ -233,6 +237,9 @@ Required: compose refuses to start (`${NAME:?}`) when one is unset or empty.
 | `API_PUBLIC_URL` | The API's public URL, e.g. `https://api.renovix.id` (the code's default is `http://localhost:3000`) |
 | `CHAT_APP_URL` | The chat app's URL: MCP OAuth redirects and a trusted auth origin (the code's default is `http://localhost:4201`) |
 | `APP_BASE_URL` | The base URL of the links in emails, and a trusted auth origin (the code's defaults are `https://chat.performa.ai` and `http://localhost:3000`) |
+| `PAYMENT_PROVIDER` | Required: `autogopay`, or `fake` only with `PAYMENTS_FORCE_OFF=true` |
+
+Required by the API when `PAYMENT_PROVIDER=autogopay`: `PAYMENT_PROVIDER_API_KEY` (also the webhook signing key). Compose permits it to be empty for the fake provider.
 
 Must be set, may be empty (`${S3_CDN_DOMAIN?}`): `S3_CDN_DOMAIN`; empty keeps signed download URLs as they are.
 
@@ -241,6 +248,7 @@ Optional: passed to the container only when set; unset (or empty), the API uses 
 | Variable | Default when unset |
 |----------|--------------------|
 | `CLIENT_IP_HEADER` | None: the client IP is the socket address |
+| `PAYMENTS_FORCE_OFF` | `false` |
 | `COOKIE_DOMAIN` | Derived from `API_PUBLIC_URL` (`api.renovix.id` gives `.renovix.id`) |
 | `MCP_OAUTH_STATE_TTL_SECONDS` | 600 |
 | `LLM_PROVIDER` | `openrouter` (`fake` is refused in production) |
