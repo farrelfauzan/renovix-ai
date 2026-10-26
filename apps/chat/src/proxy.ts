@@ -31,6 +31,7 @@ export const config = {
     "/agents/:path*",
     "/top-up/:path*",
     "/profile/:path*",
+    "/settings/:path*",
     "/knowledge/:path*",
     "/memory/:path*",
   ],

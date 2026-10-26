@@ -2,11 +2,9 @@
 
 import {
   MessageSquare,
-  BookOpen,
-  Brain,
-  Plus,
   Trash2,
   Bot,
+  Settings,
   Sparkles,
   PanelLeft,
 } from "lucide-react";
@@ -40,6 +38,7 @@ export function AppSidebar() {
   const loggedIn = hydrated && isLoggedIn();
   const { clearChat } = useChatStore();
   const { toggleSidebar } = useSidebar();
+  const { email, name } = useAuthStore();
 
   return (
     <Sidebar collapsible="icon">
@@ -69,26 +68,16 @@ export function AppSidebar() {
             <PanelLeft className="h-4 w-4" />
           </button>
         </div>
+        <div className="px-2 pb-2 group-data-[collapsible=icon]:group-data-[state=collapsed]:hidden">
+          <p className="truncate text-sm font-medium">{name || email || "Your account"}</p>
+          <p className="truncate text-xs text-sidebar-foreground/60">{email}</p>
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => { clearChat(); }} className="gap-2 hover:bg-secondary/60 cursor-pointer">
-              <Plus className="h-4 w-4" />
-              <span>New Chat</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <Link href="/knowledge">
+            <Link href="/" onClick={() => clearChat()}>
               <SidebarMenuButton className="gap-2 cursor-pointer">
-                <BookOpen className="h-4 w-4" />
-                <span>Knowledge</span>
-              </SidebarMenuButton>
-            </Link>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <Link href="/memory">
-              <SidebarMenuButton className="gap-2 cursor-pointer">
-                <Brain className="h-4 w-4" />
-                <span>Memory</span>
+                <MessageSquare className="h-4 w-4" />
+                <span>Chat</span>
               </SidebarMenuButton>
             </Link>
           </SidebarMenuItem>
@@ -96,7 +85,15 @@ export function AppSidebar() {
             <Link href="/agents">
               <SidebarMenuButton className="gap-2 cursor-pointer">
                 <Bot className="h-4 w-4" />
-                <span>AI Agents</span>
+                <span>Agents</span>
+              </SidebarMenuButton>
+            </Link>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <Link href="/settings">
+              <SidebarMenuButton className="gap-2 cursor-pointer">
+                <Settings className="h-4 w-4" />
+                <span>Settings</span>
               </SidebarMenuButton>
             </Link>
           </SidebarMenuItem>
@@ -114,6 +111,10 @@ export function AppSidebar() {
           <ChatsContent />
         )}
       </SidebarContent>
+      <div className="border-t border-sidebar-border p-3 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:group-data-[state=collapsed]:hidden">
+        <div className="mb-1 flex items-center justify-between"><span>Credits</span><span>SLOT</span></div>
+        <div className="h-1.5 rounded-full bg-sidebar-accent" aria-label="Credit balance unavailable" />
+      </div>
     </Sidebar>
   );
 }
