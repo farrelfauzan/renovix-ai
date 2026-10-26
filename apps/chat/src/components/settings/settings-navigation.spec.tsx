@@ -11,7 +11,7 @@ afterEach(() => { cleanup(); mockCapability = null; });
 it.each([
   [{ collaborationAllowed: true, effectiveRole: 'member' }, 'Enterprise member'],
   [{ collaborationAllowed: false, effectiveRole: 'owner' }, 'non-Enterprise owner'],
-] as const)('hides specialized entries for a %s', (capability) => {
+] as const)('hides specialized entries for a %s', (capability, _label) => {
   mockCapability = capability;
   render(<SettingsNavigation />);
   expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual(['General', 'Workspace', 'Billing and credits', 'Connected tools', 'API keys']);
