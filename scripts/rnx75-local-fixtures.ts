@@ -1,3 +1,4 @@
+// legacy tables; update when RNX-251 lands
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../apps/api/src/generated/prisma/client";
 

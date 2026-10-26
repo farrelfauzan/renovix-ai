@@ -68,11 +68,6 @@ EOF
 unset OPENROUTER_API_KEY LLM_API_KEY EMBEDDING_API_KEY
 ```
 
-Generate values locally, without putting them in this document: use
-`openssl rand -base64 48` for the `*_SECRET` values that require at least 32
-characters; use `openssl rand -base64 32` for `ADMIN_TOTP_ENCRYPTION_KEY`; and
-use `openssl rand -hex 32` for `MCP_ENCRYPTION_KEY` and
-`LLM_KEY_ENCRYPTION_KEY`. `ADMIN_JWT_SECRET` must differ from `JWT_SECRET`.
 The fake provider means no real LLM/OpenRouter key is needed.
 Unset `OPENROUTER_API_KEY`, `LLM_API_KEY`, and `EMBEDDING_API_KEY` before starting.
 No object store is started: the local S3 endpoint deliberately refuses connections;
@@ -107,8 +102,8 @@ browser checks.
 
 ## 2. Create the accounts and legacy fixtures
 
-Use three fresh, local-only addresses: one individual owner, one Enterprise
-owner, and one Enterprise member. The approved fixture script below writes only
+The fixture script uses the fixed local-only individual, Enterprise owner, and
+Enterprise member accounts listed in the script. It writes only
 the explicit legacy `UserSubscription` identity, default workspace membership,
 and Enterprise plan row; it never infers a plan from UI state and makes no model
 calls.
