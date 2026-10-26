@@ -32,10 +32,13 @@ YAML
 docker compose -p rx75-runbook -f /tmp/rnx75-runbook/compose.yml up -d
 ```
 
-Create an environment file outside the repository, for example
-`$HOME/.config/rnx75/local.env` (never commit it). It must contain these names:
+Create the disposable environment file outside the repository (never commit it).
+Copy this entire block unchanged; it generates secrets automatically:
 
-```text
+```bash
+mkdir -p "$HOME/.config/rnx75"
+umask 077
+cat > "$HOME/.config/rnx75/local.env" <<EOF
 NODE_ENV=development
 DATABASE_URL=postgresql://rnx75:rnx75@127.0.0.1:55437/rnx75_test
 API_PUBLIC_URL=http://127.0.0.1:3351
@@ -43,15 +46,15 @@ CHAT_APP_URL=http://127.0.0.1:4351
 APP_BASE_URL=http://127.0.0.1:4351
 ADMIN_ORIGIN=http://127.0.0.1:4400
 CORS_ORIGIN=http://127.0.0.1:4351
-JWT_SECRET
-BETTER_AUTH_SECRET
-ADMIN_JWT_SECRET
-ADMIN_TOTP_ENCRYPTION_KEY
-IP_HASH_SECRET
-API_KEY_HASH_SECRET
-MCP_ENCRYPTION_KEY
-MCP_OAUTH_STATE_SECRET
-LLM_KEY_ENCRYPTION_KEY
+JWT_SECRET=$(openssl rand -base64 48)
+BETTER_AUTH_SECRET=$(openssl rand -base64 48)
+ADMIN_JWT_SECRET=$(openssl rand -base64 48)
+ADMIN_TOTP_ENCRYPTION_KEY=$(openssl rand -base64 32)
+IP_HASH_SECRET=$(openssl rand -base64 48)
+API_KEY_HASH_SECRET=$(openssl rand -base64 48)
+MCP_ENCRYPTION_KEY=$(openssl rand -hex 32)
+MCP_OAUTH_STATE_SECRET=$(openssl rand -base64 48)
+LLM_KEY_ENCRYPTION_KEY=$(openssl rand -hex 32)
 LLM_PROVIDER=fake
 PAYMENT_PROVIDER=fake
 PAYMENTS_FORCE_OFF=true
@@ -61,6 +64,8 @@ S3_ACCESS_KEY_ID=local-test
 S3_SECRET_ACCESS_KEY=local-test
 S3_CDN_DOMAIN=
 S3_ENDPOINT=http://127.0.0.1:59999
+EOF
+unset OPENROUTER_API_KEY LLM_API_KEY EMBEDDING_API_KEY
 ```
 
 Generate values locally, without putting them in this document: use
@@ -72,8 +77,7 @@ The fake provider means no real LLM/OpenRouter key is needed.
 Unset `OPENROUTER_API_KEY`, `LLM_API_KEY`, and `EMBEDDING_API_KEY` before starting.
 No object store is started: the local S3 endpoint deliberately refuses connections;
 startup system-knowledge sync may log a warning. Uploads/completions are not tested.
-Replace every `<run-id>` with the same fresh `openssl rand -hex 4` output and every
-`<test-only-password>` with the same `openssl rand -hex 16` output for this run.
+The fixture command uses the disposable password `Rnx75-local-test-2026!`.
 
 From this worktree:
 
@@ -101,7 +105,7 @@ curl --fail http://127.0.0.1:3351/api/health
 Expected: HTTP 200 health response. Keep this API process running for the
 browser checks.
 
-## 2. Verify Better Auth before opening the browser
+## 2. Create the accounts and legacy fixtures
 
 Use three fresh, local-only addresses: one individual owner, one Enterprise
 owner, and one Enterprise member. The approved fixture script below writes only
@@ -110,30 +114,13 @@ and Enterprise plan row; it never infers a plan from UI state and makes no model
 calls.
 
 ```bash
-API=http://127.0.0.1:3351
 set -a; . "$HOME/.config/rnx75/local.env"; set +a
-curl --fail-with-body -i -c /tmp/rnx75-owner.cookies -H 'Origin: http://127.0.0.1:4351' -H 'Content-Type: application/json' \
-  -X POST "$API/api/auth/better/sign-up/email" \
-  --data '{"name":"RNX75 Individual","email":"rnx75-individual-<run-id>@local.test","password":"<test-only-password>"}'
-
-curl --fail-with-body -i -c /tmp/rnx75-member.cookies -H 'Origin: http://127.0.0.1:4351' -H 'Content-Type: application/json' \
-  -X POST "$API/api/auth/better/sign-up/email" \
-  --data '{"name":"RNX75 Enterprise Member","email":"rnx75-member-<run-id>@local.test","password":"<test-only-password>"}'
-
-curl --fail-with-body -i -H 'Origin: http://127.0.0.1:4351' -b /tmp/rnx75-owner.cookies -c /tmp/rnx75-owner.cookies \
-  -H 'Content-Type: application/json' -X POST "$API/api/auth/better/sign-in/email" \
-    --data '{"email":"rnx75-individual-<run-id>@local.test","password":"<test-only-password>"}'
-
-curl --fail-with-body -sS -H 'Origin: http://127.0.0.1:4351' -c /tmp/rnx75-enterprise-owner.cookies -H 'Content-Type: application/json' -X POST "$API/api/auth/better/sign-up/email" --data '{"name":"RNX75 Enterprise Owner","email":"rnx75-enterprise-owner-<run-id>@local.test","password":"<test-only-password>"}'
-curl --fail-with-body -sS -H 'Origin: http://127.0.0.1:4351' -c /tmp/rnx75-enterprise-member.cookies -H 'Content-Type: application/json' -X POST "$API/api/auth/better/sign-up/email" --data '{"name":"RNX75 Enterprise Member","email":"rnx75-enterprise-member-<run-id>@local.test","password":"<test-only-password>"}'
-RNX75_ENTERPRISE_OWNER_EMAIL="rnx75-enterprise-owner-<run-id>@local.test" \
-RNX75_ENTERPRISE_MEMBER_EMAIL="rnx75-enterprise-member-<run-id>@local.test" \
 bun scripts/rnx75-local-fixtures.ts
 ```
 
-Expected: signup and signin succeed and return `Set-Cookie`; no JWT or
-`Authorization` header is used. If a response is not successful, stop and
-record the exact status/body.
+Expected: three signup statuses, one signin status, and fixture JSON. The script
+fails loudly on any non-2xx response before DB writes and never prints cookies or
+tokens. Rerunning on the same database fails with HTTP 409; recreate the database.
 
 ## 3. Start chat directly
 
