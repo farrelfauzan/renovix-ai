@@ -5,9 +5,12 @@ This is a local-only runbook for the TL. It does not include screenshots. Do not
 
 ## 1. Own throwaway database
 
+Port 55437 must be free; if a container already uses it, stop only your own
+rx75-runbook project first. Do not run this runbook concurrently with another role.
+
 Use a PostgreSQL instance owned by this run only, on port `55437`; do not use the
 default development database or shared containers. Set `DATABASE_URL` to that
-database (for example, `postgresql://<local-user>:<local-password>@127.0.0.1:55437/<local-db>`).
+database: `postgresql://rnx75:rnx75@127.0.0.1:55437/rnx75_test`.
 
 Create it with this isolated compose project:
 
@@ -34,7 +37,7 @@ Create an environment file outside the repository, for example
 
 ```text
 NODE_ENV=development
-DATABASE_URL
+DATABASE_URL=postgresql://rnx75:rnx75@127.0.0.1:55437/rnx75_test
 API_PUBLIC_URL=http://127.0.0.1:3351
 CHAT_APP_URL=http://127.0.0.1:4351
 APP_BASE_URL=http://127.0.0.1:4351
