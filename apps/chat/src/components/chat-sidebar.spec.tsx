@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 import { render, screen, cleanup } from '@testing-library/react';
 import { AppSidebar } from './chat-sidebar';
 
