@@ -29,7 +29,7 @@ describe("EntitlementService (RNX-76 B1)", () => {
     });
   };
 
-  const snapshot = async (userId: string, versionId: string, collaborationEnabled: boolean | null, overrides: { maxAgents?: number | null; maxConnectedTools?: number | null; createdAt?: Date } = {}) =>
+  const snapshot = async (userId: string, versionId: string, collaborationEnabled: boolean | null, overrides: { id?: string; maxAgents?: number | null; maxConnectedTools?: number | null; allowedChannels?: string[]; allowedTiers?: string[]; createdAt?: Date } = {}) =>
     prisma.purchaseSnapshot.create({
       data: {
         buyerUserId: userId, packageVersionId: versionId, priceUsdCents: 100, ...overrides,
@@ -76,24 +76,45 @@ describe("EntitlementService (RNX-76 B1)", () => {
     expect((await service.getForUser(user.id))?.maxAgents).toBe(Math.max(firstAgents, secondAgents));
   });
 
-  it("aggregates equal-timestamp snapshots independent of insertion order", async () => {
-    const user = await createUser(prisma);
-    const first = await packageVersion(false, "Starter");
-    const second = await packageVersion(true, "Pro");
-    await prisma.purchaseSnapshot.createMany({ data: [
-      { buyerUserId: user.id, packageVersionId: first.id, priceUsdCents: 1, exchangeRate: 1, exchangeRateDate: new Date("2026-01-01"), exchangeRateSource: "test", priceRupiah: 1, creditsGranted: 1, maxAgents: 2, maxConnectedTools: 1, apiAccess: false, allowedChannels: ["z"], allowedTiers: ["standard"], collaborationEnabled: false, createdAt: new Date("2026-03-01") },
-      { buyerUserId: user.id, packageVersionId: second.id, priceUsdCents: 1, exchangeRate: 1, exchangeRateDate: new Date("2026-01-01"), exchangeRateSource: "test", priceRupiah: 1, creditsGranted: 1, maxAgents: 7, maxConnectedTools: 4, apiAccess: true, allowedChannels: ["a"], allowedTiers: ["premium"], collaborationEnabled: true, createdAt: new Date("2026-03-01") },
-    ] });
-    expect(await service.getForUser(user.id)).toMatchObject({ maxAgents: 7, allowedChannels: ["a", "z"], allowedTiers: ["premium", "standard"] });
+  it("aggregates equal-timestamp snapshots deterministically: identical on repeated reads and in either insertion order", async () => {
+    const inputUserA = await createUser(prisma);
+    const inputUserB = await createUser(prisma);
+    const starter = await packageVersion(false, "Starter");
+    const pro = await packageVersion(true, "Pro");
+    const sameTime = new Date("2026-03-01");
+    const starterTerms = { maxAgents: 2, maxConnectedTools: 1, allowedChannels: ["z"], allowedTiers: ["standard"], createdAt: sameTime };
+    const proTerms = { maxAgents: 7, maxConnectedTools: 4, allowedChannels: ["a"], allowedTiers: ["premium"], createdAt: sameTime };
+    // Fixed ids with the same order in both accounts, so only the insertion order differs between them.
+    await snapshot(inputUserA.id, starter.id, false, { id: "00000000-0000-4000-8000-000000000001", ...starterTerms });
+    await snapshot(inputUserA.id, pro.id, true, { id: "00000000-0000-4000-8000-000000000002", ...proTerms });
+    await snapshot(inputUserB.id, pro.id, true, { id: "00000000-0000-4000-8000-000000000004", ...proTerms });
+    await snapshot(inputUserB.id, starter.id, false, { id: "00000000-0000-4000-8000-000000000003", ...starterTerms });
+
+    const actualA = [await service.getForUser(inputUserA.id), await service.getForUser(inputUserA.id)];
+    const actualB = [await service.getForUser(inputUserB.id), await service.getForUser(inputUserB.id)];
+
+    expect(actualA[1]).toEqual(actualA[0]);
+    expect(actualB[1]).toEqual(actualB[0]);
+    const { snapshotId: snapshotIdA, ...restA } = actualA[0] ?? { snapshotId: null };
+    const { snapshotId: snapshotIdB, ...restB } = actualB[0] ?? { snapshotId: null };
+    expect(restB).toEqual(restA);
+    expect([snapshotIdA, snapshotIdB]).toEqual(["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000003"]);
+    expect(restA).toMatchObject({ maxAgents: 7, maxConnectedTools: 4, collaborationEnabled: true, allowedChannels: ["a", "z"], allowedTiers: ["premium", "standard"] });
   });
 
   it("keeps Enterprise limits when a smaller package is purchased later", async () => {
     const user = await createUser(prisma);
     const enterprise = await packageVersion(true, "Enterprise");
     const smaller = await packageVersion(false, "Starter");
-    await snapshot(user.id, enterprise.id, true, { maxAgents: 100, createdAt: new Date("2026-01-01") });
-    await snapshot(user.id, smaller.id, false, { maxAgents: 2, createdAt: new Date("2026-02-01") });
-    expect((await service.getForUser(user.id))?.maxAgents).toBe(100);
+    await snapshot(user.id, enterprise.id, true, { maxAgents: 100, maxConnectedTools: 10, allowedChannels: ["web", "whatsapp"], allowedTiers: ["standard", "premium"], createdAt: new Date("2026-01-01") });
+    await snapshot(user.id, smaller.id, false, { maxAgents: 2, maxConnectedTools: 1, allowedChannels: ["api", "web"], allowedTiers: ["advanced", "standard"], createdAt: new Date("2026-02-01") });
+
+    const actual = await service.getForUser(user.id);
+
+    expect(actual).toMatchObject({
+      maxAgents: 100, maxConnectedTools: 10, collaborationEnabled: true,
+      allowedChannels: ["api", "web", "whatsapp"], allowedTiers: ["advanced", "premium", "standard"],
+    });
   });
 
   it("excludes deliberately high top-up fields from package aggregation", async () => {
@@ -103,7 +124,9 @@ describe("EntitlementService (RNX-76 B1)", () => {
     const pack = await prisma.topUpPack.create({ data: { name: "High top-up", active: true } });
     const packVersion = await prisma.topUpPackVersion.create({ data: { packId: pack.id, versionNumber: 1, creditsGranted: 1, priceUsdCents: 1, createdBy: "test", reason: "test" } });
     await prisma.purchaseSnapshot.create({ data: { buyerUserId: user.id, topUpPackVersionId: packVersion.id, priceUsdCents: 1, exchangeRate: 1, exchangeRateDate: new Date("2026-01-01"), exchangeRateSource: "test", priceRupiah: 1, creditsGranted: 999, maxAgents: 999, maxConnectedTools: 999, apiAccess: true, allowedChannels: ["topup"], allowedTiers: ["topup"], collaborationEnabled: true } });
-    expect(await service.getForUser(user.id)).toMatchObject({ maxAgents: 4, maxConnectedTools: 3, apiAccess: true, allowedChannels: ["web"] });
+    const actual = await service.getForUser(user.id);
+    expect(actual).toMatchObject({ maxAgents: 4, maxConnectedTools: 3, apiAccess: true, collaborationEnabled: false, allowedChannels: ["web"] });
+    expect(actual?.allowedTiers).not.toContain("topup");
   });
 
   it("normalizes legacy null numeric fields while preserving non-null values", async () => {
@@ -264,6 +287,43 @@ describe("EntitlementService (RNX-76 B1)", () => {
       await expect(actualRefused).rejects.toMatchObject({
         response: { error: { type: "PACKAGE_LIMIT_REACHED", feature: "channel", requested: ["whatsapp"], nextPackage: "Pro" } },
       });
+    });
+  });
+
+  describe("RNX-76 B3: collaboration (D44, D297)", () => {
+    const listCollaboration = (name: string, displayOrder: number, collaborationEnabled: boolean) =>
+      prisma.package.create({ data: { name, displayOrder, active: true, visible: true, versions: { create: { versionNumber: 1, priceUsdCents: 1, creditsGranted: 1, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, apiAccess: false, allowedChannels: [], allowedTiers: [], collaborationEnabled, createdBy: "test", reason: "test" } } } });
+
+    it("negative: without a package, requireCollaboration refuses and names the first listed package enabling it", async () => {
+      const inputUser = await createUser(prisma);
+      await listCollaboration("Pro", 2, false);
+      await listCollaboration("Enterprise", 3, true);
+
+      const actual = service.requireCollaboration(inputUser.id);
+
+      await expect(actual).rejects.toMatchObject({
+        response: { error: { type: "PACKAGE_LIMIT_REACHED", feature: "collaboration", nextPackage: "Enterprise" } },
+      });
+    });
+
+    it("negative: a Starter snapshot without collaboration is refused", async () => {
+      const inputUser = await createUser(prisma);
+      const starter = await packageVersion(false, "Starter");
+      await snapshot(inputUser.id, starter.id, false);
+
+      await expect(service.requireCollaboration(inputUser.id)).rejects.toMatchObject({ response: { error: { feature: "collaboration" } } });
+    });
+
+    it("a Starter snapshot plus an Enterprise snapshot enables collaboration", async () => {
+      const inputUser = await createUser(prisma);
+      const starter = await packageVersion(false, "Starter");
+      const enterprise = await packageVersion(true, "Enterprise");
+      await snapshot(inputUser.id, starter.id, false);
+      await snapshot(inputUser.id, enterprise.id, true);
+
+      const actual = await service.requireCollaboration(inputUser.id);
+
+      expect(actual.collaborationEnabled).toBe(true);
     });
   });
 });

@@ -21,7 +21,8 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { withdrawCollaboration } from "../../../../test/withdraw-collaboration";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -120,6 +121,8 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
     const user = await createUser(prisma);
     const plan = await createPlan(prisma, planSlug ? { slug: planSlug, maxWorkspaceUsers: 100 } : {});
     await createSubscription(prisma, { userId: user.id, planId: plan.id, status: subscribed ? "active" : "canceled" });
+    // RNX-76 B3 (D297): an "enterprise" user collaborates through a package snapshot, not the plan.
+    if (planSlug === "enterprise") await createPackageSnapshot(prisma, { userId: user.id, collaborationEnabled: true });
     await fundPaidWallet(prisma, user.id, "1");
     return user;
   };
@@ -452,6 +455,7 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
       const { owner, collaborator, agent, ownerRun, collaboratorRun } = await twoRuns();
       const pro = await createPlan(prisma, { slug: "pro" });
       await prisma.userSubscription.update({ where: { userId: owner.id }, data: { planId: pro.id } });
+      withdrawCollaboration(owner.id);
 
       const listed = await service.listRuns(collaborator.id, agent.id);
       await expect(service.getRun(collaborator.id, agent.id, ownerRun.runId)).rejects.toThrow(new NotFoundException("Run not found"));

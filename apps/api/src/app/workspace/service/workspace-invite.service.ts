@@ -26,7 +26,7 @@ export class WorkspaceInviteService {
   ) {
     const emailNormalized = normalizeEmail(dto.email);
 
-    await this.quotaService.enforceCollaboration(workspaceId);
+    await this.quotaService.requireOwnerCollaboration(workspaceId);
 
     // Check seat limit
     await this.quotaService.enforceCanAddMember(workspaceId);
@@ -235,7 +235,7 @@ export class WorkspaceInviteService {
   }
 
   async resendInvite(inviteId: string, workspaceId: string) {
-    await this.quotaService.enforceCollaboration(workspaceId);
+    await this.quotaService.requireOwnerCollaboration(workspaceId);
 
     const invite = await this.prisma.workspaceInvite.findFirst({
       where: { id: inviteId, workspaceId, status: "pending" },

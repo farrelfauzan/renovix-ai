@@ -32,6 +32,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import {
   createAgent,
   createApiKey,
+  createPackageSnapshot,
   createPlan,
   createSubscription,
   createUser,
@@ -149,6 +150,8 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
     const member = await fundedUser();
     const former = await fundedUser();
     await createSubscription(prisma, { userId: owner.id, planId: enterprise.id });
+    // RNX-76 B3 (D297): collaboration comes from the owner's package snapshot, not the plan.
+    await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
     const channel = await prisma.channel.create({ data: { userId: owner.id, name: "Team" } });
     const workspace = await createWorkspace(prisma, { ownerId: owner.id, channelId: channel.id });
     await prisma.workspaceMember.createMany({

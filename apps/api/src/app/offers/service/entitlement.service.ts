@@ -77,6 +77,17 @@ export class EntitlementService {
     throw createPackageLimitReachedException({ feature: "channel", requested, nextPackage });
   }
 
+  /**
+   * RNX-76 B3 (D44, D297): the account's entitlement when one of its packages enables workspace collaboration; refused
+   * otherwise, naming the next listed package that enables it.
+   */
+  async requireCollaboration(userId: string, tx?: DbTransaction): Promise<Entitlement> {
+    const entitlement = await this.getForUser(userId, tx);
+    if (entitlement?.collaborationEnabled) return entitlement;
+    const nextPackage = await this.findNextGranting(entitlement, { feature: "collaboration" }, tx);
+    throw createPackageLimitReachedException({ feature: "collaboration", nextPackage });
+  }
+
   private async findNextGranting(entitlement: Entitlement | null, grant: PackageGrant, tx?: DbTransaction): Promise<string | null> {
     const [next] = await this.packages.findNextListedGranting(entitlement?.displayOrder ?? null, grant, new Date(), tx);
     return next?.name ?? null;

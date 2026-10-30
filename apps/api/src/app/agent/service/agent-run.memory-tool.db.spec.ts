@@ -28,7 +28,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import type { FakeTurn } from "../../providers/fake.adapter";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -118,6 +118,8 @@ describe("RNX-119: the memory_store tool follows the run's scope (test database,
     const user = await createUser(prisma);
     const plan = await createPlan(prisma, planSlug ? { slug: planSlug, maxWorkspaceUsers: 100 } : {});
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    // RNX-76 B3 (D297): an "enterprise" user collaborates through a package snapshot, not the plan.
+    if (planSlug === "enterprise") await createPackageSnapshot(prisma, { userId: user.id, collaborationEnabled: true });
     await fundPaidWallet(prisma, user.id, "1");
     return user;
   };

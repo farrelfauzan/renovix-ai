@@ -126,6 +126,8 @@ describe("RNX-118: agent runs call only linked agents (test database)", () => {
     const user = await createUser(prisma);
     const plan = await createPlan(prisma, planSlug ? { slug: planSlug } : {});
     await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    // RNX-76 B3 (D297): an "enterprise" user collaborates through a package snapshot, not the plan.
+    if (planSlug === "enterprise") await createPackageSnapshot(prisma, { userId: user.id, collaborationEnabled: true });
     await fundPaidWallet(prisma, user.id, "1");
     return user;
   };
