@@ -2,6 +2,7 @@ import * as jwt from "jsonwebtoken";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -45,6 +46,7 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [PortalController],
       providers: [
+        EntitlementService,
         ConversationService,
         KnowledgeService,
         { provide: PortalTierService, useValue: {} },

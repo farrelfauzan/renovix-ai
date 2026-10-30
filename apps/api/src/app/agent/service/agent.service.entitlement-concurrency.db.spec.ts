@@ -13,6 +13,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
+import { cheapestTierRegistry } from "../../../../test/cheapest-tier-registry";
 
 // RNX-76 B1: the package limit of AgentService.create / cloneFromTemplate (maxAgents) and attachIntegration
 // (maxConnectedTools, counted per agent) holds under parallel callers. The count and the insert run in one
@@ -44,7 +45,7 @@ describe("RNX-76 B1: package limits under parallel callers (AgentService, test d
         WorkspaceService,
         WorkspaceQuotaService,
         { provide: ProviderRouter, useValue: {} },
-        { provide: ModelRegistryService, useValue: {} },
+        { provide: ModelRegistryService, useValue: cheapestTierRegistry },
       ],
     }));
     service = moduleRef.get(AgentService);

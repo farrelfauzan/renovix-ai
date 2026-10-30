@@ -3,7 +3,7 @@
  * would grant it, and, by feature, the numeric usage and limit (maxAgents, maxConnectedTools) or what was asked for.
  */
 export type PackageLimitDetails = {
-  readonly feature: "maxAgents" | "maxConnectedTools" | "apiAccess" | "tier";
+  readonly feature: "maxAgents" | "maxConnectedTools" | "apiAccess" | "tier" | "channel";
   readonly nextPackage: string | null;
   readonly used?: number;
   readonly limit?: number;

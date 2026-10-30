@@ -4,6 +4,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import type { LightMyRequestResponse } from "fastify";
 import * as jwt from "jsonwebtoken";
 import { PortalController } from "./portal.controller";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -65,6 +66,7 @@ describe("RNX-225: the portal_session cookie and no login JWT on the portal (Fas
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
       controllers: [PortalController],
       providers: [
+        EntitlementService,
         PortalTierService,
         CreditService,
         ModelRegistryService,

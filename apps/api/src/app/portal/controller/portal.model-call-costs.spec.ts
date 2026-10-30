@@ -2,6 +2,7 @@ import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PortalTierService } from "../service/portal-tier.service";
 import { CreditService } from "../../billing/service/credit.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -46,6 +47,7 @@ describe("RNX-162: model call costs on the paid portal stream (Fastify, test dat
         imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
         controllers: [PortalController],
         providers: [
+          EntitlementService,
           PortalTierService,
           CreditService,
           ModelRegistryService,

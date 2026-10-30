@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { MODEL_TIERS } from "../config/model-tiers";
 import { PurchaseSnapshotRepository } from "../repository/purchase-snapshot.repository";
 import { PackageRepository } from "../repository/package.repository";
 import type { DbTransaction } from "../../prisma/db-transaction";
@@ -48,13 +49,32 @@ export class EntitlementService {
 
   /**
    * RNX-76 B2: the tiers `entitlement` allows (its packages' tiers plus the cheapest tier, Q1), refused when one of
-   * `requested` is not among them.
+   * `requested` is not among them; the hint names a package granting the missing tiers only.
    */
   async requireTiers(entitlement: Entitlement | null, requested: readonly string[], tx?: DbTransaction): Promise<string[]> {
     const allowed = toAllowedTiers(entitlement?.allowedTiers ?? []);
-    if (requested.every((tier) => allowed.includes(tier))) return allowed;
-    const nextPackage = await this.findNextGranting(entitlement, { feature: "tier", requested }, tx);
+    const missing = requested.filter((tier) => !allowed.includes(tier));
+    if (missing.length === 0) return allowed;
+    const nextPackage = await this.findNextGranting(entitlement, { feature: "tier", requested: missing }, tx);
     throw createPackageLimitReachedException({ feature: "tier", requested, nextPackage });
+  }
+
+  /**
+   * RNX-76 B2b (Q6): refuses a model of `tier` this user's packages do not allow. The cheapest tier, which every
+   * account keeps (Q1), is allowed without reading the packages.
+   */
+  async requireModelTier(userId: string, tier: string): Promise<void> {
+    if (tier === MODEL_TIERS[0]) return;
+    await this.requireTiers(await this.getForUser(userId), [tier]);
+  }
+
+  /** RNX-76 B2b: the account's entitlement when one of its packages grants `channelType`; a free account has none. */
+  async requireChannel(userId: string, channelType: string): Promise<Entitlement> {
+    const entitlement = await this.getForUser(userId);
+    if (entitlement?.allowedChannels.includes(channelType)) return entitlement;
+    const requested = [channelType];
+    const nextPackage = await this.findNextGranting(entitlement, { feature: "channel", requested });
+    throw createPackageLimitReachedException({ feature: "channel", requested, nextPackage });
   }
 
   private async findNextGranting(entitlement: Entitlement | null, grant: PackageGrant, tx?: DbTransaction): Promise<string | null> {

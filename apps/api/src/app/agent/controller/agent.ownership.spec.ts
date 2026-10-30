@@ -21,6 +21,7 @@ import {
   createUser,
 } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
+import { cheapestTierRegistry } from "../../../../test/cheapest-tier-registry";
 
 // RX-15 characterization: agent ownership through the real controller and
 // service (CombinedAuthGuard session path, test database). The routes used here
@@ -36,7 +37,7 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController, AgentLinkController],
       // RX-113: attaching a workspace knowledge base checks the workspace role
-      providers: [AgentService, EntitlementService, AgentRunPolicyService, AgentLinkService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, EntitlementService, AgentRunPolicyService, AgentLinkService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: cheapestTierRegistry }],
     }));
     app = await createFastifyApp(moduleRef);
   });

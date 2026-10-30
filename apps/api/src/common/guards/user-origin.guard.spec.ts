@@ -16,6 +16,7 @@ import { DocumentService } from "../../app/document/service/document.service";
 import { ModelRegistryService } from "../../app/config/model-registry.service";
 import { ProvidersModule } from "../../app/providers/providers.module";
 import { CreditService } from "../../app/billing/service/credit.service";
+import { EntitlementService } from "../../app/offers/service/entitlement.service";
 import { UsageService } from "../../app/usage/service/usage.service";
 import { PromptTuningService } from "../../app/chat/service/prompt-tuning.service";
 import { ConversationService } from "../../app/chat/service/conversation.service";
@@ -109,6 +110,8 @@ async function startWith(env: Record<string, string | undefined>) {
           WorkspaceQuotaService,
           PortalTierService,
           ModelRegistryService,
+          // RNX-76 B2b: PortalController checks the model tier against the package snapshots.
+          EntitlementService,
           KnowledgeService,
           { provide: S3Service, useValue: storage },
           { provide: EmbeddingService, useValue: embedding },

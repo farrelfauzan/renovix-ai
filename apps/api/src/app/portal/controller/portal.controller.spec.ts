@@ -5,6 +5,7 @@ import {
   NestFastifyApplication,
 } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -69,6 +70,7 @@ describe("RX-10: POST /chat/portal/completions free tier (Fastify, test database
         ],
         controllers: [PortalController],
         providers: [
+          EntitlementService,
           PortalTierService,
           ModelRegistryService,
           {

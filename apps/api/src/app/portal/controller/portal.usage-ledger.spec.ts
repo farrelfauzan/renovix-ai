@@ -2,6 +2,7 @@ import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { PortalController } from "./portal.controller";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PortalTierService } from "../service/portal-tier.service";
 import { CodesController } from "../../codes/controller/codes.controller";
 import { CodesService } from "../../codes/service/codes.service";
@@ -51,6 +52,7 @@ describe("RNX-186: the chat balance read is the ledger account (Fastify, test da
         imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
         controllers: [PortalController, CodesController],
         providers: [
+          EntitlementService,
           PortalTierService,
           CodesService,
           // RNX-35 (D36): a credits-only code needs a package; the service that checks it.

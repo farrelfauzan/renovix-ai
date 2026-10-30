@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { AddressInfo } from "node:net";
 import { PortalController } from "./portal.controller";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { extractProviderError } from "../utils/extract-provider-error";
 import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -73,6 +74,7 @@ describe("RX-169: provider error on a streamed portal chat (Fastify, test databa
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
       controllers: [PortalController, HealthController],
       providers: [
+        EntitlementService,
         PortalTierService,
         CreditService,
         ModelRegistryService,

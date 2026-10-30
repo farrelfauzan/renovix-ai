@@ -79,18 +79,20 @@ export class PackageRepository {
 
   /**
    * RNX-76 B2: the first active, visible package after `displayOrder` (any, when null) whose current version (the
-   * highest version number in effect at `now`) carries the grant: API access, or every requested tier.
+   * highest version number in effect at `now`) carries the grant: API access, or every requested tier or channel.
    */
   findNextListedGranting(displayOrder: number | null, grant: PackageGrant, now: Date, tx?: DbTransaction) {
     const db = tx ?? this.prisma;
     const grants = grant.feature === "apiAccess"
       ? Prisma.sql`current_version.api_access = true`
-      : Prisma.sql`current_version.allowed_tiers @> ${[...grant.requested]}::text[]`;
+      : grant.feature === "tier"
+        ? Prisma.sql`current_version.allowed_tiers @> ${[...grant.requested]}::text[]`
+        : Prisma.sql`current_version.allowed_channels @> ${[...grant.requested]}::text[]`;
     return db.$queryRaw<Array<{ name: string }>>`
       SELECT p.name
       FROM packages p
       CROSS JOIN LATERAL (
-        SELECT pv.api_access, pv.allowed_tiers
+        SELECT pv.api_access, pv.allowed_tiers, pv.allowed_channels
         FROM package_versions pv
         WHERE pv.package_id = p.id AND pv.effective_from <= ${now}
         ORDER BY pv.version_number DESC

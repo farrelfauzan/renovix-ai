@@ -13,7 +13,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 
 // RNX-260 (119b; D259, PRD 10 R14): only the workspace owner changes an agent. A collaborator (an active member of an
 // Enterprise owner's workspace, the run policy's "inside"; a stale "admin" row counts as one) gets 403 on every agent
@@ -81,6 +81,8 @@ describe("RNX-260: agent writes are the workspace owner's (Fastify, test databas
     for (const user of [owner, collaborator, staleAdmin, outsider]) {
       await createSubscription(prisma, { userId: user.id, planId: plan.id });
     }
+    // RNX-76 B2b: deploying a channel needs a package that grants it.
+    await createPackageSnapshot(prisma, { userId: owner.id });
     const workspace = await createWorkspace(prisma, { ownerId: owner.id });
     const member = (userId: string, role: string) =>
       prisma.workspaceMember.create({ data: { workspaceId: workspace.id, userId, role, status: "active", joinedAt: new Date() } });
