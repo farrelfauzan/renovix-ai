@@ -43,7 +43,7 @@ export class WorkspaceMemberService {
 
     // Reactivating a removed member adds a member
     if (dto.status === "active" && member.status !== "active") {
-      await this.quotaService.enforceCollaboration(workspaceId);
+      await this.quotaService.requireOwnerCollaboration(workspaceId);
     }
 
     return this.prisma.workspaceMember.update({

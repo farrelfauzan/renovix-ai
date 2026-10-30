@@ -16,6 +16,7 @@ import { UserOriginGuard } from "../src/common/guards/user-origin.guard";
 import { createFastifyAdapter } from "../src/common/utils/create-fastify-adapter";
 import { testDatabaseUrl } from "./test-database";
 import { PlatformSettingsService } from "../src/app/offers/service/platform-settings.service";
+import { EntitlementService } from "../src/app/offers/service/entitlement.service";
 
 /**
  * Builds a Nest testing module with the real PrismaService on the test
@@ -49,6 +50,9 @@ export async function createTestModule(
         { provide: PlatformSettingsService, useValue: {
           getSetting: async (name: string) => ({ anonymousRequestsPerSession: 20, anonymousSessionsPerIp: 3, invitationGrantCredits: 5 } as Record<string, number>)[name] ?? null,
         } },
+        // RNX-76 B3: WorkspaceQuotaService's dependency (the app gets it from OffersModule); its repositories come from
+        // the global RepositoriesModule. A spec that lists EntitlementService itself overrides this one.
+        EntitlementService,
         ...(metadata.providers ?? []),
       ],
     }),

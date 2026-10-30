@@ -70,7 +70,8 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
       const outsider = { ...outsiderUser, apiKey: await createApiKey(prisma, outsiderUser.id) };
       await createSubscription(prisma, { userId: owner.id, planId: plan.id });
       await createSubscription(prisma, { userId: outsider.id, planId: plan.id });
-      await createPackageSnapshot(prisma, { userId: owner.id, maxAgents: 50 });
+      // RNX-76 B3 (D297): only the Enterprise owner's package enables collaboration.
+      await createPackageSnapshot(prisma, { userId: owner.id, maxAgents: 50, collaborationEnabled: planSlug === "enterprise" });
       await createPackageSnapshot(prisma, { userId: outsider.id, maxAgents: 50 });
       const workspace = await createWorkspace(prisma, { ownerId: owner.id });
       await prisma.workspaceMember.create({

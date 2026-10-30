@@ -8,9 +8,11 @@ import { WorkspaceInviteService } from "./service/workspace-invite.service";
 import { WorkspaceQuotaService } from "./service/workspace-quota.service";
 import { WorkspaceKnowledgeService } from "./service/workspace-knowledge.service";
 import { KnowledgeModule } from "../knowledge/knowledge.module";
+import { OffersModule } from "../offers/offers.module";
 
 @Module({
-  imports: [KnowledgeModule],
+  // RNX-76 B3: WorkspaceQuotaService reads the owner's package entitlement (EntitlementService).
+  imports: [KnowledgeModule, OffersModule],
   controllers: [
     WorkspaceController,
     WorkspaceInviteController,

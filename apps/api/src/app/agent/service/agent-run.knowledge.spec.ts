@@ -24,6 +24,7 @@ import { testConnection } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import {
   createAgent,
+  createPackageSnapshot,
   createPlan,
   createSubscription,
   createUser,
@@ -185,6 +186,8 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     const owner = await createUser(prisma);
     const plan = await createPlan(prisma, { slug: planSlug, maxWorkspaceUsers: 100 });
     await createSubscription(prisma, { userId: owner.id, planId: plan.id });
+    // RNX-76 B3 (D297): an "enterprise" owner collaborates through a package snapshot, not the plan.
+    if (planSlug === "enterprise") await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
     await fundPaidWallet(prisma, owner.id, "1");
     const workspace = await createWorkspace(prisma, { ownerId: owner.id });
     await prisma.workspaceMember.create({

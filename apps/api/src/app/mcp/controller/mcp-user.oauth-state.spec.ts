@@ -10,7 +10,8 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { withdrawCollaboration } from "../../../../test/withdraw-collaboration";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-151: the public OAuth callback stores a provider credential only for a state the server signed,
@@ -89,6 +90,8 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     });
     const enterprise = await createPlan(prisma, { slug: "enterprise" });
     await createSubscription(prisma, { userId: owner.id, planId: enterprise.id });
+    // RNX-76 B3 (D297): collaboration comes from the owner's package snapshot, not the plan.
+    await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
     markers = [STATE_SECRET, CONFIG.GOOGLE_OAUTH_CLIENT_SECRET];
     logLines = [];
     issuedCookies = new Map();
@@ -280,10 +283,14 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
   });
 
   describe("RNX-206: the workspace check of WorkspaceService.requireMembership", () => {
-    /** Moves W's owner to a plan without collaboration (slug `slug`, not "enterprise"). */
+    /**
+     * Moves W's owner to a plan without collaboration (slug `slug`, not "enterprise"); RNX-76 B3 (D297): and their
+     * packages no longer enable collaboration, which is what decides it now.
+     */
     const moveOwnerToPlan = async (slug: string) => {
       const plan = await createPlan(prisma, { slug });
       await prisma.userSubscription.update({ where: { userId: owner.id }, data: { planId: plan.id } });
+      withdrawCollaboration(owner.id);
     };
 
     const expectStartRefused = async (res: { statusCode: number; body: string; headers: Record<string, unknown> }, status: number, message: string) => {

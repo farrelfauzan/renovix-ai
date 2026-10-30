@@ -4,10 +4,15 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
+import { ENTERPRISE_WORKSPACE_SEATS } from "../config/enterprise-workspace-seats";
 
 @Injectable()
 export class WorkspaceQuotaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entitlements: EntitlementService,
+  ) {}
 
   async requireSubscription(userId: string) {
     const subscription = await this.prisma.userSubscription.findUnique({
@@ -37,15 +42,21 @@ export class WorkspaceQuotaService {
     return subscription.plan;
   }
 
+  /**
+   * The owner's seats: their active plan's maxWorkspaceUsers; without a plan, ENTERPRISE_WORKSPACE_SEATS when one of
+   * their packages enables collaboration (RNX-76 B3, D297); otherwise none.
+   */
   async getMaxUsers(workspaceOwnerId: string): Promise<number> {
     const plan = await this.getActivePlan(workspaceOwnerId);
-    return plan ? plan.maxWorkspaceUsers : 0;
+    if (plan) return plan.maxWorkspaceUsers;
+    return (await this.hasCollaboratingPackage(workspaceOwnerId)) ? ENTERPRISE_WORKSPACE_SEATS : 0;
   }
 
   /**
-   * Collaboration (members, invites, shared access) is Enterprise only (D64):
-   * the workspace owner's active plan must be "enterprise". The one place this
-   * is decided; RX-76 replaces it with an entitlement.
+   * Collaboration (members, invites, shared access) is Enterprise only (D64).
+   * RNX-76 B3 (D44, D297): one of the workspace owner's package snapshots must
+   * enable it; a user_subscriptions plan no longer decides it. The one place
+   * this is decided.
    * With `userId`, the workspace owner (by `ownerId`, not by member role)
    * always passes: the owner keeps full use of their own workspace.
    */
@@ -58,8 +69,20 @@ export class WorkspaceQuotaService {
       select: { ownerId: true },
     });
     if (userId && workspace.ownerId === userId) return true;
-    const plan = await this.getActivePlan(workspace.ownerId);
-    return plan?.slug === "enterprise";
+    return this.hasCollaboratingPackage(workspace.ownerId);
+  }
+
+  /**
+   * RNX-76 B3 (Q1): an owner action that adds a member (invite create, invite resend, member reactivation) is
+   * refused with 400 PACKAGE_LIMIT_REACHED (feature "collaboration", nextPackage) unless the workspace OWNER's
+   * packages enable collaboration, whoever calls.
+   */
+  async requireOwnerCollaboration(workspaceId: string): Promise<void> {
+    const workspace = await this.prisma.workspace.findUniqueOrThrow({
+      where: { id: workspaceId },
+      select: { ownerId: true },
+    });
+    await this.entitlements.requireCollaboration(workspace.ownerId);
   }
 
   async enforceCollaboration(workspaceId: string, userId?: string) {
@@ -68,6 +91,10 @@ export class WorkspaceQuotaService {
         "Workspace collaboration requires an Enterprise plan.",
       );
     }
+  }
+
+  private async hasCollaboratingPackage(ownerId: string): Promise<boolean> {
+    return (await this.entitlements.getForUser(ownerId))?.collaborationEnabled ?? false;
   }
 
   async getActiveCount(workspaceId: string): Promise<number> {

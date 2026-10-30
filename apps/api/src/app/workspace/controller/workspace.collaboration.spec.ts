@@ -15,16 +15,19 @@ import { S3Service } from "../../knowledge/service/s3.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
-// RX-113 (D64, extends D44): only Enterprise collaborates. On Starter, Pro or
-// without an active subscription a workspace is owner-only: invites (create,
-// resend, accept) and adding a member are 403, and every workspace route a
-// non-owner reaches is 403, while the owner keeps using their own workspace.
-// Enterprise keeps invites, members and the seat limit (maxWorkspaceUsers).
-// The one check is WorkspaceQuotaService.isCollaborationAllowed. Real
-// controllers and services on the test database; email is a recording fake.
+// RX-113 (D64, extends D44): only Enterprise collaborates. RNX-76 B3 (D297):
+// collaboration comes from the owner's package snapshots (collaborationEnabled),
+// not from user_subscriptions. Without it a workspace is owner-only: the
+// owner's invite create, resend and member reactivation are 400
+// PACKAGE_LIMIT_REACHED (feature "collaboration", Q1), an invite accept is 403,
+// and every workspace route a non-owner reaches is 403, while the owner keeps
+// using their own workspace. With it, invites, members and the seat limit
+// (plan maxWorkspaceUsers, else 100 seats) work. The one check is
+// WorkspaceQuotaService.isCollaborationAllowed. Real controllers and services on
+// the test database; email is a recording fake.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 jest.mock("../../email/service/email-job.service", () => ({ EmailJobService: class {} }));
 jest.mock("../../knowledge/service/embedding.service", () => ({ EmbeddingService: class {} }));
@@ -32,15 +35,24 @@ jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }))
 
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
 
-// Owner plans that do not allow collaboration: the seeded slugs and seat
-// counts (Starter 3, Pro 10), no subscription, and a lapsed Enterprise one.
-type OwnerPlan = { slug: string; maxWorkspaceUsers: number; status?: string } | null;
+// The owner's purchases: an optional user_subscriptions plan (seats) and an
+// optional package snapshot (collaboration, RNX-76 B3).
+type OwnerPlan = {
+  plan?: { slug: string; maxWorkspaceUsers: number; status?: string };
+  snapshot?: { name: string; displayOrder: number; collaborationEnabled: boolean };
+};
+// Owners whose packages do not enable collaboration: Starter and Pro packages,
+// no package (free), a lapsed Enterprise subscription, and an active Enterprise
+// subscription without a collaborating package (the old gate no longer authorizes).
 const NOT_ENTERPRISE: [string, OwnerPlan][] = [
-  ["Starter", { slug: "starter", maxWorkspaceUsers: 3 }],
-  ["Pro", { slug: "pro", maxWorkspaceUsers: 10 }],
-  ["no subscription", null],
-  ["a canceled Enterprise subscription", { slug: "enterprise", maxWorkspaceUsers: 100, status: "canceled" }],
+  ["a Starter package", { snapshot: { name: "Starter", displayOrder: 1, collaborationEnabled: false } }],
+  ["a Pro package", { snapshot: { name: "Pro", displayOrder: 2, collaborationEnabled: false } }],
+  ["no package (free)", {}],
+  ["a canceled Enterprise subscription", { plan: { slug: "enterprise", maxWorkspaceUsers: 100, status: "canceled" } }],
+  ["an active Enterprise subscription but no collaborating package", { plan: { slug: "enterprise", maxWorkspaceUsers: 100 } }],
 ];
+// The refusal of an owner action without collaboration (Q1); "Enterprise" is the listed package that enables it.
+const NO_COLLABORATION = { type: "PACKAGE_LIMIT_REACHED", feature: "collaboration", nextPackage: "Enterprise" };
 
 describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -72,16 +84,23 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
   beforeEach(async () => {
     await resetDatabase(prisma);
     email.enqueue.mockClear();
+    // RNX-76 B3: the listed package that enables collaboration (the refusal's nextPackage)
+    await prisma.package.create({
+      data: {
+        name: "Enterprise", displayOrder: 3, active: true, visible: true,
+        versions: { create: { versionNumber: 1, priceUsdCents: 1, creditsGranted: 1, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, apiAccess: false, collaborationEnabled: true, allowedChannels: [], allowedTiers: [], createdBy: "test", reason: "RNX-76" } },
+      },
+    });
   });
 
   afterAll(() => app?.close());
 
   const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
-  // A workspace (on the owner's channel) whose owner has `plan`, with an
-  // admin and a member row inserted directly, a removed member, a pending
-  // invite for `invitee`, and a workspace knowledge base.
-  const setup = async (plan: OwnerPlan) => {
+  // A workspace (on the owner's channel) whose owner has `plan` and `snapshot`,
+  // with an admin and a member row inserted directly, a removed member, a
+  // pending invite for `invitee`, and a workspace knowledge base.
+  const setup = async ({ plan, snapshot }: OwnerPlan) => {
     const owner = await createUser(prisma);
     const admin = await createUser(prisma);
     const member = await createUser(prisma);
@@ -91,6 +110,7 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
       const p = await createPlan(prisma, { slug: plan.slug, maxWorkspaceUsers: plan.maxWorkspaceUsers });
       await createSubscription(prisma, { userId: owner.id, planId: p.id, status: plan.status ?? "active" });
     }
+    if (snapshot) await createPackageSnapshot(prisma, { userId: owner.id, ...snapshot });
     const channel = await prisma.channel.create({ data: { userId: owner.id, name: "Team" } });
     const workspace = await createWorkspace(prisma, { ownerId: owner.id, channelId: channel.id });
     const row = (userId: string, role: string, status = "active") =>
@@ -132,8 +152,8 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
   });
 
   describe.each(NOT_ENTERPRISE)("owner on %s", (_label, plan) => {
-    describe("AC4: inviting and adding members is 403, nothing changes", () => {
-      const cases: [string, (c: Ctx) => Promise<{ statusCode: number }>][] = [
+    describe("AC4: inviting and adding members is refused, nothing changes", () => {
+      const cases: [string, (c: Ctx) => Promise<{ statusCode: number; json: () => { error?: unknown } }>][] = [
         ["owner creates an invite (POST /workspaces/:id/invites)", (c) =>
           app.inject({ method: "POST", url: `/workspaces/${c.workspace.id}/invites`, headers: auth(c.owner), payload: { email: "new@test.local" } })],
         ["owner creates an invite (POST /channels/:channelId/workspace/invites)", (c) =>
@@ -150,13 +170,16 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
           app.inject({ method: "PATCH", url: `/channels/${c.channel.id}/workspace/members/${c.removedRow.id}`, headers: auth(c.owner), payload: { status: "active" } })],
       ];
 
-      it.each(cases)("%s → 403", async (_name, call) => {
+      // RNX-76 B3 (Q1): the owner's own actions get the package refusal; the invitee (who cannot buy the owner's
+      // package) keeps the 403.
+      it.each(cases)("%s → 400 PACKAGE_LIMIT_REACHED for the owner, 403 for the invitee", async (name, call) => {
         const ctx = await setup(plan);
         const before = await state(ctx);
+        const expectedRefusal = name.startsWith("owner") ? [400, NO_COLLABORATION] : [403, "Forbidden"];
 
-        const res = await call(ctx);
+        const actualRes = await call(ctx);
 
-        expect(res.statusCode).toBe(403);
+        expect([actualRes.statusCode, actualRes.json().error]).toEqual(expectedRefusal);
         expect(await state(ctx)).toEqual(before);
         expect(email.enqueue).not.toHaveBeenCalled();
       });
@@ -233,7 +256,10 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
   });
 
   describe("AC6: Enterprise works as before", () => {
-    const enterprise = (maxWorkspaceUsers = 100): OwnerPlan => ({ slug: "enterprise", maxWorkspaceUsers });
+    const enterprise = (maxWorkspaceUsers = 100): OwnerPlan => ({
+      plan: { slug: "enterprise", maxWorkspaceUsers },
+      snapshot: { name: "Enterprise package", displayOrder: 3, collaborationEnabled: true },
+    });
 
     it("owner creates and resends an invite; the invitee accepts and becomes a member", async () => {
       const ctx = await setup(enterprise());
@@ -321,6 +347,57 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
       expect([create.statusCode, accept.statusCode]).toEqual([400, 400]);
       expect(accept.json().message).toContain("seat limit (3)");
       expect(await state(ctx)).toEqual(before);
+    });
+  });
+
+  describe("RNX-76 B3: collaboration and seats come from the owner's package snapshots (D297)", () => {
+    const collaboratingPackage = { name: "Enterprise package", displayOrder: 3, collaborationEnabled: true };
+
+    it("an owner with a collaborating package and no user_subscriptions row (D267 paid order) creates an invite (201); the invitee accepts (200)", async () => {
+      const ctx = await setup({ snapshot: collaboratingPackage });
+
+      const actualCreate = await app.inject({
+        method: "POST",
+        url: `/workspaces/${ctx.workspace.id}/invites`,
+        headers: auth(ctx.owner),
+        payload: { email: "new@test.local" },
+      });
+      const actualAccept = await app.inject({ method: "POST", url: "/workspace-invites/accept", headers: auth(ctx.invitee), payload: { token: ctx.token } });
+
+      expect([actualCreate.statusCode, actualAccept.statusCode]).toEqual([201, 200]);
+      expect(await prisma.workspaceInvite.count({ where: { workspaceId: ctx.workspace.id, emailNormalized: "new@test.local", status: "pending" } })).toBe(1);
+      expect(email.enqueue).toHaveBeenCalledTimes(1);
+      expect(
+        await prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: ctx.workspace.id, userId: ctx.invitee.id } } }),
+      ).toMatchObject({ role: "member", status: "active" });
+    });
+
+    it("seats: a collaborating owner without a plan gets 100 seats; with a plan, the plan's maxWorkspaceUsers", async () => {
+      const inputWithoutPlan = await setup({ snapshot: collaboratingPackage });
+      const inputWithPlan = await setup({ plan: { slug: "enterprise", maxWorkspaceUsers: 7 }, snapshot: { ...collaboratingPackage, name: "Enterprise package 2" } });
+
+      const actualWithoutPlan = await app.inject({ method: "GET", url: `/workspaces/${inputWithoutPlan.workspace.id}/quota`, headers: auth(inputWithoutPlan.owner) });
+      const actualWithPlan = await app.inject({ method: "GET", url: `/workspaces/${inputWithPlan.workspace.id}/quota`, headers: auth(inputWithPlan.owner) });
+
+      expect(actualWithoutPlan.json()).toEqual({ maxUsers: 100, activeCount: 3, available: 97 });
+      expect(actualWithPlan.json()).toEqual({ maxUsers: 7, activeCount: 3, available: 4 });
+    });
+
+    it("an owner without a collaborating package (free) has no seats", async () => {
+      const ctx = await setup({});
+
+      const actualRes = await app.inject({ method: "GET", url: `/workspaces/${ctx.workspace.id}/quota`, headers: auth(ctx.owner) });
+
+      expect(actualRes.json()).toEqual({ maxUsers: 0, activeCount: 3, available: -3 });
+    });
+
+    it("an invite accept on a workspace whose owner has no collaborating package keeps today's 403 and message", async () => {
+      const ctx = await setup({ plan: { slug: "enterprise", maxWorkspaceUsers: 100 } });
+
+      const actualRes = await app.inject({ method: "POST", url: "/workspace-invites/accept", headers: auth(ctx.invitee), payload: { token: ctx.token } });
+
+      expect([actualRes.statusCode, actualRes.json().message]).toEqual([403, "Workspace collaboration requires an Enterprise plan."]);
+      expect(await prisma.workspaceMember.count({ where: { workspaceId: ctx.workspace.id, userId: ctx.invitee.id } })).toBe(0);
     });
   });
 });
