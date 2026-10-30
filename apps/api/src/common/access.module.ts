@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AdminSessionModule } from "../app/admin-auth/admin-session.module";
 import { ApiKeyRateLimitService } from "../app/auth/service/api-key-rate-limit.service";
 import { ApiKeyService } from "../app/auth/service/api-key.service";
+import { EntitlementService } from "../app/offers/service/entitlement.service";
 import { PlatformSettingsService } from "../app/offers/service/platform-settings.service";
 import { PortalGuard } from "../app/portal/guard/portal.guard";
 import { PortalUserService } from "../app/portal/service/portal-user.service";
@@ -29,6 +30,8 @@ import { resolveCorsOrigins } from "./utils/resolve-cors-origins";
     CombinedAuthGuard,
     ApiKeyGuard,
     ApiKeyService,
+    // RNX-76 B2: ApiKeyService's dependency; its repositories come from the global RepositoriesModule.
+    EntitlementService,
     ApiKeyRateLimitService,
     PlatformSettingsService,
     PortalGuard,

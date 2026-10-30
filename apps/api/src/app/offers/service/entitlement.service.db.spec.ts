@@ -48,7 +48,7 @@ describe("EntitlementService (RNX-76 B1)", () => {
   it("no package snapshot has a zero limit and is denied with numeric details", async () => {
     const user = await createUser(prisma);
     await expect(service.requireLimit(user.id, "maxAgents", 0)).rejects.toMatchObject({
-      response: { error: { type: "PACKAGE_LIMIT_REACHED", used: 0, limit: 0, nextPackage: null } },
+      response: { error: { type: "PACKAGE_LIMIT_REACHED", feature: "maxAgents", used: 0, limit: 0, nextPackage: null } },
     });
   });
 
@@ -193,4 +193,49 @@ describe("EntitlementService (RNX-76 B1)", () => {
     expect((await service.getForUser(user.id))?.collaborationEnabled).toBe(true);
   });
 
+  describe("RNX-76 B2a: API access and tiers", () => {
+    const listed = (name: string, displayOrder: number, terms: { apiAccess: boolean; allowedTiers: string[] }) =>
+      prisma.package.create({ data: { name, displayOrder, active: true, visible: true, versions: { create: { versionNumber: 1, priceUsdCents: 1, creditsGranted: 1, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, allowedChannels: [], ...terms, createdBy: "test", reason: "test" } } } });
+
+    it("requireApiAccess refuses an account without a package and names the first listed package with API access", async () => {
+      const user = await createUser(prisma);
+      await listed("Basic", 1, { apiAccess: false, allowedTiers: ["standard"] });
+      await listed("Pro", 2, { apiAccess: true, allowedTiers: ["standard"] });
+      await expect(service.requireApiAccess(user.id)).rejects.toMatchObject({
+        response: { error: { type: "PACKAGE_LIMIT_REACHED", feature: "apiAccess", nextPackage: "Pro" } },
+      });
+    });
+
+    it("requireApiAccess answers the aggregated entitlement when one package grants it", async () => {
+      const user = await createUser(prisma);
+      const version = await packageVersion(false, "Starter");
+      await snapshot(user.id, version.id, false, {});
+      expect(await service.requireApiAccess(user.id)).toMatchObject({ apiAccess: true, packageName: "Starter" });
+    });
+
+    it("requireTiers without a package allows the cheapest tier only (Q1, D111)", async () => {
+      expect(await service.requireTiers(null, ["standard"])).toEqual(["standard"]);
+      await expect(service.requireTiers(null, ["advanced"])).rejects.toMatchObject({
+        response: { error: { feature: "tier", requested: ["advanced"], nextPackage: null } },
+      });
+    });
+
+    it("requireTiers adds the cheapest tier to the packages' union, in tier order", async () => {
+      const user = await createUser(prisma);
+      const version = await packageVersion(false, "Starter");
+      await snapshot(user.id, version.id, false, {});
+      const entitlement = await service.getForUser(user.id);
+      expect(await service.requireTiers(entitlement, [])).toEqual(["standard", "advanced"]);
+    });
+
+    it("the tier hint skips a package whose current version no longer has every requested tier", async () => {
+      const lowered = await listed("Lowered", 2, { apiAccess: true, allowedTiers: ["standard", "premium"] });
+      await prisma.packageVersion.create({ data: { packageId: lowered.id, versionNumber: 2, effectiveFrom: new Date("2026-01-01"), priceUsdCents: 1, creditsGranted: 1, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, apiAccess: true, allowedChannels: [], allowedTiers: ["standard"], createdBy: "test", reason: "lowered" } });
+      await listed("Partial", 3, { apiAccess: true, allowedTiers: ["premium"] });
+      await listed("Max", 4, { apiAccess: true, allowedTiers: ["premium", "frontier"] });
+      await expect(service.requireTiers(null, ["premium", "frontier"])).rejects.toMatchObject({
+        response: { error: { nextPackage: "Max" } },
+      });
+    });
+  });
 });

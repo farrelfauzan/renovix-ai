@@ -19,15 +19,6 @@ export class PurchaseSnapshotRepository {
     return found !== null;
   }
 
-  /** RNX-232: the allowed tiers of the buyer's newest package purchase (top-up packs carry none), if there is one. */
-  findLatestPackageTiers(buyerUserId: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).purchaseSnapshot.findFirst({
-      where: { buyerUserId, packageVersionId: { not: null } },
-      orderBy: { createdAt: "desc" },
-      select: { allowedTiers: true },
-    });
-  }
-
   /** All package snapshots aggregated independently of purchase order; top-ups are excluded. */
   findPackageSnapshots(buyerUserId: string, tx?: DbTransaction) {
     const db = tx ?? this.prisma;

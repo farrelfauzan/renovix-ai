@@ -1,10 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { readRequiredSecret } from "../../../common/utils/read-required-secret";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
-import { MODEL_TIERS } from "../../offers/config/model-tiers";
-import { PurchaseSnapshotRepository } from "../../offers/repository/purchase-snapshot.repository";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { API_KEY_FORMAT } from "../config/api-key-format";
 import type { CreateApiKeyDto } from "../dto/create-api-key.dto";
 import { ApiKeyRepository } from "../repository/api-key.repository";
@@ -20,8 +19,6 @@ import { toApiKeyExpiry } from "../utils/to-api-key-expiry";
 const HASH_SECRET_NAME = "API_KEY_HASH_SECRET";
 const REGENERATED_KEY_NAME = "Regenerated key";
 const KEY_WARNING = "Store this key securely. It will not be shown again in full.";
-/** D111: a user without a package may use the cheapest tier only. */
-const NO_PACKAGE_TIERS: string[] = [MODEL_TIERS[0]];
 
 /**
  * A user's API keys (RNX-18, D49, D50): several per user, each shown once at creation and stored only as its prefix
@@ -32,18 +29,18 @@ export class ApiKeyService {
   constructor(
     private readonly keys: ApiKeyRepository,
     private readonly transactions: TransactionService,
-    private readonly snapshots: PurchaseSnapshotRepository,
+    private readonly entitlements: EntitlementService,
   ) {}
 
   /**
-   * Creates a key for this user; the plaintext is in the answer only. RNX-232: its tiers must be tiers the user's
-   * newest package allows (403 otherwise, nothing written); without a list it gets all of them. Its cap is optional.
+   * Creates a key for this user; the plaintext is in the answer only. RNX-76 B2: one of the user's packages must grant
+   * API access, and the key's tiers must be tiers the user's packages allow (400 PACKAGE_LIMIT_REACHED otherwise,
+   * nothing written); without a list it gets all of them (RNX-232). Its cap is optional.
    */
   async create(userId: string, dto: CreateApiKeyDto, tx?: DbTransaction): Promise<CreatedApiKey> {
-    const packageTiers = (await this.snapshots.findLatestPackageTiers(userId, tx))?.allowedTiers ?? NO_PACKAGE_TIERS;
+    const entitlement = await this.entitlements.requireApiAccess(userId, tx);
+    const packageTiers = await this.entitlements.requireTiers(entitlement, dto.allowedTiers ?? [], tx);
     const allowedTiers = dto.allowedTiers ?? packageTiers;
-    const refused = allowedTiers.filter((tier) => !packageTiers.includes(tier));
-    if (refused.length > 0) throw new ForbiddenException(`Your package does not allow the tier(s): ${refused.join(", ")}`);
     const randomHex = randomBytes(API_KEY_FORMAT.randomBytes).toString("hex");
     const apiKey = `${API_KEY_FORMAT.marker}${randomHex}`;
     const view = await this.keys.createKey(
