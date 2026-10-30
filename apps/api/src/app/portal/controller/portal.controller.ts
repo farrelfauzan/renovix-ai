@@ -154,6 +154,7 @@ export class PortalController {
       models: models.map((m) => ({
         slug: m.slug,
         name: m.modelName,
+        tier: m.tier,
         inputPrice: m.inputPrice.mul(markup).toString(),
         outputPrice: m.outputPrice.mul(markup).toString(),
       })),

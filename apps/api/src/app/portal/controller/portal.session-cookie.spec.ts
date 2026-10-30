@@ -237,6 +237,8 @@ describe("RNX-225: the portal_session cookie and no login JWT on the portal (Fas
       const user = await fundedUser();
       const signedIn = { "x-portal-session": HEADER_SESSION, ...asSessionUser(user) };
       const entriesBefore = await ledgerEntries(user.id);
+      await prisma.aiModel.update({ where: { slug: OTHER_SLUG }, data: { tier: "premium" } });
+      await moduleRef.get(ModelRegistryService).refresh();
 
       const models = await get("/chat/portal/models", signedIn);
       const usage = await get("/chat/portal/usage", signedIn);
@@ -248,6 +250,7 @@ describe("RNX-225: the portal_session cookie and no login JWT on the portal (Fas
       });
 
       expect(models.json().models.map((model: { slug: string }) => model.slug).sort()).toEqual([CHEAP_SLUG, OTHER_SLUG].sort());
+      expect(models.json().models.map((model: { slug: string; tier: string }) => [model.slug, model.tier]).sort()).toEqual([[CHEAP_SLUG, "standard"], [OTHER_SLUG, "premium"]]);
       expect(usage.json()).toMatchObject({ tier: "paid", balance: "5.000000" });
       expect(res.body).toContain("data: [DONE]");
       expect(await ledgerEntries(user.id)).toBeGreaterThan(entriesBefore);

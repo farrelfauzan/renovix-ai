@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ExchangeRatesModule } from "../exchange-rates/exchange-rates.module";
+import { EntitlementsController } from "./controller/entitlements.controller";
 import { PricesController } from "./controller/prices.controller";
 import { CompanyContractService } from "./service/company-contract.service";
 import { OfferCatalogService } from "./service/offer-catalog.service";
@@ -8,6 +9,7 @@ import { TierRateSeedService } from "./service/tier-rate-seed.service";
 import { PlatformSettingsService } from "./service/platform-settings.service";
 import { PurchaseSnapshotService } from "./service/purchase-snapshot.service";
 import { EntitlementService } from "./service/entitlement.service";
+import { MyEntitlementsService } from "./service/my-entitlements.service";
 import { PriceListService } from "./service/price-list.service";
 
 /**
@@ -17,7 +19,7 @@ import { PriceListService } from "./service/price-list.service";
 @Module({
   // RNX-53: a purchase is charged at the stored USD to IDR rate.
   imports: [ExchangeRatesModule],
-  controllers: [PricesController],
+  controllers: [PricesController, EntitlementsController],
   providers: [
     PriceListService,
     OfferCatalogService,
@@ -25,6 +27,7 @@ import { PriceListService } from "./service/price-list.service";
     CompanyContractService,
     PurchaseSnapshotService,
     EntitlementService,
+    MyEntitlementsService,
     OfferSeedService,
     TierRateSeedService,
   ],
