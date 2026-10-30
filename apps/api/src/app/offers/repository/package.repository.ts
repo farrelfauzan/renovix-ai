@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "../../../generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import type { PackageGrant } from "../types/package-grant";
 
 /** The queries on `packages` and `package_versions` (RX-86). Versions are only ever inserted. */
 @Injectable()
@@ -71,6 +72,33 @@ export class PackageRepository {
       WHERE p.active = true AND p.visible = true
         AND (${displayOrder}::integer IS NULL OR p.display_order > ${displayOrder})
         AND current_version."currentLimit" > ${current}
+      ORDER BY p.display_order ASC, p.id ASC
+      LIMIT 1
+    `;
+  }
+
+  /**
+   * RNX-76 B2: the first active, visible package after `displayOrder` (any, when null) whose current version (the
+   * highest version number in effect at `now`) carries the grant: API access, or every requested tier.
+   */
+  findNextListedGranting(displayOrder: number | null, grant: PackageGrant, now: Date, tx?: DbTransaction) {
+    const db = tx ?? this.prisma;
+    const grants = grant.feature === "apiAccess"
+      ? Prisma.sql`current_version.api_access = true`
+      : Prisma.sql`current_version.allowed_tiers @> ${[...grant.requested]}::text[]`;
+    return db.$queryRaw<Array<{ name: string }>>`
+      SELECT p.name
+      FROM packages p
+      CROSS JOIN LATERAL (
+        SELECT pv.api_access, pv.allowed_tiers
+        FROM package_versions pv
+        WHERE pv.package_id = p.id AND pv.effective_from <= ${now}
+        ORDER BY pv.version_number DESC
+        LIMIT 1
+      ) current_version
+      WHERE p.active = true AND p.visible = true
+        AND (${displayOrder}::integer IS NULL OR p.display_order > ${displayOrder})
+        AND ${grants}
       ORDER BY p.display_order ASC, p.id ASC
       LIMIT 1
     `;

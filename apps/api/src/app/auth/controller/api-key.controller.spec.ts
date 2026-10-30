@@ -8,7 +8,7 @@ import { ApiKeyRepository } from "../repository/api-key.repository";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createApiKey, createUser } from "../../../../test/factories";
+import { createApiKey, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // better-auth is ESM-only; BetterAuthController and the guards import it.
@@ -46,6 +46,12 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
 
   afterAll(() => app?.close());
 
+  /** RNX-76 B2: only an account whose package grants API access may create keys. */
+  const createApiUser = async () => {
+    const user = await createUser(prisma);
+    await createPackageSnapshot(prisma, { userId: user.id, apiAccess: true });
+    return user;
+  };
   const signedIn = (user: { id: string; email: string }) => asSessionUser(user);
   const probe = (apiKey: string) =>
     app.inject({ method: "GET", url: "/api-key-probe", headers: { authorization: `Bearer ${apiKey}` } });
@@ -68,7 +74,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
 
     it("a created key is stored only as its prefix and hash: neither the key nor its secret part is in any row", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
 
       const res = await createKey(user, { name: "ci", expiresIn: "never" });
 
@@ -85,7 +91,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
 
   describe("POST /auth/keys", () => {
     it("creates a key with the chosen name and expiry and answers the plaintext once", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
       const before = Date.now();
 
       const res = await createKey(user, { name: "  deploy bot  ", expiresIn: "30d" });
@@ -101,7 +107,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
 
     it("a key that never expires has no expiry; a user may hold several keys", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
 
       const first = await createKey(user, { name: "one", expiresIn: "never" });
       const second = await createKey(user, { name: "two", expiresIn: "1y" });
@@ -118,7 +124,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
       ["an unknown expiry", { name: "x", expiresIn: "7d" }],
       ["an unknown field", { name: "x", expiresIn: "never", tier: "pro" }],
     ])("refuses %s with 400 and stores nothing", async (_case, payload) => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
 
       const res = await createKey(user, payload);
 
@@ -127,7 +133,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
 
     it("refuses a caller without a login token or session (401) and one with an API key (403)", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
       const apiKey = await createApiKey(prisma, user.id);
 
       const anonymous = await app.inject({ method: "POST", url: "/auth/keys", payload: { name: "x", expiresIn: "never" } });
@@ -145,8 +151,8 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
 
   describe("GET /auth/keys", () => {
     it("lists the user's own keys, newest first, with their state and without hash or plaintext", async () => {
-      const user = await createUser(prisma);
-      const other = await createUser(prisma);
+      const user = await createApiUser();
+      const other = await createApiUser();
       const older = await createKey(user, { name: "older", expiresIn: "90d" });
       const newer = await createKey(user, { name: "newer", expiresIn: "never" });
       await createKey(other, { name: "not mine", expiresIn: "never" });
@@ -168,7 +174,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
 
   describe("DELETE /auth/keys/:id", () => {
     it("AC2: a revoked key answers 401 at once; the user's other key still answers 200 (control)", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
       const revoked = await createKey(user, { name: "revoked", expiresIn: "never" });
       const kept = await createKey(user, { name: "kept", expiresIn: "never" });
 
@@ -181,8 +187,8 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
 
     it("another user's key is a 404 and that key keeps working", async () => {
-      const owner = await createUser(prisma);
-      const intruder = await createUser(prisma);
+      const owner = await createApiUser();
+      const intruder = await createApiUser();
       const key = await createKey(owner, { name: "owner's", expiresIn: "never" });
 
       const res = await revokeKey(intruder, key.json().id);
@@ -192,7 +198,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
 
     it("an unknown id is a 404", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
 
       const res = await revokeKey(user, "00000000-0000-0000-0000-000000000000");
 
@@ -200,7 +206,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
 
     it("revoking a revoked key again answers 204 and keeps the first revocation time", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
       const key = await createKey(user, { name: "twice", expiresIn: "never" });
       await revokeKey(user, key.json().id);
       const first = (await prisma.apiKey.findFirstOrThrow()).revokedAt;
@@ -214,14 +220,14 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
 
   describe("expiry and wrong keys over HTTP", () => {
     it("AC3: a key past its expiry answers 401", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
       const apiKey = await createApiKey(prisma, user.id, { expiresAt: new Date(Date.now() - 1000) });
 
       expect((await probe(apiKey)).statusCode).toBe(401);
     });
 
     it("AC4: a wrong key with a valid prefix answers 401", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
       const apiKey = await createApiKey(prisma, user.id);
       const wrong = `${apiKey.slice(0, 21)}${"0".repeat(64)}`;
 
@@ -232,7 +238,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
 
   describe("POST /auth/keys/regenerate (compatibility route until RX-82)", () => {
     it("AC6: answers a new key once in the shape the profile page reads; the old keys answer 401, the new one 200", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
       const oldA = await createApiKey(prisma, user.id);
       const oldB = await createApiKey(prisma, user.id);
 
@@ -251,8 +257,8 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
 
     it("does not touch another user's keys", async () => {
-      const user = await createUser(prisma);
-      const other = await createUser(prisma);
+      const user = await createApiUser();
+      const other = await createApiUser();
       const othersKey = await createApiKey(prisma, other.id);
 
       await regenerate(user);
@@ -261,7 +267,7 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
 
     it("AC8: create and revoke are one transaction: a failed revoke leaves no new key and the old key working", async () => {
-      const user = await createUser(prisma);
+      const user = await createApiUser();
       const oldKey = await createApiKey(prisma, user.id);
       jest.spyOn(moduleRef.get(ApiKeyRepository), "revokeOtherKeys").mockRejectedValueOnce(new Error("planted revoke failure"));
       jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);

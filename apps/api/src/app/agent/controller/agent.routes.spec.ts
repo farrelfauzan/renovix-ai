@@ -61,8 +61,8 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
     return user;
   };
 
-  const limitReached = (used: number, limit: number, nextPackage: string | null = null) => ({
-    error: { type: "PACKAGE_LIMIT_REACHED", used, limit, nextPackage },
+  const limitReached = (used: number, limit: number, nextPackage: string | null = null, feature = "maxAgents") => ({
+    error: { type: "PACKAGE_LIMIT_REACHED", feature, used, limit, nextPackage },
   });
 
   const newAgent = { name: "My Agent", systemPrompt: "prompt", model: "test-model" };
@@ -443,7 +443,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
 
       expect(first.statusCode).toBe(201);
       expect(second.statusCode).toBe(400);
-      expect(second.json().error).toEqual(limitReached(1, 1).error);
+      expect(second.json().error).toEqual(limitReached(1, 1, null, "maxConnectedTools").error);
       expect(await prisma.agentIntegration.count({ where: { agentId: agent.id } })).toBe(1);
     });
 
