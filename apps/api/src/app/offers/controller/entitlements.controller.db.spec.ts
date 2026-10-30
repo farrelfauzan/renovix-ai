@@ -22,6 +22,12 @@ const FREE_SHAPE = {
   tiers: ["standard"],
   collaborationEnabled: false,
   nextPackage: null,
+  lockedTiers: [
+    { tier: "advanced", nextPackage: null },
+    { tier: "premium", nextPackage: null },
+    { tier: "frontier", nextPackage: null },
+  ],
+  apiAccessNextPackage: null,
 };
 
 describe("GET /entitlements/me (RNX-76 B3b, test database)", () => {
@@ -83,6 +89,8 @@ describe("GET /entitlements/me (RNX-76 B3b, test database)", () => {
       tiers: ["standard"],
       collaborationEnabled: false,
       nextPackage: "Pro",
+      lockedTiers: FREE_SHAPE.lockedTiers,
+      apiAccessNextPackage: null,
     });
   });
 
@@ -104,7 +112,42 @@ describe("GET /entitlements/me (RNX-76 B3b, test database)", () => {
       tiers: ["standard", "premium"],
       collaborationEnabled: true,
       nextPackage: "Max",
+      lockedTiers: [{ tier: "advanced", nextPackage: null }, { tier: "frontier", nextPackage: null }],
+      apiAccessNextPackage: null,
     });
+  });
+
+  it("Q5 hints: each locked tier and API access name the next package that grants them, not the next package with more agents", async () => {
+    const inputUser = await createUser(prisma);
+    const catalogOwner = await createUser(prisma);
+    await createPackageSnapshot(prisma, { userId: inputUser.id, name: "Starter", displayOrder: 1, maxAgents: 3, allowedTiers: ["standard"] });
+    await createPackageSnapshot(prisma, { userId: catalogOwner.id, name: "Pro", displayOrder: 2, maxAgents: 10, allowedTiers: ["standard", "advanced"] });
+    await createPackageSnapshot(prisma, { userId: catalogOwner.id, name: "Enterprise", displayOrder: 3, maxAgents: 100, apiAccess: true, allowedTiers: ["standard", "advanced", "premium", "frontier"] });
+
+    const actual = await getMine(inputUser);
+
+    expect(actual.statusCode).toBe(200);
+    expect(actual.json()).toMatchObject({
+      tiers: ["standard"],
+      nextPackage: "Pro",
+      lockedTiers: [
+        { tier: "advanced", nextPackage: "Pro" },
+        { tier: "premium", nextPackage: "Enterprise" },
+        { tier: "frontier", nextPackage: "Enterprise" },
+      ],
+      apiAccess: false,
+      apiAccessNextPackage: "Enterprise",
+    });
+  });
+
+  it("Q5 hints: a user with API access and every tier gets no locked tiers and no API hint, even when a later package grants both", async () => {
+    const inputUser = await createUser(prisma);
+    await createPackageSnapshot(prisma, { userId: inputUser.id, name: "Enterprise", displayOrder: 3, maxAgents: 100, apiAccess: true, allowedTiers: ["standard", "advanced", "premium", "frontier"] });
+    await createPackageSnapshot(prisma, { userId: (await createUser(prisma)).id, name: "Max", displayOrder: 4, maxAgents: 200, apiAccess: true, allowedTiers: ["standard", "advanced", "premium", "frontier"] });
+
+    const actual = await getMine(inputUser);
+
+    expect(actual.json()).toMatchObject({ apiAccess: true, lockedTiers: [], apiAccessNextPackage: null });
   });
 
   it("a top-up alone is not a package: the free shape", async () => {
