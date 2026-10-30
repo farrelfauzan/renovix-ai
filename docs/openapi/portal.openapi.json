@@ -44,6 +44,10 @@
       "description": "Routes under /conversations"
     },
     {
+      "name": "entitlements",
+      "description": "Routes under /entitlements"
+    },
+    {
       "name": "export",
       "description": "Routes under /export"
     },
@@ -3950,6 +3954,26 @@
         ],
         "tags": [
           "conversations"
+        ]
+      }
+    },
+    "/api/v1/entitlements/me": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "entitlements"
         ]
       }
     },

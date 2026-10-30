@@ -372,6 +372,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /channels/:id (ChannelController.findById)",
     "GET /channels/:id/agents/:agentId/messages (ChannelController.getMessages)",
     "GET /codes/history (CodesController.getHistory)",
+    "GET /entitlements/me (EntitlementsController.getMine)",
     "GET /integrations/web-search/policy (WebSearchController.getPolicy)",
     "GET /integrations/web-search/status (WebSearchController.getStatus)",
     "GET /mcp/registry (McpController.getRegistry)",
