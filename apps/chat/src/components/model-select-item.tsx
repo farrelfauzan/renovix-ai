@@ -14,7 +14,9 @@ type ModelSelectItemProps = {
 
 /** A model option that is disabled, with the upgrade hint, when the user's package lacks its tier. */
 export function ModelSelectItem({ model, entitlements, className }: ModelSelectItemProps) {
-  const lockLabel = entitlements && isModelLocked(model, entitlements) ? getModelLockLabel(entitlements) : null;
+  const lockLabel = entitlements && model.tier && isModelLocked(model, entitlements)
+      ? getModelLockLabel(entitlements, model.tier)
+      : null;
   return (
     <SelectItem value={model.slug} disabled={lockLabel !== null} className={className}>
       {model.name}

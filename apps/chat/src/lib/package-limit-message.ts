@@ -29,8 +29,8 @@ export function getPackageLimitMessage(body: unknown): string | null {
     case "apiAccess":
       return `API keys aren't included in your package. ${close("to use the API.")}`;
     case "tier": {
-      const tiers = Array.isArray(details.requested) ? details.requested.join(", ") : "These";
-      return `${tiers} models aren't included in your package. ${close("to use them.")}`;
+      const tiers = Array.isArray(details.requested) ? details.requested.join(", ") : "requested";
+      return `The ${tiers} models aren't included in your package. ${close("to use them.")}`;
     }
     case "channel":
       return `This channel isn't included in your package. ${close("to deploy here.")}`;

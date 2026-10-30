@@ -12,7 +12,7 @@ type PackageLimitPillProps =
 export function PackageLimitPill(props: PackageLimitPillProps) {
   const { data } = useMyEntitlements();
   if (!data) return null;
-  const upgradeLabel = data.nextPackage ? `Available on ${data.nextPackage}` : "Not in your package";
+  const upgradeLabel = data.apiAccessNextPackage ? `Available on ${data.apiAccessNextPackage}` : "Not in your package";
   const label =
     props.kind === "agents"
       ? `${data.agents.used} of ${data.agents.limit} agents`

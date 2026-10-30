@@ -8,6 +8,8 @@ let mockEntitlements: { data?: unknown } = {};
 const models = [
   { slug: 'premium-model', name: 'Premium Model', tier: 'premium' },
   { slug: 'standard-model', name: 'Standard Model', tier: 'standard' },
+  { slug: 'advanced-model', name: 'Advanced Model', tier: 'advanced' },
+  { slug: 'frontier-model', name: 'Frontier Model', tier: 'frontier' },
 ];
 
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
@@ -46,7 +48,12 @@ jest.mock('@/components/ui/select', () => {
   };
 });
 
-const standardOnly = { data: { tiers: ['standard'], nextPackage: 'Pro' } };
+const lockedTiers = [
+  { tier: 'advanced', nextPackage: 'Pro' },
+  { tier: 'premium', nextPackage: 'Enterprise' },
+  { tier: 'frontier', nextPackage: 'Enterprise' },
+];
+const standardOnly = { data: { tiers: ['standard'], nextPackage: 'Pro', lockedTiers } };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -55,15 +62,22 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it('disables a model whose tier is not in the package and shows where it is available', () => {
+it('disables a model whose tier is not in the package and shows the package that grants that tier', () => {
   render(<ChatInput />);
-  const locked = screen.getByTestId('option-premium-model');
+  const locked = screen.getByTestId('option-frontier-model');
   expect(locked.getAttribute('data-disabled')).toBe('true');
-  expect(locked.textContent).toBe('Premium ModelAvailable on Pro');
+  expect(locked.textContent).toBe('Frontier ModelAvailable on Enterprise');
+  expect(screen.getByTestId('option-advanced-model').textContent).toBe('Advanced ModelAvailable on Pro');
 });
 
-it('says not in your package when the locked model has no next package', () => {
-  mockEntitlements = { data: { tiers: ['standard'], nextPackage: null } };
+it('says not in your package when no package grants the locked tier', () => {
+  mockEntitlements = { data: { tiers: ['standard'], nextPackage: 'Pro', lockedTiers: [{ tier: 'premium', nextPackage: null }] } };
+  render(<ChatInput />);
+  expect(screen.getByTestId('option-premium-model').textContent).toBe('Premium ModelNot in your package');
+});
+
+it('says not in your package when the locked tier has no entry', () => {
+  mockEntitlements = { data: { tiers: ['standard'], nextPackage: 'Pro', lockedTiers: [] } };
   render(<ChatInput />);
   expect(screen.getByTestId('option-premium-model').textContent).toBe('Premium ModelNot in your package');
 });

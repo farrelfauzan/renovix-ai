@@ -10,6 +10,8 @@ jest.mock('@/hooks/use-portal', () => ({
     data: [
       { slug: 'premium-model', name: 'Premium Model', tier: 'premium' },
       { slug: 'standard-model', name: 'Standard Model', tier: 'standard' },
+      { slug: 'advanced-model', name: 'Advanced Model', tier: 'advanced' },
+      { slug: 'frontier-model', name: 'Frontier Model', tier: 'frontier' },
     ],
   }),
 }));
@@ -29,10 +31,22 @@ const agent = { name: 'A', systemPrompt: 'p', model: 'standard-model', temperatu
 afterEach(cleanup);
 
 it('disables a locked model in the agent model picker with the upgrade hint and leaves allowed ones enabled', () => {
-  mockEntitlements = { data: { tiers: ['standard'], nextPackage: 'Pro' } };
+  mockEntitlements = {
+    data: {
+      tiers: ['standard'],
+      nextPackage: 'Pro',
+      lockedTiers: [
+        { tier: 'advanced', nextPackage: 'Pro' },
+        { tier: 'premium', nextPackage: null },
+        { tier: 'frontier', nextPackage: 'Enterprise' },
+      ],
+    },
+  };
   render(<AgentSettingsTab agent={agent} agentId="1" />);
-  expect(screen.getByTestId('option-premium-model').getAttribute('data-disabled')).toBe('true');
-  expect(screen.getByTestId('option-premium-model').textContent).toBe('Premium ModelAvailable on Pro');
+  expect(screen.getByTestId('option-frontier-model').getAttribute('data-disabled')).toBe('true');
+  expect(screen.getByTestId('option-frontier-model').textContent).toBe('Frontier ModelAvailable on Enterprise');
+  expect(screen.getByTestId('option-advanced-model').textContent).toBe('Advanced ModelAvailable on Pro');
+  expect(screen.getByTestId('option-premium-model').textContent).toBe('Premium ModelNot in your package');
   expect(screen.getByTestId('option-standard-model').getAttribute('data-disabled')).toBe('false');
 });
 

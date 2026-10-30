@@ -36,7 +36,7 @@ const clickRegenerate = async () => {
 beforeEach(() => {
   jest.clearAllMocks();
   window.confirm = jest.fn(() => true);
-  mockEntitlements = { data: { apiAccess: true, nextPackage: 'Pro' } };
+  mockEntitlements = { data: { apiAccess: true, nextPackage: 'Pro', apiAccessNextPackage: null } };
 });
 afterEach(cleanup);
 

@@ -6,7 +6,7 @@ let mockEntitlements: { data?: unknown } = {};
 jest.mock('@/hooks/use-my-entitlements', () => ({ useMyEntitlements: () => mockEntitlements }));
 
 const entitlements = (overrides: Record<string, unknown> = {}) => ({
-  data: { agents: { used: 3, limit: 10 }, connectedToolsPerAgent: 5, apiAccess: true, nextPackage: 'Pro', ...overrides },
+  data: { agents: { used: 3, limit: 10 }, connectedToolsPerAgent: 5, apiAccess: true, nextPackage: 'Pro', apiAccessNextPackage: null, ...overrides },
 });
 
 afterEach(cleanup);
@@ -29,14 +29,14 @@ it('shows API access included when the package has it', () => {
   expect(screen.getByText('API access included')).toBeTruthy();
 });
 
-it('points at the next package when API access is not included', () => {
-  mockEntitlements = entitlements({ apiAccess: false });
+it('points at the next package that grants API access, not the next with more agents', () => {
+  mockEntitlements = entitlements({ apiAccess: false, apiAccessNextPackage: 'Enterprise' });
   render(<PackageLimitPill kind="apiAccess" />);
-  expect(screen.getByText('Available on Pro')).toBeTruthy();
+  expect(screen.getByText('Available on Enterprise')).toBeTruthy();
 });
 
-it('says not in your package when API access is missing and there is no next package', () => {
-  mockEntitlements = entitlements({ apiAccess: false, nextPackage: null });
+it('says not in your package when API access is missing and no package grants it', () => {
+  mockEntitlements = entitlements({ apiAccess: false, apiAccessNextPackage: null });
   render(<PackageLimitPill kind="apiAccess" />);
   expect(screen.getByText('Not in your package')).toBeTruthy();
 });

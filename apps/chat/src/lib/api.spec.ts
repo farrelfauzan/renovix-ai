@@ -9,7 +9,7 @@ describe('portalError', () => {
       error: { type: 'PACKAGE_LIMIT_REACHED', feature: 'tier', requested: ['premium'], nextPackage: 'Pro' },
     });
     expect(actual).toBeInstanceOf(PortalError);
-    expect(actual.message).toBe("premium models aren't included in your package. Upgrade to Pro to use them.");
+    expect(actual.message).toBe("The premium models aren't included in your package. Upgrade to Pro to use them.");
     expect(actual.code).toBe('PACKAGE_LIMIT_REACHED');
   });
 

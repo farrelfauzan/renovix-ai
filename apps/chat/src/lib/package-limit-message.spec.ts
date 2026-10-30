@@ -27,7 +27,13 @@ describe('getPackageLimitMessage', () => {
 
   it('names the requested tiers for tier', () => {
     expect(getPackageLimitMessage(refusal('tier', { requested: ['premium', 'flagship'] }))).toBe(
-      "premium, flagship models aren't included in your package. Upgrade to Pro to use them.",
+      "The premium, flagship models aren't included in your package. Upgrade to Pro to use them.",
+    );
+  });
+
+  it('falls back to the requested models when tier has no requested list', () => {
+    expect(getPackageLimitMessage(refusal('tier'))).toBe(
+      "The requested models aren't included in your package. Upgrade to Pro to use them.",
     );
   });
 
