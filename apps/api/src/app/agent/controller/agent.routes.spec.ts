@@ -19,6 +19,7 @@ import {
   createUser,
 } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
+import { cheapestTierRegistry } from "../../../../test/cheapest-tier-registry";
 
 // RX-133: the agent routes that the ownership suites (RX-15 agent.ownership.spec.ts, RX-112
 // agent.parent-owner.spec.ts) and RX-115 (agent.whatsapp-channel.spec.ts) do not cover, written
@@ -36,7 +37,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController],
-      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: cheapestTierRegistry }],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -548,7 +549,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
 
   describe("channels", () => {
     it("owner deploys a web channel (201, active) and removes it (204)", async () => {
-      const user = await createUser(prisma);
+      const user = await packaged();
       const agent = await createAgent(prisma, { userId: user.id });
 
       const deploy = await app.inject({
@@ -569,24 +570,8 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(await prisma.agentChannel.count()).toBe(0);
     });
 
-    it("a channel type the plan does not allow: 403, nothing stored", async () => {
-      const { user } = await subscribed({ allowedChannels: ["web"], name: "Starter" });
-      const agent = await createAgent(prisma, { userId: user.id });
-
-      const res = await app.inject({
-        method: "POST",
-        url: `/agents/${agent.id}/channels`,
-        headers: auth(user),
-        payload: { channelType: "api" },
-      });
-
-      expect(res.statusCode).toBe(403);
-      expect(res.json().message).toBe("api channel is not available on your Starter plan. Please upgrade.");
-      expect(await prisma.agentChannel.count()).toBe(0);
-    });
-
     it("a second channel of the same type on one agent: the database refuses it (500, not mapped)", async () => {
-      const user = await createUser(prisma);
+      const user = await packaged();
       const agent = await createAgent(prisma, { userId: user.id });
       await prisma.agentChannel.create({ data: { agentId: agent.id, channelType: "web" } });
 

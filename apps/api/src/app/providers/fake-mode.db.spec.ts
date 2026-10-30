@@ -8,6 +8,7 @@ import { FAKE_REPLY, FAKE_TOOL_KEYWORD } from "./fake.adapter";
 import { PrismaService } from "../prisma/prisma.service";
 import { ModelRegistryService } from "../config/model-registry.service";
 import { PortalController } from "../portal/controller/portal.controller";
+import { EntitlementService } from "../offers/service/entitlement.service";
 import { PortalTierService } from "../portal/service/portal-tier.service";
 import { CreditService } from "../billing/service/credit.service";
 import { UsageService } from "../usage/service/usage.service";
@@ -124,6 +125,7 @@ describe("RX-88: POST /chat/portal/completions with LLM_PROVIDER=fake", () => {
       ],
       controllers: [PortalController],
       providers: [
+        EntitlementService,
         PortalTierService,
         ModelRegistryService,
         {

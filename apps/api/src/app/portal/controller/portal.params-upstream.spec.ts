@@ -3,6 +3,7 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Decimal } from "@prisma/client/runtime/client";
 import { PortalController } from "./portal.controller";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PortalTierService } from "../service/portal-tier.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -61,6 +62,7 @@ describe("RNX-221: the portal route passes response_format and reasoning_effort 
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
       controllers: [PortalController],
       providers: [
+        EntitlementService,
         PortalTierService,
         CreditService,
         ModelRegistryService,

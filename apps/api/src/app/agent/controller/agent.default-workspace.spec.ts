@@ -14,6 +14,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
 import { asSessionUser } from "../../../../test/as-session-user";
+import { cheapestTierRegistry } from "../../../../test/cheapest-tier-registry";
 
 // RNX-117: every agent lives in a workspace. Create and clone put the agent in the caller's default workspace,
 // created on the first agent of an account that has none yet. Real controller and service, test database.
@@ -27,7 +28,7 @@ describe("RNX-117: agents go into the caller's default workspace (Fastify, test 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController],
-      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: cheapestTierRegistry }],
     }));
     app = await createFastifyApp(moduleRef);
   });

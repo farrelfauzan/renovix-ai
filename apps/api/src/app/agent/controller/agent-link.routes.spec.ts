@@ -15,6 +15,7 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createApiKey, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
+import { cheapestTierRegistry } from "../../../../test/cheapest-tier-registry";
 
 // RNX-118 (PRD 10, D81; replaces RX-112's parent-owner suite): an agent's links ("Can call") are listed, added and
 // removed by the workspace owner of the agent only (RNX-203: workspace.ownerId). RNX-260 (D259): a collaborator
@@ -43,7 +44,7 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
         WorkspaceService,
         WorkspaceQuotaService,
         { provide: ProviderRouter, useValue: {} },
-        { provide: ModelRegistryService, useValue: {} },
+        { provide: ModelRegistryService, useValue: cheapestTierRegistry },
       ],
     }));
     app = await createFastifyApp(moduleRef);

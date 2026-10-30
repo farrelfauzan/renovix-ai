@@ -14,6 +14,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
 import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
 import { asSessionUser } from "../../../../test/as-session-user";
+import { cheapestTierRegistry } from "../../../../test/cheapest-tier-registry";
 
 // RNX-203: a user owns an agent when they own its workspace (agent.workspace.ownerId); agent.userId is only the
 // creator. The rows where the two rules differ (creator B, workspace owned by A) are written straight to the database.
@@ -30,7 +31,7 @@ describe("RNX-203: agent ownership through the workspace owner (Fastify, test da
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule({
       controllers: [AgentController],
-      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} }],
+      providers: [AgentService, EntitlementService, AgentRunPolicyService, WorkspaceService, WorkspaceQuotaService, { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: cheapestTierRegistry }],
     }));
     app = await createFastifyApp(moduleRef);
   });
@@ -213,6 +214,8 @@ describe("RNX-203: agent ownership through the workspace owner (Fastify, test da
       "the workspace owner who did not create it: %s /agents/:id%s succeeds (positive control)",
       async (method, suffix, payload, effect, _unchanged, changed) => {
         const { owner, agent } = await seedAgentInOwnersWorkspace();
+        // RNX-76 B2b: deploying a channel needs a package of the caller that grants it.
+        await createPackageSnapshot(prisma, { userId: owner.id });
 
         const res = await app.inject({ method, url: `/agents/${agent.id}${suffix}`, headers: auth(owner), payload });
 

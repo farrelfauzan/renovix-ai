@@ -2,7 +2,7 @@ import { TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createUser } from "../../../../test/factories";
+import { createPackageSnapshot, createUser } from "../../../../test/factories";
 import { EntitlementService } from "./entitlement.service";
 
 describe("EntitlementService (RNX-76 B1)", () => {
@@ -235,6 +235,34 @@ describe("EntitlementService (RNX-76 B1)", () => {
       await listed("Max", 4, { apiAccess: true, allowedTiers: ["premium", "frontier"] });
       await expect(service.requireTiers(null, ["premium", "frontier"])).rejects.toMatchObject({
         response: { error: { nextPackage: "Max" } },
+      });
+    });
+
+    it("RNX-76 B2b: the tier hint looks for the missing tiers only; the refusal still names the whole request", async () => {
+      const inputUser = await createUser(prisma);
+      await createPackageSnapshot(prisma, { userId: inputUser.id, name: "Owned", displayOrder: 1, allowedTiers: ["standard", "premium"] });
+      await listed("FrontierOnly", 2, { apiAccess: true, allowedTiers: ["frontier"] });
+      await listed("Max", 3, { apiAccess: true, allowedTiers: ["premium", "frontier"] });
+      const inputEntitlement = await service.getForUser(inputUser.id);
+
+      const actual = service.requireTiers(inputEntitlement, ["premium", "frontier"]);
+
+      await expect(actual).rejects.toMatchObject({
+        response: { error: { feature: "tier", requested: ["premium", "frontier"], nextPackage: "FrontierOnly" } },
+      });
+    });
+
+    it("RNX-76 B2b: requireChannel answers the entitlement whose packages grant the channel, else names the next listed package", async () => {
+      const inputUser = await createUser(prisma);
+      await createPackageSnapshot(prisma, { userId: inputUser.id, name: "Starter", displayOrder: 1, allowedChannels: ["web"] });
+      await prisma.package.create({ data: { name: "Pro", displayOrder: 2, active: true, visible: true, versions: { create: { versionNumber: 1, priceUsdCents: 1, creditsGranted: 1, billing: "one_time", maxAgents: 1, maxConnectedTools: 1, apiAccess: false, allowedTiers: [], allowedChannels: ["web", "whatsapp"], createdBy: "test", reason: "test" } } } });
+
+      const actualAllowed = await service.requireChannel(inputUser.id, "web");
+      const actualRefused = service.requireChannel(inputUser.id, "whatsapp");
+
+      expect(actualAllowed).toMatchObject({ packageName: "Starter", allowedChannels: ["web"] });
+      await expect(actualRefused).rejects.toMatchObject({
+        response: { error: { type: "PACKAGE_LIMIT_REACHED", feature: "channel", requested: ["whatsapp"], nextPackage: "Pro" } },
       });
     });
   });

@@ -9,6 +9,7 @@ import { UserSubscriptionRepository } from "../../billing/repository/user-subscr
 import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { ModelUnavailableException } from "../../config/errors/model-unavailable.exception";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
 import type { CreateAgentDto } from "../dto/create-agent.dto";
@@ -72,6 +73,7 @@ export class AgentService {
     // workspace (RNX-117), created here for an account without one (RNX-203).
     if (dto.workspaceId) await this.resolveTargetWorkspace(userId, dto.workspaceId);
     else await this.checkAgentLimit(userId);
+    await this.checkModelTier(userId, dto.model);
     const workspaceId = await this.resolveTargetWorkspace(userId, dto.workspaceId);
     const slug = await this.generateUniqueSlug(userId, dto.name);
 
@@ -98,6 +100,7 @@ export class AgentService {
 
   async update(userId: string, agentId: string, dto: UpdateAgentDto) {
     const agent = await this.verifyOwnership(userId, agentId);
+    if (dto.model !== undefined && dto.model !== agent.model) await this.checkModelTier(userId, dto.model);
 
     const data: Record<string, any> = {};
 
@@ -154,6 +157,7 @@ export class AgentService {
 
     if (dto.workspaceId) await this.resolveTargetWorkspace(userId, dto.workspaceId);
     else await this.checkAgentLimit(userId);
+    await this.checkModelTier(userId, template.model);
     const workspaceId = await this.resolveTargetWorkspace(userId, dto.workspaceId);
     const slug = await this.generateUniqueSlug(userId, template.name);
 
@@ -311,7 +315,7 @@ export class AgentService {
     config?: Record<string, any>,
   ) {
     await this.verifyOwnership(userId, agentId);
-    await this.checkChannelAccess(userId, channelType);
+    await this.entitlements.requireChannel(userId, channelType);
 
     return this.agentChannels.createAgentChannel(agentId, {
       channelType,
@@ -512,16 +516,13 @@ export class AgentService {
     await this.entitlements.requireLimit(userId, "maxConnectedTools", count, tx);
   }
 
-  private async checkChannelAccess(userId: string, channelType: string) {
-    const subscription =
-      await this.subscriptions.findSubscriptionWithPlan(userId);
-    if (!subscription) return;
-
-    const allowed = subscription.plan.allowedChannels;
-    if (!allowed.includes(channelType)) {
-      throw new ForbiddenException(
-        `${channelType} channel is not available on your ${subscription.plan.name} plan. Please upgrade.`,
-      );
-    }
+  /**
+   * RNX-76 B2b (Q7): the model (a slug, or a provider model id, as an agent run resolves it) must be known (400
+   * otherwise) and of a tier the user's packages allow (400 PACKAGE_LIMIT_REACHED otherwise). Reads only.
+   */
+  private async checkModelTier(userId: string, model: string) {
+    const modelConfig = await this.registry.resolveModel(model);
+    if (!modelConfig) throw new ModelUnavailableException();
+    await this.entitlements.requireModelTier(userId, modelConfig.tier);
   }
 }

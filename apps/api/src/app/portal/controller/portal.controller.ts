@@ -27,6 +27,7 @@ import {
 import { clientIp } from "../../../common/utils/client-ip";
 import { guardSseStream } from "../../../common/utils/guard-sse-stream";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { CreditService } from "../../billing/service/credit.service";
 import { callRatesOf } from "../../billing/utils/call-rates-of";
 import { countPromptTokens } from "../../billing/utils/count-prompt-tokens";
@@ -82,6 +83,7 @@ export class PortalController {
     private readonly knowledge: KnowledgeService,
     private readonly guardrail: GuardrailService,
     private readonly documentService: DocumentService,
+    private readonly entitlements: EntitlementService,
   ) {}
 
   @Post("completions")
@@ -628,6 +630,9 @@ export class PortalController {
         `Model "${body.model}" is not supported. Available: ${available.map((m) => m.slug).join(", ")}`,
       );
     }
+
+    // RNX-76 B2b (Q6): a tier the user's packages do not allow is a 400 PACKAGE_LIMIT_REACHED, nothing reserved.
+    await this.entitlements.requireModelTier(user.id, modelConfig.tier);
 
     // The tier's credit rates (RX-21), not price x multiplier.
     const tierRates = await this.registry.getTierRates(modelConfig.tier);

@@ -17,8 +17,9 @@ export class ApiKeyController {
   constructor(private readonly apiKeys: ApiKeyService) {}
 
   /**
-   * Creates a key: `{ name, expiresIn: "30d" | "90d" | "1y" | "never", allowedTiers?, monthlyCreditCap? }` (RNX-232: tiers
-   * the package does not allow are a 403); answers its fields and `apiKey`, once.
+   * Creates a key: `{ name, expiresIn: "30d" | "90d" | "1y" | "never", allowedTiers?, monthlyCreditCap? }` (RNX-76 B2:
+   * no package API access, or tiers the packages do not allow, are a 400 PACKAGE_LIMIT_REACHED); answers its fields
+   * and `apiKey`, once.
    */
   @Post()
   @Access({ auth: ["session"] })

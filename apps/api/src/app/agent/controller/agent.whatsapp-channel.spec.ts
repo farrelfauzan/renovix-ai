@@ -11,12 +11,12 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-115: a whatsapp (GOWA) channel cannot be saved without a webhookSecret, because the
 // webhook refuses every call for a channel that has none. Other channel types are unaffected.
-// Made-up secrets only. The user has no subscription, so every channel type is allowed.
+// Made-up secrets only. RNX-76 B2b: the user's package allows every channel type used here.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 
 const REQUIRED = "webhookSecret is required for a whatsapp (GOWA) channel";
@@ -40,6 +40,7 @@ describe("RX-115: saving a whatsapp (GOWA) channel needs a webhookSecret (Fastif
 
   const setup = async () => {
     const user = await createUser(prisma);
+    await createPackageSnapshot(prisma, { userId: user.id, allowedChannels: ["web", "api", "whatsapp"] });
     const agent = await createAgent(prisma, { userId: user.id });
     const headers = asSessionUser(user);
     return { agent, headers };
