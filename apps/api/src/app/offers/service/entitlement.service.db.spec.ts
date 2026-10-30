@@ -237,13 +237,12 @@ describe("EntitlementService (RNX-76 B1)", () => {
     await prisma.package.update({ where: { id: version.packageId }, data: { name: "Business" } });
 
     const actualEntitlement = await service.getForUser(inputUser.id);
-    const actualCollaboration = service.requireCollaboration(inputUser.id);
 
     expect(actualEntitlement).toMatchObject({
       packageName: "Business", maxAgents: 4, maxConnectedTools: 3, apiAccess: true, collaborationEnabled: true,
       allowedChannels: ["web"], allowedTiers: ["advanced", "standard"],
     });
-    await expect(actualCollaboration).resolves.toMatchObject({ collaborationEnabled: true });
+    await expect(service.requireCollaboration(inputUser.id)).resolves.toMatchObject({ collaborationEnabled: true });
   });
 
   it("D297, retired package: taking the package out of the catalog after purchase keeps the buyer's snapshot entitlements and collaboration", async () => {
@@ -253,13 +252,12 @@ describe("EntitlementService (RNX-76 B1)", () => {
     await prisma.package.update({ where: { id: version.packageId }, data: { active: false, visible: false } });
 
     const actualEntitlement = await service.getForUser(inputUser.id);
-    const actualCollaboration = service.requireCollaboration(inputUser.id);
 
     expect(actualEntitlement).toMatchObject({
       packageName: "Enterprise", maxAgents: 4, maxConnectedTools: 3, apiAccess: true, collaborationEnabled: true,
       allowedChannels: ["web"], allowedTiers: ["advanced", "standard"],
     });
-    await expect(actualCollaboration).resolves.toMatchObject({ collaborationEnabled: true });
+    await expect(service.requireCollaboration(inputUser.id)).resolves.toMatchObject({ collaborationEnabled: true });
   });
 
   describe("RNX-76 B2a: API access and tiers", () => {
