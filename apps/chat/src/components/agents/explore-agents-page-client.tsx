@@ -6,6 +6,7 @@ import { Bot, Loader2, Globe, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { isPackageLimitError } from "@/lib/is-package-limit-error";
 
 export default function ExploreAgentsPageClient() {
   const router = useRouter();
@@ -90,7 +91,8 @@ export default function ExploreAgentsPageClient() {
                         toast.success(`"${agent.name}" added to your agents!`);
                         router.push(`/agents/${newAgent.id}`);
                       },
-                      onError: () => {
+                      onError: (err) => {
+                        if (isPackageLimitError(err)) return;
                         toast.error("Failed to add template. Make sure you have an active subscription.");
                       },
                     });

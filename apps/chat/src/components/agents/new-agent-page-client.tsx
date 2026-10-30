@@ -16,6 +16,7 @@ import {
   Check,
 } from "lucide-react";
 import { toast } from "sonner";
+import { isPackageLimitError } from "@/lib/is-package-limit-error";
 import { IdentityStep } from "./builder/identity-step";
 import { InstructionsStep } from "./builder/instructions-step";
 import { ToolsStep } from "./builder/tools-step";
@@ -165,7 +166,9 @@ export default function NewAgentPageClient() {
         router.push(`/agents/${agent.id}`);
       }
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to create agent");
+      if (!isPackageLimitError(err)) {
+        toast.error(err?.response?.data?.message || "Failed to create agent");
+      }
     } finally {
       setIsSubmitting(false);
     }

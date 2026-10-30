@@ -38,6 +38,7 @@ import {
   useRemoveMember,
 } from "@/hooks/use-workspaces";
 import { toast } from "sonner";
+import { isPackageLimitError } from "@/lib/is-package-limit-error";
 import {
   useWorkspaceKnowledgeBases,
   useDeleteWorkspaceKB,
@@ -234,7 +235,9 @@ function InviteForm({ channelId, onDone }: { channelId: string; onDone: () => vo
           setEmail("");
           onDone();
         },
-        onError: (err: any) => toast.error(err?.response?.data?.message || "Failed to send invite"),
+        onError: (err: any) => {
+          if (!isPackageLimitError(err)) toast.error(err?.response?.data?.message || "Failed to send invite");
+        },
       },
     );
   };

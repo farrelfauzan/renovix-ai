@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, X, Mail } from "lucide-react";
 import { toast } from "sonner";
+import { isPackageLimitError } from "@/lib/is-package-limit-error";
 import type { WorkspaceInvite } from "@/lib/workspace-types";
 import { WorkspaceInviteDialog } from "./workspace-invite-dialog";
 
@@ -22,7 +23,9 @@ export function WorkspaceInvitesTab({ workspaceId, invites }: Props) {
       { workspaceId, inviteId },
       {
         onSuccess: () => toast.success("Invite resent"),
-        onError: () => toast.error("Failed to resend invite"),
+        onError: (err) => {
+          if (!isPackageLimitError(err)) toast.error("Failed to resend invite");
+        },
       },
     );
   };

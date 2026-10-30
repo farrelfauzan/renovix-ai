@@ -12,6 +12,9 @@ import {
 import { ArrowUp, Square, Sparkles, LogIn } from "lucide-react";
 import { useAuthStore, useChatStore, useHydrated } from "@/lib/stores";
 import { usePortalUsage, usePortalModels } from "@/hooks/use-portal";
+import { useMyEntitlements } from "@/hooks/use-my-entitlements";
+import { isModelLocked } from "@/lib/model-lock";
+import { ModelSelectItem } from "@/components/model-select-item";
 import {
   FREE_LIMIT_CODES,
   PortalError,
@@ -62,6 +65,7 @@ export function ChatInput() {
   const { isLoggedIn } = useAuthStore();
   const { data: usage } = usePortalUsage();
   const { data: models } = usePortalModels();
+  const { data: entitlements } = useMyEntitlements();
   const queryClient = useQueryClient();
   const hydrated = useHydrated();
 
@@ -70,18 +74,20 @@ export function ChatInput() {
   const showCta =
     hydrated && !isPaid && !isLoggedIn() && remaining <= LOW_REQUEST_THRESHOLD;
   const hasModels = hydrated && models && models.length > 0;
-  const defaultModel = models?.[0]?.slug ?? null;
+  const defaultModel =
+    models?.find((m) => !isModelLocked(m, entitlements))?.slug ?? null;
 
   // Auto-select default model when models load and none is selected
   useEffect(() => {
     if (!hasModels) return;
-    // If persisted model isn't in available list, reset to default
-    if (selectedModel && !models.some((m) => m.slug === selectedModel)) {
+    // If persisted model isn't in the available list or is locked by the package, reset to default
+    const selected = models.find((m) => m.slug === selectedModel);
+    if (selectedModel && (!selected || isModelLocked(selected, entitlements))) {
       setSelectedModel(defaultModel);
     } else if (!selectedModel) {
       setSelectedModel(defaultModel);
     }
-  }, [hasModels, selectedModel, defaultModel, models, setSelectedModel]);
+  }, [hasModels, selectedModel, defaultModel, models, entitlements, setSelectedModel]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -289,13 +295,12 @@ export function ChatInput() {
                 </SelectTrigger>
                 <SelectContent position="popper" side="top" sideOffset={4}>
                   {models.map((m) => (
-                    <SelectItem
+                    <ModelSelectItem
                       key={m.slug}
-                      value={m.slug}
+                      model={m}
+                      entitlements={entitlements}
                       className="text-xs"
-                    >
-                      {m.name}
-                    </SelectItem>
+                    />
                   ))}
                 </SelectContent>
               </Select>
