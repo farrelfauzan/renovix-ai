@@ -8,6 +8,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { ChannelChatRoomRepository } from "../../channel/repository/channel-chat-room.repository";
 import { ReminderRepository } from "../../reminder/repository/reminder.repository";
 import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
+import { UserRepository } from "../../auth/repository/user.repository";
 import { CronExpressionParser } from "cron-parser";
 import { executeCalculator } from "../utils/execute-calculator";
 import { executeKnowledgeRetrieval } from "../utils/execute-knowledge-retrieval";
@@ -51,6 +52,7 @@ export class AgentToolService {
     private readonly chatRooms: ChannelChatRoomRepository,
     private readonly reminders: ReminderRepository,
     private readonly workspaces: WorkspaceRepository,
+    private readonly users: UserRepository,
   ) {}
 
   // ─── Built-in tool definitions (internal tools that need direct DB/process access) ───
@@ -161,7 +163,7 @@ export class AgentToolService {
             timezone: {
               type: "string",
               description:
-                "IANA timezone (e.g., 'Asia/Jakarta', 'America/New_York'). Defaults to UTC if not specified.",
+                "IANA timezone (e.g., 'Asia/Jakarta', 'America/New_York'). Defaults to the user's saved timezone if not specified.",
             },
           },
           required: ["prompt", "cronExpression"],
@@ -586,8 +588,9 @@ export class AgentToolService {
       return "Error: Both 'prompt' and 'cronExpression' are required to create a reminder.";
     }
 
+    // RNX-33: without a timezone, the user's saved one (the profile step); "UTC" when the user has none saved
+    const timezone = args.timezone || (await this.users.findTimezone(userId))?.timezone || "UTC";
     // Validate cron expression
-    const timezone = args.timezone || "UTC";
     let nextRunAt: Date;
     try {
       const interval = CronExpressionParser.parse(args.cronExpression, {

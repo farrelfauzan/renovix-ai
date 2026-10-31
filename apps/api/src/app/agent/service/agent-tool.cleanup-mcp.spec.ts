@@ -34,7 +34,7 @@ describe("AgentToolService.cleanupMcpConnections (RNX-217)", () => {
       if (c.serverId === failing) throw new Error(SECRET_IN_ERROR);
     });
     const unused = {} as never;
-    const service = new AgentToolService({ close } as never, unused, unused, unused, unused, unused, unused, unused, unused);
+    const service = new AgentToolService({ close } as never, unused, unused, unused, unused, unused, unused, unused, unused, unused);
     return { service, close, started };
   };
 

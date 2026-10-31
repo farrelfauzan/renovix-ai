@@ -1,8 +1,10 @@
-import { Controller, Get, Patch, Body, Req } from "@nestjs/common";
+import { Controller, Get, Patch, Put, Body, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AuthService } from "../service/auth.service";
 import { UpdateProfileDto } from "../dto/create-auth.dto";
+import { CompleteProfileDto } from "../dto/complete-profile.dto";
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
+import type { SignedInUserRequest } from "../types/signed-in-user-request";
 
 /**
  * The signed-in user's profile. Email sign-up, sign-in and sign-out are Better Auth's own endpoints
@@ -27,5 +29,19 @@ export class AuthController {
       throw createInvalidBodyException(parsed.error);
     }
     return this.authService.updateProfile(req.user.userId, parsed.data);
+  }
+
+  /**
+   * RNX-33: the profile step after first sign-in. Session only, and only the session user's own profile: the path
+   * names no user and the body may not either (an unknown key is a 400).
+   */
+  @Put("me/profile")
+  @Access({ auth: ["session"] })
+  async completeProfile(@Req() req: SignedInUserRequest, @Body() body: unknown) {
+    const parsed = CompleteProfileDto.safeParse(body);
+    if (!parsed.success) {
+      throw createInvalidBodyException(parsed.error);
+    }
+    return this.authService.completeProfile(req.user.userId, parsed.data);
   }
 }

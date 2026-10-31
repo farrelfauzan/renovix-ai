@@ -432,6 +432,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /workspaces/:id/invites (WorkspaceController.createInvite)",
     "POST /workspaces/:id/invites/:inviteId/resend (WorkspaceController.resendInvite)",
     "POST /workspaces/:id/invites/:inviteId/revoke (WorkspaceController.revokeInvite)",
+    "PUT /auth/me/profile (AuthController.completeProfile)",
     "PUT /integrations/web-search/brave/key (WebSearchController.upsertBraveKey)",
     "PUT /integrations/web-search/policy (WebSearchController.updatePolicy)",
     "PUT /integrations/web-search/providers/:provider/key (WebSearchController.upsertProviderKey)",

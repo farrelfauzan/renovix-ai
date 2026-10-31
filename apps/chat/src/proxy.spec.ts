@@ -3,7 +3,7 @@
 import { config, proxy } from './proxy';
 import { NextRequest } from 'next/server';
 
-it.each(['/agents', '/settings', '/profile', '/top-up', '/knowledge', '/memory'])('keeps %s protected and redirects missing sessions to login', (path) => {
+it.each(['/agents', '/settings', '/profile', '/top-up', '/knowledge', '/memory', '/onboarding'])('keeps %s protected and redirects missing sessions to login', (path) => {
   expect(config.matcher).toContain(`${path}/:path*`);
   const result = proxy(new NextRequest(`http://localhost:4300${path}`));
   expect(result.status).toBe(307);

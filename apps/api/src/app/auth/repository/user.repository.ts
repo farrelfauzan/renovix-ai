@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import type { ProfileStepData } from "../types/profile-step-data";
 
 /** The queries on `users`. Every method takes the transaction as its last argument, optional. */
 @Injectable()
@@ -25,11 +26,32 @@ export class UserRepository {
         jobTitle: true,
         timezone: true,
         locale: true,
+        country: true,
+        signupGoal: true,
+        profileCompletedAt: true,
         status: true,
         createdAt: true,
         updatedAt: true,
       },
     });
+  }
+
+  /** RNX-33: writes this user's answers to the profile step (the session user's own row only). */
+  saveProfileStep(userId: string, data: ProfileStepData, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.update({ where: { id: userId }, data, select: { id: true } });
+  }
+
+  /** RNX-33: sets this user's profile completion time when it is not set yet; a later save keeps the first one. */
+  markProfileCompleted(userId: string, completedAt: Date, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.updateMany({
+      where: { id: userId, profileCompletedAt: null },
+      data: { profileCompletedAt: completedAt },
+    });
+  }
+
+  /** RNX-33: this user's saved timezone (the default of a reminder created without one), if there is such a user. */
+  findTimezone(userId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findUnique({ where: { id: userId }, select: { timezone: true } });
   }
 
   /** Updates this user's profile fields; returns the fields the profile update answers with. */

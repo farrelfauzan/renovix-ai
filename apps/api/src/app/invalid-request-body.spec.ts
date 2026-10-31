@@ -108,6 +108,7 @@ const ROWS: readonly Row[] = [
   { route: "POST /export", body: { markdown: 1, format: "pdf" }, details: ["markdown"] },
   // ─── auth ───
   { route: "PATCH /auth/me", body: NOT_AN_OBJECT },
+  { route: "PUT /auth/me/profile", body: NOT_AN_OBJECT },
   { route: "POST /auth/keys", body: NOT_AN_OBJECT },
   // ─── billing ───
   { route: "POST /billing/checkout", body: { amount: "10" }, details: ["amount"] },
