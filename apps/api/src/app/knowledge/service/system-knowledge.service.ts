@@ -153,8 +153,12 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     );
   }
 
+  /**
+   * The S3 ETag stored per file, from the current model's chunks only (RNX-27): a file whose chunks came from
+   * another model (or 'unknown', before RNX-27) counts as changed, so the sync re-embeds it.
+   */
   private async getStoredEtags(kbId: string): Promise<Map<string, string>> {
-    const chunks = await this.knowledgeChunks.listChunkMetadata(kbId);
+    const chunks = await this.knowledgeChunks.listChunkMetadata(kbId, this.embeddingService.modelName);
 
     const map = new Map<string, string>();
     for (const chunk of chunks) {

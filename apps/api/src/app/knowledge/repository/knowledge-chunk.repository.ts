@@ -51,9 +51,9 @@ export class KnowledgeChunkRepository {
   }
 
   /** The metadata of every chunk in this base. */
-  listChunkMetadata(knowledgeBaseId: string, tx?: DbTransaction) {
+  listChunkMetadata(knowledgeBaseId: string, embeddingModel: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).knowledgeChunk.findMany({
-      where: { knowledgeBaseId },
+      where: { knowledgeBaseId, embeddingModel },
       select: { metadata: true },
     });
   }

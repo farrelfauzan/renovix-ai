@@ -196,6 +196,23 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
     expect(stored.every((c) => c.embeddedAt >= before && c.embeddedAt <= after)).toBe(true);
   });
 
+  it("RNX-27: an unchanged file whose chunks are another model's (or 'unknown') is re-embedded with the current model", async () => {
+    const aBody = "# A\nalpha\n## A2\nmore alpha\n";
+    files = { [`${PREFIX}/a.md`]: { etag: '"e1"', body: aBody } };
+    await service.sync();
+    await prisma.$executeRaw`UPDATE "knowledge_chunks" SET embedding_model = 'unknown'`;
+    embedding.embed.mockClear();
+
+    const actual = await service.sync();
+
+    expect(actual).toEqual({ synced: 1, unchanged: 0, skipped: false });
+    expect(embedding.embed).toHaveBeenCalledTimes(1);
+    expect(await readSystemChunks()).toEqual(expectedRows(`${PREFIX}/a.md`, '"e1"', aBody));
+    const models = await prisma.$queryRaw<{ embeddingModel: string }[]>`
+      SELECT embedding_model AS "embeddingModel" FROM "knowledge_chunks"`;
+    expect(models.map((c) => c.embeddingModel)).toEqual([MODEL, MODEL]);
+  });
+
   describe("RNX-27: concurrent syncs (startup, hourly, several instances)", () => {
     /** Resolves once `condition` holds, polling the event loop. */
     const waitUntil = async (condition: () => boolean) => {
