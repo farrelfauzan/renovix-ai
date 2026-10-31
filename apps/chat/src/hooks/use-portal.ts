@@ -15,6 +15,7 @@ export interface PortalUsage {
 export interface PortalModel {
   slug: string;
   name: string;
+  tier?: string;
   inputPrice?: string;
   outputPrice?: string;
 }

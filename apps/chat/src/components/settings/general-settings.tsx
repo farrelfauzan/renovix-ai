@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import { apiClient } from "@/lib/api-client";
+import { isPackageLimitError } from "@/lib/is-package-limit-error";
+import { PackageLimitPill } from "@/components/package-limit-pill";
 import {
   ArrowLeft,
   Save,
@@ -118,8 +120,8 @@ export function GeneralSettings() {
       setFullApiKey(res.apiKey);
       setShowKey(true);
       toast.success("API key regenerated. Copy it now — it won't be shown again.");
-    } catch {
-      toast.error("Failed to regenerate API key");
+    } catch (err) {
+      if (!isPackageLimitError(err)) toast.error("Failed to regenerate API key");
     } finally {
       setRegenerating(false);
     }
@@ -325,9 +327,12 @@ export function GeneralSettings() {
 
         {/* API Key Section */}
         <section className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-            API Token
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+              API Token
+            </h2>
+            <PackageLimitPill kind="apiAccess" />
+          </div>
           <div className="rounded-lg border border-border/50 bg-secondary/20 p-4 space-y-3">
             <p className="text-xs text-muted-foreground">
               Use this token to authenticate API requests. Keep it secret.

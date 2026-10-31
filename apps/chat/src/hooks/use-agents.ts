@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
+import { MY_ENTITLEMENTS_QUERY_KEY } from "@/lib/my-entitlements-query-key";
 import type {
   Agent,
   AgentRun,
@@ -165,6 +166,7 @@ export function useCreateAgent() {
     mutationFn: createAgent,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentKeys.all });
+      queryClient.invalidateQueries({ queryKey: MY_ENTITLEMENTS_QUERY_KEY });
     },
   });
 }
@@ -186,6 +188,7 @@ export function useDeleteAgent() {
     mutationFn: deleteAgent,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentKeys.list() });
+      queryClient.invalidateQueries({ queryKey: MY_ENTITLEMENTS_QUERY_KEY });
     },
   });
 }
@@ -370,6 +373,7 @@ export function useCloneTemplate() {
     mutationFn: (templateId: string) => cloneTemplate(templateId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: agentKeys.list() });
+      queryClient.invalidateQueries({ queryKey: MY_ENTITLEMENTS_QUERY_KEY });
     },
   });
 }

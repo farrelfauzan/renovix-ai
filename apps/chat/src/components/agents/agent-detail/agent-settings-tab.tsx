@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useUpdateAgent } from "@/hooks/use-agents";
 import { usePortalModels } from "@/hooks/use-portal";
+import { useMyEntitlements } from "@/hooks/use-my-entitlements";
+import { ModelSelectItem } from "@/components/model-select-item";
+import { isPackageLimitError } from "@/lib/is-package-limit-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -23,6 +25,7 @@ type AgentSettingsTabProps = {
 export function AgentSettingsTab({ agent, agentId }: AgentSettingsTabProps) {
   const updateAgent = useUpdateAgent();
   const { data: portalModels } = usePortalModels();
+  const { data: entitlements } = useMyEntitlements();
   const [form, setForm] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -60,8 +63,8 @@ export function AgentSettingsTab({ agent, agentId }: AgentSettingsTabProps) {
         },
       });
       toast.success("Agent saved");
-    } catch {
-      toast.error("Failed to save agent");
+    } catch (err) {
+      if (!isPackageLimitError(err)) toast.error("Failed to save agent");
     } finally {
       setIsSaving(false);
     }
@@ -150,9 +153,7 @@ export function AgentSettingsTab({ agent, agentId }: AgentSettingsTabProps) {
           </SelectTrigger>
           <SelectContent>
             {(portalModels || []).map((m) => (
-              <SelectItem key={m.slug} value={m.slug}>
-                {m.name}
-              </SelectItem>
+              <ModelSelectItem key={m.slug} model={m} entitlements={entitlements} />
             ))}
           </SelectContent>
         </Select>

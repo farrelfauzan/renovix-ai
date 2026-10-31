@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import { config } from "./config";
+import { getPackageLimitMessage } from "./package-limit-message";
 
 const API_BASE = config.apiUrl;
 
@@ -21,6 +22,8 @@ export class PortalError extends Error {
  * text. Never a raw status line.
  */
 export function portalError(body: unknown): PortalError {
+  const limitMessage = getPackageLimitMessage(body);
+  if (limitMessage) return new PortalError(limitMessage, "PACKAGE_LIMIT_REACHED");
   const b = (body ?? {}) as {
     error?: { code?: unknown; message?: unknown } | string;
     message?: unknown;

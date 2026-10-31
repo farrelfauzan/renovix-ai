@@ -63,6 +63,7 @@ import { WorkspaceSettings } from "@/components/settings/workspace-settings";
 import { AgentSettingsPanel } from "@/components/settings/agent-settings-panel";
 import { config } from "@/lib/config";
 import { apiClient } from "@/lib/api-client";
+import { PackageLimitPill } from "@/components/package-limit-pill";
 
 function isS3Icon(icon: string | null | undefined): boolean {
   if (!icon) return false;
@@ -464,6 +465,7 @@ function ServerMiddlePanel({
               {channel.agents.length !== 1 ? "s" : ""}
             </span>
           </div>
+          <PackageLimitPill kind="agents" />
         </div>
         <div className="flex items-center gap-1 mt-2">
           <Button

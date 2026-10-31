@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { UserPlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { isPackageLimitError } from "@/lib/is-package-limit-error";
 
 interface Props {
   workspaceId: string;
@@ -37,8 +38,8 @@ export function WorkspaceInviteDialog({ workspaceId }: Props) {
           setRole("member");
           setOpen(false);
         },
-        onError: () => {
-          toast.error("Failed to send invite");
+        onError: (err) => {
+          if (!isPackageLimitError(err)) toast.error("Failed to send invite");
         },
       },
     );

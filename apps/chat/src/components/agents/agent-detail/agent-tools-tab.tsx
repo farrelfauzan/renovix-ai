@@ -16,6 +16,7 @@ import {
 } from "@/hooks/use-web-search";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PackageLimitPill } from "@/components/package-limit-pill";
 
 type AgentToolsTabProps = {
   agent: any;
@@ -70,9 +71,12 @@ export function AgentToolsTab({ agent, agentId }: AgentToolsTabProps) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground mb-4">
-        Enable or disable tools for this agent.
-      </p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-muted-foreground">
+          Enable or disable tools for this agent.
+        </p>
+        <PackageLimitPill kind="connectedTools" connectedToolCount={agent.integrations?.length ?? 0} />
+      </div>
       <p className="text-xs text-muted-foreground -mt-2 mb-4">
         Tools marked "Needs setup" require external credentials before they can run.
       </p>

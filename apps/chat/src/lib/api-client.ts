@@ -7,6 +7,7 @@ import axios, {
 } from "axios";
 import { toast } from "sonner";
 import { config } from "./config";
+import { getPackageLimitMessage } from "./package-limit-message";
 
 export interface TypedAxiosInstance extends AxiosInstance {
   get<T = any, R = T>(url: string, config?: AxiosRequestConfig): Promise<R>;
@@ -71,7 +72,12 @@ apiClient.interceptors.response.use(
       error.message ||
       "An unexpected error occurred";
 
-    if (status === 401) {
+    const limitMessage =
+      status === 400 ? getPackageLimitMessage(error.response?.data) : null;
+
+    if (limitMessage) {
+      toast.error(limitMessage);
+    } else if (status === 401) {
       toast.error("Session expired. Please log in again.");
     } else if (status === 403) {
       toast.error("You do not have permission to perform this action.");

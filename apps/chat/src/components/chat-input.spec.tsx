@@ -1,0 +1,108 @@
+/// <reference types="jest" />
+import { render, screen, cleanup } from '@testing-library/react';
+import { ChatInput } from './chat-input';
+
+const mockSetSelectedModel = jest.fn();
+let mockSelectedModel: string | null = null;
+let mockEntitlements: { data?: unknown } = {};
+const models = [
+  { slug: 'premium-model', name: 'Premium Model', tier: 'premium' },
+  { slug: 'standard-model', name: 'Standard Model', tier: 'standard' },
+  { slug: 'advanced-model', name: 'Advanced Model', tier: 'advanced' },
+  { slug: 'frontier-model', name: 'Frontier Model', tier: 'frontier' },
+];
+
+jest.mock('next/link', () => ({ __esModule: true, default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
+jest.mock('framer-motion', () => {
+  const React = require('react');
+  const passthrough = ({ children }: any) => React.createElement('div', null, children);
+  return { motion: { div: passthrough }, AnimatePresence: passthrough };
+});
+jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
+jest.mock('@/lib/stores', () => ({
+  useHydrated: () => true,
+  useAuthStore: () => ({ isLoggedIn: () => true }),
+  useChatStore: Object.assign(
+    () => ({
+      messages: [], isStreaming: false, conversationId: null, streamingConversationId: null,
+      addMessage: jest.fn(), setStreaming: jest.fn(), setStreamStatus: jest.fn(), appendStreamContent: jest.fn(),
+      finalizeStream: jest.fn(), selectedModel: mockSelectedModel, setSelectedModel: mockSetSelectedModel,
+      setConversationId: jest.fn(), setPendingDocument: jest.fn(),
+    }),
+    { getState: () => ({ conversationId: null }) },
+  ),
+}));
+jest.mock('@/hooks/use-portal', () => ({
+  usePortalUsage: () => ({ data: { tier: 'paid' } }),
+  usePortalModels: () => ({ data: models }),
+}));
+jest.mock('@/hooks/use-my-entitlements', () => ({ useMyEntitlements: () => mockEntitlements }));
+jest.mock('@/lib/api', () => ({ FREE_LIMIT_CODES: [], PortalError: class extends Error {}, streamCompletion: jest.fn() }));
+jest.mock('@/components/ui/select', () => {
+  const React = require('react');
+  const Box = ({ children }: any) => React.createElement('div', null, children);
+  return {
+    Select: Box, SelectContent: Box, SelectTrigger: Box, SelectValue: () => null,
+    SelectItem: ({ children, disabled, value }: any) =>
+      React.createElement('div', { 'data-testid': `option-${value}`, 'data-disabled': String(!!disabled) }, children),
+  };
+});
+
+const lockedTiers = [
+  { tier: 'advanced', nextPackage: 'Pro' },
+  { tier: 'premium', nextPackage: 'Enterprise' },
+  { tier: 'frontier', nextPackage: 'Enterprise' },
+];
+const standardOnly = { data: { tiers: ['standard'], nextPackage: 'Pro', lockedTiers } };
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockSelectedModel = null;
+  mockEntitlements = standardOnly;
+});
+afterEach(cleanup);
+
+it('disables a model whose tier is not in the package and shows the package that grants that tier', () => {
+  render(<ChatInput />);
+  const locked = screen.getByTestId('option-frontier-model');
+  expect(locked.getAttribute('data-disabled')).toBe('true');
+  expect(locked.textContent).toBe('Frontier ModelAvailable on Enterprise');
+  expect(screen.getByTestId('option-advanced-model').textContent).toBe('Advanced ModelAvailable on Pro');
+});
+
+it('says not in your package when no package grants the locked tier', () => {
+  mockEntitlements = { data: { tiers: ['standard'], nextPackage: 'Pro', lockedTiers: [{ tier: 'premium', nextPackage: null }] } };
+  render(<ChatInput />);
+  expect(screen.getByTestId('option-premium-model').textContent).toBe('Premium ModelNot in your package');
+});
+
+it('says not in your package when the locked tier has no entry', () => {
+  mockEntitlements = { data: { tiers: ['standard'], nextPackage: 'Pro', lockedTiers: [] } };
+  render(<ChatInput />);
+  expect(screen.getByTestId('option-premium-model').textContent).toBe('Premium ModelNot in your package');
+});
+
+it('leaves a model whose tier is in the package enabled', () => {
+  render(<ChatInput />);
+  const allowed = screen.getByTestId('option-standard-model');
+  expect(allowed.getAttribute('data-disabled')).toBe('false');
+  expect(allowed.textContent).toBe('Standard Model');
+});
+
+it('auto-selects an allowed model, not the first locked one', () => {
+  render(<ChatInput />);
+  expect(mockSetSelectedModel).toHaveBeenCalledWith('standard-model');
+});
+
+it('replaces a persisted model that the package locks with an allowed one', () => {
+  mockSelectedModel = 'premium-model';
+  render(<ChatInput />);
+  expect(mockSetSelectedModel).toHaveBeenCalledWith('standard-model');
+});
+
+it('locks nothing without entitlements (anonymous, loading or error)', () => {
+  mockEntitlements = { data: undefined };
+  render(<ChatInput />);
+  expect(screen.getByTestId('option-premium-model').getAttribute('data-disabled')).toBe('false');
+  expect(mockSetSelectedModel).toHaveBeenCalledWith('premium-model');
+});
