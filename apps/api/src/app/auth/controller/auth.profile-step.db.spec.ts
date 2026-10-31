@@ -146,4 +146,27 @@ describe("RNX-33: PUT /auth/me/profile and GET /auth/me (Fastify, test database)
     });
     expect(after.json().profileCompletedAt).toEqual(expect.any(String));
   });
+  describe("PATCH /auth/me: the timezone is checked the same way (it drives the reminder default)", () => {
+    const patchMe = (user: { id: string; email: string }, payload: object) =>
+      app.inject({ method: "PATCH", url: "/auth/me", headers: asSessionUser(user), payload });
+
+    it.each(["Mars/Olympus", "+07:00", "UTC+7"])("negative: %s is refused with 400 and the stored zone is unchanged", async (timezone) => {
+      const user = await createUser(prisma);
+      await prisma.user.update({ where: { id: user.id }, data: { timezone: "Asia/Jakarta" } });
+
+      const res = await patchMe(user, { timezone });
+
+      expect(res.statusCode).toBe(400);
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).timezone).toBe("Asia/Jakarta");
+    });
+
+    it("control: an IANA zone is saved", async () => {
+      const user = await createUser(prisma);
+
+      const res = await patchMe(user, { timezone: "Europe/Berlin" });
+
+      expect(res.statusCode).toBe(200);
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).timezone).toBe("Europe/Berlin");
+    });
+  });
 });

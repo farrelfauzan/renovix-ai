@@ -120,6 +120,17 @@ it('after saving without a requested page: home', async () => {
   await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/'));
 });
 
+it.each(['https://evil.example', '//evil.example'])('negative: an off-site requested page (%s) goes home instead', async (redirect) => {
+  mockBrowser({ timeZone: 'Asia/Jakarta', language: 'id-ID' });
+  window.history.replaceState({}, '', `/onboarding/profile?redirect=${encodeURIComponent(redirect)}`);
+  renderForm();
+
+  await submit();
+
+  await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/'));
+  expect(mockReplace).toHaveBeenCalledTimes(1);
+});
+
 it('a failed save stays on the step', async () => {
   mockBrowser({ timeZone: 'Asia/Jakarta', language: 'id-ID' });
   (apiClient.put as jest.Mock).mockRejectedValue(new Error('Request failed with status code 400'));
