@@ -132,8 +132,6 @@ describe("RNX-119: the run policy at reminder fire time (test database, fake pro
 
   it("a collaborator's reminder fires and reserves on the collaborator's own paid wallet (control)", async () => {
     const { owner, runner, reminder } = await seed();
-    // RNX-251: the runner's package is a purchase snapshot; no user_subscriptions row exists.
-    expect(await prisma.userSubscription.count()).toBe(0);
     fake.enqueue({ content: "Here is your summary", usage: { prompt_tokens: 100, completion_tokens: 10 } });
 
     await scheduler.processReminders();

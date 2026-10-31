@@ -13,11 +13,10 @@ import { S3Service } from "../../knowledge/service/s3.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPackageSnapshot, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createPackageSnapshot, createUser } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
-// RNX-251: creating a workspace needs a package (a purchase snapshot), read through EntitlementService; a
-// user_subscriptions row no longer decides it. Real controller and services on the test database.
+// RNX-251: creating a workspace needs a package (a purchase snapshot), read through EntitlementService. Real controller and services on the test database.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 jest.mock("../../email/service/email-job.service", () => ({ EmailJobService: class {} }));
 jest.mock("../../knowledge/service/embedding.service", () => ({ EmbeddingService: class {} }));
@@ -55,7 +54,7 @@ describe("RNX-251: POST /workspaces behind the package gate (Fastify, test datab
   const createWorkspace = (user: { id: string; email: string }) =>
     app.inject({ method: "POST", url: "/workspaces", headers: asSessionUser(user), payload: { name: "Team space" } });
 
-  it("a Starter package (a purchase snapshot, no user_subscriptions row) creates a workspace (201)", async () => {
+  it("a Starter package (a purchase snapshot) creates a workspace (201)", async () => {
     const inputUser = await createUser(prisma);
     await createPackageSnapshot(prisma, { userId: inputUser.id, name: "Starter" });
 
@@ -64,7 +63,6 @@ describe("RNX-251: POST /workspaces behind the package gate (Fastify, test datab
     expect(actualResponse.statusCode).toBe(201);
     expect(actualResponse.json()).toMatchObject({ ownerId: inputUser.id, name: "Team space" });
     expect(await prisma.workspace.count({ where: { ownerId: inputUser.id, name: "Team space" } })).toBe(1);
-    expect(await prisma.userSubscription.count()).toBe(0);
   });
 
   it("no package: 403 with the old message, nothing created", async () => {
@@ -74,16 +72,6 @@ describe("RNX-251: POST /workspaces behind the package gate (Fastify, test datab
 
     expect(actualResponse.statusCode).toBe(403);
     expect(actualResponse.json().message).toBe(NO_PACKAGE);
-    expect(await prisma.workspace.count({ where: { ownerId: inputUser.id } })).toBe(0);
-  });
-
-  it("an active user_subscriptions row without a package no longer passes: 403", async () => {
-    const inputUser = await createUser(prisma);
-    await createSubscription(prisma, { userId: inputUser.id, planId: (await createPlan(prisma)).id, status: "active" });
-
-    const actualResponse = await createWorkspace(inputUser);
-
-    expect(actualResponse.statusCode).toBe(403);
     expect(await prisma.workspace.count({ where: { ownerId: inputUser.id } })).toBe(0);
   });
 });

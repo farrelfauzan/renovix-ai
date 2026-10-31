@@ -27,7 +27,7 @@ import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.serv
 
 // RX-22b (RNX-193) AC4: a channel chat is one agent run on the credit ledger (docs/credits.md section 13): one
 // reservation, a usage entry per model call attributed to the agent, the run and the caller who runs it (RNX-186 removed
-// the old counters: User.balance, Transaction, the UserSubscription counters). Real ChannelChatService, ChannelService,
+// the old counters: User.balance, Transaction, the subscription counters). Real ChannelChatService, ChannelService,
 // meter, CreditService and UsageService on the test database; fake provider. These collaborators load ESM-only packages.
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));

@@ -117,7 +117,7 @@ export class CodesService {
       }
 
       // RNX-251: a package code records a purchase snapshot of its version (paymentId null: a code grant, D37
-      // permanent), not a user_subscriptions row.
+      // permanent).
       if ((code.type === "subscription" || code.type === "both") && code.packageVersionId) {
         await this.purchaseSnapshots.recordCodeGrant({ buyerUserId: userId, packageVersionId: code.packageVersionId }, tx);
         planGranted = code.packageVersion?.package.name ?? null;
@@ -205,7 +205,6 @@ export class CodesService {
       type: dto.type,
       creditAmount: dto.creditAmount ?? null,
       packageVersionId: dto.packageVersionId ?? null,
-      planId: null,
       durationDays: null,
       maxRedemptions: dto.maxRedemptions,
       createdById: createdById ?? null,

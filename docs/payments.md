@@ -159,4 +159,4 @@ No account detail (phone number, e-mail, merchant id, key) belongs in the reposi
 
 ## Known follow-ups
 
-- Buying Starter or Pro writes the purchase snapshot and the `plan_grant`, but no entitlement row yet (docs/credits.md section 7): the agent and workspace gates still read `user_subscriptions`. The top-up pack check (D36) already counts a bought package.
+- Resolved (RNX-76, RNX-251): buying Starter or Pro writes the purchase snapshot and the `plan_grant`, and the agent and workspace gates read that snapshot through `EntitlementService`. The top-up pack check (D36) also counts a bought package.

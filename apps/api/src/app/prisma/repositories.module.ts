@@ -24,8 +24,6 @@ import { UserRepository } from "../auth/repository/user.repository";
 import { CreditAccountRepository } from "../billing/repository/credit-account.repository";
 import { CreditLedgerEntryRepository } from "../billing/repository/credit-ledger-entry.repository";
 import { CreditReservationRepository } from "../billing/repository/credit-reservation.repository";
-import { SubscriptionPlanRepository } from "../billing/repository/subscription-plan.repository";
-import { UserSubscriptionRepository } from "../billing/repository/user-subscription.repository";
 import { ChannelAgentRepository } from "../channel/repository/channel-agent.repository";
 import { ChannelChatRoomRepository } from "../channel/repository/channel-chat-room.repository";
 import { ChannelMessageRepository } from "../channel/repository/channel-message.repository";
@@ -86,8 +84,6 @@ const REPOSITORIES = [
   CreditAccountRepository,
   CreditLedgerEntryRepository,
   CreditReservationRepository,
-  SubscriptionPlanRepository,
-  UserSubscriptionRepository,
   ChannelAgentRepository,
   ChannelChatRoomRepository,
   ChannelMessageRepository,

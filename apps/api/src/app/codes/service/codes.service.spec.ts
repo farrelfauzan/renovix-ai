@@ -12,7 +12,6 @@ import { TransactionService } from "../../prisma/transaction.service";
 jest.mock("../../prisma/prisma.service", () => ({ PrismaService: class {} }));
 
 function setup(code: unknown) {
-  // RNX-251: the transaction has no userSubscription delegate; a redemption that touched one would throw.
   const tx = {
     invitationCode: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), fields: { maxRedemptions: {} } },
     codeRedemption: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },

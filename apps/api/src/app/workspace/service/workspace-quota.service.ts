@@ -36,8 +36,7 @@ export class WorkspaceQuotaService {
   /**
    * Collaboration (members, invites, shared access) is Enterprise only (D64).
    * RNX-76 B3 (D44, D297): one of the workspace owner's package snapshots must
-   * enable it; a user_subscriptions plan no longer decides it. The one place
-   * this is decided.
+   * enable it. The one place this is decided.
    * With `userId`, the workspace owner (by `ownerId`, not by member role)
    * always passes: the owner keeps full use of their own workspace.
    */

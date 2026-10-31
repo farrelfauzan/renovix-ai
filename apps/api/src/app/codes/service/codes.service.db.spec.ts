@@ -5,7 +5,7 @@ import { CodeRedemptionRepository } from "../repository/code-redemption.reposito
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPackageSnapshot, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createPackageSnapshot, createUser } from "../../../../test/factories";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
 import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
@@ -111,15 +111,10 @@ describe("CodesService.redeemCode (test database)", () => {
 
   /** What a redemption of this code could have given this user, read back from the database. */
   const grantsOf = async (userId: string, codeId: string) => {
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      include: { subscription: true },
-    });
     const code = await prisma.invitationCode.findUniqueOrThrow({ where: { id: codeId } });
     return {
       balance: await paidBalanceOf(userId),
       ledgerRows: await ledgerEntryCount(userId),
-      subscription: user.subscription,
       snapshots: await prisma.purchaseSnapshot.count({ where: { buyerUserId: userId } }),
       redemptions: await prisma.codeRedemption.count({ where: { codeId, userId } }),
       timesRedeemed: code.timesRedeemed,
@@ -227,7 +222,7 @@ describe("CodesService.redeemCode (test database)", () => {
 
     await expect(redeem).rejects.toBeInstanceOf(ForbiddenException);
     await expect(redeem).rejects.toThrow("A credits-only code can be redeemed only by an account with a package");
-    expect(await grantsOf(user.id, code.id)).toEqual({ balance: 0, ledgerRows: 0, subscription: null, snapshots: 0, redemptions: 0, timesRedeemed: 0 });
+    expect(await grantsOf(user.id, code.id)).toEqual({ balance: 0, ledgerRows: 0, snapshots: 0, redemptions: 0, timesRedeemed: 0 });
   });
 
   it("RNX-35 (D36): an account with a bought package (a package purchase snapshot, no subscription) may redeem a credits-only code", async () => {
@@ -372,7 +367,6 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(await grantsOf(user.id, code.id)).toEqual({
       balance: 0,
       ledgerRows: 0,
-      subscription: null,
       snapshots: 0,
       redemptions: 0,
       timesRedeemed: 0,
@@ -396,7 +390,6 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(await grantsOf(user.id, code.id)).toEqual({
       balance: 0,
       ledgerRows: 0,
-      subscription: null,
       snapshots: 0,
       redemptions: 0,
       timesRedeemed: 0,
@@ -442,7 +435,7 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(refused).toHaveLength(1);
     expect((refused[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
     expect(await snapshotsOf(user.id)).toHaveLength(1);
-    expect(await grantsOf(user.id, code.id)).toMatchObject({ subscription: null, snapshots: 1, redemptions: 1, timesRedeemed: 1 });
+    expect(await grantsOf(user.id, code.id)).toMatchObject({ snapshots: 1, redemptions: 1, timesRedeemed: 1 });
   });
 
   // RNX-251 AC (c): two different package codes are two claims on two rows, so both go through: each code is redeemed
@@ -463,13 +456,13 @@ describe("CodesService.redeemCode (test database)", () => {
 
     expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
     expect((await snapshotsOf(user.id)).map((row) => row.packageVersionId).sort()).toEqual([starter.id, pro.id].sort());
-    expect(await grantsOf(user.id, first.id)).toMatchObject({ subscription: null, redemptions: 1, timesRedeemed: 1 });
+    expect(await grantsOf(user.id, first.id)).toMatchObject({ redemptions: 1, timesRedeemed: 1 });
     expect(await grantsOf(user.id, second.id)).toMatchObject({ balance: 25, ledgerRows: 1, redemptions: 1, timesRedeemed: 1 });
     expect(await moduleRef.get(EntitlementService).getForUser(user.id)).toMatchObject({ packageName: "Pro" });
   });
 
   // RNX-251 AC (a): a package code records a purchase snapshot of its version (a code grant: paymentId null, price 0,
-  // no credits of its own), never a user_subscriptions row.
+  // no credits of its own).
   it("RNX-251: a package code grants its version as a purchase snapshot (paymentId null, price 0, no credits); no subscription", async () => {
     const user = await createUser(prisma);
     const version = await createVersion("Pro", { maxAgents: 7, collaborationEnabled: true });
@@ -490,7 +483,6 @@ describe("CodesService.redeemCode (test database)", () => {
       packageVersionId: version.id, packageName: "Pro", maxAgents: 7, maxConnectedTools: 2, apiAccess: true,
       collaborationEnabled: true, allowedChannels: ["web", "whatsapp"],
     });
-    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
     expect(await prisma.codeRedemption.findFirstOrThrow({ where: { userId: user.id } })).toMatchObject({ planGranted: "Pro", daysGranted: null });
     expect(await prisma.creditLedgerEntry.count({ where: { memberUserId: user.id } })).toBe(0);
     expect(await prisma.invitationCode.findUnique({ where: { id: code.id } })).toMatchObject({
@@ -514,7 +506,6 @@ describe("CodesService.redeemCode (test database)", () => {
     const redemption = await prisma.codeRedemption.findFirstOrThrow({ where: { userId: user.id } });
     const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id } });
     expect(entries.map((e) => [e.type, e.amount.toFixed(6), e.reference, e.wallet])).toEqual([["plan_grant", "25.000000", redemption.id, "paid"]]);
-    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
     await assertCreditLedgerInvariants(prisma);
   });
 
@@ -569,15 +560,6 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(await paidBalanceOf(user.id)).toBe(25);
   });
 
-  it("RNX-251: an active user_subscriptions row alone is no package any more: a credits-only code is refused (403)", async () => {
-    const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id, status: "active" });
-    const topup = await topupCode(1);
-
-    await expect(service.redeemCode(user.id, topup.code)).rejects.toThrow("A credits-only code can be redeemed only by an account with a package");
-    expect(await moduleRef.get(PackageOwnershipService).hasPackage(user.id)).toBe(false);
-  });
-
   // RNX-251: was "moves an existing active subscription to the new plan and extends it"; a package is permanent (D37),
   // so a second package code adds a second snapshot and the entitlement shows the higher package.
   it("a package code for an account that already has a package adds a snapshot; the earlier one stays", async () => {
@@ -620,11 +602,10 @@ describe("CodesService.redeemCode (test database)", () => {
     await expect(redeem).rejects.toThrow("the ledger entry cannot be written");
     const after = await prisma.user.findUniqueOrThrow({
       where: { id: user.id },
-      include: { subscription: true, codeRedemptions: true },
+      include: { codeRedemptions: true },
     });
     expect(await paidBalanceOf(user.id)).toBe(0);
     expect(await ledgerEntryCount(user.id)).toBe(0);
-    expect(after.subscription).toBeNull();
     expect(await snapshotsOf(user.id)).toEqual([]);
     expect(after.codeRedemptions).toEqual([]);
     expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
@@ -647,7 +628,6 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(await paidBalanceOf(user.id)).toBe(0);
     expect(await ledgerEntryCount(user.id)).toBe(0);
     expect(await prisma.creditAccount.count()).toBe(0);
-    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
     expect(await snapshotsOf(user.id)).toEqual([]);
     expect(await prisma.codeRedemption.count()).toBe(0);
     expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({ timesRedeemed: 0 });

@@ -60,43 +60,9 @@ export async function createApiKey(
   return plaintext;
 }
 
-export function createPlan(
-  prisma: PrismaClient,
-  data: Partial<Prisma.SubscriptionPlanUncheckedCreateInput> = {},
-) {
-  const slug = data.slug ?? `plan-${unique()}`;
-  return prisma.subscriptionPlan.create({
-    data: {
-      slug,
-      name: slug,
-      maxAgents: 3,
-      maxIntegrations: 1,
-      maxWorkspaceUsers: 3,
-      maxTokensPerMonth: 1_000_000n,
-      allowedChannels: ["web"],
-      ...data,
-    },
-  });
-}
-
-export function createSubscription(
-  prisma: PrismaClient,
-  data: Pick<Prisma.UserSubscriptionUncheckedCreateInput, "userId" | "planId"> &
-    Partial<Prisma.UserSubscriptionUncheckedCreateInput>,
-) {
-  const now = Date.now();
-  return prisma.userSubscription.create({
-    data: {
-      currentPeriodStart: new Date(now),
-      currentPeriodEnd: new Date(now + 30 * 24 * 60 * 60 * 1000),
-      ...data,
-    },
-  });
-}
-
 /**
  * A purchased package (RNX-76 B1): a package, its version and the buyer's purchase snapshot, which is what
- * EntitlementService reads. Not a UserSubscription. Pass `maxAgents` / `maxConnectedTools` / `displayOrder` /
+ * EntitlementService reads. Pass `maxAgents` / `maxConnectedTools` / `displayOrder` /
  * `apiAccess` / `allowedTiers` / `allowedChannels` (RNX-76 B2) / `collaborationEnabled` (RNX-76 B3) to override.
  */
 export async function createPackageSnapshot(

@@ -12,12 +12,12 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-76 B2b: deploying an agent channel (G3) and choosing an agent's model (G4) are gated on the account's package
-// snapshots (every package, top-ups excluded), never on user_subscriptions. Refusals are 400 PACKAGE_LIMIT_REACHED and
+// snapshots (every package, top-ups excluded). Refusals are 400 PACKAGE_LIMIT_REACHED and
 // store or change nothing. Real controller, service and model registry on the test database; no model is called.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 
@@ -83,27 +83,13 @@ describe("RNX-76 B2b: agent channel and model tier gates (Fastify, test database
       expect(await prisma.agentChannel.count()).toBe(0);
     });
 
-    it("an active user_subscriptions row whose plan allows the channel, but no package: refused (the old gate no longer authorizes)", async () => {
-      const inputUser = await createUser(prisma);
-      const plan = await createPlan(prisma, { allowedChannels: ["web", "whatsapp", "api"] });
-      await createSubscription(prisma, { userId: inputUser.id, planId: plan.id, status: "active" });
-      const agent = await createAgent(prisma, { userId: inputUser.id });
-
-      const actual = await deploy(inputUser, agent.id, { channelType: "web" });
-
-      expect(actual.statusCode).toBe(400);
-      expect(actual.json().error).toEqual(refusal("channel", ["web"]));
-      expect(await prisma.agentChannel.count()).toBe(0);
-    });
-
-    it("a paid package snapshot without any user_subscriptions row: allowed (201)", async () => {
+    it("a paid package snapshot: allowed (201)", async () => {
       const inputUser = await createUser(prisma);
       await createPackageSnapshot(prisma, { userId: inputUser.id, allowedChannels: ["web", "api"] });
       const agent = await createAgent(prisma, { userId: inputUser.id });
 
       const actual = await deploy(inputUser, agent.id, { channelType: "api" });
 
-      expect(await prisma.userSubscription.count()).toBe(0);
       expect(actual.statusCode).toBe(201);
       expect(await prisma.agentChannel.count({ where: { agentId: agent.id, channelType: "api" } })).toBe(1);
     });

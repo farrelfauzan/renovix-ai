@@ -3,7 +3,8 @@ import { PrismaService } from "./prisma.service";
 import { createTestModule } from "../../../test/test-module";
 
 // RNX-186 (D190): after the migrations the old balance is gone from the database: users.balance, the transactions
-// table and the user_subscriptions counters messages_used and tokens_used. The credit ledger is the only balance.
+// table and the subscription counters messages_used and tokens_used (RNX-251 dropped their table). The credit ledger
+// is the only balance.
 describe("RNX-186: the old balance is not in the schema (test database)", () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
@@ -13,12 +14,11 @@ describe("RNX-186: the old balance is not in the schema (test database)", () => 
   });
   afterAll(() => moduleRef?.close());
 
-  it("has no users.balance, user_subscriptions.messages_used or user_subscriptions.tokens_used column", async () => {
+  it("has no users.balance column", async () => {
     const columns = await prisma.$queryRaw<{ table_name: string; column_name: string }[]>`
       SELECT table_name, column_name FROM information_schema.columns
       WHERE table_schema = 'public'
-        AND ((table_name = 'users' AND column_name = 'balance')
-          OR (table_name = 'user_subscriptions' AND column_name IN ('messages_used', 'tokens_used')))`;
+        AND table_name = 'users' AND column_name = 'balance'`;
 
     expect(columns).toEqual([]);
   });

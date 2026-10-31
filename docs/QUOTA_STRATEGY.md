@@ -132,16 +132,8 @@ Balance check flow:
 
 ### 4.2 Execution Quota Tracking
 
-```typescript
-// Schema addition
-model UserSubscription {
-  // ... existing fields
-  messagesUsed     Int       @default(0)      // agent executions this period
-  tokensUsed       BigInt    @default(0)      // total tokens consumed this period
-  currentPeriodStart DateTime @db.Timestamptz()
-  currentPeriodEnd   DateTime @db.Timestamptz()
-}
-```
+Superseded: agent usage is charged on the credit ledger (docs/credits.md); RNX-186 removed the per-subscription
+counters and RNX-251 dropped the legacy subscription table. The proposed schema is no longer shown here.
 
 **Period reset logic:**
 - Billing cycle: 30 days from subscription start (not calendar month)
@@ -402,18 +394,7 @@ model UserPreference {
   @@map("user_preferences")
 }
 
-// Extend UserSubscription for agent quotas
-model UserSubscription {
-  // ... existing fields
-  messagesUsed       Int      @default(0) @map("messages_used")
-  tokensUsed         BigInt   @default(0) @map("tokens_used")
-  currentPeriodStart DateTime @db.Timestamptz() @map("current_period_start")
-  currentPeriodEnd   DateTime @db.Timestamptz() @map("current_period_end")
-  maxExecutions      Int      @map("max_executions") // from plan
-  maxTokens          BigInt   @map("max_tokens")     // from plan
-
-  @@map("user_subscriptions")
-}
+// (The agent quota extension of the legacy subscription table is superseded: see section 4.2.)
 ```
 
 ---
