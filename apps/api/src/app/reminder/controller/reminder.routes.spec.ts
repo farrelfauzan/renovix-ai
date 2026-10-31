@@ -7,7 +7,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-184: the reminder request schemas live in reminder/dto/reminder.dto.ts; an invalid body is
@@ -85,9 +85,7 @@ describe("RX-184: reminder routes, invalid body (Fastify, test database)", () =>
      * already has the agent (added while it was active) and a room.
      */
     const seedCollaborator = async (status: string) => {
-      const plan = await createPlan(prisma, { slug: "enterprise", maxWorkspaceUsers: 100 });
       const owner = await createUser(prisma);
-      await createSubscription(prisma, { userId: owner.id, planId: plan.id });
       // RNX-76 B3 (D297): collaboration comes from the owner's package snapshot, not the plan.
       await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
       const workspace = await createWorkspace(prisma, { ownerId: owner.id });

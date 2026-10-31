@@ -13,7 +13,7 @@ import { S3Service } from "../../knowledge/service/s3.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-15 characterization: workspace membership and roles as they are today,
@@ -73,8 +73,6 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
     // RX-113: only an Enterprise owner's workspace has other members (D64).
     // These tests are about roles, so the owner is on Enterprise; the
     // Starter/Pro rules are in workspace.collaboration.spec.ts.
-    const enterprise = await createPlan(prisma, { slug: "enterprise", maxWorkspaceUsers: 100 });
-    await createSubscription(prisma, { userId: users.owner.id, planId: enterprise.id });
     // RNX-76 B3 (D297): collaboration comes from the owner's package snapshot, not the plan.
     await createPackageSnapshot(prisma, { userId: users.owner.id, collaborationEnabled: true });
     const channel = await prisma.channel.create({ data: { userId: users.owner.id, name: "Team" } });

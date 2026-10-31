@@ -22,7 +22,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { blockOutbound, OutboundBlocker, pointLlmAtStubs, sendJson, startStubHttpServer, StubHttpServer, chatCompletion } from "../../../../test/llm-stub";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -162,8 +162,7 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
     const slug = await arrangeSlug();
     await moduleRef.get(ModelRegistryService).refresh();
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     const agent = await createAgent(prisma, { userId: user.id, model: slug });
     const session = asSessionUser(user);
 
@@ -192,8 +191,7 @@ describe("RX-178 review B1: the agent chat route refuses an unusable model befor
     await prisma.tierRate.create({ data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 } });
     await moduleRef.get(ModelRegistryService).refresh();
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id, model: "fake/usable-standard" });
     const session = asSessionUser(user);

@@ -13,7 +13,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createApiKey, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createApiKey, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 import { cheapestTierRegistry } from "../../../../test/cheapest-tier-registry";
 
@@ -63,13 +63,10 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
      * subscribed user with an API key, and agents of another workspace of the owner and of the other user.
      */
     const setup = async () => {
-      const plan = await createPlan(prisma, { slug: planSlug, maxAgents: 50 });
       const owner = await createUser(prisma);
       const collaborator = await createUser(prisma);
       const outsiderUser = await createUser(prisma);
       const outsider = { ...outsiderUser, apiKey: await createApiKey(prisma, outsiderUser.id) };
-      await createSubscription(prisma, { userId: owner.id, planId: plan.id });
-      await createSubscription(prisma, { userId: outsider.id, planId: plan.id });
       // RNX-76 B3 (D297): only the Enterprise owner's package enables collaboration.
       await createPackageSnapshot(prisma, { userId: owner.id, maxAgents: 50, collaborationEnabled: planSlug === "enterprise" });
       await createPackageSnapshot(prisma, { userId: outsider.id, maxAgents: 50 });
@@ -194,8 +191,6 @@ describe("RNX-118: agent links (Fastify, test database)", () => {
   describe("the removed agentType and parentAgentId (the current front end still sends them)", () => {
     const subscribed = async () => {
       const user = await createUser(prisma);
-      const plan = await createPlan(prisma, { maxAgents: 50 });
-      await createSubscription(prisma, { userId: user.id, planId: plan.id });
       await createPackageSnapshot(prisma, { userId: user.id, maxAgents: 50 });
       return user;
     };

@@ -18,8 +18,8 @@ export const CreateCodeDto = z.object({
     .optional(),
   type: z.enum(["topup", "subscription", "both"]),
   creditAmount: z.number().positive().optional(),
-  planId: z.string().uuid().optional(),
-  durationDays: z.number().int().positive().optional(),
+  /** RNX-251: the package version a "subscription" or "both" code grants (D37: permanent, so no duration). */
+  packageVersionId: z.string().uuid().optional(),
   maxRedemptions: z.number().int().positive().default(1),
 });
 export type CreateCodeDto = z.infer<typeof CreateCodeDto>;

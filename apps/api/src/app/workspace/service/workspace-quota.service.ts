@@ -14,41 +14,22 @@ export class WorkspaceQuotaService {
     private readonly entitlements: EntitlementService,
   ) {}
 
-  async requireSubscription(userId: string) {
-    const subscription = await this.prisma.userSubscription.findUnique({
-      where: { userId },
-      include: { plan: true },
-    });
-
-    if (!subscription || subscription.status !== "active") {
-      throw new ForbiddenException(
-        "Active AI Agent subscription required. Please upgrade to access workspaces.",
-      );
-    }
-
-    return subscription;
-  }
-
-  private async getActivePlan(workspaceOwnerId: string) {
-    const subscription = await this.prisma.userSubscription.findUnique({
-      where: { userId: workspaceOwnerId },
-      include: { plan: true },
-    });
-
-    if (!subscription || subscription.status !== "active") {
-      return null;
-    }
-
-    return subscription.plan;
+  /**
+   * RNX-251: creating a workspace needs a package (a purchase snapshot, bought or granted by a code, read through
+   * EntitlementService); 403 without one. The message is the one the old subscription gate gave.
+   */
+  async requirePackage(userId: string): Promise<void> {
+    if (await this.entitlements.getForUser(userId)) return;
+    throw new ForbiddenException(
+      "Active AI Agent subscription required. Please upgrade to access workspaces.",
+    );
   }
 
   /**
-   * The owner's seats: their active plan's maxWorkspaceUsers; without a plan, ENTERPRISE_WORKSPACE_SEATS when one of
-   * their packages enables collaboration (RNX-76 B3, D297); otherwise none.
+   * The owner's seats (RNX-76 B3, D297; RNX-251): ENTERPRISE_WORKSPACE_SEATS when one of their packages enables
+   * collaboration; otherwise none.
    */
   async getMaxUsers(workspaceOwnerId: string): Promise<number> {
-    const plan = await this.getActivePlan(workspaceOwnerId);
-    if (plan) return plan.maxWorkspaceUsers;
     return (await this.hasCollaboratingPackage(workspaceOwnerId)) ? ENTERPRISE_WORKSPACE_SEATS : 0;
   }
 

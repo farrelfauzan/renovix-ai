@@ -13,11 +13,11 @@ import { TransactionService } from "../../prisma/transaction.service";
 import { CreateCodeDto } from "../dto/redeem-code.dto";
 import { InvitationCodeRepository } from "../repository/invitation-code.repository";
 import { CodeRedemptionRepository } from "../repository/code-redemption.repository";
-import { SubscriptionPlanRepository } from "../../billing/repository/subscription-plan.repository";
-import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
 import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { PurchaseSnapshotService } from "../../offers/service/purchase-snapshot.service";
+import { PackageRepository } from "../../offers/repository/package.repository";
 
 const CODE_DEACTIVATED = "This code has been deactivated";
 const CODE_EXPIRED = "This code has expired";
@@ -31,8 +31,8 @@ export class CodesService {
   constructor(
     private readonly codes: InvitationCodeRepository,
     private readonly redemptions: CodeRedemptionRepository,
-    private readonly plans: SubscriptionPlanRepository,
-    private readonly subscriptions: UserSubscriptionRepository,
+    private readonly packages: PackageRepository,
+    private readonly purchaseSnapshots: PurchaseSnapshotService,
     private readonly creditLedger: CreditLedgerService,
     private readonly transactions: TransactionService,
     private readonly packageOwnership: PackageOwnershipService,
@@ -49,10 +49,10 @@ export class CodesService {
 
   /**
    * Redeem an invitation code for a user.
-   * Grants credits and/or subscription plan based on the code type.
+   * Grants credits and/or a package based on the code type (RNX-251: a package is a purchase snapshot, paymentId null).
    */
   async redeemCode(userId: string, codeString: string) {
-    const code = await this.codes.findCodeWithPlan(codeString);
+    const code = await this.codes.findCodeWithPackage(codeString);
 
     if (!code) {
       throw new NotFoundException("Invalid invitation code");
@@ -105,7 +105,6 @@ export class CodesService {
 
       let creditsGranted: Decimal | null = null;
       let planGranted: string | null = null;
-      let daysGranted: number | null = null;
 
       // Credits to grant, if applicable: written to the ledger below, once the redemption row exists (RX-22)
       if (
@@ -117,64 +116,18 @@ export class CodesService {
           creditsGranted = code.creditAmount ?? new Decimal(configuredGrant);
       }
 
-      // Grant subscription if applicable
-      if (
-        (code.type === "subscription" || code.type === "both") &&
-        code.planId &&
-        code.durationDays
-      ) {
-        planGranted = code.plan?.slug ?? null;
-        daysGranted = code.durationDays;
-
-        const periodStart = new Date();
-        const periodEnd = new Date(
-          Date.now() + code.durationDays * 24 * 60 * 60 * 1000,
-        );
-
-        // Upsert user subscription
-        const existing = await this.subscriptions.findSubscriptionByUserId(userId, tx);
-
-        if (existing) {
-          // Extend or upgrade the existing subscription
-          const newEnd =
-            existing.status === "active" &&
-            existing.currentPeriodEnd > new Date()
-              ? new Date(
-                  existing.currentPeriodEnd.getTime() +
-                    code.durationDays * 24 * 60 * 60 * 1000,
-                )
-              : periodEnd;
-
-          await this.subscriptions.updateSubscription(
-            userId,
-            existing.currentPeriodEnd,
-            {
-              planId: code.planId,
-              status: "active",
-              currentPeriodStart: periodStart,
-              currentPeriodEnd: newEnd,
-            },
-            tx,
-          );
-        } else {
-          await this.subscriptions.createSubscription(
-            userId,
-            {
-              planId: code.planId,
-              status: "active",
-              currentPeriodStart: periodStart,
-              currentPeriodEnd: periodEnd,
-            },
-            tx,
-          );
-        }
+      // RNX-251: a package code records a purchase snapshot of its version (paymentId null: a code grant, D37
+      // permanent), not a user_subscriptions row.
+      if ((code.type === "subscription" || code.type === "both") && code.packageVersionId) {
+        await this.purchaseSnapshots.recordCodeGrant({ buyerUserId: userId, packageVersionId: code.packageVersionId }, tx);
+        planGranted = code.packageVersion?.package.name ?? null;
       }
 
       // Create redemption record
       const redemption = await this.redemptions.createRedemption(
         code.id,
         userId,
-        { creditsGranted, planGranted, daysGranted },
+        { creditsGranted, planGranted, daysGranted: null },
         tx,
       );
 
@@ -196,7 +149,7 @@ export class CodesService {
         );
       }
 
-      return { creditsGranted, planGranted, daysGranted };
+      return { creditsGranted, planGranted };
     });
 
     return {
@@ -205,7 +158,8 @@ export class CodesService {
         ? Number(result.creditsGranted)
         : null,
       planGranted: result.planGranted,
-      daysGranted: result.daysGranted,
+      // RNX-251: a package is permanent (D37), so a code grants no days.
+      daysGranted: null,
     };
   }
 
@@ -234,27 +188,25 @@ export class CodesService {
 
     if (
       (dto.type === "subscription" || dto.type === "both") &&
-      (!dto.planId || !dto.durationDays)
+      !dto.packageVersionId
     ) {
       throw new BadRequestException(
-        "planId and durationDays are required for subscription or both type codes",
+        "packageVersionId is required for subscription or both type codes",
       );
     }
 
-    // Verify plan exists if specified
-    if (dto.planId) {
-      const plan = await this.plans.findPlanById(dto.planId);
-      if (!plan) {
-        throw new NotFoundException("Subscription plan not found");
-      }
+    // RNX-251: verify the package version exists if specified
+    if (dto.packageVersionId && !(await this.packages.findVersionById(dto.packageVersionId, tx))) {
+      throw new NotFoundException("Package version not found");
     }
 
     const created = await this.codes.createCode({
       code,
       type: dto.type,
       creditAmount: dto.creditAmount ?? null,
-      planId: dto.planId ?? null,
-      durationDays: dto.durationDays ?? null,
+      packageVersionId: dto.packageVersionId ?? null,
+      planId: null,
+      durationDays: null,
       maxRedemptions: dto.maxRedemptions,
       createdById: createdById ?? null,
     }, tx);

@@ -11,7 +11,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -102,9 +102,8 @@ describe("RNX-276: the reminder loop runs only tools offered to the run (test da
 
   /** A due reminder of a subscribed, funded user, with an agent whose tool rows are `toolTypes`. */
   const seedReminder = async (toolTypes: string[] = []) => {
-    const plan = await createPlan(prisma);
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id, status: "active" });
     for (const toolType of toolTypes) await prisma.agentTool.create({ data: { agentId: agent.id, toolType } });

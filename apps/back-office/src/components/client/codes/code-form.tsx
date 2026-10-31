@@ -15,8 +15,7 @@ export function CodeForm({ onSave, onClose }: CodeFormProps) {
   const [type, setType] = useState<CodeInput["type"]>("topup");
   const [code, setCode] = useState("");
   const [creditAmount, setCreditAmount] = useState("");
-  const [planId, setPlanId] = useState("");
-  const [durationDays, setDurationDays] = useState("");
+  const [packageVersionId, setPackageVersionId] = useState("");
   const [maxRedemptions, setMaxRedemptions] = useState("1");
   const [error, setError] = useState<string | null>(null);
   const grantsCredits = type !== "subscription";
@@ -28,7 +27,7 @@ export function CodeForm({ onSave, onClose }: CodeFormProps) {
       maxRedemptions: Number(maxRedemptions),
       ...(code.trim() && { code: code.trim() }),
       ...(grantsCredits && { creditAmount: Number(creditAmount) }),
-      ...(grantsPlan && { planId: planId.trim(), durationDays: Number(durationDays) }),
+      ...(grantsPlan && { packageVersionId: packageVersionId.trim() }),
     };
     const message = await onSave(input);
     if (message === null) return onClose();
@@ -46,8 +45,7 @@ export function CodeForm({ onSave, onClose }: CodeFormProps) {
       </label>
       <LabeledInput label="Code text (blank: generated)" name="code" maxLength={50} value={code} onChange={setCode} />
       {grantsCredits && <LabeledInput label="Credits" name="creditAmount" type="number" min={0} step="any" isRequired value={creditAmount} onChange={setCreditAmount} />}
-      {grantsPlan && <LabeledInput label="Plan id" name="planId" isRequired value={planId} onChange={setPlanId} />}
-      {grantsPlan && <LabeledInput label="Days the plan is granted" name="durationDays" type="number" min={1} step="1" isRequired value={durationDays} onChange={setDurationDays} />}
+      {grantsPlan && <LabeledInput label="Package version id" name="packageVersionId" isRequired value={packageVersionId} onChange={setPackageVersionId} />}
       <LabeledInput label="Maximum redemptions" name="maxRedemptions" type="number" min={1} step="1" isRequired value={maxRedemptions} onChange={setMaxRedemptions} />
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       <div className="flex gap-2">

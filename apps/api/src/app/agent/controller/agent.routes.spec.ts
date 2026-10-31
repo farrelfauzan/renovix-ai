@@ -314,8 +314,10 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
     });
   });
 
+  // RNX-251: the route answers the caller's package (EntitlementService over their purchase snapshots), not a
+  // user_subscriptions row; the chat shows the agents page only with one.
   describe("GET /agents/subscription", () => {
-    it("without a subscription: { subscription: null }", async () => {
+    it("without a package: { subscription: null }", async () => {
       const user = await createUser(prisma);
 
       const res = await app.inject({ method: "GET", url: "/agents/subscription", headers: auth(user) });
@@ -324,31 +326,33 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(res.json()).toEqual({ subscription: null });
     });
 
-    it("with one: the plan inline, big numbers as strings, the price as a number", async () => {
-      const { user, plan } = await subscribed({ priceMonthly: 99000, maxTokensPerMonth: 5_000_000n });
+    it("an active user_subscriptions row but no package: { subscription: null } (the old row no longer counts)", async () => {
+      const { user } = await subscribed();
 
       const res = await app.inject({ method: "GET", url: "/agents/subscription", headers: auth(user) });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json().subscription).toMatchObject({
-        userId: user.id,
-        planId: plan.id,
-        status: "active",
-        plan: { id: plan.id, maxTokensPerMonth: "5000000", priceMonthly: 99000 },
-      });
-      // RNX-186: the usage counters are gone from the schema and the response.
-      expect(res.json().subscription).not.toHaveProperty("tokensUsed");
-      expect(res.json().subscription).not.toHaveProperty("messagesUsed");
+      expect(res.json()).toEqual({ subscription: null });
     });
 
-    it("returns the caller's plan, not another user's", async () => {
-      await subscribed({ name: "Other" });
-      const { user, plan } = await subscribed({ name: "Mine" });
+    it("with a package: the package and its limits", async () => {
+      const user = await packaged({ maxAgents: 2, maxConnectedTools: 4, name: "Starter" });
 
       const res = await app.inject({ method: "GET", url: "/agents/subscription", headers: auth(user) });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json().subscription).toMatchObject({ userId: user.id, planId: plan.id });
+      expect(res.json().subscription).toMatchObject({ packageName: "Starter", maxAgents: 2, maxConnectedTools: 4 });
+      expect(await prisma.userSubscription.count()).toBe(0);
+    });
+
+    it("returns the caller's package, not another user's", async () => {
+      await packaged({ name: "Other" });
+      const user = await packaged({ name: "Mine" });
+
+      const res = await app.inject({ method: "GET", url: "/agents/subscription", headers: auth(user) });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().subscription).toMatchObject({ packageName: "Mine" });
     });
   });
 

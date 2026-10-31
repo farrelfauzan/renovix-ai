@@ -37,8 +37,8 @@ export class WorkspaceService {
   }
 
   async create(userId: string, dto: CreateWorkspaceDto) {
-    // Verify user has active subscription
-    await this.quotaService.requireSubscription(userId);
+    // RNX-251: verify the user has a package (a purchase snapshot)
+    await this.quotaService.requirePackage(userId);
 
     const slug = await this.generateUniqueSlug(userId, dto.name);
 

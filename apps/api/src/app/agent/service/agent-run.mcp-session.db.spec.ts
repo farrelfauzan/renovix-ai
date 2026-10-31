@@ -27,7 +27,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import type { FakeTurn } from "../../providers/fake.adapter";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -159,7 +159,7 @@ describe("RNX-217: MCP connections and the tool map belong to one run (test data
   /** A subscribed, funded user with a shared workspace (its channel), an agent in it, and "github" connected. */
   const seedUser = async (name: string): Promise<Runner> => {
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     // 5 credits and a run cap of 1 (beforeEach): each run holds 1, so one user's two overlapping runs both start.
     await fundPaidWallet(prisma, user.id, "5");
     const channel = await prisma.channel.create({ data: { userId: user.id, name: `${name} room` } });

@@ -13,7 +13,7 @@ export class PurchaseSnapshotRepository {
     return tx.purchaseSnapshot.create({ data });
   }
 
-  /** True when the user has bought a package (Starter or Pro) through a checkout (RNX-35, D36, D37). */
+  /** True when the user has a package (Starter or Pro): bought through a checkout (RNX-35, D36, D37) or granted by a code (RNX-251). */
   async hasPackagePurchase(userId: string, tx?: DbTransaction): Promise<boolean> {
     const found = await (tx ?? this.prisma).purchaseSnapshot.findFirst({ where: { buyerUserId: userId, packageVersionId: { not: null } }, select: { id: true } });
     return found !== null;

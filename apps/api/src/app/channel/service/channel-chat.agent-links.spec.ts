@@ -15,7 +15,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -128,7 +128,7 @@ describe("RNX-118: channel chat calls only linked agents (test database)", () =>
     if (linked) await prisma.agentLink.create({ data: { callerAgentId: a.id, calleeAgentId: b.id } });
     const caller = callerIs === "bob" ? bob : carol;
     // RNX-119: channel chat applies the D192 subscription gate to the runner.
-    await createSubscription(prisma, { userId: caller.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: caller.id });
     // The caller runs the agent and pays (RX-22b: the runner's wallet).
     await fundPaidWallet(prisma, caller.id, "1");
     const channel = await prisma.channel.create({ data: { userId: caller.id, name: "Room" } });

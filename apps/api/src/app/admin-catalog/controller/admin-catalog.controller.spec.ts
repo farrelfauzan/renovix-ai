@@ -264,6 +264,43 @@ describe("Admin catalog, codes and settings (RNX-226, Fastify, test database)", 
       ]);
       expect(JSON.stringify(audit)).not.toContain(created.json().code);
     });
+
+    // RNX-251: a package code names a package version (permanent, D37: no days); no subscription plan any more.
+    it.each(["subscription", "both"] as const)("a %s code without packageVersionId: 400, nothing stored", async (type) => {
+      const { cookie } = await signedIn("owner");
+
+      const actualResponse = await call("POST", "/admin/codes", cookie, { type, creditAmount: 15 });
+
+      expect(actualResponse.statusCode).toBe(400);
+      expect(actualResponse.json().message).toBe("packageVersionId is required for subscription or both type codes");
+      expect(await prisma.invitationCode.count()).toBe(0);
+    });
+
+    it("an unknown packageVersionId: 404 Package version not found, nothing stored", async () => {
+      const { cookie } = await signedIn("owner");
+
+      const actualResponse = await call("POST", "/admin/codes", cookie, { type: "subscription", packageVersionId: randomUUID() });
+
+      expect(actualResponse.statusCode).toBe(404);
+      expect(actualResponse.json().message).toBe("Package version not found");
+      expect(await prisma.invitationCode.count()).toBe(0);
+    });
+
+    it("a valid package version: 201, the code stores it (no plan, no days) and the list names the package", async () => {
+      const { cookie } = await signedIn("owner");
+      const f = await createFixture();
+
+      const actualResponse = await call("POST", "/admin/codes", cookie, { type: "both", creditAmount: 15, packageVersionId: f.versionId });
+      const listed = await call("GET", "/admin/codes", cookie);
+
+      expect(actualResponse.statusCode).toBe(201);
+      expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: actualResponse.json().id } })).toMatchObject({
+        type: "both", packageVersionId: f.versionId, planId: null, durationDays: null,
+      });
+      expect(listed.json().codes.find((c: { id: string }) => c.id === actualResponse.json().id)).toMatchObject({
+        packageVersion: { id: f.versionId, versionNumber: 1, package: { name: "Starter" } },
+      });
+    });
   });
 
   describe("code texts are redeemable secrets: the code reads need packages:write", () => {

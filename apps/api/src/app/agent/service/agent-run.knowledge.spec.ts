@@ -25,8 +25,6 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import {
   createAgent,
   createPackageSnapshot,
-  createPlan,
-  createSubscription,
   createUser,
   createWorkspace,
 } from "../../../../test/factories";
@@ -132,8 +130,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
 
   it("a sync run with a workspace base attached first still uses the caller's personal base", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const workspace = await createWorkspace(prisma, { ownerId: user.id });
     const workspaceKb = await prisma.knowledgeBase.create({
@@ -160,8 +157,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
   it("RNX-116 review: another user's personal base attached to the agent: no chunk in the prompt and no embedding call", async () => {
     const runner = await createUser(prisma);
     const other = await createUser(prisma);
-    const plan = await createPlan(prisma);
-    await createSubscription(prisma, { userId: runner.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: runner.id });
     await fundPaidWallet(prisma, runner.id, "1");
     const othersKb = await prisma.knowledgeBase.create({ data: { userId: other.id, name: "Not yours" } });
     await insertChunk(othersKb.id, "another user's private text");
@@ -184,10 +180,8 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
    */
   const workspaceAgentWithBase = async (planSlug: string, members: { status: "active" | "removed" }[]) => {
     const owner = await createUser(prisma);
-    const plan = await createPlan(prisma, { slug: planSlug, maxWorkspaceUsers: 100 });
-    await createSubscription(prisma, { userId: owner.id, planId: plan.id });
-    // RNX-76 B3 (D297): an "enterprise" owner collaborates through a package snapshot, not the plan.
-    if (planSlug === "enterprise") await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
+    // RNX-251: a package snapshot passes the run gate; RNX-76 B3 (D297): an "enterprise" owner's also enables collaboration.
+    await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: planSlug === "enterprise" });
     await fundPaidWallet(prisma, owner.id, "1");
     const workspace = await createWorkspace(prisma, { ownerId: owner.id });
     await prisma.workspaceMember.create({
@@ -196,7 +190,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
     const memberUsers = [];
     for (const { status } of members) {
       const user = await createUser(prisma);
-      await createSubscription(prisma, { userId: user.id, planId: plan.id });
+      await createPackageSnapshot(prisma, { userId: user.id });
       await fundPaidWallet(prisma, user.id, "1");
       await prisma.workspaceMember.create({
         data: { workspaceId: workspace.id, userId: user.id, role: "member", status, joinedAt: new Date() },
@@ -293,8 +287,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
   // written per model call with the credits its usage entry charged.
   it("a sync run logs 1,000 input + 500 output tokens at rate 1 as 0.0015 credits", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     fake.enqueue({ content: "ok", usage: { prompt_tokens: 1000, completion_tokens: 500 } });

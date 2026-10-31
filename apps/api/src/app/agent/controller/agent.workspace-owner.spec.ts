@@ -11,7 +11,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
 import { asSessionUser } from "../../../../test/as-session-user";
 import { cheapestTierRegistry } from "../../../../test/cheapest-tier-registry";
@@ -43,8 +43,6 @@ describe("RNX-203: agent ownership through the workspace owner (Fastify, test da
   const auth = (user: User) => asSessionUser(user);
 
   const subscribe = async (user: User) => {
-    const plan = await createPlan(prisma, { maxAgents: 50 });
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
     await createPackageSnapshot(prisma, { userId: user.id, maxAgents: 50 });
   };
 

@@ -21,7 +21,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { withdrawCollaboration } from "../../../../test/withdraw-collaboration";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
@@ -119,10 +119,9 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
   /** A user on a plan with this slug; subscribed (active) and funded with 1 credit unless told otherwise. */
   const newUser = async ({ planSlug, subscribed = true }: { planSlug?: string; subscribed?: boolean } = {}) => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma, planSlug ? { slug: planSlug, maxWorkspaceUsers: 100 } : {});
-    await createSubscription(prisma, { userId: user.id, planId: plan.id, status: subscribed ? "active" : "canceled" });
-    // RNX-76 B3 (D297): an "enterprise" user collaborates through a package snapshot, not the plan.
-    if (planSlug === "enterprise") await createPackageSnapshot(prisma, { userId: user.id, collaborationEnabled: true });
+    // RNX-251: "subscribed" is a package snapshot (the run gate reads it); RNX-76 B3 (D297): an "enterprise" user's
+    // snapshot also enables collaboration. An unsubscribed user has no package.
+    if (subscribed) await createPackageSnapshot(prisma, { userId: user.id, collaborationEnabled: planSlug === "enterprise" });
     await fundPaidWallet(prisma, user.id, "1");
     return user;
   };
@@ -281,6 +280,8 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
     it("a subscribed collaborator's run reserves on the collaborator's own paid wallet, not the owner's", async () => {
       const { owner, workspace, agent } = await seedWorkspace();
       const collaborator = await addMember(workspace.id);
+      // RNX-251: the collaborator's package is a purchase snapshot; no user_subscriptions row exists.
+      expect(await prisma.userSubscription.count()).toBe(0);
       fake.enqueue({ content: "Hello", usage: { prompt_tokens: 100, completion_tokens: 10 } }, { content: "[]" });
 
       await chat(collaborator.id, agent.id, "Hi");
@@ -453,8 +454,6 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
 
     it("AC7: a collaborator whose owner's plan no longer allows collaboration lists and deletes their own run; another person's run is 404", async () => {
       const { owner, collaborator, agent, ownerRun, collaboratorRun } = await twoRuns();
-      const pro = await createPlan(prisma, { slug: "pro" });
-      await prisma.userSubscription.update({ where: { userId: owner.id }, data: { planId: pro.id } });
       withdrawCollaboration(owner.id);
 
       const listed = await service.listRuns(collaborator.id, agent.id);

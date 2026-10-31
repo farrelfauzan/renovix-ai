@@ -13,6 +13,7 @@ import { EmailJobService } from "../../email/service/email-job.service";
 import { EmbeddingService } from "../../knowledge/service/embedding.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { ENTERPRISE_WORKSPACE_SEATS } from "../config/enterprise-workspace-seats";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
@@ -256,8 +257,8 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
   });
 
   describe("AC6: Enterprise works as before", () => {
-    const enterprise = (maxWorkspaceUsers = 100): OwnerPlan => ({
-      plan: { slug: "enterprise", maxWorkspaceUsers },
+    // RNX-251: a collaborating package snapshot alone (no user_subscriptions row).
+    const enterprise = (): OwnerPlan => ({
       snapshot: { name: "Enterprise package", displayOrder: 3, collaborationEnabled: true },
     });
 
@@ -327,8 +328,13 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
     });
 
     it("the seat limit still applies: with every seat taken, a new invite and an accept are refused (400)", async () => {
-      // 3 seats: owner, admin and member are active
-      const ctx = await setup(enterprise(3));
+      // RNX-251: the seats are ENTERPRISE_WORKSPACE_SEATS (no plan sets them); owner, admin and member are active,
+      // the other seats are filled here.
+      const ctx = await setup(enterprise());
+      const fillers = await Promise.all(Array.from({ length: ENTERPRISE_WORKSPACE_SEATS - 3 }, () => createUser(prisma)));
+      await prisma.workspaceMember.createMany({
+        data: fillers.map((user) => ({ workspaceId: ctx.workspace.id, userId: user.id, role: "member", status: "active", joinedAt: new Date() })),
+      });
       const before = await state(ctx);
 
       const create = await app.inject({
@@ -345,7 +351,7 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
       });
 
       expect([create.statusCode, accept.statusCode]).toEqual([400, 400]);
-      expect(accept.json().message).toContain("seat limit (3)");
+      expect(accept.json().message).toContain(`seat limit (${ENTERPRISE_WORKSPACE_SEATS})`);
       expect(await state(ctx)).toEqual(before);
     });
   });
@@ -372,7 +378,7 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
       ).toMatchObject({ role: "member", status: "active" });
     });
 
-    it("seats: a collaborating owner without a plan gets 100 seats; with a plan, the plan's maxWorkspaceUsers", async () => {
+    it("seats: a collaborating owner gets 100 seats; RNX-251: a user_subscriptions plan no longer changes them", async () => {
       const inputWithoutPlan = await setup({ snapshot: collaboratingPackage });
       const inputWithPlan = await setup({ plan: { slug: "enterprise", maxWorkspaceUsers: 7 }, snapshot: { ...collaboratingPackage, name: "Enterprise package 2" } });
 
@@ -380,7 +386,7 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
       const actualWithPlan = await app.inject({ method: "GET", url: `/workspaces/${inputWithPlan.workspace.id}/quota`, headers: auth(inputWithPlan.owner) });
 
       expect(actualWithoutPlan.json()).toEqual({ maxUsers: 100, activeCount: 3, available: 97 });
-      expect(actualWithPlan.json()).toEqual({ maxUsers: 7, activeCount: 3, available: 4 });
+      expect(actualWithPlan.json()).toEqual({ maxUsers: 100, activeCount: 3, available: 97 });
     });
 
     it("an owner without a collaborating package (free) has no seats", async () => {

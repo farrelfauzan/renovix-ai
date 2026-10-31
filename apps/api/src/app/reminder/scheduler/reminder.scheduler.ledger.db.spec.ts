@@ -14,7 +14,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -81,9 +81,8 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
 
   /** A due reminder of a subscribed user, funded on the ledger with `credits` (none when null). */
   const seedReminder = async (credits: string | null) => {
-    const plan = await createPlan(prisma);
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     if (credits) await fundPaidWallet(prisma, user.id, credits);
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });

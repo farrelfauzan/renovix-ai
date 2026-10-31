@@ -10,7 +10,7 @@ import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // RX-152: the public OAuth callback completes a flow only in the browser that started it. The start
@@ -80,8 +80,6 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
         { workspaceId, userId: userB.id, role: "member", status: "active", joinedAt: new Date() },
       ],
     });
-    const enterprise = await createPlan(prisma, { slug: "enterprise" });
-    await createSubscription(prisma, { userId: userA.id, planId: enterprise.id });
     // RNX-76 B3 (D297): collaboration comes from the owner's package snapshot, not the plan.
     await createPackageSnapshot(prisma, { userId: userA.id, collaborationEnabled: true });
     markers = [STATE_SECRET, CONFIG.GOOGLE_OAUTH_CLIENT_SECRET, CONFIG.GITHUB_OAUTH_CLIENT_SECRET];

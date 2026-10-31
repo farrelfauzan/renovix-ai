@@ -21,7 +21,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -108,7 +108,7 @@ describe("RNX-16: channel chat scenarios on POST /channels/:id/agents/:agentId/c
   /** A subscribed user funded with 1 credit, an agent in their channel, and a session cookie. */
   const seed = async () => {
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });

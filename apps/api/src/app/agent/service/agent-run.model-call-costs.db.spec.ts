@@ -16,7 +16,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -89,9 +89,8 @@ describe("RNX-162: model call costs on the agent meter (test database, fake prov
   it("AC8 agent-meter path: root call, hop and root answer each get a row for their call id, with the run's workspace", async () => {
     const { provider } = await createResolvableModel(prisma, { slug: "test-model", modelName: "test-model", maxTokens: 8192 });
     await moduleRef.get(ModelRegistryService).refresh();
-    const plan = await createPlan(prisma);
     const bob = await createUser(prisma);
-    await createSubscription(prisma, { userId: bob.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: bob.id });
     await fundPaidWallet(prisma, bob.id, "1");
     const parent = await createAgent(prisma, { userId: bob.id, status: "active" });
     const sub = await createAgent(prisma, { userId: bob.id, name: "Bob helper", status: "active" });

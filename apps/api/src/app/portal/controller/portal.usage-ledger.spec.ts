@@ -6,6 +6,7 @@ import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PortalTierService } from "../service/portal-tier.service";
 import { CodesController } from "../../codes/controller/codes.controller";
 import { CodesService } from "../../codes/service/codes.service";
+import { OffersModule } from "../../offers/offers.module";
 import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
 import { CreditService } from "../../billing/service/credit.service";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
@@ -20,7 +21,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createPackageSnapshot, createUser } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
@@ -49,7 +50,8 @@ describe("RNX-186: the chat balance read is the ledger account (Fastify, test da
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule(
       {
-        imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule],
+        // RNX-251: OffersModule gives CodesService its PurchaseSnapshotService (a package code records a snapshot).
+        imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), ProvidersModule, OffersModule],
         controllers: [PortalController, CodesController],
         providers: [
           EntitlementService,
@@ -122,7 +124,7 @@ describe("RNX-186: the chat balance read is the ledger account (Fastify, test da
   it("a code redemption grants on the ledger, a paid portal chat spends from it, and the usage read follows the account row", async () => {
     const user = await createUser(prisma);
     // RNX-35 (D36): a credits-only code is redeemed only by an account with a package.
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await prisma.invitationCode.create({ data: { code: "PERF-RNX1-0186", type: "topup", creditAmount: 5 } });
 
     const redeemed = await app.inject({

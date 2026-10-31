@@ -368,25 +368,12 @@ export class AgentService {
 
   // ─── Subscription ───
 
+  /**
+   * RNX-251: the caller's package (their purchase snapshots, bought or granted by a code, through EntitlementService),
+   * or null without one; the chat shows the agents page only with one. user_subscriptions is no longer read.
+   */
   async getSubscription(userId: string) {
-    const subscription =
-      await this.subscriptions.findSubscriptionWithPlan(userId);
-    if (!subscription) {
-      return { subscription: null };
-    }
-
-    return {
-      subscription: {
-        ...subscription,
-        plan: {
-          ...subscription.plan,
-          maxTokensPerMonth: subscription.plan.maxTokensPerMonth.toString(),
-          priceMonthly: subscription.plan.priceMonthly
-            ? Number(subscription.plan.priceMonthly)
-            : null,
-        },
-      },
-    };
+    return { subscription: await this.entitlements.getForUser(userId) };
   }
 
   async subscribe(userId: string, tier: string) {
