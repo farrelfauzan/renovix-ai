@@ -8,6 +8,7 @@ import { ReminderStatus } from "@generated/prisma/client.js";
 import { CronExpressionParser } from "cron-parser";
 import { AgentRepository } from "../../agent/repository/agent.repository";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
+import { UserRepository } from "../../auth/repository/user.repository";
 
 @Injectable()
 export class ReminderService {
@@ -15,6 +16,7 @@ export class ReminderService {
     private readonly prisma: PrismaService,
     private readonly agents: AgentRepository,
     private readonly policy: AgentRunPolicyService,
+    private readonly users: UserRepository,
   ) {}
 
   async create(
@@ -29,8 +31,9 @@ export class ReminderService {
       timezone?: string;
     },
   ) {
+    // RNX-33: without a timezone, the user's saved one (the profile step); "UTC" when the user has none saved
+    const timezone = data.timezone || (await this.users.findTimezone(userId))?.timezone || "UTC";
     // Validate cron expression
-    const timezone = data.timezone || "UTC";
     let nextRunAt: Date;
     try {
       const interval = CronExpressionParser.parse(data.cronExpression, {

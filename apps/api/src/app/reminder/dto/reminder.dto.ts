@@ -7,7 +7,8 @@ export const CreateReminderSchema = z.object({
   prompt: z.string().min(1).max(2000),
   description: z.string().max(200).optional(),
   cronExpression: z.string().min(1).max(100),
-  timezone: z.string().max(50).optional().default("UTC"),
+  // RNX-33: no default here; the service uses the user's saved timezone when none is given
+  timezone: z.string().max(50).optional(),
 });
 
 export type CreateReminderDto = z.infer<typeof CreateReminderSchema>;

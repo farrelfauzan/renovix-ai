@@ -34,5 +34,6 @@ export const config = {
     "/settings/:path*",
     "/knowledge/:path*",
     "/memory/:path*",
+    "/onboarding/:path*",
   ],
 };

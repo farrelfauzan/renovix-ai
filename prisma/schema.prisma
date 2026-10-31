@@ -26,6 +26,11 @@ model User {
   jobTitle      String?        @map("job_title")
   timezone      String?        @default("UTC")
   locale        String?        @default("en")
+  // RNX-33: the profile step after first sign-in (name, jobTitle as the role, timezone and locale as the language
+  // are the columns above). The step is done when profileCompletedAt is set; it is set once and never cleared.
+  country            String?   // ISO 3166-1 alpha-2
+  signupGoal         String?   @map("signup_goal") // what the user wants to do
+  profileCompletedAt DateTime? @map("profile_completed_at") @db.Timestamptz()
 
   // Auth
   lastLoginAt   DateTime?      @map("last_login_at") @db.Timestamptz()

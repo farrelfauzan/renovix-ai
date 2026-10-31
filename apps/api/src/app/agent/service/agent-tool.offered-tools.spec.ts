@@ -37,6 +37,7 @@ function buildService() {
     unused, // chatRooms
     unused, // reminders
     unused, // workspaces
+    unused, // users
   );
 }
 

@@ -95,6 +95,21 @@ describe("RX-133: create_reminder tool (test database)", () => {
     expect(await prisma.reminder.findFirstOrThrow()).toMatchObject({ chatRoomId: general.id, description: null, timezone: "UTC" });
   });
 
+  // RNX-33: without a timezone the tool uses the user's saved one (the profile step); UTC when none is saved.
+  it.each([
+    ["the saved timezone, without one given", "Asia/Jakarta", undefined, "Asia/Jakarta"],
+    ["the given timezone over the saved one", "Asia/Jakarta", "Europe/Berlin", "Europe/Berlin"],
+    ["UTC, without one given or saved", null, undefined, "UTC"],
+  ] as const)("RNX-33: %s", async (_name, saved, given, expected) => {
+    const { agent, channel } = await setup();
+    const user = await prisma.user.update({ where: { id: channel.userId }, data: { timezone: saved } });
+
+    const result = await createReminder({ prompt: "Ping", cronExpression: "0 8 * * *", timezone: given }, agent, user.id, channel.id);
+
+    expect(result).toContain(`(${expected})`);
+    expect((await prisma.reminder.findFirstOrThrow()).timezone).toBe(expected);
+  });
+
   it.each([
     ["no user", undefined, "channel", "Error: Unable to create reminder — user context unavailable."],
     ["no channel", "user", undefined, "Error: Unable to create reminder — channel context unavailable."],
