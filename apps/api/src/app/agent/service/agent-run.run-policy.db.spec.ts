@@ -71,7 +71,7 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
           UsageService,
           KnowledgeService,
           WorkspaceKnowledgeService,
-          { provide: EmbeddingService, useValue: { embedSingle: async () => ({ embedding: unit(), tokenCount: 1 }) } },
+          { provide: EmbeddingService, useValue: { modelName: "test-model", embedSingle: async () => ({ embedding: unit(), tokenCount: 1 }) } },
           { provide: S3Service, useValue: {} },
           {
             // Same call_agent rule as AgentToolService.buildToolSchemas
@@ -129,8 +129,8 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
 
   const insertChunk = (knowledgeBaseId: string, content: string) =>
     prisma.$executeRaw`
-      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
-      VALUES (${randomUUID()}, ${knowledgeBaseId}, ${content}, '{}'::jsonb, ${`[${unit().join(",")}]`}::vector, 1, now())`;
+      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt", embedding_model, embedded_at)
+      VALUES (${randomUUID()}, ${knowledgeBaseId}, ${content}, '{}'::jsonb, ${`[${unit().join(",")}]`}::vector, 1, now(), 'test-model', now())`;
 
   /**
    * The owner's workspace (owner's plan `ownerPlan`) with its owner member row, a private active agent with a

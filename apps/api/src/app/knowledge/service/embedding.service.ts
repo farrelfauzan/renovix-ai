@@ -7,6 +7,7 @@ import { readPositiveInteger } from "../../../common/utils/read-positive-integer
 import { assertEmbeddingLength } from "../utils/assert-embedding-length";
 import { fakeEmbedding } from "../utils/fake-embedding";
 import { EMBEDDING_COLUMN_DIMENSIONS } from "../config/embedding-column-dimensions";
+import { FAKE_EMBEDDING_MODEL } from "../config/fake-embedding-model";
 
 const DEFAULT_EMBEDDING_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-large-instruct";
@@ -26,6 +27,11 @@ export class EmbeddingService {
   private readonly dimensions: number;
   /** LLM_PROVIDER=fake (RX-88): deterministic local vectors, no key, no network. */
   private readonly fake = resolveLlmProvider(process.env) === "fake";
+  /**
+   * The model whose vectors embed() returns (RNX-27): stored with every chunk, and every similarity search compares
+   * only chunks of this model. "fake" in LLM_PROVIDER=fake.
+   */
+  readonly modelName: string;
 
   /** RX-160: EMBEDDING_* settings; unset, they are today's URL, model and key (OPENROUTER_API_KEY). */
   constructor(private readonly configService: ConfigService) {
@@ -36,6 +42,7 @@ export class EmbeddingService {
     this.baseUrl =
       this.configService.get<string>("EMBEDDING_BASE_URL") || DEFAULT_EMBEDDING_BASE_URL;
     this.model = this.configService.get<string>("EMBEDDING_MODEL") || DEFAULT_EMBEDDING_MODEL;
+    this.modelName = this.fake ? FAKE_EMBEDDING_MODEL : this.model;
     this.dimensions = readPositiveInteger({
       name: "EMBEDDING_DIMENSIONS",
       value: this.configService.get<string>("EMBEDDING_DIMENSIONS"),

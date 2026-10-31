@@ -323,8 +323,12 @@ model KnowledgeChunk {
   embedding       Unsupported("vector(1024)")?
   tokenCount      Int
   createdAt       DateTime      @default(now()) @db.Timestamptz()
+  /// RNX-27: the embedding model that made `embedding`; a search compares only vectors of the current model.
+  embeddingModel  String        @map("embedding_model")
+  /// RNX-27: when `embedding` was made.
+  embeddedAt      DateTime      @map("embedded_at") @db.Timestamptz()
 
-  @@index([knowledgeBaseId])
+  @@index([knowledgeBaseId, embeddingModel])
   @@map("knowledge_chunks")
 }
 

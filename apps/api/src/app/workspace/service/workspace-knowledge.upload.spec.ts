@@ -23,7 +23,7 @@ describe("RNX-173: WorkspaceKnowledgeService.uploadMarkdown leaves no S3 object 
   };
   const service = new WorkspaceKnowledgeService(
     prisma as unknown as PrismaService,
-    { embed } as unknown as EmbeddingService,
+    { embed, modelName: "model-current" } as unknown as EmbeddingService,
     { buildKey: () => inputKey, upload, delete: remove } as unknown as S3Service,
     {} as KnowledgeChunkRepository,
     {} as WorkspaceMemberRepository,

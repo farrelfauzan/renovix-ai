@@ -91,6 +91,7 @@ const storage = {
   delete: jest.fn(async () => undefined),
 };
 const embedding = {
+  modelName: "test-model",
   embed: jest.fn(async (texts: string[]) => texts.map(() => ({ embedding: unitVector(), tokenCount: 1 }))),
 };
 const fake = new FakeProviderAdapter();

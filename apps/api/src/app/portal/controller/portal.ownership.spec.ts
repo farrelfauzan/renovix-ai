@@ -92,7 +92,7 @@ describe("Portal conversations and knowledge: ownership (RX-15, Fastify, test da
     });
     const kb = await prisma.knowledgeBase.create({ data: { userId: alice.id, name: "Alice KB" } });
     const chunk = await prisma.knowledgeChunk.create({
-      data: { knowledgeBaseId: kb.id, content: "Alice's private note", tokenCount: 3 },
+      data: { knowledgeBaseId: kb.id, content: "Alice's private note", tokenCount: 3, embeddingModel: "test-model", embeddedAt: new Date() },
     });
     return { alice, bob, conversation, kb, chunk };
   };

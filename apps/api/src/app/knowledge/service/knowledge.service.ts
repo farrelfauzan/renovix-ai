@@ -102,6 +102,7 @@ export class KnowledgeService {
     try {
       created = await this.knowledgeChunks.insertChunks(
         kb.id,
+        this.embeddingService.modelName,
         chunks.map((chunk, i) => ({
           content: chunk.content,
           metadata: { ...chunk.metadata, s3Key },
@@ -148,6 +149,7 @@ export class KnowledgeService {
     // Insert chunks with embeddings using a transaction
     const created = await this.knowledgeChunks.insertChunks(
       kb.id,
+      this.embeddingService.modelName,
       chunks.map((chunk, i) => ({
         content: chunk.content,
         metadata: chunk.metadata ?? {},
@@ -211,6 +213,7 @@ export class KnowledgeService {
       const results = await this.knowledgeChunks.searchChunksInKnowledgeBase(
         options.knowledgeBaseId,
         embedding,
+        this.embeddingService.modelName,
         topK,
       );
 
@@ -228,6 +231,7 @@ export class KnowledgeService {
     const results = await this.knowledgeChunks.searchPersonalChunks(
       userId,
       embedding,
+      this.embeddingService.modelName,
       topK,
     );
 

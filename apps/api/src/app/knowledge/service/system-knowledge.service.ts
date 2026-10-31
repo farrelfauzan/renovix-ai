@@ -10,6 +10,9 @@ import { EmbeddingService } from "./embedding.service";
 import { chunkMarkdown } from "../utils/markdown-chunker";
 import { KnowledgeBaseRepository } from "../repository/knowledge-base.repository";
 import { KnowledgeChunkRepository } from "../repository/knowledge-chunk.repository";
+import { TransactionService } from "../../prisma/transaction.service";
+import { SYSTEM_KNOWLEDGE_SYNC_TIMEOUT_MS } from "../config/system-knowledge-sync-timeout-ms";
+import type { SystemKnowledgeSyncResult } from "../types/system-knowledge-sync-result";
 
 @Injectable()
 export class SystemKnowledgeService implements OnApplicationBootstrap {
@@ -24,6 +27,7 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     private readonly configService: ConfigService,
     private readonly knowledgeBases: KnowledgeBaseRepository,
     private readonly knowledgeChunks: KnowledgeChunkRepository,
+    private readonly transactions: TransactionService,
   ) {
     this.bucket = this.configService.getOrThrow<string>("S3_BUCKET");
     this.prefix =
@@ -65,8 +69,27 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     await this.sync();
   }
 
+  /**
+   * One sync at a time across every instance (startup, hourly, the seed; RNX-27): the sync runs while a transaction
+   * holds an advisory lock, and a sync that cannot take it at once skips (one log line, no error). That transaction
+   * holds only the lock: the sync's reads and writes go through their own connections, so it is open across S3 and
+   * embedding calls by design (the lock must cover the whole sync), bounded by SYSTEM_KNOWLEDGE_SYNC_TIMEOUT_MS.
+   */
+  async sync(): Promise<SystemKnowledgeSyncResult> {
+    return this.transactions.run(
+      async (tx) => {
+        if (!(await this.knowledgeChunks.tryLockSystemKnowledgeSync(tx))) {
+          this.logger.log("System KB sync skipped: another sync is running");
+          return { synced: 0, unchanged: 0, skipped: true };
+        }
+        return this.syncFiles();
+      },
+      { timeout: SYSTEM_KNOWLEDGE_SYNC_TIMEOUT_MS },
+    );
+  }
+
   /** Main sync: list S3 .md files, diff by ETag, re-chunk changed files */
-  async sync(): Promise<{ synced: number; unchanged: number }> {
+  private async syncFiles(): Promise<SystemKnowledgeSyncResult> {
     this.logger.log("Starting system knowledge base sync...");
 
     // Ensure the system KB exists
@@ -76,7 +99,7 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     const objects = await this.listMarkdownFiles();
     if (objects.length === 0) {
       this.logger.log("No markdown files found in system KB bucket");
-      return { synced: 0, unchanged: 0 };
+      return { synced: 0, unchanged: 0, skipped: false };
     }
 
     // Get stored ETags from existing chunk metadata
@@ -103,7 +126,7 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     this.logger.log(
       `System KB sync complete: ${synced} synced, ${unchanged} unchanged`,
     );
-    return { synced, unchanged };
+    return { synced, unchanged, skipped: false };
   }
 
   private async getOrCreateSystemKB() {
@@ -175,6 +198,7 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     // Insert new chunks with embeddings
     await this.knowledgeChunks.insertChunks(
       kbId,
+      this.embeddingService.modelName,
       chunks.map((chunk, i) => ({
         content: chunk.content,
         metadata: { ...chunk.metadata, s3Key: key, etag },
@@ -203,6 +227,7 @@ export class SystemKnowledgeService implements OnApplicationBootstrap {
     const results = await this.knowledgeChunks.searchSystemChunks(
       kb.id,
       embedding,
+      this.embeddingService.modelName,
       threshold,
       topK,
     );

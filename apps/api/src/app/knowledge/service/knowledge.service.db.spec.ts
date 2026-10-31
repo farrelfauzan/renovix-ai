@@ -18,6 +18,9 @@ jest.mock("./s3.service", () => ({ S3Service: class {} }));
 
 const DIMENSIONS = 1024;
 const QUERY = "fixed query";
+/** RNX-27: the model the embedding stub stands for, and another one whose chunks a search must never return. */
+const MODEL = "model-current";
+const OTHER_MODEL = "model-other";
 
 /** A 1024-dimension unit vector with cosine similarity `similarity` to the query vector. */
 const unitVector = (similarity: number) => {
@@ -41,6 +44,7 @@ describe("KnowledgeService: search results and chunk storage (RX-137, test datab
   let service: KnowledgeService;
   const vectors = new Map<string, number[]>();
   const embedding = {
+    modelName: MODEL,
     embed: jest.fn(async (texts: string[]) =>
       texts.map((text, i) => ({ embedding: vectors.get(text) ?? exactVector(0.5, 0.25), tokenCount: 10 + i })),
     ),
@@ -79,14 +83,23 @@ describe("KnowledgeService: search results and chunk storage (RX-137, test datab
     tokenCount?: number;
     metadata?: Record<string, unknown>;
     createdAt?: Date;
+    model?: string;
   }) => {
     const vector = input.similarity === null ? null : `[${unitVector(input.similarity).join(",")}]`;
     await prisma.$executeRaw`
-      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
+      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt", embedding_model, embedded_at)
       VALUES (${input.id}, ${input.knowledgeBaseId}, ${`content of ${input.id}`},
         ${JSON.stringify(input.metadata ?? { tag: input.id })}::jsonb, ${vector}::vector, ${input.tokenCount ?? 5},
-        ${input.createdAt ?? new Date()})`;
+        ${input.createdAt ?? new Date()}, ${input.model ?? MODEL}, now())`;
   };
+
+  /** RNX-27: every stored chunk's embedding model and embedding time, ordered by content. */
+  const readStoredModels = () =>
+    prisma.$queryRaw<{ content: string; embeddingModel: string; embeddedAt: Date }[]>`
+      SELECT content, embedding_model AS "embeddingModel", embedded_at AS "embeddedAt" FROM "knowledge_chunks" ORDER BY content`;
+
+  /** The database clock, which stamps embedded_at (now()). */
+  const dbNow = async () => (await prisma.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`)[0].now;
 
   /** Every stored chunk with its embedding as text, ordered by content. */
   const readStoredChunks = () =>
@@ -357,6 +370,74 @@ describe("KnowledgeService: search results and chunk storage (RX-137, test datab
       await service.deleteChunk(alice.id, kb.id, "drop");
 
       expect((await readStoredChunks()).map((c) => c.id)).toEqual(["keep"]);
+    });
+  });
+
+  describe("RNX-27: one embedding model per comparison", () => {
+    it("addChunks stores the embedding service's model and the embedding time on every chunk", async () => {
+      const alice = await createUser(prisma);
+      const kb = await prisma.knowledgeBase.create({ data: { userId: alice.id, name: "A" } });
+      const before = await dbNow();
+
+      await service.addChunks(alice.id, kb.id, [{ content: "first" }, { content: "second" }]);
+
+      const after = await dbNow();
+      const stored = await readStoredModels();
+      expect(stored.map((c) => [c.content, c.embeddingModel])).toEqual([["first", MODEL], ["second", MODEL]]);
+      expect(stored.every((c) => c.embeddedAt >= before && c.embeddedAt <= after)).toBe(true);
+    });
+
+    it("uploadMarkdown stores the embedding service's model and the embedding time on every chunk", async () => {
+      const alice = await createUser(prisma);
+      const kb = await prisma.knowledgeBase.create({ data: { userId: alice.id, name: "A" } });
+      const before = await dbNow();
+
+      await service.uploadMarkdown(alice.id, kb.id, { filename: "notes.md", buffer: Buffer.from("# One\na\n# Two\nb\n") });
+
+      const after = await dbNow();
+      const stored = await readStoredModels();
+      expect(stored.map((c) => c.embeddingModel)).toEqual([MODEL, MODEL]);
+      expect(stored.every((c) => c.embeddedAt >= before && c.embeddedAt <= after)).toBe(true);
+    });
+
+    /** Alice's two bases, each with chunks of the current model and closer chunks of another model. */
+    const seedMixedModels = async () => {
+      const alice = await createUser(prisma);
+      const kbA = await prisma.knowledgeBase.create({ data: { userId: alice.id, name: "A" } });
+      const kbB = await prisma.knowledgeBase.create({ data: { userId: alice.id, name: "B" } });
+      await seedChunk({ id: "a-other-s99", knowledgeBaseId: kbA.id, similarity: 0.99, model: OTHER_MODEL });
+      await seedChunk({ id: "a-current-s50", knowledgeBaseId: kbA.id, similarity: 0.5 });
+      await seedChunk({ id: "a-current-s30", knowledgeBaseId: kbA.id, similarity: 0.3 });
+      await seedChunk({ id: "b-other-s97", knowledgeBaseId: kbB.id, similarity: 0.97, model: OTHER_MODEL });
+      await seedChunk({ id: "b-current-s40", knowledgeBaseId: kbB.id, similarity: 0.4 });
+      return { alice, kbA };
+    };
+
+    it("search in one base: only chunks of the current model, even when another model's chunks are closer", async () => {
+      const { alice, kbA } = await seedMixedModels();
+
+      const actual = await service.searchChunks(alice.id, QUERY, { knowledgeBaseId: kbA.id });
+
+      expect(actual.map((r) => r.id)).toEqual(["a-current-s50", "a-current-s30"]);
+    });
+
+    it("search across the user's bases: only chunks of the current model, even when another model's chunks are closer", async () => {
+      const { alice } = await seedMixedModels();
+
+      const actual = await service.searchChunks(alice.id, QUERY);
+
+      expect(actual.map((r) => r.id)).toEqual(["a-current-s50", "b-current-s40", "a-current-s30"]);
+    });
+
+    it("negative: chunks that are all of another model return nothing (no error), in one base and across bases", async () => {
+      const alice = await createUser(prisma);
+      const kb = await prisma.knowledgeBase.create({ data: { userId: alice.id, name: "A" } });
+      await seedChunk({ id: "other-s99", knowledgeBaseId: kb.id, similarity: 0.99, model: OTHER_MODEL });
+
+      const inBase = await service.searchChunks(alice.id, QUERY, { knowledgeBaseId: kb.id });
+      const acrossBases = await service.searchChunks(alice.id, QUERY);
+
+      expect({ inBase, acrossBases }).toEqual({ inBase: [], acrossBases: [] });
     });
   });
 

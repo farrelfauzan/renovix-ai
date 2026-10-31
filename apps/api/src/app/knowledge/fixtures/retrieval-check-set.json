@@ -1,0 +1,29 @@
+{
+  "description": "RNX-27 retrieval check set: a small test knowledge base (one chunk per answer plus distractors) and questions, half Indonesian and half English, each with the chunk that must be in the top 5 of the real search path. Vectors are in retrieval-check-vectors.json.",
+  "chunks": [
+    { "id": "answer-api-key", "content": "To create an API key, open Settings, choose API Keys and press Create key. The full key is shown only once, so copy it right away." },
+    { "id": "answer-credit-deduction", "content": "Credits are deducted after each model call, based on the tokens used and the tier of the model. Your balance is shown on the Billing page." },
+    { "id": "answer-invitation-expiry", "content": "A workspace owner invites members by email from the Members tab; a workspace invitation stays valid for seven days." },
+    { "id": "answer-upload-format", "content": "You can upload Markdown files to a knowledge base; each file is split into chunks by heading and every chunk is embedded for search." },
+    { "id": "answer-reset-password", "content": "Untuk mengatur ulang kata sandi, buka halaman masuk, pilih Lupa kata sandi, lalu ikuti tautan yang dikirim ke email Anda." },
+    { "id": "answer-enterprise-members", "content": "Paket Enterprise memungkinkan kolaborasi workspace hingga seratus anggota dan memberikan kredit bulanan yang lebih besar." },
+    { "id": "answer-whatsapp-channel", "content": "Agen AI dapat dihubungkan ke kanal WhatsApp atau Telegram melalui menu Kanal pada halaman pengaturan agen." },
+    { "id": "answer-history-retention", "content": "Riwayat percakapan disimpan selama sembilan puluh hari; setelah itu percakapan lama dihapus secara otomatis." },
+    { "id": "distractor-landing", "content": "The landing page lists the product features and links to the pricing table." },
+    { "id": "distractor-model-tiers", "content": "Model tiers group the available models by price; a higher tier costs more credits per token." },
+    { "id": "distractor-shared-agents", "content": "Workspace members can see the shared agents and the shared knowledge bases of that workspace." },
+    { "id": "distractor-billing-page", "content": "Halaman tagihan menampilkan saldo kredit dan riwayat pembelian paket Anda." },
+    { "id": "distractor-agent-knowledge", "content": "Agen dapat memakai basis pengetahuan untuk menjawab pertanyaan pelanggan." },
+    { "id": "distractor-verification-email", "content": "Email verifikasi dikirim setelah pendaftaran; tautan verifikasi berlaku selama satu hari." }
+  ],
+  "questions": [
+    { "id": "q-api-key", "language": "en", "question": "How do I create an API key?", "expectedChunkId": "answer-api-key" },
+    { "id": "q-credit-deduction", "language": "en", "question": "When are credits deducted for a model call?", "expectedChunkId": "answer-credit-deduction" },
+    { "id": "q-invitation-expiry", "language": "en", "question": "How long does a workspace invitation stay valid?", "expectedChunkId": "answer-invitation-expiry" },
+    { "id": "q-upload-format", "language": "en", "question": "Which files can I upload to a knowledge base?", "expectedChunkId": "answer-upload-format" },
+    { "id": "q-reset-password", "language": "id", "question": "Bagaimana cara mengatur ulang kata sandi saya?", "expectedChunkId": "answer-reset-password" },
+    { "id": "q-enterprise-members", "language": "id", "question": "Berapa banyak anggota workspace di paket Enterprise?", "expectedChunkId": "answer-enterprise-members" },
+    { "id": "q-whatsapp-channel", "language": "id", "question": "Bagaimana menghubungkan agen ke kanal WhatsApp?", "expectedChunkId": "answer-whatsapp-channel" },
+    { "id": "q-history-retention", "language": "id", "question": "Berapa lama riwayat percakapan disimpan?", "expectedChunkId": "answer-history-retention" }
+  ]
+}

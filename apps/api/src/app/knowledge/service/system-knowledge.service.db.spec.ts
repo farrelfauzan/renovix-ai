@@ -1,4 +1,5 @@
 import { Readable } from "node:stream";
+import { Logger } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { SystemKnowledgeService } from "./system-knowledge.service";
@@ -31,6 +32,9 @@ jest.mock("./embedding.service", () => ({ EmbeddingService: class {} }));
 const DIMENSIONS = 1024;
 const QUERY = "fixed query";
 const PREFIX = "renovix-rag-docs";
+/** RNX-27: the model the embedding stub stands for, and another one whose chunks a search must never return. */
+const MODEL = "model-current";
+const OTHER_MODEL = "model-other";
 
 const unitVector = (similarity: number) => {
   const vector = new Array(DIMENSIONS).fill(0);
@@ -44,10 +48,11 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
   let prisma: PrismaService;
   let service: SystemKnowledgeService;
   let files: Record<string, { etag: string; body: string; size?: number }>;
+  const embedFixed = async (texts: string[]) =>
+    texts.map((text, i) => ({ embedding: unitVector(0.5), tokenCount: text.length + i }));
   const embedding = {
-    embed: jest.fn(async (texts: string[]) =>
-      texts.map((text, i) => ({ embedding: unitVector(0.5), tokenCount: text.length + i })),
-    ),
+    modelName: MODEL,
+    embed: jest.fn(embedFixed),
     embedSingle: jest.fn(async () => ({ embedding: unitVector(1), tokenCount: 2 })),
   };
 
@@ -75,6 +80,7 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
   beforeEach(async () => {
     await resetDatabase(prisma);
     jest.clearAllMocks();
+    embedding.embed.mockImplementation(embedFixed);
     files = {};
     mockS3Send.mockImplementation(async (command: { kind: string; input: { Key: string } }) => {
       if (command.kind === "list") {
@@ -98,6 +104,9 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
       FROM "knowledge_chunks" kc JOIN "knowledge_bases" kb ON kb.id = kc."knowledgeBaseId"
       WHERE kb.is_system = true ORDER BY kc.metadata->>'s3Key', (kc.metadata->>'chunkIndex')::int`;
 
+  /** The database clock, which stamps embedded_at (now()). */
+  const dbNow = async () => (await prisma.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`)[0].now;
+
   const expectedRows = (key: string, etag: string, body: string) =>
     chunkMarkdown(body, key).map((chunk, i) => ({
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
@@ -119,7 +128,7 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
 
     const actual = await service.sync();
 
-    expect(actual).toEqual({ synced: 2, unchanged: 0 });
+    expect(actual).toEqual({ synced: 2, unchanged: 0, skipped: false });
     expect(await prisma.knowledgeBase.findMany()).toEqual([
       expect.objectContaining({
         name: "Renovix AI System Knowledge",
@@ -150,7 +159,7 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
 
     const actual = await service.sync();
 
-    expect(actual).toEqual({ synced: 1, unchanged: 1 });
+    expect(actual).toEqual({ synced: 1, unchanged: 1, skipped: false });
     expect(await prisma.knowledgeBase.count()).toBe(1);
     expect(embedding.embed).toHaveBeenCalledTimes(1);
     const stored = await readSystemChunks();
@@ -165,8 +174,8 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
     const user = await createUser(prisma);
     const personal = await prisma.knowledgeBase.create({ data: { userId: user.id, name: "mine" } });
     await prisma.$executeRaw`
-      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, "tokenCount")
-      VALUES ('personal-1', ${personal.id}, 'mine', ${JSON.stringify({ s3Key: `${PREFIX}/a.md` })}::jsonb, 1)`;
+      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, "tokenCount", embedding_model, embedded_at)
+      VALUES ('personal-1', ${personal.id}, 'mine', ${JSON.stringify({ s3Key: `${PREFIX}/a.md` })}::jsonb, 1, ${MODEL}, now())`;
     files = { [`${PREFIX}/a.md`]: { etag: '"e1"', body: "# A\nalpha\n" } };
 
     await service.sync();
@@ -174,8 +183,66 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
     expect(await prisma.knowledgeChunk.findUnique({ where: { id: "personal-1" } })).not.toBeNull();
   });
 
+  it("RNX-27: sync stores the embedding service's model and the embedding time on every chunk", async () => {
+    files = { [`${PREFIX}/a.md`]: { etag: '"e1"', body: "# A\nalpha\n## A2\nmore alpha\n" } };
+    const before = await dbNow();
+
+    await service.sync();
+
+    const after = await dbNow();
+    const stored = await prisma.$queryRaw<{ embeddingModel: string; embeddedAt: Date }[]>`
+      SELECT embedding_model AS "embeddingModel", embedded_at AS "embeddedAt" FROM "knowledge_chunks"`;
+    expect(stored.map((c) => c.embeddingModel)).toEqual([MODEL, MODEL]);
+    expect(stored.every((c) => c.embeddedAt >= before && c.embeddedAt <= after)).toBe(true);
+  });
+
+  describe("RNX-27: concurrent syncs (startup, hourly, several instances)", () => {
+    /** Resolves once `condition` holds, polling the event loop. */
+    const waitUntil = async (condition: () => boolean) => {
+      for (let i = 0; i < 1000 && !condition(); i++) await new Promise((resolve) => setTimeout(resolve, 5));
+      if (!condition()) throw new Error("condition not reached");
+    };
+
+    it("two syncs at once: one runs, the other skips with one log line and no error; the chunks are one sync's worth", async () => {
+      const body = "# A\nalpha\n## A2\nmore alpha\n";
+      files = { [`${PREFIX}/a.md`]: { etag: '"e1"', body } };
+      let openGate: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => (openGate = resolve));
+      embedding.embed.mockImplementation(async (texts: string[]) => {
+        if (embedding.embed.mock.calls.length >= 2) openGate();
+        await gate;
+        return embedFixed(texts);
+      });
+      const logged = jest.spyOn(Logger.prototype, "log");
+
+      const first = service.sync();
+      await waitUntil(() => embedding.embed.mock.calls.length === 1);
+      const second = service.sync().finally(openGate);
+      const actual = await Promise.all([first, second]);
+
+      expect(actual).toEqual([
+        { synced: 1, unchanged: 0, skipped: false },
+        { synced: 0, unchanged: 0, skipped: true },
+      ]);
+      expect(embedding.embed).toHaveBeenCalledTimes(1);
+      expect(await readSystemChunks()).toHaveLength(chunkMarkdown(body, `${PREFIX}/a.md`).length);
+      expect(logged.mock.calls.filter(([line]) => String(line).includes("skipped"))).toHaveLength(1);
+      logged.mockRestore();
+    });
+
+    it("control: a sync after the first one finished runs (the lock ends with the first sync)", async () => {
+      files = { [`${PREFIX}/a.md`]: { etag: '"e1"', body: "# A\nalpha\n" } };
+      await service.sync();
+      files[`${PREFIX}/a.md`] = { etag: '"e2"', body: "# A\nbeta\n" };
+
+      const actual = await service.sync();
+
+      expect(actual).toEqual({ synced: 1, unchanged: 0, skipped: false });
+    });
+  });
+
   describe("searchSystemKB", () => {
-    const seedSystemBase = async (active = true) => {
+    const seedSystemBase = async (active = true, model = MODEL) => {
       const kb = await prisma.knowledgeBase.create({ data: { name: "sys", isSystem: true, active } });
       for (const [id, similarity] of [
         ["s75", 0.75],
@@ -186,17 +253,17 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
         ["s50", 0.5],
       ] as const) {
         await prisma.$executeRaw`
-          INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, embedding, "tokenCount")
-          VALUES (${id}, ${kb.id}, ${`system ${id}`}, ${`[${unitVector(similarity).join(",")}]`}::vector, 1)`;
+          INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, embedding, "tokenCount", embedding_model, embedded_at)
+          VALUES (${id}, ${kb.id}, ${`system ${id}`}, ${`[${unitVector(similarity).join(",")}]`}::vector, 1, ${model}, now())`;
       }
       await prisma.$executeRaw`
-        INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, "tokenCount")
-        VALUES ('no-vector', ${kb.id}, 'system no-vector', 1)`;
+        INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, "tokenCount", embedding_model, embedded_at)
+        VALUES ('no-vector', ${kb.id}, 'system no-vector', 1, ${MODEL}, now())`;
       const user = await createUser(prisma);
       const personal = await prisma.knowledgeBase.create({ data: { userId: user.id, name: "mine" } });
       await prisma.$executeRaw`
-        INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, embedding, "tokenCount")
-        VALUES ('personal', ${personal.id}, 'personal s99', ${`[${unitVector(0.99).join(",")}]`}::vector, 1)`;
+        INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, embedding, "tokenCount", embedding_model, embedded_at)
+        VALUES ('personal', ${personal.id}, 'personal s99', ${`[${unitVector(0.99).join(",")}]`}::vector, 1, ${MODEL}, now())`;
       return kb;
     };
 
@@ -225,6 +292,25 @@ describe("SystemKnowledgeService: sync storage and search (RX-137, test database
         "system s75",
         "system s65",
       ]);
+    });
+
+    it("RNX-27 negative: system chunks of another model are not returned (no error)", async () => {
+      await seedSystemBase(true, OTHER_MODEL);
+
+      const actual = await service.searchSystemKB(QUERY, { topK: 10, threshold: 0 });
+
+      expect(actual).toEqual([]);
+    });
+
+    it("RNX-27: with chunks of both models, only the current model's chunks are returned", async () => {
+      const kb = await seedSystemBase(true, OTHER_MODEL);
+      await prisma.$executeRaw`
+        INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, embedding, "tokenCount", embedding_model, embedded_at)
+        VALUES ('current', ${kb.id}, 'system current s72', ${`[${unitVector(0.72).join(",")}]`}::vector, 1, ${MODEL}, now())`;
+
+      const actual = await service.searchSystemKB(QUERY);
+
+      expect(actual).toEqual([{ content: "system current s72", similarity: expect.closeTo(0.72, 5) }]);
     });
 
     it("an inactive system base: no results and no embedding", async () => {

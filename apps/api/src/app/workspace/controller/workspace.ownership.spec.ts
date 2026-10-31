@@ -52,7 +52,7 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
         { provide: EmailJobService, useValue: {} },
         {
           provide: EmbeddingService,
-          useValue: { embed: async (texts: string[]) => texts.map(zero) },
+          useValue: { modelName: "test-model", embed: async (texts: string[]) => texts.map(zero) },
         },
         { provide: S3Service, useValue: {} },
       ],
