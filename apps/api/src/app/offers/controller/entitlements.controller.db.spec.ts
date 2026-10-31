@@ -86,11 +86,11 @@ describe("GET /entitlements/me (RNX-76 B3b, test database)", () => {
     });
   });
 
-  it("two packages: the aggregated values (largest limits, any API access, union of channels and tiers)", async () => {
+  it("two packages: the aggregated values (largest limits, any API access, any collaboration, union of channels and tiers)", async () => {
     const inputUser = await createUser(prisma);
     const otherUser = await createUser(prisma);
     await createPackageSnapshot(prisma, { userId: inputUser.id, name: "Starter", displayOrder: 1, maxAgents: 3, maxConnectedTools: 1, allowedChannels: ["web"], allowedTiers: ["standard"] });
-    await createPackageSnapshot(prisma, { userId: inputUser.id, name: "Pro", displayOrder: 2, maxAgents: 10, maxConnectedTools: 5, apiAccess: true, allowedChannels: ["whatsapp"], allowedTiers: ["premium"] });
+    await createPackageSnapshot(prisma, { userId: inputUser.id, name: "Pro", displayOrder: 2, maxAgents: 10, maxConnectedTools: 5, apiAccess: true, allowedChannels: ["whatsapp"], allowedTiers: ["premium"], collaborationEnabled: true });
     await createPackageSnapshot(prisma, { userId: otherUser.id, name: "Max", displayOrder: 3, maxAgents: 20 });
 
     const actual = await getMine(inputUser);
@@ -102,7 +102,7 @@ describe("GET /entitlements/me (RNX-76 B3b, test database)", () => {
       apiAccess: true,
       channels: ["web", "whatsapp"],
       tiers: ["standard", "premium"],
-      collaborationEnabled: false,
+      collaborationEnabled: true,
       nextPackage: "Max",
     });
   });
