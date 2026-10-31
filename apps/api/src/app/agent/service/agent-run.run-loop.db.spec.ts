@@ -22,7 +22,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -115,7 +115,7 @@ describe("RNX-16: agent run loop scenarios (test database, fake provider, real t
   /** Bob, subscribed and funded with 1 credit, with his own active agent (with the `toolTypes` tool rows). */
   const seed = async (toolTypes: string[] = []) => {
     const bob = await createUser(prisma);
-    await createSubscription(prisma, { userId: bob.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: bob.id });
     await fundPaidWallet(prisma, bob.id, "1");
     const agent = await createAgent(prisma, { userId: bob.id, status: "active" });
     for (const toolType of toolTypes) await prisma.agentTool.create({ data: { agentId: agent.id, toolType } });

@@ -16,7 +16,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { budgetStopMessage } from "../utils/budget-stop-message";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { setRunCap } from "../../../../test/run-cap";
@@ -108,9 +108,8 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
 
   /** Bob, subscribed and funded with `credits` (none for "0"), with an agent linked to his own helper (RNX-118). */
   const seed = async (credits: string) => {
-    const plan = await createPlan(prisma);
     const bob = await createUser(prisma);
-    await createSubscription(prisma, { userId: bob.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: bob.id });
     if (new Decimal(credits).greaterThan(0)) await fundPaidWallet(prisma, bob.id, credits);
     const parent = await createAgent(prisma, { userId: bob.id, status: "active" });
     const sub = await createAgent(prisma, {

@@ -593,6 +593,10 @@ model InvitationCode {
   plan            SubscriptionPlan? @relation(fields: [planId], references: [id])
   durationDays    Int?      @map("duration_days") // How many days the plan is granted
 
+  // RNX-251: the package version a "subscription" or "both" code grants (a purchase snapshot with paymentId null).
+  packageVersionId String?         @map("package_version_id")
+  packageVersion   PackageVersion? @relation(fields: [packageVersionId], references: [id], onDelete: Restrict)
+
   // Usage limits
   maxRedemptions  Int       @default(1) @map("max_redemptions")
   timesRedeemed   Int       @default(0) @map("times_redeemed")
@@ -609,6 +613,7 @@ model InvitationCode {
 
   @@index([code])
   @@index([isActive, expiresAt])
+  @@index([packageVersionId])
   @@map("invitation_codes")
 }
 
@@ -1187,6 +1192,7 @@ model PackageVersion {
   createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz()
   purchases         PurchaseSnapshot[]
   paymentOrders     PaymentOrder[]
+  invitationCodes   InvitationCode[]
 
   @@unique([packageId, versionNumber])
   @@map("package_versions")
@@ -1304,7 +1310,8 @@ model PurchaseSnapshot {
   allowedChannels    String[]          @map("allowed_channels")
   allowedTiers       String[]          @map("allowed_tiers")
   collaborationEnabled Boolean?        @map("collaboration_enabled")
-  /// The payment it was bought with (RNX-35: the provider reference); unique, so one payment has one snapshot. Null for a code.
+  /// The payment it was bought with (RNX-35: the provider reference); unique, so one payment has one snapshot. Null for a
+  /// code: a package snapshot with paymentId null is a code grant (RNX-251), priced 0 and granting no credits itself.
   paymentId          String?           @unique @map("payment_id")
   createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz()
 

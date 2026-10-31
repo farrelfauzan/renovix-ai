@@ -19,7 +19,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { setRunCap } from "../../../../test/run-cap";
@@ -117,7 +117,7 @@ describe("RNX-200: the agent chat route refuses before the SSE headers (Fastify,
   /** A user (subscribed unless `subscribed` is false) funded with `credits` (none for "0"), with an agent and a session cookie. */
   const seed = async ({ credits, subscribed = true }: { credits: string; subscribed?: boolean }) => {
     const user = await createUser(prisma);
-    if (subscribed) await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    if (subscribed) await createPackageSnapshot(prisma, { userId: user.id });
     if (credits !== "0") await fundPaidWallet(prisma, user.id, credits);
     const agent = await createAgent(prisma, { userId: user.id });
     const session = asSessionUser(user);

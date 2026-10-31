@@ -1074,7 +1074,7 @@ function SubscriptionPricing() {
 
       setRedeemResult({
         success: true,
-        message: `Code redeemed! ${res.creditsGranted ? `$${res.creditsGranted} credit added.` : ""} ${res.planGranted ? `${res.planGranted} plan activated for ${res.daysGranted} days.` : ""}`.trim(),
+        message: `Code redeemed! ${res.creditsGranted ? `$${res.creditsGranted} credit added.` : ""} ${res.planGranted ? `${res.planGranted} package activated.` : ""}`.trim(),
       });
       setCode("");
       // Reload the page after short delay to reflect new subscription

@@ -172,7 +172,7 @@ export function BillingSettings() {
               )}
               {result.success && result.planName && (
                 <p className="text-sm text-muted-foreground">
-                  {result.planName} plan activated
+                  {result.planName} package activated
                 </p>
               )}
             </div>

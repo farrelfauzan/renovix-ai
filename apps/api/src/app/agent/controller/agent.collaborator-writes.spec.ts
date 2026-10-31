@@ -13,7 +13,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { withdrawCollaboration } from "../../../../test/withdraw-collaboration";
 
 // RNX-260 (119b; D259, PRD 10 R14): only the workspace owner changes an agent. A collaborator (an active member of an
@@ -79,11 +79,9 @@ describe("RNX-260: agent writes are the workspace owner's (Fastify, test databas
    * member row. Everyone is subscribed.
    */
   const setup = async () => {
-    const plan = await createPlan(prisma, { slug: "enterprise", maxAgents: 50, maxWorkspaceUsers: 100 });
     const [owner, collaborator, staleAdmin, outsider] = await Promise.all([1, 2, 3, 4].map(() => createUser(prisma)));
-    for (const user of [owner, collaborator, staleAdmin, outsider]) {
-      await createSubscription(prisma, { userId: user.id, planId: plan.id });
-    }
+    // RNX-251: "subscribed" is a package snapshot.
+    for (const user of [collaborator, staleAdmin, outsider]) await createPackageSnapshot(prisma, { userId: user.id });
     // RNX-76 B2b: deploying a channel needs a package that grants it. B3 (D297): it enables collaboration too.
     await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
     const workspace = await createWorkspace(prisma, { ownerId: owner.id });
@@ -235,8 +233,6 @@ describe("RNX-260: agent writes are the workspace owner's (Fastify, test databas
         where: { workspaceId_userId: { workspaceId: seeded.workspace.id, userId: seeded.collaborator.id } },
         data: { status: "removed" },
       });
-      const pro = await createPlan(prisma, { slug: "pro" });
-      await prisma.userSubscription.update({ where: { userId: seeded.owner.id }, data: { planId: pro.id } });
       withdrawCollaboration(seeded.owner.id);
 
       const removed = await call(seeded, seeded.collaborator, "PATCH", (s) => `/agents/${s.a.id}`, () => ({ systemPrompt: "X" }));

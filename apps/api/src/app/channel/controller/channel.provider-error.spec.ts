@@ -23,7 +23,7 @@ import { HealthController } from "../../health/controller/health.controller";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import {
   blockOutbound,
   OutboundBlocker,
@@ -203,7 +203,7 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     primary.respond((_r, res) => sendJson(res, 400, { error: { message: "unknown model" } }));
     const user = await createUser(prisma);
     // RNX-119: channel chat applies the D192 subscription gate to the runner.
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });
@@ -243,7 +243,7 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
     primary.respond((_r, res) => sendJson(res, status, { error: { message: `Incorrect API key provided: ${marker} ...sk-or-v1-FAKE1234`, code: status } }));
     const user = await createUser(prisma);
     // RNX-119: channel chat applies the D192 subscription gate to the runner.
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     const channel = await prisma.channel.create({ data: { userId: user.id, name: "Room" } });

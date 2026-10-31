@@ -15,8 +15,8 @@ type CodeRowProps = {
 const BUTTON = "rounded-rx border border-rx-line px-3 py-1 text-sm";
 
 /** What a code grants, as one line. */
-function describeGrant({ creditAmount, plan, durationDays }: InvitationCode): string {
-  return [creditAmount && `${Number(creditAmount)} credits`, plan && `plan ${plan.name}${durationDays ? ` for ${durationDays} days` : ""}`].filter(Boolean).join(" + ");
+function describeGrant({ creditAmount, packageVersion }: InvitationCode): string {
+  return [creditAmount && `${Number(creditAmount)} credits`, packageVersion && `package ${packageVersion.package.name}`].filter(Boolean).join(" + ");
 }
 
 /** One invitation code with its use, a button to see its redemptions and, while active, one to deactivate it. */

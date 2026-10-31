@@ -3,7 +3,7 @@ export type CodeInput = {
   readonly code?: string;
   readonly type: "topup" | "subscription" | "both";
   readonly creditAmount?: number;
-  readonly planId?: string;
-  readonly durationDays?: number;
+  /** RNX-251: the package version a "subscription" or "both" code grants (permanent, so no days). */
+  readonly packageVersionId?: string;
   readonly maxRedemptions: number;
 };

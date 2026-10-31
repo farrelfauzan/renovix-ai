@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
 import { WorkspaceMemberRepository } from "../../workspace/repository/workspace-member.repository";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
-import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import type { RunScope } from "../types/run-scope";
 import type { RunPolicyAgent } from "../types/run-policy-agent";
 import type { RunDecision } from "../types/run-decision";
@@ -25,7 +25,7 @@ export class AgentRunPolicyService {
     private readonly workspaces: WorkspaceRepository,
     private readonly workspaceMembers: WorkspaceMemberRepository,
     private readonly quotaService: WorkspaceQuotaService,
-    private readonly subscriptions: UserSubscriptionRepository,
+    private readonly entitlements: EntitlementService,
   ) {}
 
   /** Where this runner's run of this agent happens, or null when they may not run it. */
@@ -53,11 +53,12 @@ export class AgentRunPolicyService {
   }
 
   /**
-   * The agent subscription gate (D192, D202 item 8): 403 unless the runner has an active subscription. A read only:
-   * no counter is written (RX-22b, D190); credits are charged through the run's reservation.
+   * The agent subscription gate (D192, D202 item 8): 403 unless the runner has a package (RNX-251: a purchase
+   * snapshot, bought or granted by a code). A read only: no counter is written (RX-22b, D190); credits are charged
+   * through the run's reservation.
    */
   async assertActiveSubscription(runnerUserId: string): Promise<void> {
-    if (!(await this.hasActiveSubscription(runnerUserId))) {
+    if (!(await this.hasPackage(runnerUserId))) {
       throw new ForbiddenException("Active subscription required to use AI Agents.");
     }
   }
@@ -67,7 +68,7 @@ export class AgentRunPolicyService {
     const scope = await this.findRunScope(agent, runnerUserId);
     if (!scope) return { allowed: false, reason: "not_runnable" };
     if (await this.isWorkspaceClosed(agent.workspaceId)) return { allowed: false, reason: "workspace_closed" };
-    if (!(await this.hasActiveSubscription(runnerUserId))) return { allowed: false, reason: "no_subscription" };
+    if (!(await this.hasPackage(runnerUserId))) return { allowed: false, reason: "no_subscription" };
     return { allowed: true, scope };
   }
 
@@ -89,8 +90,8 @@ export class AgentRunPolicyService {
     return CLOSED_WORKSPACE_STATUSES.includes(workspace?.status ?? "");
   }
 
-  private async hasActiveSubscription(userId: string): Promise<boolean> {
-    const subscription = await this.subscriptions.findSubscriptionByUserId(userId);
-    return subscription?.status === "active";
+  /** RNX-251: a package snapshot (EntitlementService: null is no package), not a user_subscriptions row. */
+  private async hasPackage(userId: string): Promise<boolean> {
+    return (await this.entitlements.getForUser(userId)) !== null;
   }
 }

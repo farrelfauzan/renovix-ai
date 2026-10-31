@@ -9,7 +9,7 @@ import { EmailJobService } from "../../email/service/email-job.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // RNX-117 (D219, second decision, option a): the default workspace is hidden from the workspace routes.
@@ -94,8 +94,6 @@ describe("RNX-117: the default workspace is hidden from the workspace routes (Fa
   const setup = async () => {
     const owner = await createUser(prisma);
     const bob = await createUser(prisma);
-    const enterprise = await createPlan(prisma, { slug: "enterprise", maxWorkspaceUsers: 100 });
-    await createSubscription(prisma, { userId: owner.id, planId: enterprise.id });
     // RNX-76 B3 (D297): collaboration comes from the owner's package snapshot, not the plan.
     await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
     const agent = await createAgent(prisma, { userId: owner.id });

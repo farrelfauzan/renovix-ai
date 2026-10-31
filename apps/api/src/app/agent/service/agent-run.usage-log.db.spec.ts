@@ -12,7 +12,7 @@ import { AgentRunMeterService } from "./agent-run-meter.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import type { PrismaService } from "../../prisma/prisma.service";
 import { createResolvableModel } from "../../../../test/provider-model";
@@ -106,9 +106,8 @@ describe("RX-21: usage_logs.cost of an agent run (test database)", () => {
       tier: input.tier,
     });
     await registry.refresh();
-    const plan = await createPlan(prisma, { maxTokensPerMonth: 1_000_000_000n });
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "10");
     const agent = await createAgent(prisma, { userId: user.id });
     fake.enqueue({ content: "Hello", usage: { prompt_tokens: input.promptTokens, completion_tokens: input.completionTokens } });

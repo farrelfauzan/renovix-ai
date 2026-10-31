@@ -11,7 +11,7 @@ import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-defaul
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { withdrawCollaboration } from "../../../../test/withdraw-collaboration";
 import { asSessionUser } from "../../../../test/as-session-user";
 
@@ -97,8 +97,6 @@ describe("RNX-206: workspace membership on the MCP credential and web search sta
         { workspaceId, userId: removedMember.id, role: "member", status: "removed", joinedAt: new Date() },
       ],
     });
-    const enterprise = await createPlan(prisma, { slug: "enterprise" });
-    await createSubscription(prisma, { userId: owner.id, planId: enterprise.id });
     // RNX-76 B3 (D297): collaboration comes from the owner's package snapshot, not the plan.
     await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
   });
@@ -137,8 +135,6 @@ describe("RNX-206: workspace membership on the MCP credential and web search sta
     [
       "AC 4: an active member whose workspace owner's plan has no collaboration (Starter)",
       async () => {
-        const starter = await createPlan(prisma, { slug: "starter" });
-        await prisma.userSubscription.update({ where: { userId: owner.id }, data: { planId: starter.id } });
         withdrawCollaboration(owner.id);
         return { actor: member, wsId: workspaceId };
       },

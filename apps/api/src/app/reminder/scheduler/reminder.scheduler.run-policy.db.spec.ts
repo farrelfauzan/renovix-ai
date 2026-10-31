@@ -14,7 +14,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -79,10 +79,9 @@ describe("RNX-119: the run policy at reminder fire time (test database, fake pro
   /** A user on a plan with this slug; subscribed (active) and funded with 1 credit unless told otherwise. */
   const newUser = async ({ planSlug, subscribed = true }: { planSlug?: string; subscribed?: boolean } = {}) => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma, planSlug ? { slug: planSlug, maxWorkspaceUsers: 100 } : {});
-    await createSubscription(prisma, { userId: user.id, planId: plan.id, status: subscribed ? "active" : "canceled" });
-    // RNX-76 B3 (D297): an "enterprise" user collaborates through a package snapshot, not the plan.
-    if (planSlug === "enterprise") await createPackageSnapshot(prisma, { userId: user.id, collaborationEnabled: true });
+    // RNX-251: "subscribed" is a package snapshot (the run gate reads it); RNX-76 B3 (D297): an "enterprise" user's
+    // snapshot also enables collaboration. An unsubscribed user has no package.
+    if (subscribed) await createPackageSnapshot(prisma, { userId: user.id, collaborationEnabled: planSlug === "enterprise" });
     await fundPaidWallet(prisma, user.id, "1");
     return user;
   };
@@ -133,6 +132,8 @@ describe("RNX-119: the run policy at reminder fire time (test database, fake pro
 
   it("a collaborator's reminder fires and reserves on the collaborator's own paid wallet (control)", async () => {
     const { owner, runner, reminder } = await seed();
+    // RNX-251: the runner's package is a purchase snapshot; no user_subscriptions row exists.
+    expect(await prisma.userSubscription.count()).toBe(0);
     fake.enqueue({ content: "Here is your summary", usage: { prompt_tokens: 100, completion_tokens: 10 } });
 
     await scheduler.processReminders();

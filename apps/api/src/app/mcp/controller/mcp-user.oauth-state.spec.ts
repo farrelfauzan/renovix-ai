@@ -10,7 +10,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 import { ensureDefaultWorkspace } from "../../workspace/repository/ensure-default-workspace";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPackageSnapshot, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { withdrawCollaboration } from "../../../../test/withdraw-collaboration";
 import { asSessionUser } from "../../../../test/as-session-user";
 
@@ -88,8 +88,6 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
         { workspaceId, userId: member.id, role: "member", status: "active", joinedAt: new Date() },
       ],
     });
-    const enterprise = await createPlan(prisma, { slug: "enterprise" });
-    await createSubscription(prisma, { userId: owner.id, planId: enterprise.id });
     // RNX-76 B3 (D297): collaboration comes from the owner's package snapshot, not the plan.
     await createPackageSnapshot(prisma, { userId: owner.id, collaborationEnabled: true });
     markers = [STATE_SECRET, CONFIG.GOOGLE_OAUTH_CLIENT_SECRET];
@@ -283,16 +281,6 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
   });
 
   describe("RNX-206: the workspace check of WorkspaceService.requireMembership", () => {
-    /**
-     * Moves W's owner to a plan without collaboration (slug `slug`, not "enterprise"); RNX-76 B3 (D297): and their
-     * packages no longer enable collaboration, which is what decides it now.
-     */
-    const moveOwnerToPlan = async (slug: string) => {
-      const plan = await createPlan(prisma, { slug });
-      await prisma.userSubscription.update({ where: { userId: owner.id }, data: { planId: plan.id } });
-      withdrawCollaboration(owner.id);
-    };
-
     const expectStartRefused = async (res: { statusCode: number; body: string; headers: Record<string, unknown> }, status: number, message: string) => {
       expect({ status: res.statusCode, message: JSON.parse(res.body).message }).toEqual({ status, message });
       expect(res.body).not.toContain("authUrl");
@@ -306,8 +294,9 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
 
     it.each(["starter", "pro"])(
       "AC 2: an active member of a %s workspace not their own is refused with the collaboration message, no state",
-      async (slug) => {
-        await moveOwnerToPlan(slug);
+      async () => {
+        // RNX-76 B3 (D297), RNX-251: the owner's packages no longer enable collaboration (no plan decides it).
+        withdrawCollaboration(owner.id);
         await expectStartRefused(await start(member), 403, "Workspace collaboration requires an Enterprise plan.");
       },
     );
@@ -319,7 +308,7 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
 
     it("AC 3: started while allowed, W's owner now on a plan without collaboration: error, no code exchange, nothing stored", async () => {
       const state = await startFlow(member);
-      await moveOwnerToPlan("starter");
+      withdrawCollaboration(owner.id);
       const res = await callback(state);
       expect(oauthResult(res)).toBe("error");
       expect(redirectMessage(res)).toBe("Workspace collaboration requires an Enterprise plan.");

@@ -2,14 +2,16 @@ import { BadRequestException, ConflictException, ForbiddenException } from "@nes
 import { TestingModule } from "@nestjs/testing";
 import { CodesService } from "./codes.service";
 import { CodeRedemptionRepository } from "../repository/code-redemption.repository";
-import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createPackageSnapshot, createPlan, createSubscription, createUser } from "../../../../test/factories";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { CreditLedgerService } from "../../billing/service/credit-ledger.service";
 import { PackageOwnershipService } from "../../billing/service/package-ownership.service";
+import { ExchangeRateService } from "../../exchange-rates/service/exchange-rate.service";
+import { OffersModule } from "../../offers/offers.module";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -20,30 +22,49 @@ describe("CodesService.redeemCode (test database)", () => {
   let service: CodesService;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ providers: [CodesService, CreditLedgerService, PackageOwnershipService, PlatformSettingsService] }));
+    // RNX-251: OffersModule gives PurchaseSnapshotService (a package code records a snapshot).
+    ({ moduleRef, prisma } = await createTestModule({ imports: [OffersModule], providers: [CodesService, CreditLedgerService, PackageOwnershipService, PlatformSettingsService] }));
     service = moduleRef.get(CodesService);
   });
 
   beforeEach(async () => {
     await resetDatabase(prisma);
     await moduleRef.get(PlatformSettingsService).saveSetting({ name: "invitationGrantCredits", value: 5, author: { changedBy: "test", reason: "legacy code fixture" } });
+    // RNX-251: a redemption never fetches a rate; any fetch fails loudly.
+    jest.spyOn(globalThis, "fetch").mockRejectedValue(new Error("RNX-251 test: no network"));
   });
 
   afterEach(() => jest.restoreAllMocks());
 
   afterAll(() => moduleRef?.close());
 
-  const subscriptionCode = (planId: string, code = "PERF-TEST-0001") =>
+  /** RNX-251: a listed package `name` with version 1 (these limits): what a package code names. */
+  const createVersion = async (name = "Pro", limits: { maxAgents?: number; collaborationEnabled?: boolean } = {}) => {
+    const pkg = await prisma.package.create({ data: { name, displayOrder: name === "Starter" ? 1 : 2, active: true, visible: true } });
+    return prisma.packageVersion.create({
+      data: {
+        packageId: pkg.id, versionNumber: 1, priceUsdCents: 1000, creditsGranted: 100, billing: "one_time", maxAgents: limits.maxAgents ?? 5,
+        maxConnectedTools: 2, apiAccess: true, allowedChannels: ["web", "whatsapp"], allowedTiers: ["standard", "advanced"],
+        collaborationEnabled: limits.collaborationEnabled ?? false, createdBy: "test", reason: "RNX-251",
+      },
+    });
+  };
+
+  const subscriptionCode = (packageVersionId: string, code = "PERF-TEST-0001") =>
     prisma.invitationCode.create({
-      data: { code, type: "subscription", planId, durationDays: 30 },
+      data: { code, type: "subscription", packageVersionId },
     });
 
-  /** A user with a package (an active subscription): RNX-35 (D36), only such an account redeems a credits-only code. */
+  /** A user with a package (RNX-251: a package snapshot): RNX-35 (D36), only such an account redeems a credits-only code. */
   const createPackageUser = async () => {
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     return user;
   };
+
+  /** The user's package snapshots (RNX-251: a code grant has paymentId null). */
+  const snapshotsOf = (userId: string) =>
+    prisma.purchaseSnapshot.findMany({ where: { buyerUserId: userId, packageVersionId: { not: null } }, orderBy: { createdAt: "asc" } });
 
   const topupCode = (maxRedemptions: number, code = "PERF-TOPUP-0001") =>
     prisma.invitationCode.create({
@@ -81,56 +102,6 @@ describe("CodesService.redeemCode (test database)", () => {
       .mockImplementationOnce(heldFindRedemption as typeof findRedemption);
   };
 
-  /** Holds every caller right after it read the user's subscription (inside its transaction) until `callers` have read it. */
-  const holdCallersAfterSubscriptionRead = (callers: number) => {
-    const repository = moduleRef.get(UserSubscriptionRepository);
-    const findSubscription = repository.findSubscriptionByUserId.bind(repository);
-    let arrived = 0;
-    let releaseAll!: () => void;
-    const allArrived = new Promise<void>((resolve) => (releaseAll = resolve));
-    const heldFindSubscription = async (...args: Parameters<typeof findSubscription>) => {
-      const subscription = await findSubscription(...args);
-      arrived += 1;
-      if (arrived === callers) releaseAll();
-      await allArrived;
-      return subscription;
-    };
-    jest
-      .spyOn(repository, "findSubscriptionByUserId")
-      .mockImplementation(heldFindSubscription as typeof findSubscription);
-  };
-
-  /**
-   * Holds both callers at `createSubscription` (each has read no subscription, neither has written) until both are
-   * waiting, then lets the caller granting `firstPlanId` write first and the other once that write has returned.
-   */
-  const holdSubscriptionCreates = (firstPlanId: string) => {
-    const repository = moduleRef.get(UserSubscriptionRepository);
-    const createSubscription = repository.createSubscription.bind(repository);
-    let arrived = 0;
-    let releaseAll!: () => void;
-    const allArrived = new Promise<void>((resolve) => (releaseAll = resolve));
-    let firstWritten!: () => void;
-    const firstWrite = new Promise<void>((resolve) => (firstWritten = resolve));
-    const heldCreateSubscription = async (...args: Parameters<typeof createSubscription>) => {
-      arrived += 1;
-      if (arrived === 2) releaseAll();
-      await allArrived;
-      if (args[1].planId !== firstPlanId) {
-        await firstWrite;
-        return createSubscription(...args);
-      }
-      try {
-        return await createSubscription(...args);
-      } finally {
-        firstWritten();
-      }
-    };
-    jest
-      .spyOn(repository, "createSubscription")
-      .mockImplementation(heldCreateSubscription as typeof createSubscription);
-  };
-
   /** The user's paid wallet balance on the credit ledger (RX-22), 0 when the user has no account yet. */
   const paidBalanceOf = async (userId: string) =>
     (await prisma.creditAccount.findUnique({ where: { userId_wallet: { userId, wallet: "paid" } } }))?.balance.toNumber() ?? 0;
@@ -149,6 +120,7 @@ describe("CodesService.redeemCode (test database)", () => {
       balance: await paidBalanceOf(userId),
       ledgerRows: await ledgerEntryCount(userId),
       subscription: user.subscription,
+      snapshots: await prisma.purchaseSnapshot.count({ where: { buyerUserId: userId } }),
       redemptions: await prisma.codeRedemption.count({ where: { codeId, userId } }),
       timesRedeemed: code.timesRedeemed,
     };
@@ -162,10 +134,10 @@ describe("CodesService.redeemCode (test database)", () => {
 
   it("RX-22: a redeemed code grants into the credit ledger (credits-only code: bonus; package code: plan_grant)", async () => {
     const user = await createPackageUser();
-    const plan = await createPlan(prisma, { slug: "pro" });
+    const version = await createVersion("Pro");
     const topup = await topupCode(1);
     const both = await prisma.invitationCode.create({
-      data: { code: "PERF-BOTH-0009", type: "both", creditAmount: 10, planId: plan.id, durationDays: 30 },
+      data: { code: "PERF-BOTH-0009", type: "both", creditAmount: 10, packageVersionId: version.id },
     });
 
     await service.redeemCode(user.id, topup.code);
@@ -199,13 +171,12 @@ describe("CodesService.redeemCode (test database)", () => {
 
   it("RNX-172 regression: a subscription code carrying metadata creditAmount grants no bonus", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma);
+    const version = await createVersion("Pro");
     const code = await prisma.invitationCode.create({
       data: {
         code: "PERF-SUB-CREDIT-0001",
         type: "subscription",
-        planId: plan.id,
-        durationDays: 30,
+        packageVersionId: version.id,
         creditAmount: 100,
         maxRedemptions: 1,
       },
@@ -213,16 +184,16 @@ describe("CodesService.redeemCode (test database)", () => {
 
     await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({
       creditsGranted: null,
-      planGranted: plan.slug,
+      planGranted: "Pro",
     });
     expect(await prisma.creditLedgerEntry.count()).toBe(0);
   });
 
   it.each(["topup", "both"] as const)("RNX-172 control: a %s code with null creditAmount uses the setting", async (type) => {
     const user = await createPackageUser();
-    const plan = type === "both" ? await createPlan(prisma) : null;
+    const version = type === "both" ? await createVersion("Pro") : null;
     const code = await prisma.invitationCode.create({
-      data: { code: `PERF-NULL-${type}`, type, creditAmount: null, maxRedemptions: 1, planId: plan?.id ?? null, durationDays: plan ? 30 : null },
+      data: { code: `PERF-NULL-${type}`, type, creditAmount: null, maxRedemptions: 1, packageVersionId: version?.id ?? null },
     });
 
     await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({ creditsGranted: 5 });
@@ -256,7 +227,7 @@ describe("CodesService.redeemCode (test database)", () => {
 
     await expect(redeem).rejects.toBeInstanceOf(ForbiddenException);
     await expect(redeem).rejects.toThrow("A credits-only code can be redeemed only by an account with a package");
-    expect(await grantsOf(user.id, code.id)).toEqual({ balance: 0, ledgerRows: 0, subscription: null, redemptions: 0, timesRedeemed: 0 });
+    expect(await grantsOf(user.id, code.id)).toEqual({ balance: 0, ledgerRows: 0, subscription: null, snapshots: 0, redemptions: 0, timesRedeemed: 0 });
   });
 
   it("RNX-35 (D36): an account with a bought package (a package purchase snapshot, no subscription) may redeem a credits-only code", async () => {
@@ -277,9 +248,9 @@ describe("CodesService.redeemCode (test database)", () => {
   // redemption itself still succeeds.
   it("RX-22: a code with 0 credits is redeemed but writes no ledger entry", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma, { slug: "pro" });
+    const version = await createVersion("Pro");
     const zero = await prisma.invitationCode.create({
-      data: { code: "PERF-BOTH-0010", type: "both", creditAmount: 0, planId: plan.id, durationDays: 30 },
+      data: { code: "PERF-BOTH-0010", type: "both", creditAmount: 0, packageVersionId: version.id },
     });
 
     await service.redeemCode(user.id, zero.code);
@@ -291,15 +262,15 @@ describe("CodesService.redeemCode (test database)", () => {
 
   it("RX-147: lets two users redeem a multi-use credit code, one ledger row each", async () => {
     const [userA, userB] = [await createUser(prisma), await createUser(prisma)];
-    const plan = await createPlan(prisma, { slug: "pro" });
+    const version = await createVersion("Pro");
     const code = await prisma.invitationCode.create({
-      data: { code: "PERF-BOTH-0003", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30, maxRedemptions: 3 },
+      data: { code: "PERF-BOTH-0003", type: "both", creditAmount: 25, packageVersionId: version.id, maxRedemptions: 3 },
     });
 
     await service.redeemCode(userA.id, code.code);
     const resB = await service.redeemCode(userB.id, code.code);
 
-    expect(resB).toMatchObject({ success: true, creditsGranted: 25, planGranted: "pro" });
+    expect(resB).toMatchObject({ success: true, creditsGranted: 25, planGranted: "Pro" });
     for (const user of [userA, userB]) {
       expect(await balanceAndLedger(user.id)).toEqual({ balance: 25, ledgerSum: 25 });
       expect(await ledgerEntryCount(user.id)).toBe(1);
@@ -388,9 +359,9 @@ describe("CodesService.redeemCode (test database)", () => {
 
   it("RX-181: refuses a code deactivated after the pre-checks with the deactivated 400 and grants nothing", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma);
+    const version = await createVersion("Pro");
     const code = await prisma.invitationCode.create({
-      data: { code: "PERF-BOTH-0181", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30, maxRedemptions: 3 },
+      data: { code: "PERF-BOTH-0181", type: "both", creditAmount: 25, packageVersionId: version.id, maxRedemptions: 3 },
     });
     changeCodeAfterPreChecks(() => prisma.invitationCode.update({ where: { id: code.id }, data: { isActive: false } }));
 
@@ -402,6 +373,7 @@ describe("CodesService.redeemCode (test database)", () => {
       balance: 0,
       ledgerRows: 0,
       subscription: null,
+      snapshots: 0,
       redemptions: 0,
       timesRedeemed: 0,
     });
@@ -409,9 +381,9 @@ describe("CodesService.redeemCode (test database)", () => {
 
   it("RX-181: refuses a code that expired after the pre-checks with the expired 400 and grants nothing", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma);
+    const version = await createVersion("Pro");
     const code = await prisma.invitationCode.create({
-      data: { code: "PERF-BOTH-0182", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30, maxRedemptions: 3 },
+      data: { code: "PERF-BOTH-0182", type: "both", creditAmount: 25, packageVersionId: version.id, maxRedemptions: 3 },
     });
     changeCodeAfterPreChecks(() =>
       prisma.invitationCode.update({ where: { id: code.id }, data: { expiresAt: new Date(Date.now() - DAY) } }),
@@ -425,6 +397,7 @@ describe("CodesService.redeemCode (test database)", () => {
       balance: 0,
       ledgerRows: 0,
       subscription: null,
+      snapshots: 0,
       redemptions: 0,
       timesRedeemed: 0,
     });
@@ -449,137 +422,194 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(await balanceAndLedger(user.id)).toEqual({ balance: 0, ledgerSum: 0 });
   });
 
-  it("RX-181: a user with no subscription redeeming two plan codes at once gets one 201 and one 409, never 500; the refused code is not used up and can be redeemed later", async () => {
+  // RNX-251 AC (c): the RX-181 claim serializes redemptions of one code; one account redeeming one package code twice
+  // at the same moment gets one snapshot and one 409.
+  it("RNX-251: one account redeeming the same package code twice at the same moment: exactly one snapshot, the other 409", async () => {
     const user = await createUser(prisma);
-    const starter = await createPlan(prisma, { slug: "starter" });
-    const pro = await createPlan(prisma, { slug: "pro" });
-    const first = await prisma.invitationCode.create({
-      data: { code: "PERF-SUBS-0181", type: "subscription", planId: starter.id, durationDays: 30 },
+    const version = await createVersion("Pro");
+    const code = await prisma.invitationCode.create({
+      data: { code: "PERF-SUBS-0181", type: "subscription", packageVersionId: version.id, maxRedemptions: 3 },
     });
-    const refused = await prisma.invitationCode.create({
-      data: { code: "PERF-BOTH-0183", type: "both", creditAmount: 25, planId: pro.id, durationDays: 45 },
+    holdCallersAtRedemptionCheck(2);
+
+    const results = await Promise.allSettled([
+      service.redeemCode(user.id, code.code),
+      service.redeemCode(user.id, code.code),
+    ]);
+
+    const refused = results.filter((r) => r.status === "rejected");
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect((refused[0] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
+    expect(await snapshotsOf(user.id)).toHaveLength(1);
+    expect(await grantsOf(user.id, code.id)).toMatchObject({ subscription: null, snapshots: 1, redemptions: 1, timesRedeemed: 1 });
+  });
+
+  // RNX-251 AC (c): two different package codes are two claims on two rows, so both go through: each code is redeemed
+  // once and the account gets two snapshots (fine: the entitlement aggregates them).
+  it("RNX-251: one account redeeming two different package codes at the same moment: each code once, two snapshots", async () => {
+    const user = await createUser(prisma);
+    const [starter, pro] = [await createVersion("Starter"), await createVersion("Pro")];
+    const first = await subscriptionCode(starter.id, "PERF-SUBS-0182");
+    const second = await prisma.invitationCode.create({
+      data: { code: "PERF-BOTH-0183", type: "both", creditAmount: 25, packageVersionId: pro.id },
     });
-    holdSubscriptionCreates(starter.id);
+    holdCallersAtRedemptionCheck(2);
 
     const results = await Promise.allSettled([
       service.redeemCode(user.id, first.code),
-      service.redeemCode(user.id, refused.code),
+      service.redeemCode(user.id, second.code),
     ]);
 
-    expect(results[0].status).toBe("fulfilled");
-    expect(results[1].status).toBe("rejected");
-    expect((results[1] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
-    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(1);
-    const subscription = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(subscription.planId).toBe(starter.id);
-    expect(await grantsOf(user.id, refused.id)).toMatchObject({
-      balance: 0,
-      ledgerRows: 0,
-      redemptions: 0,
-      timesRedeemed: 0,
+    expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    expect((await snapshotsOf(user.id)).map((row) => row.packageVersionId).sort()).toEqual([starter.id, pro.id].sort());
+    expect(await grantsOf(user.id, first.id)).toMatchObject({ subscription: null, redemptions: 1, timesRedeemed: 1 });
+    expect(await grantsOf(user.id, second.id)).toMatchObject({ balance: 25, ledgerRows: 1, redemptions: 1, timesRedeemed: 1 });
+    expect(await moduleRef.get(EntitlementService).getForUser(user.id)).toMatchObject({ packageName: "Pro" });
+  });
+
+  // RNX-251 AC (a): a package code records a purchase snapshot of its version (a code grant: paymentId null, price 0,
+  // no credits of its own), never a user_subscriptions row.
+  it("RNX-251: a package code grants its version as a purchase snapshot (paymentId null, price 0, no credits); no subscription", async () => {
+    const user = await createUser(prisma);
+    const version = await createVersion("Pro", { maxAgents: 7, collaborationEnabled: true });
+    const code = await subscriptionCode(version.id);
+
+    const actualResponse = await service.redeemCode(user.id, code.code);
+
+    expect(actualResponse).toEqual({ success: true, creditsGranted: null, planGranted: "Pro", daysGranted: null });
+    const [actualSnapshot, ...others] = await snapshotsOf(user.id);
+    expect(others).toEqual([]);
+    expect(actualSnapshot).toMatchObject({
+      packageVersionId: version.id, topUpPackVersionId: null, paymentId: null, priceUsdCents: 0, priceRupiah: 0,
+      billing: "one_time", maxAgents: 7, maxConnectedTools: 2, apiAccess: true, collaborationEnabled: true,
+      allowedChannels: ["web", "whatsapp"], allowedTiers: ["standard", "advanced"],
     });
-    const again = await service.redeemCode(user.id, refused.code);
-    expect(again).toMatchObject({ success: true, creditsGranted: 25, planGranted: "pro", daysGranted: 45 });
-    const after = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(after.currentPeriodEnd.getTime()).toBe(subscription.currentPeriodEnd.getTime() + 45 * DAY);
-    expect(await grantsOf(user.id, refused.id)).toMatchObject({ balance: 25, ledgerRows: 1, redemptions: 1, timesRedeemed: 1 });
-  });
-
-  it("RX-181: a user with an active subscription redeeming two plan codes at once gets one 201 and one 409; the end moves by the granted code's days; the refused code can be redeemed later", async () => {
-    const user = await createUser(prisma);
-    const basic = await createPlan(prisma, { slug: "basic" });
-    const before = await createSubscription(prisma, { userId: user.id, planId: basic.id, status: "active" });
-    const codes = [
-      await prisma.invitationCode.create({
-        data: { code: "PERF-SUBS-0182", type: "subscription", planId: basic.id, durationDays: 30 },
-      }),
-      await prisma.invitationCode.create({
-        data: { code: "PERF-SUBS-0183", type: "subscription", planId: basic.id, durationDays: 45 },
-      }),
-    ];
-    holdCallersAfterSubscriptionRead(2);
-
-    const results = await Promise.allSettled(codes.map((c) => service.redeemCode(user.id, c.code)));
-
-    const grantedIndex = results.findIndex((r) => r.status === "fulfilled");
-    const refusedIndex = results.findIndex((r) => r.status === "rejected");
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(refusedIndex).not.toBe(-1);
-    expect((results[refusedIndex] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictException);
-    const [granted, refused] = [codes[grantedIndex], codes[refusedIndex]];
-    const after = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(after.currentPeriodEnd.getTime()).toBe(before.currentPeriodEnd.getTime() + (granted.durationDays ?? 0) * DAY);
-    expect(await grantsOf(user.id, refused.id)).toMatchObject({ redemptions: 0, timesRedeemed: 0 });
-    const again = await service.redeemCode(user.id, refused.code);
-    expect(again).toMatchObject({ success: true, daysGranted: refused.durationDays });
-    const last = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(last.currentPeriodEnd.getTime()).toBe(before.currentPeriodEnd.getTime() + (30 + 45) * DAY);
-    expect(await grantsOf(user.id, refused.id)).toMatchObject({ redemptions: 1, timesRedeemed: 1 });
-  });
-
-  it("grants the code's plan as an active subscription", async () => {
-    const user = await createUser(prisma);
-    const plan = await createPlan(prisma, { slug: "pro" });
-    const code = await subscriptionCode(plan.id);
-
-    const res = await service.redeemCode(user.id, code.code);
-
-    expect(res).toEqual({ success: true, creditsGranted: null, planGranted: "pro", daysGranted: 30 });
-    const sub = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(sub).toMatchObject({ planId: plan.id, status: "active" });
-    expect(sub.currentPeriodEnd.getTime() - Date.now()).toBeGreaterThan(29 * DAY);
+    expect(actualSnapshot.creditsGranted.toString()).toBe("0");
+    expect(await moduleRef.get(EntitlementService).getForUser(user.id)).toMatchObject({
+      packageVersionId: version.id, packageName: "Pro", maxAgents: 7, maxConnectedTools: 2, apiAccess: true,
+      collaborationEnabled: true, allowedChannels: ["web", "whatsapp"],
+    });
+    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
+    expect(await prisma.codeRedemption.findFirstOrThrow({ where: { userId: user.id } })).toMatchObject({ planGranted: "Pro", daysGranted: null });
+    expect(await prisma.creditLedgerEntry.count({ where: { memberUserId: user.id } })).toBe(0);
     expect(await prisma.invitationCode.findUnique({ where: { id: code.id } })).toMatchObject({
       timesRedeemed: 1,
     });
   });
 
-  it("moves an existing active subscription to the new plan and extends it", async () => {
+  it("RNX-251: a \"both\" code records the snapshot (no credits on it) and grants its credits through the ledger (plan_grant)", async () => {
     const user = await createUser(prisma);
-    const starter = await createPlan(prisma, { slug: "starter" });
-    const pro = await createPlan(prisma, { slug: "pro" });
-    const before = await createSubscription(prisma, { userId: user.id, planId: starter.id });
-    const code = await subscriptionCode(pro.id);
+    const version = await createVersion("Starter");
+    const code = await prisma.invitationCode.create({
+      data: { code: "PERF-BOTH-0251", type: "both", creditAmount: 25, packageVersionId: version.id },
+    });
 
-    await service.redeemCode(user.id, code.code);
+    const actualResponse = await service.redeemCode(user.id, code.code);
 
-    const after = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(after.planId).toBe(pro.id);
-    expect(after.currentPeriodEnd.getTime()).toBe(before.currentPeriodEnd.getTime() + 30 * DAY);
+    expect(actualResponse).toEqual({ success: true, creditsGranted: 25, planGranted: "Starter", daysGranted: null });
+    const [actualSnapshot] = await snapshotsOf(user.id);
+    expect(actualSnapshot).toMatchObject({ packageVersionId: version.id, paymentId: null, priceUsdCents: 0, priceRupiah: 0 });
+    expect(actualSnapshot.creditsGranted.toString()).toBe("0");
+    const redemption = await prisma.codeRedemption.findFirstOrThrow({ where: { userId: user.id } });
+    const entries = await prisma.creditLedgerEntry.findMany({ where: { memberUserId: user.id } });
+    expect(entries.map((e) => [e.type, e.amount.toFixed(6), e.reference, e.wallet])).toEqual([["plan_grant", "25.000000", redemption.id, "paid"]]);
+    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
+    await assertCreditLedgerInvariants(prisma);
   });
 
-  it("RX-181: extends a subscription whose stored end has microseconds (a row this API did not write)", async () => {
+  // RNX-251 AC (b): the rate on a code grant is only a record (the price is 0): the latest stored rate, never a live
+  // fetch, so a redemption is never refused for want of a current rate.
+  it("RNX-251: with only a stale stored rate (a purchase would refresh or refuse), the grant uses that rate and never fetches", async () => {
     const user = await createUser(prisma);
-    const starter = await createPlan(prisma, { slug: "starter" });
-    const pro = await createPlan(prisma, { slug: "pro" });
-    await createSubscription(prisma, { userId: user.id, planId: starter.id });
-    await prisma.$executeRaw`UPDATE user_subscriptions SET current_period_end = current_period_end + interval '123 microseconds' WHERE user_id = ${user.id}`;
-    const before = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    const code = await subscriptionCode(pro.id);
+    const code = await subscriptionCode((await createVersion("Pro")).id);
+    const staleDate = new Date(Date.now() - 60 * DAY);
+    await prisma.exchangeRate.create({ data: { base: "USD", quote: "IDR", rate: "15900", rateDate: new Date(staleDate.toISOString().slice(0, 10)), fetchedAt: staleDate, source: "frankfurter" } });
+    const mockGetPurchaseRate = jest.spyOn(ExchangeRateService.prototype, "getPurchaseRate");
+    const mockRefreshRate = jest.spyOn(ExchangeRateService.prototype, "refreshRate");
 
-    await service.redeemCode(user.id, code.code);
+    await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({ success: true, planGranted: "Pro" });
 
-    const after = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(after.planId).toBe(pro.id);
-    expect(after.currentPeriodEnd.getTime()).toBe(before.currentPeriodEnd.getTime() + 30 * DAY);
+    const [actualSnapshot] = await snapshotsOf(user.id);
+    expect(actualSnapshot.exchangeRate.toString()).toBe("15900");
+    expect(actualSnapshot.exchangeRateSource).toBe("frankfurter");
+    expect(actualSnapshot.exchangeRateDate.toISOString().slice(0, 10)).toBe(staleDate.toISOString().slice(0, 10));
+    expect(mockGetPurchaseRate).not.toHaveBeenCalled();
+    expect(mockRefreshRate).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("RNX-251: with no stored rate at all, the grant records rate 0 dated today from source \"none\"; nothing is fetched", async () => {
+    const user = await createUser(prisma);
+    const code = await subscriptionCode((await createVersion("Pro")).id);
+    const mockGetPurchaseRate = jest.spyOn(ExchangeRateService.prototype, "getPurchaseRate");
+
+    await expect(service.redeemCode(user.id, code.code)).resolves.toMatchObject({ success: true, planGranted: "Pro" });
+
+    const [actualSnapshot] = await snapshotsOf(user.id);
+    expect(actualSnapshot.exchangeRate.toString()).toBe("0");
+    expect(actualSnapshot.exchangeRateSource).toBe("none");
+    expect(actualSnapshot.exchangeRateDate.toISOString().slice(0, 10)).toBe(new Date().toISOString().slice(0, 10));
+    expect(mockGetPurchaseRate).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  // RNX-251 AC (h): PackageOwnershipService reads snapshots only: a code-granted package lets a credits-only code redeem.
+  it("RNX-251: a code-granted package counts as a package: a credits-only code then redeems", async () => {
+    const user = await createUser(prisma);
+    const packageCode = await subscriptionCode((await createVersion("Starter")).id);
+    const topup = await topupCode(1);
+    await expect(service.redeemCode(user.id, topup.code)).rejects.toBeInstanceOf(ForbiddenException);
+
+    await service.redeemCode(user.id, packageCode.code);
+    const actualResponse = await service.redeemCode(user.id, topup.code);
+
+    expect(await moduleRef.get(PackageOwnershipService).hasPackage(user.id)).toBe(true);
+    expect(actualResponse).toMatchObject({ success: true, creditsGranted: 25 });
+    expect(await paidBalanceOf(user.id)).toBe(25);
+  });
+
+  it("RNX-251: an active user_subscriptions row alone is no package any more: a credits-only code is refused (403)", async () => {
+    const user = await createUser(prisma);
+    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id, status: "active" });
+    const topup = await topupCode(1);
+
+    await expect(service.redeemCode(user.id, topup.code)).rejects.toThrow("A credits-only code can be redeemed only by an account with a package");
+    expect(await moduleRef.get(PackageOwnershipService).hasPackage(user.id)).toBe(false);
+  });
+
+  // RNX-251: was "moves an existing active subscription to the new plan and extends it"; a package is permanent (D37),
+  // so a second package code adds a second snapshot and the entitlement shows the higher package.
+  it("a package code for an account that already has a package adds a snapshot; the earlier one stays", async () => {
+    const user = await createUser(prisma);
+    const starter = await createVersion("Starter");
+    const pro = await createVersion("Pro");
+    await service.redeemCode(user.id, (await subscriptionCode(starter.id, "PERF-STRT-0001")).code);
+
+    await service.redeemCode(user.id, (await subscriptionCode(pro.id, "PERF-PROO-0001")).code);
+
+    expect((await snapshotsOf(user.id)).map((row) => row.packageVersionId)).toEqual([starter.id, pro.id]);
+    expect(await moduleRef.get(EntitlementService).getForUser(user.id)).toMatchObject({ packageName: "Pro" });
   });
 
   it("refuses a second redemption by the same user and grants nothing more", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma);
-    const code = await subscriptionCode(plan.id);
+    const version = await createVersion("Pro");
+    const code = await subscriptionCode(version.id);
     await prisma.invitationCode.update({ where: { id: code.id }, data: { maxRedemptions: 5 } });
     await service.redeemCode(user.id, code.code);
 
     await expect(service.redeemCode(user.id, code.code)).rejects.toBeInstanceOf(ConflictException);
     expect(await prisma.codeRedemption.count()).toBe(1);
+    expect(await snapshotsOf(user.id)).toHaveLength(1);
   });
 
   // RX-22: the ledger grant is now the last step (it needs the redemption id), so it is the one that fails here.
   it("rolls back every earlier step of a redemption when a later step fails", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma, { slug: "pro" });
+    const version = await createVersion("Pro");
     const code = await prisma.invitationCode.create({
-      data: { code: "PERF-BOTH-0001", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30 },
+      data: { code: "PERF-BOTH-0001", type: "both", creditAmount: 25, packageVersionId: version.id },
     });
     jest
       .spyOn(moduleRef.get(CreditLedgerService), "appendEntry")
@@ -595,17 +625,18 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(await paidBalanceOf(user.id)).toBe(0);
     expect(await ledgerEntryCount(user.id)).toBe(0);
     expect(after.subscription).toBeNull();
+    expect(await snapshotsOf(user.id)).toEqual([]);
     expect(after.codeRedemptions).toEqual([]);
     expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({
       timesRedeemed: 0,
     });
   });
 
-  it("RX-22 review NIT 6: rolls back everything when the redemption row itself cannot be written (no ledger entry, no plan)", async () => {
+  it("RX-22 review NIT 6: rolls back everything when the redemption row itself cannot be written (no ledger entry, no package)", async () => {
     const user = await createUser(prisma);
-    const plan = await createPlan(prisma, { slug: "pro" });
+    const version = await createVersion("Pro");
     const code = await prisma.invitationCode.create({
-      data: { code: "PERF-BOTH-0002", type: "both", creditAmount: 25, planId: plan.id, durationDays: 30 },
+      data: { code: "PERF-BOTH-0002", type: "both", creditAmount: 25, packageVersionId: version.id },
     });
     jest
       .spyOn(moduleRef.get(CodeRedemptionRepository), "createRedemption")
@@ -617,16 +648,16 @@ describe("CodesService.redeemCode (test database)", () => {
     expect(await ledgerEntryCount(user.id)).toBe(0);
     expect(await prisma.creditAccount.count()).toBe(0);
     expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
+    expect(await snapshotsOf(user.id)).toEqual([]);
     expect(await prisma.codeRedemption.count()).toBe(0);
     expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: code.id } })).toMatchObject({ timesRedeemed: 0 });
   });
 
-  it("leaves an existing subscription as it was when a later step of the redemption fails", async () => {
+  // RNX-251: was "leaves an existing subscription as it was when a later step of the redemption fails".
+  it("leaves an existing package as it was when a later step of the redemption fails", async () => {
     const user = await createUser(prisma);
-    const basic = await createPlan(prisma, { slug: "basic" });
-    const pro = await createPlan(prisma, { slug: "pro" });
-    const before = await createSubscription(prisma, { userId: user.id, planId: basic.id, status: "active" });
-    const code = await subscriptionCode(pro.id);
+    const before = await createPackageSnapshot(prisma, { userId: user.id });
+    const code = await subscriptionCode((await createVersion("Pro")).id);
     jest
       .spyOn(moduleRef.get(CodeRedemptionRepository), "createRedemption")
       .mockRejectedValueOnce(new Error("the redemption row cannot be written"));
@@ -634,10 +665,6 @@ describe("CodesService.redeemCode (test database)", () => {
     const redeem = service.redeemCode(user.id, code.code);
 
     await expect(redeem).rejects.toThrow("the redemption row cannot be written");
-    const after = await prisma.userSubscription.findUniqueOrThrow({ where: { userId: user.id } });
-    expect(after).toMatchObject({
-      planId: basic.id,
-      currentPeriodEnd: before.currentPeriodEnd,
-    });
+    expect((await snapshotsOf(user.id)).map((row) => row.id)).toEqual([before.id]);
   });
 });

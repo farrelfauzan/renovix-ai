@@ -20,8 +20,7 @@ import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import {
   createAgent,
-  createPlan,
-  createSubscription,
+  createPackageSnapshot,
   createUser,
 } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
@@ -132,19 +131,16 @@ describe("RX-14: the agent gates and the chat billing numbers (test database, fa
   // run is charged through one reservation and a usage entry per model call. The cases below are the RX-14 cases
   // rewritten to that behaviour; each says what it pinned before.
   describe("the agent gates (through AgentRunService.chat)", () => {
+    // RNX-251: "subscribed" is a package snapshot now (the plan's token limit was gone with RNX-186).
     const subscribedUser = async (overrides: {
-      planTokens?: bigint;
       /** Credits on the ledger's paid wallet. */
       credits?: string;
     } = {}) => {
-      const plan = await createPlan(prisma, {
-        maxTokensPerMonth: overrides.planTokens ?? 1_000_000n,
-      });
       const user = await createUser(prisma);
       if (overrides.credits) await fundPaidWallet(prisma, user.id, overrides.credits);
-      await createSubscription(prisma, { userId: user.id, planId: plan.id });
+      await createPackageSnapshot(prisma, { userId: user.id });
       const agent = await createAgent(prisma, { userId: user.id });
-      return { user, agent, plan };
+      return { user, agent };
     };
 
     const usageAmountsOf = async (userId: string) =>
@@ -168,7 +164,7 @@ describe("RX-14: the agent gates and the chat billing numbers (test database, fa
     // Was: at the token limit with balance 0, BadRequestException "Monthly token limit reached ..." and the
     // messagesUsed increment rolled back. RNX-186: the counters are gone.
     it("no ledger credits: 402 CREDITS_EXHAUSTED before any model call or write", async () => {
-      const { user, agent } = await subscribedUser({ planTokens: 1000n });
+      const { user, agent } = await subscribedUser();
       // no turn enqueued: the refusal happens before any provider call, and a
       // turn enqueued here would leak to the next test (the fake keeps it)
 
@@ -195,9 +191,8 @@ describe("RX-14: the agent gates and the chat billing numbers (test database, fa
   describe("after a completed run: one usage entry, no token counter (was deductTokenQuota)", () => {
     // Was: tokensUsed increases by the run's 42 tokens (fire-and-forget). RNX-186: the counter is gone.
     it("the run's 30 + 12 tokens are one usage entry of 0.000042", async () => {
-      const plan = await createPlan(prisma);
       const user = await createUser(prisma);
-      await createSubscription(prisma, { userId: user.id, planId: plan.id });
+      await createPackageSnapshot(prisma, { userId: user.id });
       await fundPaidWallet(prisma, user.id, "1.0");
       const agent = await createAgent(prisma, { userId: user.id });
       fake.enqueue({ content: "Hello", usage: { prompt_tokens: 30, completion_tokens: 12 } });
@@ -211,9 +206,8 @@ describe("RX-14: the agent gates and the chat billing numbers (test database, fa
 
     // Was: a run reporting 0 tokens leaves tokensUsed unchanged (early return). RNX-186: the counter is gone.
     it("a run whose usage reports no tokens writes a usage entry of 0", async () => {
-      const plan = await createPlan(prisma);
       const user = await createUser(prisma);
-      await createSubscription(prisma, { userId: user.id, planId: plan.id });
+      await createPackageSnapshot(prisma, { userId: user.id });
       await fundPaidWallet(prisma, user.id, "1.0");
       const agent = await createAgent(prisma, { userId: user.id });
       fake.enqueue({ content: "Hello", usage: { prompt_tokens: 0, completion_tokens: 0 } });

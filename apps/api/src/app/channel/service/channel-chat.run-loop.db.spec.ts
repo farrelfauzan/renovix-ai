@@ -21,7 +21,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -115,7 +115,7 @@ describe("RNX-16: channel chat loop scenarios (test database, fake provider, rea
   /** A subscribed user funded with 1 credit, with an agent (with the `toolTypes` tool rows) in their channel. */
   const seed = async (toolTypes: string[] = []) => {
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id });
     for (const toolType of toolTypes) await prisma.agentTool.create({ data: { agentId: agent.id, toolType } });

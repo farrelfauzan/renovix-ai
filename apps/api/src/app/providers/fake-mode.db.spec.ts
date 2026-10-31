@@ -32,8 +32,7 @@ import { resetDatabase } from "../../../test/test-database";
 import {
   createAgent,
   createApiKey,
-  createPlan,
-  createSubscription,
+  createPackageSnapshot,
   createUser,
   testApiKey,
 } from "../../../test/factories";
@@ -261,9 +260,8 @@ describe("RX-88: agent runs (chat, tool call) with LLM_PROVIDER=fake", () => {
   afterAll(() => moduleRef?.close());
 
   const seed = async () => {
-    const plan = await createPlan(prisma);
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "1");
     const agent = await createAgent(prisma, { userId: user.id, status: "active" });
     return { user, agent };

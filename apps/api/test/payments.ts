@@ -8,6 +8,7 @@ import { PaymentsModule } from "../src/app/payments/payments.module";
 import type { PaymentProvider } from "../src/app/payments/types/payment-provider";
 import { createFastifyAdapter } from "../src/common/utils/create-fastify-adapter";
 import { NOT_DATE } from "./admin-auth";
+import { createPackageSnapshot } from "./factories";
 import { createTestModule } from "./test-module";
 
 // Shared tooling of the payment specs (RNX-35). FakePaymentProvider, or AutoGoPay over a scripted transport (RNX-229):
@@ -112,15 +113,9 @@ export async function paidBalanceOf(prisma: PrismaService, userId: string): Prom
   return account?.balance.toString() ?? "0";
 }
 
-/** A user with a package (an active subscription): may buy a top-up pack (D36). */
+/** A user with a package (RNX-251: a package purchase snapshot, not a subscription): may buy a top-up pack (D36). */
 export async function givePackage(prisma: PrismaService, userId: string): Promise<void> {
-  const plan = await prisma.subscriptionPlan.create({
-    data: { slug: `plan-${randomUUID().slice(0, 8)}`, name: "plan", maxAgents: 1, maxIntegrations: 1, maxWorkspaceUsers: 1, maxTokensPerMonth: 1n, allowedChannels: ["web"] },
-  });
-  const now = Date.now();
-  await prisma.userSubscription.create({
-    data: { userId, planId: plan.id, currentPeriodStart: new Date(now), currentPeriodEnd: new Date(now + 30 * 86_400_000) },
-  });
+  await createPackageSnapshot(prisma, { userId });
 }
 
 /**

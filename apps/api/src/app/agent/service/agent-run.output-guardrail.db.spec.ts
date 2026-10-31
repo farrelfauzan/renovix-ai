@@ -20,7 +20,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { budgetStopMessage } from "../utils/budget-stop-message";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { setRunCap } from "../../../../test/run-cap";
@@ -112,9 +112,8 @@ describe("RNX-275: the output guardrail runs before the agent run stores or memo
 
   /** Bob, subscribed and funded with 1 credit, with his own active agent. */
   const seed = async () => {
-    const plan = await createPlan(prisma);
     const bob = await createUser(prisma);
-    await createSubscription(prisma, { userId: bob.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: bob.id });
     await fundPaidWallet(prisma, bob.id, "1");
     const agent = await createAgent(prisma, { userId: bob.id, status: "active" });
     return { bob, agent };

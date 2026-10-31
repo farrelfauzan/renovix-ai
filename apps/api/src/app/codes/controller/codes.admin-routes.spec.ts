@@ -15,21 +15,33 @@ import { PrismaService } from "../../prisma/prisma.service";
 // is replaced below anyway. A stand-in global guard reads the test user.
 jest.mock("../../prisma/prisma.service", () => ({ PrismaService: class {} }));
 
-const ENTERPRISE_PLAN_ID = "3f1c2a4e-8b7d-4c1a-9e2f-1a2b3c4d5e6f";
+const ENTERPRISE_VERSION_ID = "3f1c2a4e-8b7d-4c1a-9e2f-1a2b3c4d5e6f";
+const PRO_VERSION_ID = "5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a";
 const CODE_ID = "7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d";
 
+// RNX-251: a package code names a package version; redeeming it records a purchase snapshot (paymentId null).
 const fixtureCode = () => ({
   id: CODE_ID,
   code: "PERF-PRO1-2345",
   type: "subscription",
   creditAmount: null,
-  planId: "plan-pro",
-  durationDays: 30,
+  packageVersionId: PRO_VERSION_ID,
   isActive: true,
   expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   timesRedeemed: 0,
   maxRedemptions: 1,
-  plan: { slug: "pro" },
+  packageVersion: { package: { name: "Pro" } },
+});
+
+const fixtureVersion = () => ({
+  id: PRO_VERSION_ID,
+  billing: "one_time",
+  maxAgents: 5,
+  maxConnectedTools: 2,
+  apiAccess: true,
+  allowedChannels: ["web"],
+  allowedTiers: ["standard"],
+  collaborationEnabled: false,
 });
 
 // Defaults make every old admin route succeed, so only a missing route gives 404.
@@ -37,21 +49,16 @@ const makePrisma = () => {
   const tx = {
     user: { update: jest.fn() },
     transaction: { create: jest.fn() },
-    userSubscription: {
-      findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockResolvedValue({}),
-      update: jest.fn().mockResolvedValue({}),
-    },
+    packageVersion: { findUnique: jest.fn().mockResolvedValue(fixtureVersion()) },
+    purchaseSnapshot: { create: jest.fn().mockResolvedValue({}) },
     invitationCode: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), fields: { maxRedemptions: {} } },
     codeRedemption: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
   };
   return {
     tx,
-    subscriptionPlan: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({ id: ENTERPRISE_PLAN_ID, slug: "enterprise" }),
-    },
+    packageVersion: { findUnique: jest.fn().mockResolvedValue({ id: ENTERPRISE_VERSION_ID }) },
+    exchangeRate: { findFirst: jest.fn().mockResolvedValue(null) },
+    purchaseSnapshot: { create: jest.fn() },
     invitationCode: {
       create: jest.fn().mockResolvedValue(fixtureCode()),
       findMany: jest.fn().mockResolvedValue([]),
@@ -60,7 +67,6 @@ const makePrisma = () => {
       update: jest.fn().mockResolvedValue(fixtureCode()),
     },
     codeRedemption: { findUnique: jest.fn().mockResolvedValue(null) },
-    userSubscription: { create: jest.fn(), update: jest.fn() },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
 };
@@ -164,8 +170,7 @@ describe("RX-66: /admin/codes routes are removed", () => {
       headers,
       payload: {
         type: "subscription",
-        planId: ENTERPRISE_PLAN_ID,
-        durationDays: 30,
+        packageVersionId: ENTERPRISE_VERSION_ID,
         code: "PERF-FREE-ENT1",
       },
     });
@@ -181,10 +186,8 @@ describe("RX-66: /admin/codes routes are removed", () => {
     });
     expect(redeem.statusCode).toBe(404);
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.userSubscription.create).not.toHaveBeenCalled();
-    expect(prisma.userSubscription.update).not.toHaveBeenCalled();
-    expect(prisma.tx.userSubscription.create).not.toHaveBeenCalled();
-    expect(prisma.tx.userSubscription.update).not.toHaveBeenCalled();
+    expect(prisma.purchaseSnapshot.create).not.toHaveBeenCalled();
+    expect(prisma.tx.purchaseSnapshot.create).not.toHaveBeenCalled();
   });
 
   it("AC4: a valid code is still redeemable at POST /codes/redeem", async () => {
@@ -198,17 +201,19 @@ describe("RX-66: /admin/codes routes are removed", () => {
     expect(res.json()).toEqual({
       success: true,
       creditsGranted: null,
-      planGranted: "pro",
-      daysGranted: 30,
+      planGranted: "Pro",
+      daysGranted: null,
     });
     expect(prisma.invitationCode.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { code: "PERF-PRO1-2345" } }),
     );
-    expect(prisma.tx.userSubscription.create).toHaveBeenCalledWith({
+    expect(prisma.tx.purchaseSnapshot.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        userId: "user-1",
-        planId: "plan-pro",
-        status: "active",
+        buyerUserId: "user-1",
+        packageVersionId: PRO_VERSION_ID,
+        paymentId: null,
+        priceUsdCents: 0,
+        priceRupiah: 0,
       }),
     });
   });

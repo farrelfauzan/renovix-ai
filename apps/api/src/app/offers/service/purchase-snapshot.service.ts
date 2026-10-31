@@ -1,14 +1,21 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { Decimal } from "@prisma/client/runtime/client";
 import type { PurchaseSnapshot } from "@generated/prisma/client.js";
+import { FRANKFURTER_SOURCE } from "../../exchange-rates/config/frankfurter-source";
+import { ExchangeRateRepository } from "../../exchange-rates/repository/exchange-rate.repository";
 import { ExchangeRateService } from "../../exchange-rates/service/exchange-rate.service";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
 import { PackageRepository } from "../repository/package.repository";
 import { PurchaseSnapshotRepository } from "../repository/purchase-snapshot.repository";
 import { TopUpPackRepository } from "../repository/top-up-pack.repository";
+import type { CodeGrantInput } from "../types/code-grant-input";
 import type { PaidPurchaseInput } from "../types/paid-purchase-input";
 import type { PurchaseInput } from "../types/purchase-input";
 import { buildPurchasePriceColumns } from "../utils/build-purchase-price-columns";
+
+/** RNX-251: the rate source recorded on a code grant when no rate was ever stored (its price is 0 either way). */
+const NO_RATE_SOURCE = "none";
 
 /**
  * Purchase snapshots (RX-86, D37): what a buyer bought, copied from the version in the same transaction, so
@@ -25,6 +32,7 @@ export class PurchaseSnapshotService {
     private readonly snapshots: PurchaseSnapshotRepository,
     private readonly transactions: TransactionService,
     private readonly exchangeRates: ExchangeRateService,
+    private readonly rates: ExchangeRateRepository,
   ) {}
 
   /** Records the purchase of a package version: its price, credits and limits as they are now. 404 for an unknown version, 503 without a current rate. */
@@ -65,5 +73,24 @@ export class PurchaseSnapshotService {
     const version = topUpPackVersionId ? await this.packs.findVersionById(topUpPackVersionId, tx) : null;
     if (!version) throw new NotFoundException("Top-up pack version not found");
     return this.snapshots.create({ creditsGranted: version.creditsGranted, allowedChannels: [], allowedTiers: [], ...price, buyerUserId, topUpPackVersionId: version.id, paymentId }, tx);
+  }
+
+  /**
+   * Records a package granted by an invitation code (RNX-251, D36, D37) in `tx`, the redemption's transaction: the
+   * version's limits as they are, price 0 and no credits (a "both" code's credits go through the ledger). THE RULE: a
+   * package snapshot with paymentId null is a code grant. The rate columns are only a record: the latest stored rate,
+   * never a live fetch (a redemption is never refused for want of a rate); with no stored rate at all, 0 dated today
+   * from source "none". 404 for an unknown version.
+   */
+  async recordCodeGrant(input: CodeGrantInput, tx: DbTransaction): Promise<PurchaseSnapshot> {
+    const version = await this.packages.findVersionById(input.packageVersionId, tx);
+    if (!version) throw new NotFoundException("Package version not found");
+    const { billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers, collaborationEnabled } = version;
+    const latest = await this.rates.findLatest(FRANKFURTER_SOURCE.base, FRANKFURTER_SOURCE.quote);
+    const rate = latest
+      ? { exchangeRate: latest.rate, exchangeRateDate: latest.rateDate, exchangeRateSource: latest.source }
+      : { exchangeRate: new Decimal(0), exchangeRateDate: new Date(), exchangeRateSource: NO_RATE_SOURCE };
+    const limits = { billing, maxAgents, maxConnectedTools, apiAccess, allowedChannels, allowedTiers, collaborationEnabled };
+    return this.snapshots.create({ ...limits, ...rate, priceUsdCents: 0, priceRupiah: 0, creditsGranted: 0, buyerUserId: input.buyerUserId, packageVersionId: version.id, paymentId: null }, tx);
   }
 }

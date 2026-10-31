@@ -16,8 +16,6 @@ import { resetDatabase } from "../../../../test/test-database";
 import {
   createAgent,
   createPackageSnapshot,
-  createPlan,
-  createSubscription,
   createUser,
 } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
@@ -151,8 +149,6 @@ describe("Agents: ownership (RX-15, Fastify, test database)", () => {
   // is ignored now, and linking his own agent to Alice's agent is refused (another workspace).
   it("another user cannot link their own agent to someone else's agent (POST parentAgentId, then POST /agents/:id/links)", async () => {
     const { bob, agent } = await setup();
-    const plan = await createPlan(prisma);
-    await createSubscription(prisma, { userId: bob.id, planId: plan.id });
     await createPackageSnapshot(prisma, { userId: bob.id });
 
     const created = await app.inject({

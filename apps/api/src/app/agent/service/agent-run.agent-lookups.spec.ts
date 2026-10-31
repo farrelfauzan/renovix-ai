@@ -18,8 +18,7 @@ import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import {
   createAgent,
-  createPlan,
-  createSubscription,
+  createPackageSnapshot,
   createUser,
 } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
@@ -124,10 +123,9 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
 
   /** Bob (subscribed and funded, the caller) and Alice (another user). */
   const seedUsers = async () => {
-    const plan = await createPlan(prisma);
     const bob = await createUser(prisma);
     const alice = await createUser(prisma);
-    await createSubscription(prisma, { userId: bob.id, planId: plan.id });
+    await createPackageSnapshot(prisma, { userId: bob.id });
     await fundPaidWallet(prisma, bob.id, "1");
     return { bob, alice };
   };

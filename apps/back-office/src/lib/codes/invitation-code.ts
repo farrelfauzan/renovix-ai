@@ -4,7 +4,8 @@ export type InvitationCode = {
   readonly code: string;
   readonly type: "topup" | "subscription" | "both";
   readonly creditAmount: string | null;
-  readonly plan: { readonly slug: string; readonly name: string } | null;
+  /** RNX-251: the package version a "subscription" or "both" code grants. */
+  readonly packageVersion: { readonly id: string; readonly versionNumber: number; readonly package: { readonly name: string } } | null;
   readonly durationDays: number | null;
   readonly maxRedemptions: number;
   readonly timesRedeemed: number;

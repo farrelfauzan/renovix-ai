@@ -29,7 +29,7 @@ import type { ChatRequest } from "../../providers/provider.interface";
 import type { FakeTurn } from "../../providers/fake.adapter";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPlan, createSubscription, createUser, createWorkspace } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -214,7 +214,7 @@ describe("RNX-222: the generated document belongs to its run (agent and channel 
   /** A subscribed, funded user with a channel (its workspace's), an active agent in it and a session cookie. */
   const seedUser = async (owner: Owner): Promise<Runner> => {
     const user = await createUser(prisma);
-    await createSubscription(prisma, { userId: user.id, planId: (await createPlan(prisma)).id });
+    await createPackageSnapshot(prisma, { userId: user.id });
     await fundPaidWallet(prisma, user.id, "5");
     const channel = await prisma.channel.create({ data: { userId: user.id, name: `${owner} room` } });
     const workspace = await createWorkspace(prisma, { ownerId: user.id, channelId: channel.id });

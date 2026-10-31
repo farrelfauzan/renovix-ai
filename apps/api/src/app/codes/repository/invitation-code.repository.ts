@@ -11,11 +11,11 @@ import { PrismaService } from "../../prisma/prisma.service";
 export class InvitationCodeRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** The invitation code with this code text, with its plan. */
-  findCodeWithPlan(code: string, tx?: DbTransaction) {
+  /** The invitation code with this code text, with the package version it grants and that package's name (RNX-251). */
+  findCodeWithPackage(code: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).invitationCode.findUnique({
       where: { code },
-      include: { plan: true },
+      include: { packageVersion: { include: { package: { select: { name: true } } } } },
     });
   }
 
@@ -26,11 +26,11 @@ export class InvitationCodeRepository {
     });
   }
 
-  /** One page of invitation codes, newest first, each with its plan and its number of redemptions. */
+  /** One page of invitation codes, newest first, each with its package version (RNX-251) and its number of redemptions. */
   listCodes(skip: number, take: number, tx?: DbTransaction) {
     return (tx ?? this.prisma).invitationCode.findMany({
       include: {
-        plan: { select: { slug: true, name: true } },
+        packageVersion: { select: { id: true, versionNumber: true, package: { select: { name: true } } } },
         _count: { select: { redemptions: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -44,15 +44,12 @@ export class InvitationCodeRepository {
     return (tx ?? this.prisma).invitationCode.count();
   }
 
-  /** Creates an invitation code and returns it with its plan. */
+  /** Creates an invitation code and returns it. */
   createCode(
     data: Prisma.InvitationCodeUncheckedCreateInput,
     tx?: DbTransaction,
   ) {
-    return (tx ?? this.prisma).invitationCode.create({
-      data,
-      include: { plan: true },
-    });
+    return (tx ?? this.prisma).invitationCode.create({ data });
   }
 
   /** Updates the invitation code with this id. */
