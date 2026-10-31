@@ -295,7 +295,7 @@ describe("Admin catalog, codes and settings (RNX-226, Fastify, test database)", 
 
       expect(actualResponse.statusCode).toBe(201);
       expect(await prisma.invitationCode.findUniqueOrThrow({ where: { id: actualResponse.json().id } })).toMatchObject({
-        type: "both", packageVersionId: f.versionId, planId: null, durationDays: null,
+        type: "both", packageVersionId: f.versionId, durationDays: null,
       });
       expect(listed.json().codes.find((c: { id: string }) => c.id === actualResponse.json().id)).toMatchObject({
         packageVersion: { id: f.versionId, versionNumber: 1, package: { name: "Starter" } },

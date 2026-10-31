@@ -53,7 +53,6 @@ model User {
   memories      UserMemory[]
   agents        Agent[]
   agentRuns     AgentRun[]
-  subscription  UserSubscription?
   codeRedemptions CodeRedemption[]
   channels      Channel[]
   ownedWorkspaces    Workspace[]        @relation("WorkspaceOwner")
@@ -536,57 +535,6 @@ model AgentMessage {
   @@map("agent_messages")
 }
 
-model SubscriptionPlan {
-  id                String   @id @default(uuid())
-  slug              String   @unique // "starter" | "pro" | "enterprise" | custom
-  name              String   // "Starter Plan"
-  description       String?
-
-  // Limits
-  maxAgents         Int      @map("max_agents")
-  maxIntegrations   Int      @map("max_integrations")
-  maxWorkspaceUsers Int      @map("max_workspace_users")
-  maxTokensPerMonth BigInt   @map("max_tokens_per_month")
-  allowedChannels   String[] @map("allowed_channels") // ["web", "api", "whatsapp"]
-
-  // Pricing (for display, not billing — billing is via invitation codes)
-  priceMonthly      Decimal? @db.Decimal(10, 2) @map("price_monthly")
-  priceCurrency     String   @default("USD") @map("price_currency")
-
-  // Status
-  isActive          Boolean  @default(true) @map("is_active")
-  displayOrder      Int      @default(0) @map("display_order")
-
-  // Relations
-  invitationCodes   InvitationCode[]
-  userSubscriptions UserSubscription[]
-
-  createdAt         DateTime @default(now()) @db.Timestamptz()
-  updatedAt         DateTime @updatedAt @db.Timestamptz()
-
-  @@map("subscription_plans")
-}
-
-model UserSubscription {
-  id                 String           @id @default(uuid())
-  userId             String           @unique @map("user_id")
-  user               User             @relation(fields: [userId], references: [id])
-  planId             String           @map("plan_id")
-  plan               SubscriptionPlan @relation(fields: [planId], references: [id])
-
-  status             String           @default("active") // "active" | "canceled" | "expired"
-  currentPeriodStart DateTime         @map("current_period_start") @db.Timestamptz()
-  currentPeriodEnd   DateTime         @map("current_period_end") @db.Timestamptz()
-
-  cancelAtPeriodEnd  Boolean          @default(false) @map("cancel_at_period_end")
-  createdAt          DateTime         @default(now()) @db.Timestamptz()
-  updatedAt          DateTime         @updatedAt @db.Timestamptz()
-
-  @@index([userId, status])
-  @@index([planId])
-  @@map("user_subscriptions")
-}
-
 // ─── Invitation Code System ─────────────────────────────────────────────────────
 
 model InvitationCode {
@@ -598,8 +546,6 @@ model InvitationCode {
   creditAmount    Decimal?  @db.Decimal(12, 6) @map("credit_amount")
 
   // Subscription reward
-  planId          String?   @map("plan_id")
-  plan            SubscriptionPlan? @relation(fields: [planId], references: [id])
   durationDays    Int?      @map("duration_days") // How many days the plan is granted
 
   // RNX-251: the package version a "subscription" or "both" code grants (a purchase snapshot with paymentId null).
@@ -1138,10 +1084,8 @@ model AdminNotification {
 
 // ─── Offer catalog and platform settings (RX-86, docs/credits.md section 9) ─────
 // Offers are rows managed in the back office, never code (D46); values come from prisma/offers.seed.json
-// (`bun run seed:offers`) until the catalog screens exist (RX-98). SubscriptionPlan, UserSubscription and
-// InvitationCode stay as they are: live code (agent.service.ts, the billing and codes repositories) still reads them;
-// retiring them is later work. Version rows, purchase snapshots and change records are append-only: a
-// trigger refuses every UPDATE and DELETE (migration 20261015150000_offer_catalog).
+// (`bun run seed:offers`) until the catalog screens exist (RX-98). Version rows, purchase snapshots and change
+// records are append-only: a trigger refuses every UPDATE and DELETE (migration 20261015150000_offer_catalog).
 
 /// How a package version is paid: once (Starter, Pro: limits unlocked for good, D37) or every month.
 enum PackageBilling {

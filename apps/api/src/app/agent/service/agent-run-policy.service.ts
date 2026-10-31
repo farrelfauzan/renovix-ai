@@ -90,7 +90,7 @@ export class AgentRunPolicyService {
     return CLOSED_WORKSPACE_STATUSES.includes(workspace?.status ?? "");
   }
 
-  /** RNX-251: a package snapshot (EntitlementService: null is no package), not a user_subscriptions row. */
+  /** RNX-251: a package snapshot (EntitlementService: null is no package). */
   private async hasPackage(userId: string): Promise<boolean> {
     return (await this.entitlements.getForUser(userId)) !== null;
   }

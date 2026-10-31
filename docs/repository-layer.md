@@ -6,6 +6,8 @@ Decided by the Tech Lead: the rules on 2026-10-10 (plan decisions 16, 17, 18 and
 
 ## State after RX-132
 
+Later change: RNX-251 dropped the legacy plan and subscription tables and their two repositories named below; the tables and examples here record the state when each rule was decided.
+
 - One module, `codes`, reaches the database only through its repository.
 - 40 other files still import `PrismaService` or the generated client. They are listed in `scripts/prisma-import-exceptions.ts`; the list may only shrink. Each is moved by its module's ticket (RX-133 to RX-141, and the tickets that rewrite a module: RX-18, RX-22, RX-23 to RX-26); RX-142 deletes the list.
 - The dynamic query builder comes last, inside the repositories (RX-143). Until then a repository calls `PrismaService` directly.

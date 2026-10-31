@@ -4,8 +4,6 @@ import {
   ForbiddenException,
   BadRequestException,
 } from "@nestjs/common";
-import { SubscriptionPlanRepository } from "../../billing/repository/subscription-plan.repository";
-import { UserSubscriptionRepository } from "../../billing/repository/user-subscription.repository";
 import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
@@ -40,8 +38,6 @@ export class AgentService {
     private readonly agentIntegrations: AgentIntegrationRepository,
     private readonly agentKnowledgeBases: AgentKnowledgeBaseRepository,
     private readonly agentChannels: AgentChannelRepository,
-    private readonly subscriptions: UserSubscriptionRepository,
-    private readonly plans: SubscriptionPlanRepository,
     private readonly knowledgeBases: KnowledgeBaseRepository,
     private readonly providerRouter: ProviderRouter,
     private readonly workspaceService: WorkspaceService,
@@ -370,66 +366,10 @@ export class AgentService {
 
   /**
    * RNX-251: the caller's package (their purchase snapshots, bought or granted by a code, through EntitlementService),
-   * or null without one; the chat shows the agents page only with one. user_subscriptions is no longer read.
+   * or null without one; the chat shows the agents page only with one.
    */
   async getSubscription(userId: string) {
     return { subscription: await this.entitlements.getForUser(userId) };
-  }
-
-  async subscribe(userId: string, tier: string) {
-    const plan = await this.plans.findPlanBySlug(tier);
-    if (!plan) throw new BadRequestException("Invalid plan tier");
-
-    // Check if user already has active subscription
-    const existing = await this.subscriptions.findSubscriptionByUserId(userId);
-
-    if (existing && existing.status === "active") {
-      // Upgrade/downgrade
-      const updated = await this.subscriptions.updateSubscriptionWithPlan(
-        userId,
-        {
-          planId: plan.id,
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        },
-      );
-      return {
-        subscription: {
-          ...updated,
-          plan: {
-            ...updated.plan,
-            maxTokensPerMonth: updated.plan.maxTokensPerMonth.toString(),
-            priceMonthly: updated.plan.priceMonthly
-              ? Number(updated.plan.priceMonthly)
-              : null,
-          },
-        },
-      };
-    }
-
-    // Create new subscription
-    const subscription = await this.subscriptions.createSubscriptionWithPlan(
-      userId,
-      {
-        planId: plan.id,
-        status: "active",
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    );
-
-    return {
-      subscription: {
-        ...subscription,
-        plan: {
-          ...subscription.plan,
-          maxTokensPerMonth: subscription.plan.maxTokensPerMonth.toString(),
-          priceMonthly: subscription.plan.priceMonthly
-            ? Number(subscription.plan.priceMonthly)
-            : null,
-        },
-      },
-    };
   }
 
   // ─── Prompt Generation ───

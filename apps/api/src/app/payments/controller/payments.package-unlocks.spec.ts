@@ -25,8 +25,8 @@ import {
 } from "../../../../test/payments";
 
 // RNX-251 (D267): a package bought through the one payment grant path (checkout, FakePaymentProvider, verified webhook)
-// unlocks workspaces and agents by its purchase snapshot alone; no user_subscriptions row exists. The payments app
-// and a second module with the agent and workspace services share the test database. No network: fetch is stubbed.
+// unlocks workspaces and agents by its purchase snapshot alone. The payments app and a second module with the agent
+// and workspace services share the test database. No network: fetch is stubbed.
 const mockGetSession = jest.fn();
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: (...args: unknown[]) => mockGetSession(...args) } } }));
 
@@ -79,7 +79,7 @@ describe("RNX-251: a paid Starter order unlocks workspaces and agents (fake prov
   };
   const newAgent = (name: string) => ({ name, systemPrompt: "prompt", model: "test-model", temperature: 0.7, isPublic: false });
 
-  it("the Starter buyer (no user_subscriptions row) creates a workspace and agents up to the package's maxAgents", async () => {
+  it("the Starter buyer creates a workspace and agents up to the package's maxAgents", async () => {
     const buyer = await paidStarterBuyer();
     const agents = agentsModuleRef.get(AgentService);
 
@@ -88,7 +88,6 @@ describe("RNX-251: a paid Starter order unlocks workspaces and agents (fake prov
     const overLimit = agents.create(buyer.id, newAgent("One too many"));
 
     expect(await prisma.purchaseSnapshot.count({ where: { buyerUserId: buyer.id, packageVersionId: catalog.starterVersionId } })).toBe(1);
-    expect(await prisma.userSubscription.count()).toBe(0);
     expect(actualWorkspace).toMatchObject({ ownerId: buyer.id, name: "Starter team" });
     await expect(overLimit).rejects.toMatchObject({ status: 400 });
     expect(await prisma.agent.count({ where: { userId: buyer.id } })).toBe(STARTER_MAX_AGENTS);

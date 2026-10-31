@@ -280,8 +280,6 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
     it("a subscribed collaborator's run reserves on the collaborator's own paid wallet, not the owner's", async () => {
       const { owner, workspace, agent } = await seedWorkspace();
       const collaborator = await addMember(workspace.id);
-      // RNX-251: the collaborator's package is a purchase snapshot; no user_subscriptions row exists.
-      expect(await prisma.userSubscription.count()).toBe(0);
       fake.enqueue({ content: "Hello", usage: { prompt_tokens: 100, completion_tokens: 10 } }, { content: "[]" });
 
       await chat(collaborator.id, agent.id, "Hi");

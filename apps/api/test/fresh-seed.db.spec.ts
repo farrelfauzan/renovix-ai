@@ -35,12 +35,6 @@ jest.mock("../src/app/document/service/document.service", () => ({ DocumentServi
 const ROOT = resolve(__dirname, "../../..");
 const SLUG = "fake/seed-smoke-model";
 const SEEDED_ONLY_BY_AGENT_STEP = ["agents", "agent_tools"];
-/** The three legacy plans exactly as main's prisma/seed.ts (d4a8d59) wrote them. */
-const OLD_PLANS = [
-  { slug: "starter", name: "Starter", description: "For individuals getting started with AI agents", maxAgents: 3, maxIntegrations: 1, maxWorkspaceUsers: 3, maxTokensPerMonth: 1_000_000n, allowedChannels: ["web"], priceMonthly: "19", priceCurrency: "USD", displayOrder: 1 },
-  { slug: "pro", name: "Pro", description: "For professionals and small teams", maxAgents: 10, maxIntegrations: 3, maxWorkspaceUsers: 10, maxTokensPerMonth: 10_000_000n, allowedChannels: ["web", "api"], priceMonthly: "49", priceCurrency: "USD", displayOrder: 2 },
-  { slug: "enterprise", name: "Enterprise", description: "For large teams with unlimited needs", maxAgents: 999, maxIntegrations: 999, maxWorkspaceUsers: 100, maxTokensPerMonth: 100_000_000n, allowedChannels: ["web", "api", "whatsapp"], priceMonthly: "149", priceCurrency: "USD", displayOrder: 3 },
-];
 const EMPTY_BUCKET = '<?xml version="1.0"?><ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>';
 
 describe("RNX-91: bun run seed on an empty test database", () => {
@@ -128,11 +122,7 @@ describe("RNX-91: bun run seed on an empty test database", () => {
     const afterFirst = await countRows();
     const second = await runSeed();
     const afterSecond = await countRows();
-    const plans = await prisma.subscriptionPlan.findMany({ orderBy: { displayOrder: "asc" } });
 
-    expect(plans.map(({ id, createdAt, updatedAt, isActive, priceMonthly, ...rest }) => ({ ...rest, priceMonthly: priceMonthly?.toString() }))).toEqual(OLD_PLANS);
-    expect(plans.every((plan) => plan.isActive)).toBe(true);
-    expect(afterSecond.subscription_plans).toBe(3);
     expect(afterSecond.invitation_codes).toBe(0);
     expect(afterSecond.app_configs).toBe(0);
     expect(first.code).toBe(0);

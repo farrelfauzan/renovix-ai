@@ -24,7 +24,7 @@ import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.s
 
 // RX-22b (RNX-193) AC4: a reminder run is one agent run on the credit ledger, paid by the reminder's owner
 // (docs/credits.md section 13): one reservation and a usage entry per model call (RNX-186 removed the old counters:
-// User.balance, Transaction, the UserSubscription counters). Real ReminderScheduler, meter, CreditService and UsageService on the
+// User.balance, Transaction, the subscription counters). Real ReminderScheduler, meter, CreditService and UsageService on the
 // test database; fake provider. These collaborators load ESM-only packages.
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../service/reminder.service", () => ({ ReminderService: class {} }));

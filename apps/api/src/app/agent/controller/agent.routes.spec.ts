@@ -14,8 +14,6 @@ import { resetDatabase } from "../../../../test/test-database";
 import {
   createAgent,
   createPackageSnapshot,
-  createPlan,
-  createSubscription,
   createUser,
 } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
@@ -48,14 +46,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
 
   const auth = (user: { id: string; email: string }) => asSessionUser(user);
 
-  const subscribed = async (plan: Parameters<typeof createPlan>[1] = {}, status = "active") => {
-    const user = await createUser(prisma);
-    const created = await createPlan(prisma, plan);
-    await createSubscription(prisma, { userId: user.id, planId: created.id, status });
-    return { user, plan: created };
-  };
-
-  // RNX-76 B1: agent create/clone/integration limits come from the purchased package snapshot, not UserSubscription.
+  // RNX-76 B1: agent create/clone/integration limits come from the purchased package snapshot.
   const packaged = async (limits: { maxAgents?: number; maxConnectedTools?: number; name?: string } = {}) => {
     const user = await createUser(prisma);
     await createPackageSnapshot(prisma, { userId: user.id, ...limits });
@@ -69,12 +60,8 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
   const newAgent = { name: "My Agent", systemPrompt: "prompt", model: "test-model" };
 
   describe("POST /agents", () => {
-    it.each([
-      ["no package and no subscription", null],
-      ["no package and a canceled subscription", "canceled"],
-      ["no package and an active UserSubscription (the old gate no longer authorizes)", "active"],
-    ])("free account, %s: 400 PACKAGE_LIMIT_REACHED, nothing stored", async (_name, status) => {
-      const user = status ? (await subscribed({ maxAgents: 50 }, status)).user : await createUser(prisma);
+    it("free account, no package: 400 PACKAGE_LIMIT_REACHED, nothing stored", async () => {
+      const user = await createUser(prisma);
 
       const res = await app.inject({ method: "POST", url: "/agents", headers: auth(user), payload: newAgent });
 
@@ -83,9 +70,8 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(await prisma.agent.count()).toBe(0);
     });
 
-    it("a purchased package without any UserSubscription creates (201)", async () => {
+    it("a purchased package creates (201)", async () => {
       const user = await packaged({ maxAgents: 1 });
-      expect(await prisma.userSubscription.count()).toBe(0);
 
       const res = await app.inject({ method: "POST", url: "/agents", headers: auth(user), payload: newAgent });
 
@@ -270,7 +256,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       ["private", { isPublic: false }],
       ["draft", { status: "draft" }],
     ])("a %s template: 404, nothing stored", async (_name, data) => {
-      const { user } = await subscribed();
+      const user = await packaged();
       const tpl = await template(data);
 
       const res = await app.inject({ method: "POST", url: `/agents/clone/${tpl.id}`, headers: auth(user) });
@@ -314,20 +300,11 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
     });
   });
 
-  // RNX-251: the route answers the caller's package (EntitlementService over their purchase snapshots), not a
-  // user_subscriptions row; the chat shows the agents page only with one.
+  // RNX-251: the route answers the caller's package (EntitlementService over their purchase snapshots); the chat
+  // shows the agents page only with one.
   describe("GET /agents/subscription", () => {
     it("without a package: { subscription: null }", async () => {
       const user = await createUser(prisma);
-
-      const res = await app.inject({ method: "GET", url: "/agents/subscription", headers: auth(user) });
-
-      expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ subscription: null });
-    });
-
-    it("an active user_subscriptions row but no package: { subscription: null } (the old row no longer counts)", async () => {
-      const { user } = await subscribed();
 
       const res = await app.inject({ method: "GET", url: "/agents/subscription", headers: auth(user) });
 
@@ -342,7 +319,6 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json().subscription).toMatchObject({ packageName: "Starter", maxAgents: 2, maxConnectedTools: 4 });
-      expect(await prisma.userSubscription.count()).toBe(0);
     });
 
     it("returns the caller's package, not another user's", async () => {
@@ -409,7 +385,7 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
   describe("integrations", () => {
     const integration = { provider: "jira", config: { baseUrl: "https://jira.test.local" }, scopes: ["read"] };
 
-    it("owner with a purchased package and no UserSubscription attaches (201, connected) and removes (204) one", async () => {
+    it("owner with a purchased package attaches (201, connected) and removes (204) one", async () => {
       const user = await packaged({ maxConnectedTools: 5 });
       const agent = await createAgent(prisma, { userId: user.id });
       await prisma.agentIntegration.create({ data: { agentId: agent.id, provider: "plane", config: {}, scopes: ["read"] } });
@@ -627,54 +603,6 @@ describe("RX-133: agent routes (Fastify, test database)", () => {
       expect(update.statusCode).toBe(404);
       expect(remove.statusCode).toBe(404);
       expect(await prisma.agentChannel.findUnique({ where: { id: channel.id } })).toMatchObject({ config: { a: 1 } });
-    });
-  });
-
-  // RX-2 closed the route; the method stays on the service and is tested there.
-  describe("AgentService.subscribe", () => {
-    const service = () => moduleRef.get(AgentService);
-
-    it("an unknown tier: 400", async () => {
-      const user = await createUser(prisma);
-
-      await expect(service().subscribe(user.id, "no-such-tier")).rejects.toMatchObject({
-        status: 400,
-        message: "Invalid plan tier",
-      });
-    });
-
-    it("no subscription yet: creates an active one on the plan", async () => {
-      const user = await createUser(prisma);
-      const plan = await createPlan(prisma, { slug: "pro", priceMonthly: null });
-
-      const result = await service().subscribe(user.id, "pro");
-
-      expect(result.subscription).toMatchObject({ userId: user.id, planId: plan.id, status: "active" });
-      expect(result.subscription.plan).toMatchObject({ id: plan.id, priceMonthly: null, maxTokensPerMonth: "1000000" });
-      expect(await prisma.userSubscription.count()).toBe(1);
-    });
-
-    // RNX-186: was "... and resets the usage" (messagesUsed and tokensUsed back to 0); the counters are gone.
-    it("an active subscription: moves it to the plan", async () => {
-      const { user } = await subscribed();
-      const plan = await createPlan(prisma, { slug: "pro", priceMonthly: 150000 });
-
-      const result = await service().subscribe(user.id, "pro");
-
-      expect(result.subscription).toMatchObject({ planId: plan.id });
-      expect(result.subscription.plan).toMatchObject({ id: plan.id, priceMonthly: 150000 });
-      expect(await prisma.userSubscription.count()).toBe(1);
-    });
-
-    it("an inactive subscription: the create hits the unique user id (P2002, not mapped), nothing changed", async () => {
-      const { user, plan: oldPlan } = await subscribed({}, "canceled");
-      await createPlan(prisma, { slug: "pro" });
-
-      await expect(service().subscribe(user.id, "pro")).rejects.toMatchObject({ code: "P2002" });
-      expect(await prisma.userSubscription.findUnique({ where: { userId: user.id } })).toMatchObject({
-        planId: oldPlan.id,
-        status: "canceled",
-      });
     });
   });
 });

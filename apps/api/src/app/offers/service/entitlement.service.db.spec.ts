@@ -215,14 +215,13 @@ describe("EntitlementService (RNX-76 B1)", () => {
     expect((await service.getForUser(user.id))?.collaborationEnabled).toBe(true);
   });
 
-  it("paid snapshot without user_subscriptions is still the entitlement source, collaboration included", async () => {
+  it("paid snapshot is the entitlement source, collaboration included", async () => {
     const user = await createUser(prisma);
     const version = await packageVersion(true);
     await snapshot(user.id, version.id, true);
 
     const actual = await service.getForUser(user.id);
 
-    expect(await prisma.userSubscription.count({ where: { userId: user.id } })).toBe(0);
     expect(actual).toMatchObject({
       packageName: "Enterprise", maxAgents: 4, maxConnectedTools: 3, apiAccess: true, collaborationEnabled: true,
       allowedChannels: ["web"], allowedTiers: ["advanced", "standard"],

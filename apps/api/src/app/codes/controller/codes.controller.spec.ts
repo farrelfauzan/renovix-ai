@@ -5,7 +5,7 @@ import { CodesModule } from "../codes.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createPlan, createUser } from "../../../../test/factories";
+import { createUser } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
 
 // CombinedAuthGuard runs for real (session path); better-auth is ESM-only, so its
@@ -26,9 +26,9 @@ describe("GET /codes/history (Fastify, test database)", () => {
 
   afterAll(() => app?.close());
 
-  const redeemed = async (userId: string, code: string, planId: string) => {
+  const redeemed = async (userId: string, code: string) => {
     const created = await prisma.invitationCode.create({
-      data: { code, type: "subscription", planId, durationDays: 30 },
+      data: { code, type: "subscription", durationDays: 30 },
     });
     await prisma.codeRedemption.create({
       data: { codeId: created.id, userId, planGranted: "pro", daysGranted: 30 },
@@ -36,11 +36,10 @@ describe("GET /codes/history (Fastify, test database)", () => {
   };
 
   it("returns only the signed-in user's redemptions", async () => {
-    const plan = await createPlan(prisma, { slug: "pro" });
     const alice = await createUser(prisma);
     const bob = await createUser(prisma);
-    await redeemed(alice.id, "PERF-ALIC-0001", plan.id);
-    await redeemed(bob.id, "PERF-BOBB-0001", plan.id);
+    await redeemed(alice.id, "PERF-ALIC-0001");
+    await redeemed(bob.id, "PERF-BOBB-0001");
     const session = asSessionUser(alice);
 
     const res = await app.inject({

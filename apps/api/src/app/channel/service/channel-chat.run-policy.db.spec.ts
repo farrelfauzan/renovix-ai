@@ -159,8 +159,6 @@ describe("RNX-119: the run policy on every channel chat message (test database, 
 
   it("a collaborator's channel chat runs the private workspace agent and reserves on the collaborator's own paid wallet (control)", async () => {
     const { owner, collaborator, channel, agent } = await collaboratorSetup();
-    // RNX-251: the collaborator's package is a purchase snapshot; no user_subscriptions row exists.
-    expect(await prisma.userSubscription.count()).toBe(0);
     fake.enqueue({ content: "Hello", usage: { prompt_tokens: 100, completion_tokens: 10 } }, { content: "[]" });
 
     await service.assertRunCanStart(collaborator.id, channel.id, agent.id, "Hi");
