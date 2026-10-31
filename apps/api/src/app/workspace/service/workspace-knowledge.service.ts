@@ -151,7 +151,7 @@ export class WorkspaceKnowledgeService {
 
         return this.prisma.$executeRaw(
           Prisma.sql`
-            INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
+            INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt", embedding_model, embedded_at)
             VALUES (
               gen_random_uuid(),
               ${knowledgeBaseId},
@@ -159,6 +159,8 @@ export class WorkspaceKnowledgeService {
               ${JSON.stringify(metadata)}::jsonb,
               ${vector}::vector,
               ${embeddings[i].tokenCount},
+              now(),
+              ${this.embeddingService.modelName},
               now()
             )
           `,
@@ -184,7 +186,7 @@ export class WorkspaceKnowledgeService {
 
         return this.prisma.$executeRaw(
           Prisma.sql`
-            INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
+            INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt", embedding_model, embedded_at)
             VALUES (
               gen_random_uuid(),
               ${kb.id},
@@ -192,6 +194,8 @@ export class WorkspaceKnowledgeService {
               ${JSON.stringify({ ...(chunk.metadata ?? {}), addedBy: userId })}::jsonb,
               ${vector}::vector,
               ${embeddings[i].tokenCount},
+              now(),
+              ${this.embeddingService.modelName},
               now()
             )
           `,
@@ -276,6 +280,7 @@ export class WorkspaceKnowledgeService {
         JOIN "knowledge_bases" kb ON kb.id = kc."knowledgeBaseId"
         WHERE kb.workspace_id = ${workspaceId}
           AND kb.active = true
+          AND kc.embedding_model = ${this.embeddingService.modelName}
         ORDER BY kc.embedding <=> ${vector}::vector
         LIMIT ${topK}
       `,
@@ -290,6 +295,11 @@ export class WorkspaceKnowledgeService {
    */
   async searchKnowledgeBase(knowledgeBaseId: string, query: string, topK: number) {
     const { embedding } = await this.embeddingService.embedSingle(query);
-    return this.knowledgeChunks.searchChunksInKnowledgeBase(knowledgeBaseId, embedding, topK);
+    return this.knowledgeChunks.searchChunksInKnowledgeBase(
+      knowledgeBaseId,
+      embedding,
+      this.embeddingService.modelName,
+      topK,
+    );
   }
 }

@@ -69,6 +69,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
   let prisma: PrismaService;
   let app: NestFastifyApplication;
   const embedding = {
+    modelName: "test-model",
     embed: jest.fn(async (texts: string[]) => texts.map(() => ({ embedding: unit(), tokenCount: 1 }))),
     embedSingle: jest.fn(async () => ({ embedding: unit(), tokenCount: 1 })),
   };
@@ -124,8 +125,8 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
   const insertChunk = async (knowledgeBaseId: string, content: string) => {
     const id = randomUUID();
     await prisma.$executeRaw`
-      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
-      VALUES (${id}, ${knowledgeBaseId}, ${content}, '{}'::jsonb, ${VECTOR}::vector, 1, now())`;
+      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt", embedding_model, embedded_at)
+      VALUES (${id}, ${knowledgeBaseId}, ${content}, '{}'::jsonb, ${VECTOR}::vector, 1, now(), ${embedding.modelName}, now())`;
     return id;
   };
 

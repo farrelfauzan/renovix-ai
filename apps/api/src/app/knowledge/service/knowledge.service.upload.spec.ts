@@ -15,7 +15,7 @@ describe("RNX-173: KnowledgeService.uploadMarkdown leaves no S3 object behind", 
   const embed = jest.fn();
   const insertChunks = jest.fn();
   const service = new KnowledgeService(
-    { embed } as unknown as EmbeddingService,
+    { embed, modelName: "model-current" } as unknown as EmbeddingService,
     { buildKey: () => inputKey, upload, delete: remove } as unknown as S3Service,
     { findKnowledgeBaseWithChunkCount: async () => mockKnowledgeBase } as unknown as KnowledgeBaseRepository,
     { insertChunks } as unknown as KnowledgeChunkRepository,
@@ -25,7 +25,7 @@ describe("RNX-173: KnowledgeService.uploadMarkdown leaves no S3 object behind", 
   beforeEach(() => {
     jest.resetAllMocks();
     embed.mockImplementation(async (texts: string[]) => texts.map(() => ({ embedding: [0.1], tokenCount: 3 })));
-    insertChunks.mockImplementation(async (_id: string, rows: unknown[]) => rows);
+    insertChunks.mockImplementation(async (_id: string, _model: string, rows: unknown[]) => rows);
   });
 
   it("AC1: a file with no chunks → 400 and no S3 upload", async () => {
@@ -67,7 +67,7 @@ describe("RNX-173: KnowledgeService.uploadMarkdown leaves no S3 object behind", 
 
     expect(upload).toHaveBeenCalledTimes(1);
     expect(upload).toHaveBeenCalledWith(inputKey, validFile.buffer, "text/markdown");
-    const insertedRows = insertChunks.mock.calls[0][1] as { metadata: { s3Key: string } }[];
+    const insertedRows = insertChunks.mock.calls[0][2] as { metadata: { s3Key: string } }[];
     expect(insertedRows.length).toBeGreaterThan(0);
     expect(insertedRows.every((row) => row.metadata.s3Key === inputKey)).toBe(true);
     expect(actualResult.s3Key).toBe(inputKey);

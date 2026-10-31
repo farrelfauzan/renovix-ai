@@ -74,7 +74,7 @@ describe("Workspace collaboration is Enterprise only (RX-113, Fastify, test data
         { provide: EmailJobService, useValue: email },
         {
           provide: EmbeddingService,
-          useValue: { embed: async (texts: string[]) => texts.map(zero), embedSingle: async () => zero() },
+          useValue: { modelName: "test-model", embed: async (texts: string[]) => texts.map(zero), embedSingle: async () => zero() },
         },
         { provide: S3Service, useValue: {} },
       ],

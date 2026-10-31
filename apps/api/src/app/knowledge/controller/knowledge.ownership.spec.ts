@@ -23,6 +23,7 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
   let app: NestFastifyApplication;
   const zero = () => ({ embedding: new Array(1024).fill(0), tokenCount: 1 });
   const embedding = {
+    modelName: "test-model",
     embed: jest.fn(async (texts: string[]) => texts.map(zero)),
     embedSingle: jest.fn(async () => zero()),
   };
@@ -57,7 +58,7 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
       data: { userId: alice.id, name: "Alice KB" },
     });
     const chunk = await prisma.knowledgeChunk.create({
-      data: { knowledgeBaseId: kb.id, content: "Alice's private note", tokenCount: 3 },
+      data: { knowledgeBaseId: kb.id, content: "Alice's private note", tokenCount: 3, embeddingModel: "test-model", embeddedAt: new Date() },
     });
     return { alice, bob, kb, chunk };
   };
@@ -181,7 +182,7 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
         data: { userId: admin.id, workspaceId: workspace.id, name: "Team KB" },
       });
       await prisma.knowledgeChunk.create({
-        data: { knowledgeBaseId: kb.id, content: "added by another member", tokenCount: 4 },
+        data: { knowledgeBaseId: kb.id, content: "added by another member", tokenCount: 4, embeddingModel: "test-model", embeddedAt: new Date() },
       });
 
       const res = await app.inject({

@@ -75,7 +75,7 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
           KnowledgeService,
           WorkspaceKnowledgeService,
           WorkspaceQuotaService,
-          { provide: EmbeddingService, useValue: { embedSingle } },
+          { provide: EmbeddingService, useValue: { embedSingle, modelName: "test-model" } },
           { provide: S3Service, useValue: {} },
           {
             provide: ModelRegistryService,
@@ -125,8 +125,8 @@ describe("Agent run: knowledge context per attached base (RX-113, test database,
 
   const insertChunk = (knowledgeBaseId: string, content: string) =>
     prisma.$executeRaw`
-      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt")
-      VALUES (${randomUUID()}, ${knowledgeBaseId}, ${content}, '{}'::jsonb, ${`[${unit().join(",")}]`}::vector, 1, now())`;
+      INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, metadata, embedding, "tokenCount", "createdAt", embedding_model, embedded_at)
+      VALUES (${randomUUID()}, ${knowledgeBaseId}, ${content}, '{}'::jsonb, ${`[${unit().join(",")}]`}::vector, 1, now(), 'test-model', now())`;
 
   it("a sync run with a workspace base attached first still uses the caller's personal base", async () => {
     const user = await createUser(prisma);

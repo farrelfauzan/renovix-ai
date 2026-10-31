@@ -7,6 +7,7 @@ import { ConfigService } from "@nestjs/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../apps/api/src/generated/prisma/client.js";
 import type { PrismaService } from "../apps/api/src/app/prisma/prisma.service";
+import { TransactionService } from "../apps/api/src/app/prisma/transaction.service";
 import { KnowledgeBaseRepository } from "../apps/api/src/app/knowledge/repository/knowledge-base.repository";
 import { KnowledgeChunkRepository } from "../apps/api/src/app/knowledge/repository/knowledge-chunk.repository";
 import { EmbeddingService } from "../apps/api/src/app/knowledge/service/embedding.service";
@@ -15,9 +16,9 @@ import { SystemKnowledgeService } from "../apps/api/src/app/knowledge/service/sy
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) }) as unknown as PrismaService;
 const config = new ConfigService(process.env);
 try {
-  const service = new SystemKnowledgeService(new EmbeddingService(config), config, new KnowledgeBaseRepository(prisma), new KnowledgeChunkRepository(prisma));
-  const { synced, unchanged } = await service.sync();
-  console.log(`System knowledge sync: ${synced} synced, ${unchanged} unchanged.`);
+  const service = new SystemKnowledgeService(new EmbeddingService(config), config, new KnowledgeBaseRepository(prisma), new KnowledgeChunkRepository(prisma), new TransactionService(prisma));
+  const { synced, unchanged, skipped } = await service.sync();
+  console.log(skipped ? "System knowledge sync: skipped, another sync is running." : `System knowledge sync: ${synced} synced, ${unchanged} unchanged.`);
 } finally {
   await prisma.$disconnect();
 }

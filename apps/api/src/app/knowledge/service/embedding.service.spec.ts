@@ -2,6 +2,10 @@ import { inspect } from "node:util";
 import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EmbeddingService } from "./embedding.service";
+import { KnowledgeService } from "./knowledge.service";
+import type { S3Service } from "./s3.service";
+import type { KnowledgeBaseRepository } from "../repository/knowledge-base.repository";
+import type { KnowledgeChunkRepository } from "../repository/knowledge-chunk.repository";
 import { blockOutbound, OutboundBlocker, sendJson, startStubHttpServer, StubHttpServer } from "../../../../test/llm-stub";
 import { captureOutput } from "../../../../test/capture-output";
 import { plantedProviderSecret } from "../../../../test/planted-provider-secret";
@@ -113,6 +117,43 @@ describe("RX-160 AC6: a vector that does not fit the vector(1024) column", () =>
 
     await expect(makeService(stubEnv()).embed(["a", "b"])).rejects.toThrow(/1536/);
   });
+});
+
+describe("RNX-27: the provider's dimensions parameter, no local trim or pad, and the model name", () => {
+  const largeModelEnv = (): Env => ({ ...stubEnv(), EMBEDDING_MODEL: "text-embedding-3-large", EMBEDDING_DIMENSIONS: "1024" });
+
+  it("text-embedding-3-large at 1024: the request carries dimensions 1024 and the vector comes back exactly as answered", async () => {
+    const answered = Array.from({ length: 1024 }, (_, i) => i / 1024);
+    stub.respond((_req, res) => sendJson(res, 200, { data: [{ embedding: answered }], usage: { total_tokens: 2 } }));
+
+    const [actual] = await makeService(largeModelEnv()).embed(["a"]);
+
+    expect(stub.requests[0].body).toEqual({ model: "text-embedding-3-large", input: ["a"], dimensions: 1024 });
+    expect(actual.embedding).toEqual(answered);
+  });
+
+  it("modelName is the configured model, and \"fake\" in LLM_PROVIDER=fake", () => {
+    expect(makeService(largeModelEnv()).modelName).toBe("text-embedding-3-large");
+    expect(makeService({ LLM_PROVIDER: "fake" }).modelName).toBe("fake");
+  });
+
+  it.each([768, 1025])(
+    "negative: a %i-long answer is refused (not trimmed or padded) before the write path inserts anything",
+    async (length) => {
+      stub.respond((req, res) => sendJson(res, 200, vectors(req.body.input.length, length)));
+      const insertChunks = jest.fn();
+      const knowledge = new KnowledgeService(
+        makeService(largeModelEnv()),
+        {} as S3Service,
+        { findKnowledgeBaseWithChunkCount: async () => ({ id: "kb-1", userId: "user-1", workspaceId: null }) } as unknown as KnowledgeBaseRepository,
+        { insertChunks } as unknown as KnowledgeChunkRepository,
+      );
+
+      await expect(knowledge.addChunks("user-1", "kb-1", [{ content: "a" }])).rejects.toThrow(new RegExp(`${length}`));
+
+      expect(insertChunks).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("RX-160 AC7: the embedding key never reaches a log line", () => {
