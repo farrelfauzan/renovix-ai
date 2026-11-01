@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { TestingModule } from "@nestjs/testing";
 import { ReminderScheduler } from "./reminder.scheduler";
 import { ReminderService } from "../service/reminder.service";
+import { ReminderRoomService } from "../service/reminder-room.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
 import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
@@ -45,6 +46,7 @@ describe("RX-22b: reminder runs on the credit ledger (test database, fake provid
         imports: [ProvidersModule],
         providers: [
           ReminderScheduler,
+          ReminderRoomService,
           AgentRunPolicyService,
           WorkspaceQuotaService,
           AgentRunMeterService,
