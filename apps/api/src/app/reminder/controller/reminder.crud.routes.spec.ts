@@ -346,4 +346,75 @@ describe("RNX-139: reminder routes (Fastify, test database)", () => {
       expect(res.statusCode).toBe(404);
     });
   });
+
+  describe("RNX-124: reminders of a deleted agent (D99)", () => {
+    /** The user's agent A with two reminders, and a second live agent B in the same channel with one reminder. */
+    const seedTwoAgents = async () => {
+      const s = await seedUser(2);
+      const b = await createAgent(prisma, { userId: s.user.id });
+      await prisma.channelAgent.create({ data: { channelId: s.channel.id, agentId: b.id } });
+      const ofB = await prisma.reminder.create({
+        data: {
+          userId: s.user.id,
+          agentId: b.id,
+          channelId: s.channel.id,
+          chatRoomId: s.chatRoom.id,
+          prompt: "Of B",
+          cronExpression: "0 8 * * *",
+          timezone: "UTC",
+          nextRunAt: new Date(Date.now() + 60_000),
+        },
+      });
+      return { ...s, b, ofB };
+    };
+    const markAgentDeleted = (agentId: string, userId: string) =>
+      prisma.agent.updateMany({ where: { id: agentId }, data: { deletedAt: new Date(), deletedById: userId } });
+    const clearAgentDeleted = (agentId: string) =>
+      prisma.agent.updateMany({ where: { id: agentId }, data: { deletedAt: null, deletedById: null } });
+
+    it("RNX-124 D99: the list leaves out the deleted agent's reminders and nothing else changes; listed again once the agent is live", async () => {
+      const s = await seedTwoAgents();
+      const list = async () => (await app.inject({ method: "GET", url: "/reminders", headers: asSessionUser(s.user) })).json();
+      const before = await list();
+
+      await markAgentDeleted(s.agent.id, s.user.id);
+      const hidden = await list();
+      await clearAgentDeleted(s.agent.id);
+      const shown = await list();
+
+      expect(before.map((r: { id: string }) => r.id).sort()).toEqual([s.ofB.id, ...s.reminders.map((r) => r.id)].sort());
+      expect(hidden).toEqual(before.filter((r: { id: string }) => r.id === s.ofB.id));
+      expect(shown).toEqual(before);
+    });
+
+    it.each([
+      ["read it", "GET", undefined],
+      ["update it", "PATCH", { prompt: "Changed" }],
+      ["delete it", "DELETE", undefined],
+    ] as const)("RNX-124 D99: %s → 404, the reminder row unchanged; readable again once the agent is live", async (_label, method, payload) => {
+      const s = await seedTwoAgents();
+      const id = s.reminders[0].id;
+      const before = await prisma.reminder.findUniqueOrThrow({ where: { id } });
+      await markAgentDeleted(s.agent.id, s.user.id);
+
+      const res = await app.inject({ method, url: `/reminders/${id}`, headers: asSessionUser(s.user), payload });
+
+      expect(res.statusCode).toBe(404);
+      await unchanged(id, before);
+      await clearAgentDeleted(s.agent.id);
+      const read = await app.inject({ method: "GET", url: `/reminders/${id}`, headers: asSessionUser(s.user) });
+      expect([read.statusCode, read.json().id]).toEqual([200, id]);
+    });
+
+    it("RNX-124: deleting a reminder sets deletedById to the caller", async () => {
+      const s = await seedUser();
+      const id = s.reminders[0].id;
+
+      const res = await app.inject({ method: "DELETE", url: `/reminders/${id}`, headers: asSessionUser(s.user) });
+
+      expect(res.statusCode).toBeLessThan(300);
+      const stored = await prisma.reminder.findUniqueOrThrow({ where: { id } });
+      expect([stored.deletedAt, stored.deletedById]).toEqual([expect.any(Date), s.user.id]);
+    });
+  });
 });

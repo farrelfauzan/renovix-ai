@@ -181,10 +181,11 @@ export class AgentRunService {
 
   /**
    * The caller's own runs of the agent (RNX-119). RNX-260 (D259, 78): only "this run is mine", not current run access,
-   * so an outsider or a former collaborator still lists their own runs; nobody sees another person's. RNX-124: none of a
-   * deleted agent.
+   * so an outsider or a former collaborator still lists their own runs; nobody sees another person's. RNX-124: 404 for
+   * a deleted agent (an unknown id still lists none).
    */
   async listRuns(userId: string, agentId: string) {
+    if (await this.agents.findDeletedAgent(agentId)) throw new NotFoundException("Agent not found");
     return this.prisma.agentRun.findMany({
       where: { agentId, userId, agent: { deletedAt: null } },
       orderBy: { updatedAt: "desc" },

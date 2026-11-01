@@ -181,6 +181,14 @@ export class AgentRepository {
     return count;
   }
 
+  /** The id of the agent with this id if it is deleted (RNX-124): the caller's condition on deletedAt wins over the default filter. */
+  findDeletedAgent(agentId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.findFirst({
+      where: { id: agentId, deletedAt: { not: null } },
+      select: { id: true },
+    });
+  }
+
   /** The workspace id of the agent with this id and whether it is a default workspace (RNX-117), if the agent exists. */
   findAgentWorkspaceId(agentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findUnique({

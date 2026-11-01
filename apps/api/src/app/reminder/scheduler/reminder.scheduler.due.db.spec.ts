@@ -121,6 +121,27 @@ describe("RNX-139: the scheduler's pick-up of due reminders (test database, fake
     }
   });
 
+  it("RNX-124 AC3: a due, active reminder of a deleted agent does not fire: no model call, message, reservation or ledger entry; the reminder row unchanged", async () => {
+    const s = await seedRoom();
+    const due = await addReminder(s, { prompt: "DUE", nextRunAt: past() });
+    await prisma.agent.updateMany({ where: { id: s.agent.id }, data: { deletedAt: new Date(), deletedById: s.user.id } });
+    const ledgerBefore = await prisma.creditLedgerEntry.count();
+    fake.enqueue({ content: "Done", usage: { prompt_tokens: 10, completion_tokens: 2 } });
+
+    await scheduler.processReminders();
+
+    expect(fake.requests).toHaveLength(0);
+    expect(await prisma.channelMessage.count()).toBe(0);
+    expect(await prisma.creditReservation.count()).toBe(0);
+    expect(await prisma.creditLedgerEntry.count()).toBe(ledgerBefore);
+    expect(await prisma.reminder.findUniqueOrThrow({ where: { id: due.id } })).toEqual(due);
+    // Control: once the agent is live again the same reminder fires (and takes the reply queued above)
+    await prisma.agent.updateMany({ where: { id: s.agent.id }, data: { deletedAt: null, deletedById: null } });
+    await scheduler.processReminders();
+    expect(fake.requests).toHaveLength(1);
+    expect((await prisma.reminder.findUniqueOrThrow({ where: { id: due.id } })).lastRunAt).not.toBeNull();
+  });
+
   it("a fire stores the reminder's prompt and the answer in the room, marked as from the reminder", async () => {
     const s = await seedRoom();
     const due = await addReminder(s, { prompt: "Summarise", nextRunAt: past() });

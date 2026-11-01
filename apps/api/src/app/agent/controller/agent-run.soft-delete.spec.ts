@@ -169,7 +169,7 @@ describe("RNX-124: a deleted agent does not run and its runs are hidden (Fastify
       return { ...seeded, run };
     };
 
-    it("list its runs → 200 with none; read or delete its run → 404; the run row and its messages stay", async () => {
+    it("list its runs, read or delete its run → 404; the run row and its messages stay", async () => {
       const { agent, session, run } = await seedWithRun();
       await deleteAgent(agent.id, session);
 
@@ -177,8 +177,7 @@ describe("RNX-124: a deleted agent does not run and its runs are hidden (Fastify
       const read = await app.inject({ method: "GET", url: `/agents/${agent.id}/runs/${run.id}`, headers: session });
       const removed = await app.inject({ method: "DELETE", url: `/agents/${agent.id}/runs/${run.id}`, headers: session });
 
-      expect([list.statusCode, list.json()]).toEqual([200, []]);
-      expect([read.statusCode, removed.statusCode]).toEqual([404, 404]);
+      expect([list.statusCode, read.statusCode, removed.statusCode]).toEqual([404, 404, 404]);
       expect(await prisma.agentRun.count({ where: { id: run.id } })).toBe(1);
       expect(await prisma.agentMessage.count({ where: { runId: run.id } })).toBe(2);
     });
@@ -192,9 +191,17 @@ describe("RNX-124: a deleted agent does not run and its runs are hidden (Fastify
       const read = await app.inject({ method: "GET", url: `/agents/${agent.id}/runs/${run.id}`, headers: session });
       const removed = await app.inject({ method: "DELETE", url: `/agents/${agent.id}/runs/${run.id}`, headers: session });
 
-      expect(list.json().map((r: { id: string }) => r.id)).toEqual([run.id]);
+      expect([list.statusCode, list.json().map((r: { id: string }) => r.id)]).toEqual([200, [run.id]]);
       expect([read.statusCode, removed.statusCode]).toEqual([200, 204]);
     });
+  });
+
+  it("RNX-124 AC4: an unknown agent id still lists no runs (200 [])", async () => {
+    const { session } = await seed();
+
+    const res = await app.inject({ method: "GET", url: "/agents/00000000-0000-4000-8000-000000000000/runs", headers: session });
+
+    expect([res.statusCode, res.json()]).toEqual([200, []]);
   });
 
   it("RNX-124 AC10: deleting the agent leaves its usage rows and the totals as they were (ledger entries with its agentId, usage logs, balance)", async () => {
