@@ -10,16 +10,14 @@ const KEY_A = randomBytes(32).toString("hex");
 const KEY_B = randomBytes(32).toString("hex");
 const SECRET_ENV = { NOTION_TOKEN: "rx110-marker-token" };
 
-/** In-memory stand-in for the one credential row these tests store. */
+/** In-memory stand-in for UserMcpCredentialRepository, holding the one credential row these tests store. */
 function createCredentialStore() {
   const rows: Record<string, unknown>[] = [];
   return {
     rows,
-    userMcpCredential: {
-      upsert: async ({ create }: { create: Record<string, unknown> }) => rows.push({ id: "cred-1", ...create }),
-      findUnique: async () => rows[0] ?? null,
-      findFirst: async () => rows[0] ?? null,
-    },
+    upsertCredential: async (input: Record<string, unknown>) => rows.push({ id: "cred-1", status: "connected", ...input }),
+    findCredential: async () => rows[0] ?? null,
+    findUserCredential: async () => rows[0] ?? null,
   };
 }
 

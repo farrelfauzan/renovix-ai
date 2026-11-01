@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
 import { McpClientService, McpServerConfig, McpToolSchema } from "./mcp-client.service";
 import { McpRegistryService } from "./mcp-registry.service";
+import { UserMcpCredentialRepository } from "../repository/user-mcp-credential.repository";
 import * as crypto from "crypto";
 import { readEncryptionKey } from "../../../common/utils/read-encryption-key";
 
@@ -11,7 +11,7 @@ export class McpService {
   private readonly encryptionKey: Buffer;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly credentials: UserMcpCredentialRepository,
     private readonly mcpClient: McpClientService,
     private readonly registry: McpRegistryService,
   ) {
@@ -26,16 +26,7 @@ export class McpService {
    * List user's connected MCP integrations (from user_mcp_credentials).
    */
   async listServers(userId: string) {
-    const credentials = await this.prisma.userMcpCredential.findMany({
-      where: { userId },
-      select: {
-        id: true,
-        provider: true,
-        status: true,
-        connectedAt: true,
-      },
-      orderBy: { connectedAt: "desc" },
-    });
+    const credentials = await this.credentials.listUserCredentialSummaries(userId);
 
     const allPackages = this.registry.getAllPackages();
 
@@ -59,9 +50,7 @@ export class McpService {
    * Test connection to an MCP provider using user's stored credentials.
    */
   async testConnection(userId: string, credentialId: string) {
-    const cred = await this.prisma.userMcpCredential.findFirst({
-      where: { id: credentialId, userId },
-    });
+    const cred = await this.credentials.findUserCredential(credentialId, userId);
 
     if (!cred) {
       throw new NotFoundException("MCP credential not found");
@@ -92,10 +81,7 @@ export class McpService {
         await this.mcpClient.close(connection);
       }
 
-      await this.prisma.userMcpCredential.update({
-        where: { id: cred.id },
-        data: { status: "connected" },
-      });
+      await this.credentials.updateCredentialStatus(cred.id, "connected");
 
       return {
         status: "connected",
@@ -103,10 +89,7 @@ export class McpService {
         tools: tools.map((t) => t.name),
       };
     } catch (err: any) {
-      await this.prisma.userMcpCredential.update({
-        where: { id: cred.id },
-        data: { status: "expired" },
-      });
+      await this.credentials.updateCredentialStatus(cred.id, "expired");
       return { status: "error", error: err.message };
     }
   }
@@ -115,15 +98,13 @@ export class McpService {
    * Disconnect (delete) a user's MCP credential by ID.
    */
   async deleteServer(userId: string, credentialId: string) {
-    const cred = await this.prisma.userMcpCredential.findFirst({
-      where: { id: credentialId, userId },
-    });
+    const cred = await this.credentials.findUserCredential(credentialId, userId);
 
     if (!cred) {
       throw new NotFoundException("MCP credential not found");
     }
 
-    await this.prisma.userMcpCredential.delete({ where: { id: cred.id } });
+    await this.credentials.deleteCredential(cred.id);
     return { deleted: true };
   }
 
