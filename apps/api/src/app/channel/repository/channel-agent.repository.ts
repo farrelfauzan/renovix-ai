@@ -34,15 +34,15 @@ export class ChannelAgentRepository {
     });
   }
 
-  /** The link of this agent to this channel, if there is one. */
+  /** The link of this live agent (RNX-124) to this channel, if there is one. */
   findChannelAgent(channelId: string, agentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).channelAgent.findFirst({
-      where: { channelId, agentId },
+      where: { channelId, agentId, agent: { deletedAt: null } },
     });
   }
 
   /**
-   * The link of this agent to this channel with the channel and its workspace, and the agent with its
+   * The link of this live agent (RNX-124) to this channel with the channel and its workspace, and the agent with its
    * enabled tools, its knowledge bases and its connected integrations.
    */
   findChannelAgentWithAgent(
@@ -51,7 +51,7 @@ export class ChannelAgentRepository {
     tx?: DbTransaction,
   ) {
     return (tx ?? this.prisma).channelAgent.findFirst({
-      where: { channelId, agentId },
+      where: { channelId, agentId, agent: { deletedAt: null } },
       include: {
         channel: { include: { workspace: true } },
         agent: {

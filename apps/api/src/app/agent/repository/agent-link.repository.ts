@@ -11,10 +11,10 @@ import { PrismaService } from "../../prisma/prisma.service";
 export class AgentLinkRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** The links of this caller agent, oldest first, each with the callee's public fields. */
+  /** The links of this caller agent to live callees (RNX-124), oldest first, each with the callee's public fields. */
   listLinks(callerAgentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agentLink.findMany({
-      where: { callerAgentId },
+      where: { callerAgentId, calleeAgent: { deletedAt: null } },
       orderBy: { createdAt: "asc" },
       select: {
         callerAgentId: true,
@@ -41,12 +41,12 @@ export class AgentLinkRepository {
   }
 
   /**
-   * The active agents this caller may call in a run: its linked callees in this workspace (the caller's), with what
-   * the one-hop call and the run's pre-run estimate read (RX-22b).
+   * The active agents this caller may call in a run: its linked live (RNX-124) callees in this workspace (the
+   * caller's), with what the one-hop call and the run's pre-run estimate read (RX-22b).
    */
   async listCallableAgents(callerAgentId: string, workspaceId: string, tx?: DbTransaction) {
     const links = await (tx ?? this.prisma).agentLink.findMany({
-      where: { callerAgentId, calleeAgent: { workspaceId, status: "active" } },
+      where: { callerAgentId, calleeAgent: { workspaceId, status: "active", deletedAt: null } },
       orderBy: { createdAt: "asc" },
       select: {
         calleeAgent: {

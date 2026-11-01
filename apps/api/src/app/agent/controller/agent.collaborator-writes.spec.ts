@@ -116,7 +116,8 @@ describe("RNX-260: agent writes are the workspace owner's (Fastify, test databas
     ["edit the agent (behaviour: its prompt)", "PATCH", (s: Seeded) => `/agents/${s.a.id}`, () => ({ systemPrompt: "CHANGED" }), { agent: { systemPrompt: "CHANGED", status: "draft" } }],
     ["change its status", "PATCH", (s: Seeded) => `/agents/${s.a.id}/status`, () => ({ status: "archived" }), { agent: { systemPrompt: "ORIGINAL", status: "archived" } }],
     ["deploy (publish) it", "POST", (s: Seeded) => `/agents/${s.a.id}/publish`, () => undefined, { agent: { systemPrompt: "ORIGINAL", status: "active" } }],
-    ["delete it", "DELETE", (s: Seeded) => `/agents/${s.a.id}`, () => undefined, { agent: null, tools: 0, knowledge: 0, channels: 0, links: 0 }],
+    // RNX-124: a soft delete; the agent is hidden from reads (null here), its tools, knowledge, channels and links stay
+    ["delete it", "DELETE", (s: Seeded) => `/agents/${s.a.id}`, () => undefined, { agent: null }],
     ["add a tool", "POST", (s: Seeded) => `/agents/${s.a.id}/tools`, () => ({ toolType: "web_search" }), { tools: 2 }],
     ["remove a tool", "DELETE", (s: Seeded) => `/agents/${s.a.id}/tools/${s.tool.id}`, () => undefined, { tools: 0 }],
     ["attach knowledge", "POST", (s: Seeded) => `/agents/${s.a.id}/knowledge-bases`, (s: Seeded) => ({ knowledgeBaseId: s.freeKb.id }), { knowledge: 2 }],

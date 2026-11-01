@@ -16,8 +16,8 @@ export class AgentChannelRepository {
   }
 
   /**
-   * Every active whatsapp channel whose config has this phone number, each with its agent and the agent's
-   * enabled tools, knowledge bases and connected integrations (the GOWA webhook, RX-115, RX-136).
+   * Every active whatsapp channel of a live agent (RNX-124) whose config has this phone number, each with its agent
+   * and the agent's enabled tools, knowledge bases and connected integrations (the GOWA webhook, RX-115, RX-136).
    */
   findActiveWhatsappChannels(phoneNumber: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agentChannel.findMany({
@@ -25,6 +25,7 @@ export class AgentChannelRepository {
         channelType: "whatsapp",
         status: "active",
         config: { path: ["phoneNumber"], equals: phoneNumber },
+        agent: { deletedAt: null },
       },
       include: {
         agent: {

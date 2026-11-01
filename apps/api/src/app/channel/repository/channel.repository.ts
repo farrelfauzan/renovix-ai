@@ -3,9 +3,10 @@ import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 
-/** The agents a channel is returned with after a create and an update, and in the list. */
+/** The live agents (RNX-124) a channel is returned with after a create and an update, and in the list. */
 const CHANNEL_AGENTS = {
   agents: {
+    where: { agent: { deletedAt: null } },
     include: {
       agent: {
         select: {
@@ -46,14 +47,14 @@ export class ChannelRepository {
     });
   }
 
-  /** This user's channels, newest first, each with its agents and agent count. */
+  /** This user's channels, newest first, each with its live agents and their count (RNX-124). */
   listUserChannels(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).channel.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
       include: {
         ...CHANNEL_AGENTS,
-        _count: { select: { agents: true } },
+        _count: { select: { agents: { where: { agent: { deletedAt: null } } } } },
       },
     });
   }
@@ -65,7 +66,7 @@ export class ChannelRepository {
     });
   }
 
-  /** This user's channel with its agents (with their model and description). */
+  /** This user's channel with its live agents (RNX-124), with their model and description. */
   findUserChannelWithAgents(
     channelId: string,
     userId: string,
@@ -75,6 +76,7 @@ export class ChannelRepository {
       where: { id: channelId, userId },
       include: {
         agents: {
+          where: { agent: { deletedAt: null } },
           include: {
             agent: {
               select: {

@@ -4,11 +4,11 @@ import { createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import { createAgent, createUser } from "../../../test/factories";
 
-// The default filter ships with an empty map, so the tests that need a model on it build a second
-// client through the same factory, with Reminder (the one model that has `deletedAt` today).
+// The default filter's map holds Provider and Agent (RNX-124), not Reminder, so the tests that need a model on it
+// build a second client through the same factory, with Reminder on it.
 describe("PrismaService (test database)", () => {
   let moduleRef: TestingModule;
-  let prisma: PrismaService; // as injected: PrismaService.create(), empty map
+  let prisma: PrismaService; // as injected: PrismaService.create(), the default map (no Reminder)
   let filtering: PrismaService; // PrismaService.create() with Reminder on the map
   let rows: Awaited<ReturnType<typeof seed>>;
 
@@ -126,10 +126,10 @@ describe("PrismaService (test database)", () => {
 
     expect(await read(filtering)).toEqual(hidden);
     expect(await filtering.$transaction((tx) => read(tx))).toEqual(hidden);
-    expect(await read(prisma)).toEqual(shown); // the empty map, as shipped
+    expect(await read(prisma)).toEqual(shown); // the default map (no Reminder), as shipped
   });
 
-  it("with the empty map (as shipped), the same reads return the deleted row", async () => {
+  it("with the default map (as shipped, no Reminder), the same reads return the deleted row", async () => {
     const all = { ids: [rows.deleted.id, rows.visible.id], count: 2, deletedById: rows.deleted.id };
 
     const actual = await readEverywhere(prisma);
@@ -141,7 +141,7 @@ describe("PrismaService (test database)", () => {
 
   it.each([
     ["with a model on the map", () => filtering],
-    ["with the empty map", () => prisma],
+    ["with the default map (no Reminder)", () => prisma],
   ])("the callback form is still one transaction %s: a throw rolls the write back", async (_case, client) => {
     const run = client().$transaction(async (tx) => {
       await tx.reminder.update({ where: { id: rows.visible.id }, data: { description: "changed" } });
@@ -154,7 +154,7 @@ describe("PrismaService (test database)", () => {
 
   it.each([
     ["with a model on the map", () => filtering],
-    ["with the empty map", () => prisma],
+    ["with the default map (no Reminder)", () => prisma],
   ])("the array form is still one transaction %s: a failing second statement rolls the first write back", async (_case, client) => {
     const db = client();
     const run = db.$transaction([

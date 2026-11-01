@@ -181,11 +181,12 @@ export class AgentRunService {
 
   /**
    * The caller's own runs of the agent (RNX-119). RNX-260 (D259, 78): only "this run is mine", not current run access,
-   * so an outsider or a former collaborator still lists their own runs; nobody sees another person's.
+   * so an outsider or a former collaborator still lists their own runs; nobody sees another person's. RNX-124: none of a
+   * deleted agent.
    */
   async listRuns(userId: string, agentId: string) {
     return this.prisma.agentRun.findMany({
-      where: { agentId, userId },
+      where: { agentId, userId, agent: { deletedAt: null } },
       orderBy: { updatedAt: "desc" },
       take: 50,
       include: {
@@ -199,10 +200,10 @@ export class AgentRunService {
     });
   }
 
-  /** One of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. */
+  /** One of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. RNX-124: 404 for a deleted agent's run. */
   async getRun(userId: string, agentId: string, runId: string) {
     const run = await this.prisma.agentRun.findFirst({
-      where: { id: runId, agentId },
+      where: { id: runId, agentId, agent: { deletedAt: null } },
       include: {
         messages: { orderBy: { createdAt: "asc" } },
       },
@@ -211,10 +212,10 @@ export class AgentRunService {
     return this.assertCallerRun(run, userId, agentId);
   }
 
-  /** Deletes one of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. */
+  /** Deletes one of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. RNX-124: 404 for a deleted agent's run. */
   async deleteRun(userId: string, agentId: string, runId: string) {
     const run = await this.prisma.agentRun.findFirst({
-      where: { id: runId, agentId },
+      where: { id: runId, agentId, agent: { deletedAt: null } },
     });
     await this.assertCallerRun(run, userId, agentId);
 

@@ -186,6 +186,35 @@ describe("RNX-118: channel chat calls only linked agents (test database)", () =>
     expect(sent()).not.toContain("CALLEE B PROMPT");
   });
 
+  it.each([
+    ["name", (b: { name: string }) => b.name],
+    ["id", (b: { id: string }) => b.id],
+  ])("RNX-124 AC3: the workspace owner, A -> B with B deleted: B is not listed, a call to B by %s is refused, B never runs and nothing is charged for it", async (_by, pick) => {
+    const { caller, a, b, channel } = await seed({ callerIs: "bob" });
+    await prisma.agent.updateMany({ where: { id: b.id }, data: { deletedAt: new Date(), deletedById: caller.id } });
+    fake.enqueue(callAgent(pick(b)), { content: "Done" });
+
+    await service.chat(caller.id, channel.id, a.id, "Hi");
+
+    expect(toolNames(0)).toEqual([]);
+    expect(fake.requests[0].messages[0].content).not.toContain(b.id);
+    expect(fake.requests).toHaveLength(2);
+    expect(lastToolResult()).toEqual(["Error: Agent not found or not linked."]);
+    expect(sent()).not.toContain("CALLEE B PROMPT");
+    expect(await prisma.creditLedgerEntry.count({ where: { agentId: b.id } })).toBe(0);
+  });
+
+  it("RNX-124 D165: a call naming the callee in other casing (\"bOB hELPER\") still finds and runs it", async () => {
+    const { caller, a, channel } = await seed({ callerIs: "bob" });
+    fake.enqueue(callAgent("bOB hELPER"), { content: "B answer" }, { content: "A final" });
+
+    const res = await service.chat(caller.id, channel.id, a.id, "Hi");
+
+    expect(fake.requests).toHaveLength(3);
+    expect(lastToolResult()).toEqual(["B answer"]);
+    expect(res.content).toBe("A final");
+  });
+
   it("a link to an agent in another workspace (written straight to the database) is not listed, and calling it is refused", async () => {
     const { caller, bob, a, channel } = await seed({ callerIs: "bob", linked: false });
     const otherWorkspace = await createWorkspace(prisma, { ownerId: bob.id });
