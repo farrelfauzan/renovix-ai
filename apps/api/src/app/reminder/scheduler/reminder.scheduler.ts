@@ -1,6 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { PrismaService } from "../../prisma/prisma.service";
 import { ReminderService } from "../service/reminder.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
@@ -12,7 +11,8 @@ import { budgetStopMessage } from "../../agent/utils/budget-stop-message";
 import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
 import type { ReminderToolLoop } from "../types/reminder-tool-loop";
 import { createMcpRunSession } from "../../agent/utils/create-mcp-run-session";
-import { Prisma } from "@generated/prisma/client.js";
+import { RemindersTableMissingException } from "../errors/reminders-table-missing.exception";
+import { ReminderRoomService } from "../service/reminder-room.service";
 
 const MAX_TOOL_ITERATIONS = 15;
 
@@ -22,8 +22,8 @@ export class ReminderScheduler {
   private processing = false;
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly reminderService: ReminderService,
+    private readonly room: ReminderRoomService,
     private readonly registry: ModelRegistryService,
     private readonly toolService: AgentToolService,
     private readonly memoryService: AgentMemoryService,
@@ -61,7 +61,7 @@ export class ReminderScheduler {
         }
       }
     } catch (err: any) {
-      if (this.isMissingRemindersTableError(err)) {
+      if (err instanceof RemindersTableMissingException) {
         this.logger.warn(
           "[processReminders] Reminders table not found. Skipping scheduler until reminder migration is applied.",
         );
@@ -74,19 +74,6 @@ export class ReminderScheduler {
     } finally {
       this.processing = false;
     }
-  }
-
-  private isMissingRemindersTableError(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
-      return false;
-    }
-
-    if (error.code !== "P2021") {
-      return false;
-    }
-
-    const table = String(error.meta?.table ?? "").toLowerCase();
-    return table.includes("reminders");
   }
 
   /**
@@ -123,22 +110,13 @@ export class ReminderScheduler {
     const connection = await this.registry.resolveConnection(modelEntry.slug);
 
     // Get the chat room
-    const chatRoom = await this.prisma.channelChatRoom.findFirst({
-      where: { id: reminder.chatRoomId },
-    });
+    const chatRoom = await this.room.findChatRoom(reminder.chatRoomId);
     if (!chatRoom) {
       throw new Error(`Chat room ${reminder.chatRoomId} not found`);
     }
 
     // Get recent history for context
-    const history = await this.prisma.channelMessage.findMany({
-      where: {
-        chatRoomId: chatRoom.id,
-        agentId: agent.id,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    });
+    const history = await this.room.listRecentMessages(chatRoom.id, agent.id);
     history.reverse();
 
     // Build system prompt
@@ -196,18 +174,16 @@ export class ReminderScheduler {
           ),
       );
       if (metered.status === "completed") return;
-      await this.prisma.channelMessage.create({
-        data: {
-          chatRoomId: chatRoom.id,
-          agentId: agent.id,
-          role: "assistant",
-          content: budgetStopMessage(metered.held),
-          metadata: {
-            source: "reminder",
-            reminderId: reminder.id,
-            scheduledAt: reminder.nextRunAt.toISOString(),
-            error: "budget_stopped",
-          },
+      await this.room.saveMessage({
+        chatRoomId: chatRoom.id,
+        agentId: agent.id,
+        role: "assistant",
+        content: budgetStopMessage(metered.held),
+        metadata: {
+          source: "reminder",
+          reminderId: reminder.id,
+          scheduledAt: reminder.nextRunAt.toISOString(),
+          error: "budget_stopped",
         },
       });
     } finally {
@@ -296,33 +272,29 @@ export class ReminderScheduler {
 
       if (content) {
         // Save user message (the reminder prompt) as context
-        await this.prisma.channelMessage.create({
-          data: {
-            chatRoomId: chatRoom.id,
-            agentId: agent.id,
-            role: "user",
-            content: reminder.prompt,
-            metadata: {
-              source: "reminder",
-              reminderId: reminder.id,
-              scheduledAt: reminder.nextRunAt.toISOString(),
-            },
+        await this.room.saveMessage({
+          chatRoomId: chatRoom.id,
+          agentId: agent.id,
+          role: "user",
+          content: reminder.prompt,
+          metadata: {
+            source: "reminder",
+            reminderId: reminder.id,
+            scheduledAt: reminder.nextRunAt.toISOString(),
           },
         });
 
         // Save assistant response
-        await this.prisma.channelMessage.create({
-          data: {
-            chatRoomId: chatRoom.id,
-            agentId: agent.id,
-            role: "assistant",
-            content,
-            tokens: totalTokens,
-            metadata: {
-              source: "reminder",
-              reminderId: reminder.id,
-              scheduledAt: reminder.nextRunAt.toISOString(),
-            },
+        await this.room.saveMessage({
+          chatRoomId: chatRoom.id,
+          agentId: agent.id,
+          role: "assistant",
+          content,
+          tokens: totalTokens,
+          metadata: {
+            source: "reminder",
+            reminderId: reminder.id,
+            scheduledAt: reminder.nextRunAt.toISOString(),
           },
         });
       }
@@ -331,19 +303,17 @@ export class ReminderScheduler {
     }
 
     // If we hit max iterations, save a fallback
-    await this.prisma.channelMessage.create({
-      data: {
-        chatRoomId: chatRoom.id,
-        agentId: agent.id,
-        role: "assistant",
-        content:
-          "I was unable to fully complete this scheduled task. Please try again or adjust the reminder.",
-        metadata: {
-          source: "reminder",
-          reminderId: reminder.id,
-          scheduledAt: reminder.nextRunAt.toISOString(),
-          error: "max_iterations",
-        },
+    await this.room.saveMessage({
+      chatRoomId: chatRoom.id,
+      agentId: agent.id,
+      role: "assistant",
+      content:
+        "I was unable to fully complete this scheduled task. Please try again or adjust the reminder.",
+      metadata: {
+        source: "reminder",
+        reminderId: reminder.id,
+        scheduledAt: reminder.nextRunAt.toISOString(),
+        error: "max_iterations",
       },
     });
   }

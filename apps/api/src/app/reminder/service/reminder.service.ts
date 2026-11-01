@@ -3,17 +3,23 @@ import {
   NotFoundException,
   BadRequestException,
 } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
-import { ReminderStatus } from "@generated/prisma/client.js";
+import type { Prisma } from "@generated/prisma/client.js";
 import { CronExpressionParser } from "cron-parser";
 import { AgentRepository } from "../../agent/repository/agent.repository";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { UserRepository } from "../../auth/repository/user.repository";
+import { ChannelRepository } from "../../channel/repository/channel.repository";
+import { ChannelAgentRepository } from "../../channel/repository/channel-agent.repository";
+import { ChannelChatRoomRepository } from "../../channel/repository/channel-chat-room.repository";
+import { ReminderRepository } from "../repository/reminder.repository";
 
 @Injectable()
 export class ReminderService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly reminders: ReminderRepository,
+    private readonly channels: ChannelRepository,
+    private readonly channelAgents: ChannelAgentRepository,
+    private readonly chatRooms: ChannelChatRoomRepository,
     private readonly agents: AgentRepository,
     private readonly policy: AgentRunPolicyService,
     private readonly users: UserRepository,
@@ -45,16 +51,12 @@ export class ReminderService {
     }
 
     // Verify the user owns the channel and agent is in the channel
-    const channel = await this.prisma.channel.findFirst({
-      where: { id: data.channelId, userId },
-    });
+    const channel = await this.channels.findUserChannel(data.channelId, userId);
     if (!channel) {
       throw new NotFoundException("Channel not found");
     }
 
-    const channelAgent = await this.prisma.channelAgent.findFirst({
-      where: { channelId: data.channelId, agentId: data.agentId },
-    });
+    const channelAgent = await this.channelAgents.findChannelAgent(data.channelId, data.agentId);
     if (!channelAgent) {
       throw new BadRequestException("Agent is not assigned to this channel");
     }
@@ -65,51 +67,29 @@ export class ReminderService {
     await this.policy.assertRunScope(agent, userId);
 
     // Verify chat room belongs to channel
-    const chatRoom = await this.prisma.channelChatRoom.findFirst({
-      where: { id: data.chatRoomId, channelId: data.channelId },
-    });
+    const chatRoom = await this.chatRooms.findChannelChatRoom(data.channelId, data.chatRoomId);
     if (!chatRoom) {
       throw new NotFoundException("Chat room not found in this channel");
     }
 
-    return this.prisma.reminder.create({
-      data: {
-        userId,
-        agentId: data.agentId,
-        channelId: data.channelId,
-        chatRoomId: data.chatRoomId,
-        prompt: data.prompt,
-        description: data.description,
-        cronExpression: data.cronExpression,
-        timezone,
-        nextRunAt,
-      },
+    return this.reminders.createReminder(userId, {
+      agentId: data.agentId,
+      channelId: data.channelId,
+      chatRoomId: data.chatRoomId,
+      prompt: data.prompt,
+      description: data.description,
+      cronExpression: data.cronExpression,
+      timezone,
+      nextRunAt,
     });
   }
 
   async list(userId: string) {
-    return this.prisma.reminder.findMany({
-      where: { userId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      include: {
-        agent: {
-          select: { id: true, name: true, avatar: true, avatarColor: true },
-        },
-        channel: { select: { id: true, name: true } },
-      },
-    });
+    return this.reminders.listUserReminders(userId);
   }
 
   async findById(userId: string, id: string) {
-    const reminder = await this.prisma.reminder.findFirst({
-      where: { id, userId, deletedAt: null },
-      include: {
-        agent: {
-          select: { id: true, name: true, avatar: true, avatarColor: true },
-        },
-        channel: { select: { id: true, name: true } },
-      },
-    });
+    const reminder = await this.reminders.findUserReminderWithRelations(userId, id);
     if (!reminder) throw new NotFoundException("Reminder not found");
     return reminder;
   }
@@ -122,15 +102,13 @@ export class ReminderService {
       description?: string;
       cronExpression?: string;
       timezone?: string;
-      status?: ReminderStatus;
+      status?: "ACTIVE" | "PAUSED";
     },
   ) {
-    const reminder = await this.prisma.reminder.findFirst({
-      where: { id, userId, deletedAt: null },
-    });
+    const reminder = await this.reminders.findUserReminder(userId, id);
     if (!reminder) throw new NotFoundException("Reminder not found");
 
-    const updateData: any = {};
+    const updateData: Prisma.ReminderUncheckedUpdateInput = {};
 
     if (data.prompt !== undefined) updateData.prompt = data.prompt;
     if (data.description !== undefined)
@@ -157,47 +135,23 @@ export class ReminderService {
     }
 
     // If resuming, reset consecutive failures
-    if (data.status === ReminderStatus.ACTIVE) {
+    if (data.status === "ACTIVE") {
       updateData.consecutiveFailures = 0;
       updateData.lastError = null;
     }
 
-    return this.prisma.reminder.update({
-      where: { id },
-      data: updateData,
-    });
+    return this.reminders.updateReminder(id, updateData);
   }
 
   async softDelete(userId: string, id: string) {
-    const reminder = await this.prisma.reminder.findFirst({
-      where: { id, userId, deletedAt: null },
-    });
+    const reminder = await this.reminders.findUserReminder(userId, id);
     if (!reminder) throw new NotFoundException("Reminder not found");
 
-    return this.prisma.reminder.update({
-      where: { id },
-      data: { deletedAt: new Date(), status: ReminderStatus.PAUSED },
-    });
+    return this.reminders.updateReminder(id, { deletedAt: new Date(), status: "PAUSED" });
   }
 
   async getDueReminders(limit = 20) {
-    return this.prisma.reminder.findMany({
-      where: {
-        status: ReminderStatus.ACTIVE,
-        deletedAt: null,
-        nextRunAt: { lte: new Date() },
-      },
-      orderBy: { nextRunAt: "asc" },
-      take: limit,
-      include: {
-        agent: {
-          include: {
-            tools: { where: { enabled: true } },
-          },
-        },
-        channel: true,
-      },
-    });
+    return this.reminders.findDueReminders(limit);
   }
 
   async markExecuted(id: string, cronExpression: string, timezone: string) {
@@ -206,14 +160,11 @@ export class ReminderService {
     });
     const nextRunAt = interval.next().toDate();
 
-    return this.prisma.reminder.update({
-      where: { id },
-      data: {
-        lastRunAt: new Date(),
-        nextRunAt,
-        consecutiveFailures: 0,
-        lastError: null,
-      },
+    return this.reminders.updateReminder(id, {
+      lastRunAt: new Date(),
+      nextRunAt,
+      consecutiveFailures: 0,
+      lastError: null,
     });
   }
 
@@ -224,23 +175,20 @@ export class ReminderService {
    */
   async markSkipped(id: string, cronExpression: string, timezone: string) {
     const nextRunAt = CronExpressionParser.parse(cronExpression, { tz: timezone }).next().toDate();
-    return this.prisma.reminder.update({ where: { id }, data: { nextRunAt } });
+    return this.reminders.updateReminder(id, { nextRunAt });
   }
 
   async markFailed(id: string, error: string, consecutiveFailures: number) {
     const maxRetries = 3;
-    const update: any = {
+    const update: Prisma.ReminderUncheckedUpdateInput = {
       consecutiveFailures,
       lastError: error,
     };
 
     if (consecutiveFailures >= maxRetries) {
-      update.status = ReminderStatus.FAILED;
+      update.status = "FAILED";
     }
 
-    return this.prisma.reminder.update({
-      where: { id },
-      data: update,
-    });
+    return this.reminders.updateReminder(id, update);
   }
 }

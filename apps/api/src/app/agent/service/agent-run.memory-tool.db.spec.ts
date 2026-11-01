@@ -9,6 +9,7 @@ import { ChannelChatService } from "../../channel/service/channel-chat.service";
 import { ChannelService } from "../../channel/service/channel.service";
 import { ReminderScheduler } from "../../reminder/scheduler/reminder.scheduler";
 import { ReminderService } from "../../reminder/service/reminder.service";
+import { ReminderRoomService } from "../../reminder/service/reminder-room.service";
 import { McpClientService } from "../../mcp/service/mcp-client.service";
 import { McpService } from "../../mcp/service/mcp.service";
 import { McpRegistryService } from "../../mcp/service/mcp-registry.service";
@@ -65,6 +66,7 @@ describe("RNX-119: the memory_store tool follows the run's scope (test database,
           ChannelService,
           ReminderScheduler,
           ReminderService,
+          ReminderRoomService,
           AgentRunPolicyService,
           AgentLinkService,
           AgentMemoryService,

@@ -13,7 +13,6 @@ import {
 import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
 import { ReminderService } from "../service/reminder.service";
-import { ReminderStatus } from "@generated/prisma/client.js";
 import { CreateReminderSchema, UpdateReminderSchema } from "../dto/reminder.dto";
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
@@ -56,10 +55,7 @@ export class ReminderController {
 
     const data: any = { ...parsed.data };
     if (data.status) {
-      data.status =
-        data.status === "ACTIVE"
-          ? ReminderStatus.ACTIVE
-          : ReminderStatus.PAUSED;
+      data.status = data.status === "ACTIVE" ? "ACTIVE" : "PAUSED";
     }
 
     return this.reminderService.update(req.user.userId, id, data);
