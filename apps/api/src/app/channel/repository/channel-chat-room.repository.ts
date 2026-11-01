@@ -20,4 +20,18 @@ export class ChannelChatRoomRepository {
       data: { channelId, name },
     });
   }
+
+  /** The room with this id in this channel, if there is one. */
+  findChannelChatRoom(channelId: string, chatRoomId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).channelChatRoom.findFirst({
+      where: { id: chatRoomId, channelId },
+    });
+  }
+
+  /** The room with this id, whatever its channel. */
+  findChatRoom(chatRoomId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).channelChatRoom.findFirst({
+      where: { id: chatRoomId },
+    });
+  }
 }

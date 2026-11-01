@@ -18,6 +18,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { ReminderService } from "../service/reminder.service";
+import { ReminderRoomService } from "../service/reminder-room.service";
 import { WebSearchService } from "../../mcp/service/web-search.service";
 import { DocumentService } from "../../document/service/document.service";
 import { McpClientService } from "../../mcp/service/mcp-client.service";
@@ -56,6 +57,7 @@ describe("RNX-276: the reminder loop runs only tools offered to the run (test da
         imports: [ProvidersModule],
         providers: [
           ReminderScheduler,
+          ReminderRoomService,
           ReminderService,
           AgentRunPolicyService,
           WorkspaceQuotaService,
@@ -68,7 +70,7 @@ describe("RNX-276: the reminder loop runs only tools offered to the run (test da
           { provide: McpClientService, useValue: { connect: mockMcpConnect, close: mockMcpConnect } },
           { provide: McpService, useValue: {} },
           { provide: McpUserService, useValue: { getUserConnectedProviders: async () => new Map() } },
-          { provide: ChannelChatRoomRepository, useValue: { findChatRoomByName: async () => null, createChatRoom: async () => ({ id: "room-1" }) } },
+          { provide: ChannelChatRoomRepository, useValue: { findChatRoomByName: async () => null, createChatRoom: async () => ({ id: "room-1" }), findChatRoom: async (id: string) => prisma.channelChatRoom.findFirst({ where: { id } }) } },
           { provide: ReminderRepository, useValue: {} },
           { provide: WorkspaceRepository, useValue: { findDefaultFlag: async () => null } },
           {

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ReminderController } from "./controller/reminder.controller";
 import { ReminderService } from "./service/reminder.service";
+import { ReminderRoomService } from "./service/reminder-room.service";
 import { ReminderScheduler } from "./scheduler/reminder.scheduler";
 import { ChannelModule } from "../channel/channel.module";
 import { AgentModule } from "../agent/agent.module";
@@ -17,7 +18,7 @@ import { UsageModule } from "../usage/usage.module";
     UsageModule,
   ],
   controllers: [ReminderController],
-  providers: [ReminderService, ReminderScheduler],
+  providers: [ReminderService, ReminderRoomService, ReminderScheduler],
   exports: [ReminderService],
 })
 export class ReminderModule {}
