@@ -5,8 +5,8 @@ import { Prisma, PrismaClient } from "@generated/prisma/client.js";
 /** Per model: the condition a row must meet to be returned by a read that does not say otherwise. */
 type VisibleOnly = Partial<Record<Prisma.ModelName, Record<string, unknown>>>;
 
-/** The models that hide rows by default. RX-177: soft-deleted providers. */
-const VISIBLE_ONLY: VisibleOnly = { Provider: { deletedAt: null } };
+/** The models that hide rows by default. RX-177: soft-deleted providers. RNX-124: soft-deleted agents. */
+const VISIBLE_ONLY: VisibleOnly = { Provider: { deletedAt: null }, Agent: { deletedAt: null } };
 
 /** The top-level reads the default condition is added to (not nested reads, `_count`, relation filters, raw SQL or writes). */
 const FILTERED_READS: readonly string[] = [

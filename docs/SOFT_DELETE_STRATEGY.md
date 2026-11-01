@@ -8,6 +8,32 @@ This is especially important for the upcoming workspace feature because workspac
 
 The goal is to make deletion safe, reversible, and predictable.
 
+## What is built (RNX-124: agents)
+
+The rest of this page is the original proposal. For `Agent` it is built as follows; restore is RX-126/RNX-126, purge
+RX-127, and KnowledgeBase, Conversation and Channel are RX-145.
+
+- Schema: `agents.deleted_at` (timestamptz) and `agents.deleted_by_id` (the user who deleted it; a plain column, no
+  foreign key to `users`). `status` keeps its `draft | active | archived` meaning; deletion is only `deletedAt`.
+  `reminders.deleted_by_id` was added next to the existing `reminders.deleted_at` (schema only).
+- Delete: `DELETE /agents/:id` (owner only, 204 as before) sets `deletedAt` and `deletedById` in one transaction with
+  erasing the agent's `agent_integrations` rows (decision 25: a deleted agent keeps no credentials). Every other child
+  row stays: tools, knowledge base links, channels (`agent_channels`), runs and messages, agent links, channel links.
+  Usage rows (`usage_logs`, `credit_ledger_entries.agent_id`, `channel_messages.agent_id`) are not touched.
+- Reads: `Agent` is on `PrismaService`'s default filter (`VISIBLE_ONLY`), so every top-level read of `agents` hides
+  a deleted agent; the routes then answer 404 as for an agent that does not exist, and the plan quota
+  (`countAgentsByUser`) does not count it. Reads the filter does not reach carry the condition by hand, each with a
+  test: a channel's agent links and their `_count` (`channel.repository.ts`), the channel-agent lookups
+  (`channel-agent.repository.ts`), the WhatsApp webhook's channel lookup (`agent-channel.repository.ts`), agent links
+  and callable agents (`agent-link.repository.ts`), the workspace's agent `_count` (`workspace.service.ts`) and the
+  run history routes (`agent-run.service.ts`). Writes by id (`updateAgent`, `updateAgentStatus`, `softDeleteAgent`)
+  name `deletedAt: null` themselves.
+- A live row that points at a deleted agent through a required relation (a channel's `channel_agents` row, a
+  WhatsApp `agent_channels` row) is left out whole, with no "deleted" mark, and comes back if the agent comes back.
+- Uniqueness: the slug key is a partial unique index, `agents_userId_slug_key` on `(userId, slug) WHERE deleted_at IS
+  NULL`, so a deleted agent's slug can be used again at once (no tombstone suffix). Prisma leaves a partial index out
+  of the client's unique keys, so the slug lookups use `findFirst`.
+
 ## Why Soft Delete
 
 Hard delete is simple but creates product and operational risks:

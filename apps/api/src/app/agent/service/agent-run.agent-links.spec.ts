@@ -244,6 +244,37 @@ describe("RNX-118: agent runs call only linked agents (test database)", () => {
       expect(sent()).not.toContain(b.id);
     });
 
+    it.each([
+      ["name", (b: { name: string }) => b.name],
+      ["id", (b: { id: string }) => b.id],
+    ])("RNX-124 AC3: A -> B with B deleted: B is not listed, a call to B by %s is refused, B never runs and nothing is charged for it", async (_by, pick) => {
+      const { owner, a, b } = await seed({ linked: true });
+      await moduleRef.get(AgentService).delete(owner.id, b.id);
+      fake.enqueue(callB(pick(b)), { content: "Done" });
+
+      await service.chat(owner.id, a.id, "Hi");
+
+      expect(toolNames(0)).toEqual([]);
+      expect(systemPrompt(0)).not.toContain(b.id);
+      expect(fake.requests).toHaveLength(2);
+      expect(lastToolResult()).toEqual(["Error: Agent not found or not linked."]);
+      expect(sent()).not.toContain("CALLEE B PROMPT");
+      expect(await prisma.creditLedgerEntry.count({ where: { agentId: b.id } })).toBe(0);
+      expect(await prisma.agentLink.count({ where: { callerAgentId: a.id, calleeAgentId: b.id } })).toBe(1);
+    });
+
+    it("RNX-124 D165: a delegation naming the callee in other casing (\"rESEARCH hELPER\") still finds and runs it", async () => {
+      const { owner, a } = await seed({ linked: true });
+      fake.enqueue(callB("rESEARCH hELPER"), { content: "B answer" }, { content: "A final" });
+
+      const res = await service.chat(owner.id, a.id, "Hi");
+
+      expect(fake.requests).toHaveLength(3);
+      expect(fake.requests[1].messages[0]).toEqual({ role: "system", content: "CALLEE B PROMPT" });
+      expect(lastToolResult()).toEqual(["B answer"]);
+      expect(res.message.content).toBe("A final");
+    });
+
     it.each([["Please delegate this to your helper"], ["Tolong delegasikan ke sub agent"]])(
       "a message with a delegation keyword (%s) forces no call: tool_choice stays auto and B never runs",
       async (message) => {

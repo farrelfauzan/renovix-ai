@@ -66,6 +66,8 @@ RX-134 moved the agent lookups of `agent/service/agent-run.service.ts` (the agen
 
 The knowledge bases and sub-agents come with the agent (`include`), so no other repository changed. The service handled no Prisma error around these lookups, so none is mapped. `agent-run.service.ts` stays on the import check's list: its 21 run, message and metering calls (`agentRun`, `agentMessage`, the quota check's `$transaction` and `userSubscription.update`) move with the chat engine tickets RX-23 and RX-25.
 
+Since then (RNX-124): `findRunnableAgent` is `findAgentForRun`, and `findDelegateSubAgent` no longer exists; RNX-118 moved sub-agents to agent links, and a run's callable agents come from `AgentLinkRepository.listCallableAgents`, matched by id or by name (case-insensitive) in `agent-run.service.ts` and `channel-chat.service.ts`. The run history routes read `agentRun` with `agent: { deletedAt: null }` in their condition.
+
 RX-136 moved the channel module (`channel/service/channel.service.ts`, `channel/service/gowa.service.ts`) and the chat module (`chat/service/conversation.service.ts`, `chat/service/prompt-template.service.ts`, `chat/service/prompt-tuning.service.ts`). Each query stayed exactly as it was:
 
 | Table | Repository | File | Owner module | Public methods |
@@ -180,13 +182,13 @@ Step "prisma imports" of `bun run check` (`scripts/check-prisma-imports.ts`).
 
 ## PrismaService and the default filter (decision 26, D93)
 
-Decision 26: the soft delete filter lives in `prisma.service.ts`. RX-132 puts the mechanism in place with no model on it; RX-124 adds the models. Until then no query changes.
+Decision 26: the soft delete filter lives in `prisma.service.ts`. RX-132 puts the mechanism in place with no model on it; RX-177 added `Provider`, RNX-124 added `Agent`.
 
 ### How PrismaService is provided
 
 - `PrismaService` (`apps/api/src/app/prisma/prisma.service.ts`) is an abstract class: the injection token and the type, never constructed. `PrismaModule` provides the client that `PrismaService.create()` builds: a `PrismaClient` with the query extension that adds the default condition, and with the connect and disconnect hooks added as a client extension.
 - Nothing that injects it changed: the 40 files that still import it, the 10 `$transaction` uses in 8 files, the test factories and `resetDatabase`.
-- The map of models holds `Provider` (`deletedAt: null`, RX-177); RX-124 adds the others (`VISIBLE_ONLY`). `create()` takes the map as a parameter only so the database test can put a model on it.
+- The map of models holds `Provider` (`deletedAt: null`, RX-177) and `Agent` (`deletedAt: null`, RNX-124); RX-145 adds the others (`VISIBLE_ONLY`). `create()` takes the map as a parameter only so the database test can put a model on it.
 - Why this form (measured): a class that extends `PrismaClient` and calls `$extends` inside itself is injected without the extension; a factory alone gives the extension but Nest then calls no lifecycle hook and connections stay open; a constructor that returns the extended client works but rests on Prisma internals.
 - A direct form would get a client without the filter, so it does not compile: `new PrismaService()` (TS2511), `providers: [PrismaService]` and `useClass: PrismaService` (TS2322).
 

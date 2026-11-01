@@ -417,8 +417,13 @@ model Agent {
   callerLinks     AgentLink[]     @relation("AgentLinkCallee")
   createdAt       DateTime        @default(now()) @db.Timestamptz()
   updatedAt       DateTime        @updatedAt @db.Timestamptz()
+  /// RNX-124: set when the agent is deleted; the row stays and every read hides it (PrismaService default filter).
+  deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz()
+  /// RNX-124: the user who deleted it. A plain column, no relation to User.
+  deletedById     String?         @map("deleted_by_id")
 
-  @@unique([userId, slug])
+  /// RNX-124: the slug is unique per creator among live agents only, so a deleted agent's slug can be used again.
+  @@unique([userId, slug], where: raw("deleted_at IS NULL"))
   @@index([userId, status])
   @@index([isPublic])
   @@index([workspaceId, status])
@@ -934,6 +939,8 @@ model Reminder {
   createdAt       DateTime        @default(now()) @db.Timestamptz()
   updatedAt       DateTime        @updatedAt @db.Timestamptz()
   deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz()
+  /// RNX-124: the user who deleted it. A plain column, no relation to User.
+  deletedById     String?         @map("deleted_by_id")
 
   @@index([status, nextRunAt])
   @@index([userId])

@@ -117,10 +117,18 @@ export class AgentService {
     return this.agents.updateAgent(agentId, data);
   }
 
+  /**
+   * RNX-124: soft-deletes the agent (deletedAt, deletedById) and erases its integrations (decision 25) in one
+   * transaction. Its other child rows (tools, knowledge bases, channels, runs, links) stay. 404 when it is not
+   * there or already deleted.
+   */
   async delete(userId: string, agentId: string) {
     await this.verifyOwnership(userId, agentId);
-
-    await this.agents.deleteAgent(agentId);
+    await this.transactions.run(async (tx) => {
+      const deleted = await this.agents.softDeleteAgent(agentId, userId, tx);
+      if (deleted === 0) throw new NotFoundException("Agent not found");
+      await this.agentIntegrations.deleteAgentIntegrations(agentId, tx);
+    });
     return { deleted: true };
   }
 

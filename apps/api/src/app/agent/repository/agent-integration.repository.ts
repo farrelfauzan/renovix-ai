@@ -42,6 +42,12 @@ export class AgentIntegrationRepository {
     });
   }
 
+  /** Deletes every integration of this agent (RNX-124, decision 25: a deleted agent keeps no credentials). Returns the rows deleted. */
+  async deleteAgentIntegrations(agentId: string, tx?: DbTransaction): Promise<number> {
+    const { count } = await (tx ?? this.prisma).agentIntegration.deleteMany({ where: { agentId } });
+    return count;
+  }
+
   /** Deletes the integration with this id. */
   deleteAgentIntegration(integrationId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agentIntegration.delete({
