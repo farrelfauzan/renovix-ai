@@ -27,6 +27,20 @@ export class ChannelMessageRepository {
     });
   }
 
+  /** This agent's newest `take` messages in this room, newest first. */
+  listRecentRoomAgentMessages(
+    chatRoomId: string,
+    agentId: string,
+    take: number,
+    tx?: DbTransaction,
+  ) {
+    return (tx ?? this.prisma).channelMessage.findMany({
+      where: { chatRoomId, agentId },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+  }
+
   /** Stores a message. */
   createChannelMessage(
     data: Prisma.ChannelMessageUncheckedCreateInput,

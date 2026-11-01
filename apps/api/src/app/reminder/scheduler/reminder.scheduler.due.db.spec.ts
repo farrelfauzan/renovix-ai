@@ -1,6 +1,7 @@
 import { TestingModule } from "@nestjs/testing";
 import { ReminderScheduler } from "./reminder.scheduler";
 import { ReminderService } from "../service/reminder.service";
+import { ReminderRoomService } from "../service/reminder-room.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
 import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
@@ -37,6 +38,7 @@ describe("RNX-139: the scheduler's pick-up of due reminders (test database, fake
         imports: [ProvidersModule],
         providers: [
           ReminderScheduler,
+          ReminderRoomService,
           ReminderService,
           AgentRunPolicyService,
           WorkspaceQuotaService,

@@ -38,7 +38,6 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
   [`${SRC}/prisma/prisma.service.ts hideByDefault`]: "test 2: database (builds the Prisma client extension that runs inside every read and calls the query)",
 
   // Pass the rule; moving them needs a decision first (RX-131)
-  [`${SRC}/reminder/scheduler/reminder.scheduler.ts ReminderScheduler.isMissingRemindersTableError`]: "stays: it checks a Prisma error class (instanceof Prisma.PrismaClientKnownRequestError), a value import a utils file may not have (AGENTS.md Repositories); RX-139 moves the scheduler's Prisma error handling into its repository (D101)",
   [`${SRC}/app.service.ts AppService.getData`]: "stays: AppService's only method; moving it would empty a class AppController injects, a module change outside RX-131's scope",
   [`${SRC}/memory/service/memory-policy.service.ts MemoryPolicyService.validateMemoryCandidate`]: "stays: MemoryPolicyService's only method; moving it would empty a class MemoryExtractionService injects, a module change outside RX-131's scope",
 };
