@@ -5,13 +5,13 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { PrismaService } from "../../prisma/prisma.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import * as crypto from "crypto";
 import { readEncryptionKey } from "../../../common/utils/read-encryption-key";
 import { readRequiredSecret } from "../../../common/utils/read-required-secret";
 import type { OAuthStatePayload } from "../dto/oauth-state-payload.dto";
 import { McpOAuthStateRepository } from "../repository/mcp-oauth-state.repository";
+import { UserMcpCredentialRepository } from "../repository/user-mcp-credential.repository";
 import type { McpOAuthStart } from "../types/mcp-oauth-start";
 import { isSameOneTimeValue } from "../utils/is-same-one-time-value";
 import { signOAuthState } from "../utils/sign-oauth-state";
@@ -63,7 +63,7 @@ export class McpUserService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly prisma: PrismaService,
+    private readonly credentials: UserMcpCredentialRepository,
     private readonly oauthStates: McpOAuthStateRepository,
     private readonly workspaceService: WorkspaceService,
   ) {
@@ -209,69 +209,21 @@ export class McpUserService {
         GOOGLE_REFRESH_TOKEN: tokens.refresh_token,
       });
 
-      await this.prisma.userMcpCredential.upsert({
-        where: {
-          userId_workspaceId_provider: { userId, workspaceId, provider },
-        },
-        create: {
-          userId,
-          workspaceId,
-          provider,
-          envEncrypted,
-          status: "connected",
-        },
-        update: {
-          envEncrypted,
-          status: "connected",
-          connectedAt: new Date(),
-        },
-      });
+      await this.credentials.upsertCredential({ userId, workspaceId, provider, envEncrypted });
     } else if (oauthProvider === "github") {
       const token = await this.exchangeGithubCode(code, app);
       const envEncrypted = this.encryptJson({
         GITHUB_PERSONAL_ACCESS_TOKEN: token,
       });
 
-      await this.prisma.userMcpCredential.upsert({
-        where: {
-          userId_workspaceId_provider: { userId, workspaceId, provider },
-        },
-        create: {
-          userId,
-          workspaceId,
-          provider,
-          envEncrypted,
-          status: "connected",
-        },
-        update: {
-          envEncrypted,
-          status: "connected",
-          connectedAt: new Date(),
-        },
-      });
+      await this.credentials.upsertCredential({ userId, workspaceId, provider, envEncrypted });
     } else if (oauthProvider === "slack") {
       const token = await this.exchangeSlackCode(code, app);
       const envEncrypted = this.encryptJson({
         SLACK_BOT_TOKEN: token,
       });
 
-      await this.prisma.userMcpCredential.upsert({
-        where: {
-          userId_workspaceId_provider: { userId, workspaceId, provider },
-        },
-        create: {
-          userId,
-          workspaceId,
-          provider,
-          envEncrypted,
-          status: "connected",
-        },
-        update: {
-          envEncrypted,
-          status: "connected",
-          connectedAt: new Date(),
-        },
-      });
+      await this.credentials.upsertCredential({ userId, workspaceId, provider, envEncrypted });
     }
 
     this.logger.log(
@@ -293,23 +245,7 @@ export class McpUserService {
   ) {
     const envEncrypted = this.encryptJson(env);
 
-    await this.prisma.userMcpCredential.upsert({
-      where: {
-        userId_workspaceId_provider: { userId, workspaceId, provider },
-      },
-      create: {
-        userId,
-        workspaceId,
-        provider,
-        envEncrypted,
-        status: "connected",
-      },
-      update: {
-        envEncrypted,
-        status: "connected",
-        connectedAt: new Date(),
-      },
-    });
+    await this.credentials.upsertCredential({ userId, workspaceId, provider, envEncrypted });
 
     return { connected: true, provider };
   }
@@ -318,17 +254,7 @@ export class McpUserService {
    * List user's connected providers for a workspace.
    */
   async getUserCredentials(userId: string, workspaceId: string) {
-    return this.prisma.userMcpCredential.findMany({
-      where: { userId, workspaceId },
-      select: {
-        id: true,
-        provider: true,
-        status: true,
-        connectedAt: true,
-        expiresAt: true,
-      },
-      orderBy: { connectedAt: "desc" },
-    });
+    return this.credentials.listCredentialSummaries(userId, workspaceId);
   }
 
   /**
@@ -339,19 +265,13 @@ export class McpUserService {
     workspaceId: string,
     provider: string,
   ) {
-    const cred = await this.prisma.userMcpCredential.findUnique({
-      where: {
-        userId_workspaceId_provider: { userId, workspaceId, provider },
-      },
-    });
+    const cred = await this.credentials.findCredential({ userId, workspaceId, provider });
 
     if (!cred) {
       throw new NotFoundException("Credential not found");
     }
 
-    await this.prisma.userMcpCredential.delete({
-      where: { id: cred.id },
-    });
+    await this.credentials.deleteCredential(cred.id);
 
     return { disconnected: true, provider };
   }
@@ -365,11 +285,7 @@ export class McpUserService {
     workspaceId: string,
     provider: string,
   ): Promise<Record<string, string> | null> {
-    const cred = await this.prisma.userMcpCredential.findUnique({
-      where: {
-        userId_workspaceId_provider: { userId, workspaceId, provider },
-      },
-    });
+    const cred = await this.credentials.findCredential({ userId, workspaceId, provider });
 
     if (!cred || cred.status !== "connected") {
       return null;
@@ -385,9 +301,7 @@ export class McpUserService {
     userId: string,
     workspaceId: string,
   ): Promise<Map<string, Record<string, string>>> {
-    const creds = await this.prisma.userMcpCredential.findMany({
-      where: { userId, workspaceId, status: "connected" },
-    });
+    const creds = await this.credentials.listConnectedCredentials(userId, workspaceId);
 
     const map = new Map<string, Record<string, string>>();
     for (const cred of creds) {

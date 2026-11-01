@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
+import { AppConfigRepository } from "../../config/repository/app-config.repository";
 import { McpUserService } from "./mcp-user.service";
 import { maskKey } from "../utils/mask-key";
 import { getSupportedProviders } from "../utils/get-supported-providers";
@@ -46,20 +46,20 @@ export class WebSearchService {
   private static readonly BRAVE_CREDENTIAL_PROVIDER = "web-search-brave";
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly appConfig: AppConfigRepository,
     private readonly mcpUserService: McpUserService,
   ) {}
 
   async getPolicy(workspaceId: string): Promise<WebSearchPolicy> {
     const defaults = getDefaultPolicy();
-    const row = await this.prisma.appConfig.findUnique({
-      where: { key: `${WebSearchService.POLICY_KEY_PREFIX}${workspaceId}` },
-    });
+    const value = await this.appConfig.findValue(
+      `${WebSearchService.POLICY_KEY_PREFIX}${workspaceId}`,
+    );
 
-    if (!row) return defaults;
+    if (value === null) return defaults;
 
     try {
-      const parsed = JSON.parse(row.value) as Partial<WebSearchPolicy>;
+      const parsed = JSON.parse(value) as Partial<WebSearchPolicy>;
       const allowedProviders = (parsed.allowedProviders || []).filter((p) =>
         isProvider(p),
       ) as WebSearchProvider[];
@@ -128,16 +128,10 @@ export class WebSearchService {
       ),
     };
 
-    await this.prisma.appConfig.upsert({
-      where: { key: `${WebSearchService.POLICY_KEY_PREFIX}${workspaceId}` },
-      create: {
-        key: `${WebSearchService.POLICY_KEY_PREFIX}${workspaceId}`,
-        value: JSON.stringify(merged),
-      },
-      update: {
-        value: JSON.stringify(merged),
-      },
-    });
+    await this.appConfig.upsertValue(
+      `${WebSearchService.POLICY_KEY_PREFIX}${workspaceId}`,
+      JSON.stringify(merged),
+    );
 
     return merged;
   }
@@ -440,11 +434,9 @@ export class WebSearchService {
     workspaceId: string,
     dailyLimit: number,
   ): Promise<void> {
-    const row = await this.prisma.appConfig.findUnique({
-      where: { key: this.usageKey(userId, workspaceId) },
-    });
+    const value = await this.appConfig.findValue(this.usageKey(userId, workspaceId));
 
-    const used = row ? Number(row.value || "0") : 0;
+    const used = value !== null ? Number(value || "0") : 0;
     if (used >= dailyLimit) {
       throw new BadRequestException(
         `Web search daily limit reached (${dailyLimit}/day).`,
@@ -454,13 +446,9 @@ export class WebSearchService {
 
   private async incrementUsage(userId: string, workspaceId: string): Promise<void> {
     const key = this.usageKey(userId, workspaceId);
-    const row = await this.prisma.appConfig.findUnique({ where: { key } });
-    const next = (row ? Number(row.value || "0") : 0) + 1;
+    const value = await this.appConfig.findValue(key);
+    const next = (value !== null ? Number(value || "0") : 0) + 1;
 
-    await this.prisma.appConfig.upsert({
-      where: { key },
-      create: { key, value: String(next) },
-      update: { value: String(next) },
-    });
+    await this.appConfig.upsertValue(key, String(next));
   }
 }
