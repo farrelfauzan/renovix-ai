@@ -10,6 +10,8 @@ import { S3Service } from "./s3.service";
 import { chunkMarkdown } from "../utils/markdown-chunker";
 import { KnowledgeBaseRepository } from "../repository/knowledge-base.repository";
 import { KnowledgeChunkRepository } from "../repository/knowledge-chunk.repository";
+import { withPurgeAt } from "../../../common/utils/with-purge-at";
+import { DELETED_LIST_LIMIT } from "../../../common/config/deleted-list-limit";
 
 @Injectable()
 export class KnowledgeService {
@@ -67,6 +69,17 @@ export class KnowledgeService {
     const kb = await this.getKnowledgeBase(userId, id);
 
     await this.knowledgeBases.softDeleteKnowledgeBase(kb.id, userId);
+  }
+
+  /** RNX-126: the user's deleted personal knowledge bases, newest-deleted first, each with its purgeAt. */
+  async listDeletedKnowledgeBases(userId: string) {
+    const knowledgeBases = await this.knowledgeBases.listDeletedPersonalKnowledgeBases(userId, DELETED_LIST_LIMIT);
+    return knowledgeBases.map(withPurgeAt);
+  }
+
+  /** RNX-126: restores the user's deleted personal knowledge base; 404 for another's, a live one or a workspace base. */
+  async restoreKnowledgeBase(userId: string, id: string) {
+    return this.knowledgeBases.restorePersonalKnowledgeBase(id, userId);
   }
 
   // ─── Chunks ───

@@ -14,6 +14,8 @@ import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-ba
 import { KnowledgeChunkRepository } from "../../knowledge/repository/knowledge-chunk.repository";
 import { WorkspaceMemberRepository } from "../repository/workspace-member.repository";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
+import { withPurgeAt } from "../../../common/utils/with-purge-at";
+import { DELETED_LIST_LIMIT } from "../../../common/config/deleted-list-limit";
 
 @Injectable()
 export class WorkspaceKnowledgeService {
@@ -85,6 +87,17 @@ export class WorkspaceKnowledgeService {
   async deleteKnowledgeBase(workspaceId: string, id: string, userId: string) {
     await this.getKnowledgeBase(workspaceId, id);
     await this.knowledgeBases.softDeleteKnowledgeBase(id, userId);
+  }
+
+  /** RNX-126: the deleted knowledge bases of this workspace, newest-deleted first, each with its purgeAt. */
+  async listDeletedKnowledgeBases(workspaceId: string) {
+    const knowledgeBases = await this.knowledgeBases.listDeletedWorkspaceKnowledgeBases(workspaceId, DELETED_LIST_LIMIT);
+    return knowledgeBases.map(withPurgeAt);
+  }
+
+  /** RNX-126: restores this workspace's deleted knowledge base; 404 for another workspace's or a live one. */
+  async restoreKnowledgeBase(workspaceId: string, id: string) {
+    return this.knowledgeBases.restoreWorkspaceKnowledgeBase(id, workspaceId);
   }
 
   async uploadMarkdown(

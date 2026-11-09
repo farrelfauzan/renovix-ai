@@ -92,6 +92,12 @@ export class AgentController {
     return this.agentService.getSubscription(req.user.userId);
   }
 
+  /** RNX-126: the caller's deleted agents with their purgeAt (declared before `:id`). */
+  @Get("deleted")
+  async listDeleted(@Req() req: any) {
+    return this.agentService.listDeleted(req.user.userId);
+  }
+
   @Get(":id")
   async findById(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
     return this.agentService.findById(req.user.userId, id);
@@ -114,6 +120,13 @@ export class AgentController {
   @HttpCode(204)
   async delete(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
     return this.agentService.delete(req.user.userId, id);
+  }
+
+  /** RNX-126: restores the caller's deleted agent (the owner only, as delete). */
+  @Post(":id/restore")
+  @HttpCode(200)
+  async restore(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.agentService.restore(req.user.userId, id);
   }
 
   @Patch(":id/status")

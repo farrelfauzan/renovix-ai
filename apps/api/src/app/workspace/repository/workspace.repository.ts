@@ -88,6 +88,38 @@ export class WorkspaceRepository {
     );
   }
 
+  /** RNX-126: the deleted workspaces this user owns, newest-deleted first, `take` at most. */
+  listDeletedOwnedWorkspaces(ownerId: string, take: number, tx?: DbTransaction) {
+    return (tx ?? this.prisma).workspace.findMany({
+      where: { ownerId, deletedAt: { not: null } },
+      select: { id: true, name: true, deletedAt: true },
+      orderBy: { deletedAt: "desc" },
+      take,
+    });
+  }
+
+  /** RNX-126: the id of the deleted workspace with this id, if this user owns it. */
+  findDeletedOwnedWorkspace(workspaceId: string, ownerId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).workspace.findFirst({
+      where: { id: workspaceId, ownerId, deletedAt: { not: null } },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * RNX-126: clears the deleted marker of the workspace with this id if this user owns it (its children come back with
+   * it); one conditional write. A default workspace is never deleted, so never restored. 404 when there is none.
+   */
+  restoreWorkspace(workspaceId: string, ownerId: string, tx?: DbTransaction) {
+    return this.refuseDeleted(() =>
+      (tx ?? this.prisma).workspace.update({
+        where: { id: workspaceId, ownerId, deletedAt: { not: null }, isDefault: false },
+        data: { deletedAt: null, deletedById: null },
+        select: { id: true, name: true },
+      }),
+    );
+  }
+
   /**
    * Soft-deletes the workspace with this id, by this user (RNX-125): the row and its children stay. A default
    * workspace is never deleted. Returns the workspace; 404 when it is already deleted or a default one.

@@ -10,6 +10,8 @@ import { ChannelChatRoomRepository } from "../repository/channel-chat-room.repos
 import { ChannelMessageRepository } from "../repository/channel-message.repository";
 import { ChannelRepository } from "../repository/channel.repository";
 import { extractDocumentFromMetadata } from "../utils/extract-document-from-metadata";
+import { withPurgeAt } from "../../../common/utils/with-purge-at";
+import { DELETED_LIST_LIMIT } from "../../../common/config/deleted-list-limit";
 
 @Injectable()
 export class ChannelService {
@@ -72,6 +74,17 @@ export class ChannelService {
     // RNX-145: soft delete (deletedAt, deletedById); its rooms, messages, agent links and reminders stay
     await this.channels.softDeleteChannel(channelId, userId);
     return { deleted: true };
+  }
+
+  /** RNX-126: the user's deleted channels, newest-deleted first, each with its purgeAt. */
+  async listDeleted(userId: string) {
+    const channels = await this.channels.listDeletedUserChannels(userId, DELETED_LIST_LIMIT);
+    return channels.map(withPurgeAt);
+  }
+
+  /** RNX-126: restores the user's deleted channel with its rooms, messages, agent links and reminders; 404 for another's or a live one. */
+  async restore(userId: string, channelId: string) {
+    return this.channels.restoreUserChannel(channelId, userId);
   }
 
   // ─── Agent Management ───

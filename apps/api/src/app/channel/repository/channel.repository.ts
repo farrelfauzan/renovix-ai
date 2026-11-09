@@ -154,6 +154,27 @@ export class ChannelRepository {
     );
   }
 
+  /** RNX-126: this user's deleted channels, newest-deleted first, `take` at most. */
+  listDeletedUserChannels(userId: string, take: number, tx?: DbTransaction) {
+    return (tx ?? this.prisma).channel.findMany({
+      where: { userId, deletedAt: { not: null } },
+      select: { id: true, name: true, deletedAt: true },
+      orderBy: { deletedAt: "desc" },
+      take,
+    });
+  }
+
+  /** RNX-126: restores this user's deleted channel with this id; one conditional write, 404 when there is none. */
+  restoreUserChannel(channelId: string, userId: string, tx?: DbTransaction) {
+    return this.refuseDeleted(() =>
+      (tx ?? this.prisma).channel.update({
+        where: { id: channelId, userId, deletedAt: { not: null } },
+        data: { deletedAt: null, deletedById: null },
+        select: { id: true, name: true },
+      }),
+    );
+  }
+
   /** Runs a write on one live channel; Prisma's "no such row" (P2025: deleted, or deleted meanwhile) becomes a 404. */
   private async refuseDeleted<T>(write: () => Promise<T>): Promise<T> {
     try {

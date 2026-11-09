@@ -353,6 +353,40 @@ export class WorkspaceChannelController {
     return this.knowledgeService.listKnowledgeBases(workspace.id);
   }
 
+  /** RNX-126: the workspace's deleted knowledge bases with their purgeAt; the workspace owner only (D64), as delete. */
+  @Get("knowledge/deleted")
+  async listDeletedKnowledgeBases(
+    @Param("channelId", ParseUUIDPipe) channelId: string,
+    @Req() req: any,
+  ) {
+    const { workspace } = await this.requireWorkspace(
+      channelId,
+      req.user.userId,
+    );
+    await this.workspaceService.requireRole(workspace.id, req.user.userId, [
+      "owner",
+    ]);
+    return this.knowledgeService.listDeletedKnowledgeBases(workspace.id);
+  }
+
+  /** RNX-126: restores a deleted knowledge base of the workspace; the workspace owner only (D64), as delete. */
+  @Post("knowledge/:kbId/restore")
+  @HttpCode(200)
+  async restoreKnowledgeBase(
+    @Param("channelId", ParseUUIDPipe) channelId: string,
+    @Param("kbId", ParseUUIDPipe) kbId: string,
+    @Req() req: any,
+  ) {
+    const { workspace } = await this.requireWorkspace(
+      channelId,
+      req.user.userId,
+    );
+    await this.workspaceService.requireRole(workspace.id, req.user.userId, [
+      "owner",
+    ]);
+    return this.knowledgeService.restoreKnowledgeBase(workspace.id, kbId);
+  }
+
   @Post("knowledge")
   @HttpCode(201)
   async createKnowledgeBase(

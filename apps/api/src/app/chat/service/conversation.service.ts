@@ -9,6 +9,8 @@ import {
 } from "../../document/service/document.service";
 import { buildFallbackTitle } from "../utils/build-fallback-title";
 import { normalizeTitle } from "../utils/normalize-title";
+import { withPurgeAt } from "../../../common/utils/with-purge-at";
+import { DELETED_LIST_LIMIT } from "../../../common/config/deleted-list-limit";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -256,5 +258,16 @@ export class ConversationService {
     await this.conversations.softDeleteConversation(conversationId, userId);
 
     return true;
+  }
+
+  /** RNX-126: the user's deleted conversations, newest-deleted first, each with its purgeAt. */
+  async listDeletedConversations(userId: string) {
+    const conversations = await this.conversations.listDeletedUserConversations(userId, DELETED_LIST_LIMIT);
+    return conversations.map(withPurgeAt);
+  }
+
+  /** RNX-126: restores the user's deleted conversation with its messages; 404 for another's or a live one. */
+  async restoreConversation(conversationId: string, userId: string) {
+    return this.conversations.restoreUserConversation(conversationId, userId);
   }
 }

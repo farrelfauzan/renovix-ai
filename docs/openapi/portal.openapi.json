@@ -1002,6 +1002,37 @@
         ]
       }
     },
+    "/api/v1/agents/:id/restore": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "agents"
+        ]
+      }
+    },
     "/api/v1/agents/:id/runs": {
       "get": {
         "parameters": [
@@ -1322,6 +1353,26 @@
           },
           "429": {
             "description": "Rate limit exceeded (route-specific throttle)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agents/deleted": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
           }
         },
         "security": [
@@ -2626,6 +2677,77 @@
         ]
       }
     },
+    "/api/v1/channels/:channelId/workspace/knowledge/:kbId/restore": {
+      "post": {
+        "parameters": [
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "kbId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "channels"
+        ]
+      }
+    },
+    "/api/v1/channels/:channelId/workspace/knowledge/deleted": {
+      "get": {
+        "parameters": [
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "channels"
+        ]
+      }
+    },
     "/api/v1/channels/:channelId/workspace/knowledge/search": {
       "post": {
         "parameters": [
@@ -3282,6 +3404,57 @@
           },
           "429": {
             "description": "Rate limit exceeded (route-specific throttle)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "channels"
+        ]
+      }
+    },
+    "/api/v1/channels/:id/restore": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "channels"
+        ]
+      }
+    },
+    "/api/v1/channels/deleted": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
           }
         },
         "security": [
@@ -4266,6 +4439,57 @@
         "responses": {
           "204": {
             "description": "Success (no content)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "tags": [
+          "conversations"
+        ]
+      }
+    },
+    "/api/v1/conversations/:id/restore": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "tags": [
+          "conversations"
+        ]
+      }
+    },
+    "/api/v1/conversations/deleted": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -5708,6 +5932,37 @@
         ]
       }
     },
+    "/api/v1/v1/knowledge/bases/:id/restore": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
     "/api/v1/v1/knowledge/bases/:id/upload": {
       "post": {
         "parameters": [
@@ -5752,6 +6007,26 @@
           },
           "429": {
             "description": "Rate limit exceeded (route-specific throttle)"
+          }
+        },
+        "security": [
+          {
+            "BearerApiKey": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/v1/knowledge/bases/deleted": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
           }
         },
         "security": [
@@ -6397,6 +6672,57 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/:id/restore": {
+      "post": {
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/deleted": {
+      "get": {
         "responses": {
           "200": {
             "description": "Success"
