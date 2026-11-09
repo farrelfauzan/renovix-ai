@@ -62,10 +62,11 @@ export class KnowledgeService {
     return this.knowledgeBases.updateKnowledgeBase(kb.id, data);
   }
 
+  /** RNX-145: soft-deletes the user's personal knowledge base (deletedAt, deletedById); its chunks stay. */
   async deleteKnowledgeBase(userId: string, id: string) {
     const kb = await this.getKnowledgeBase(userId, id);
 
-    await this.knowledgeBases.deleteKnowledgeBase(kb.id);
+    await this.knowledgeBases.softDeleteKnowledgeBase(kb.id, userId);
   }
 
   // ─── Chunks ───

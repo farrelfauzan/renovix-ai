@@ -10,6 +10,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { EmbeddingService } from "../../knowledge/service/embedding.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { chunkMarkdown } from "../../knowledge/utils/markdown-chunker";
+import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
 import { KnowledgeChunkRepository } from "../../knowledge/repository/knowledge-chunk.repository";
 import { WorkspaceMemberRepository } from "../repository/workspace-member.repository";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
@@ -25,6 +26,7 @@ export class WorkspaceKnowledgeService {
     private readonly knowledgeChunks: KnowledgeChunkRepository,
     private readonly workspaceMembers: WorkspaceMemberRepository,
     private readonly quotaService: WorkspaceQuotaService,
+    private readonly knowledgeBases: KnowledgeBaseRepository,
   ) {}
 
   /**
@@ -79,9 +81,10 @@ export class WorkspaceKnowledgeService {
     return kb;
   }
 
-  async deleteKnowledgeBase(workspaceId: string, id: string) {
+  /** RNX-145: soft-deletes this workspace knowledge base, by this user (deletedAt, deletedById); its chunks stay. */
+  async deleteKnowledgeBase(workspaceId: string, id: string, userId: string) {
     await this.getKnowledgeBase(workspaceId, id);
-    await this.prisma.knowledgeBase.delete({ where: { id } });
+    await this.knowledgeBases.softDeleteKnowledgeBase(id, userId);
   }
 
   async uploadMarkdown(
@@ -280,6 +283,7 @@ export class WorkspaceKnowledgeService {
         JOIN "knowledge_bases" kb ON kb.id = kc."knowledgeBaseId"
         WHERE kb.workspace_id = ${workspaceId}
           AND kb.active = true
+          AND kb.deleted_at IS NULL
           AND kc.embedding_model = ${this.embeddingService.modelName}
         ORDER BY kc.embedding <=> ${vector}::vector
         LIMIT ${topK}

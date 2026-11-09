@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 import { LIVE_AGENT } from "../../agent/config/live-agent";
+import { LIVE_KNOWLEDGE_BASE } from "../../knowledge/config/live-knowledge-base";
 
 /**
  * The queries on `channel_agents`, the links between a channel and its agents (RX-136). Every method takes
@@ -44,7 +45,7 @@ export class ChannelAgentRepository {
 
   /**
    * The link of this live agent (RNX-124) to this channel with the channel and its workspace, and the agent with its
-   * enabled tools, its knowledge bases and its connected integrations.
+   * enabled tools, its live (RNX-145) knowledge bases and its connected integrations.
    */
   findChannelAgentWithAgent(
     channelId: string,
@@ -58,7 +59,7 @@ export class ChannelAgentRepository {
         agent: {
           include: {
             tools: { where: { enabled: true } },
-            knowledgeBases: true,
+            knowledgeBases: { where: { knowledgeBase: LIVE_KNOWLEDGE_BASE } },
             integrations: { where: { status: "connected" } },
           },
         },

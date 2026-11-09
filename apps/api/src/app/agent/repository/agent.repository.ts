@@ -2,12 +2,13 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LIVE_KNOWLEDGE_BASE } from "../../knowledge/config/live-knowledge-base";
 
-/** The relations an agent is returned with after a create, an update and a template clone. */
+/** The relations an agent is returned with after a create, an update and a template clone; live knowledge bases only (RNX-145). */
 const AGENT_RELATIONS = {
   tools: true,
   integrations: true,
-  knowledgeBases: true,
+  knowledgeBases: { where: { knowledgeBase: LIVE_KNOWLEDGE_BASE } },
   channels: true,
   _count: { select: { runs: true } },
 } satisfies Prisma.AgentInclude;
@@ -54,14 +55,14 @@ export class AgentRepository {
     });
   }
 
-  /** The agent with this id in a workspace this user owns (RNX-203), with every relation and its knowledge bases. */
+  /** The agent with this id in a workspace this user owns (RNX-203), with every relation and its live (RNX-145) knowledge bases. */
   findAgentDetail(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
       where: { id: agentId, workspace: { ownerId: userId, deletedAt: null } },
       include: {
         tools: true,
         integrations: true,
-        knowledgeBases: { include: { knowledgeBase: true } },
+        knowledgeBases: { where: { knowledgeBase: LIVE_KNOWLEDGE_BASE }, include: { knowledgeBase: true } },
         channels: true,
         _count: { select: { runs: true } },
       },
@@ -69,7 +70,7 @@ export class AgentRepository {
   }
 
   /**
-   * The agent with this id, with its enabled tools, its knowledge bases and its connected integrations (RX-134), for
+   * The agent with this id, with its enabled tools, its live (RNX-145) knowledge bases and its connected integrations (RX-134), for
    * a run. RNX-119: who may run it is decided by AgentRunPolicyService, not here. RNX-118: the agents it may call come
    * from AgentLinkService.
    */
@@ -78,7 +79,7 @@ export class AgentRepository {
       where: { id: agentId },
       include: {
         tools: { where: { enabled: true } },
-        knowledgeBases: true,
+        knowledgeBases: { where: { knowledgeBase: LIVE_KNOWLEDGE_BASE } },
         integrations: { where: { status: "connected" } },
       },
     });
@@ -92,14 +93,14 @@ export class AgentRepository {
     });
   }
 
-  /** The agents in the workspaces this user owns (RNX-203), newest change first, each with its relations. */
+  /** The agents in the workspaces this user owns (RNX-203), newest change first, each with its relations (live knowledge bases, RNX-145). */
   listOwnedAgents(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findMany({
       where: { workspace: { ownerId: userId, deletedAt: null } },
       include: {
         tools: true,
         integrations: true,
-        knowledgeBases: true,
+        knowledgeBases: { where: { knowledgeBase: LIVE_KNOWLEDGE_BASE } },
         channels: true,
         _count: { select: { runs: true } },
       },

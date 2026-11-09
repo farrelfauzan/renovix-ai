@@ -417,4 +417,76 @@ describe("RNX-139: reminder routes (Fastify, test database)", () => {
       expect([stored.deletedAt, stored.deletedById]).toEqual([expect.any(Date), s.user.id]);
     });
   });
+
+  describe("RNX-145: reminders of a deleted channel (D99)", () => {
+    /** The user's channel X with two reminders, and a second live channel Y of the same agent with one reminder. */
+    const seedTwoChannels = async () => {
+      const s = await seedUser(2);
+      const y = await prisma.channel.create({ data: { userId: s.user.id, name: "Other" } });
+      await prisma.channelAgent.create({ data: { channelId: y.id, agentId: s.agent.id } });
+      const roomY = await prisma.channelChatRoom.create({ data: { channelId: y.id, name: "general" } });
+      const ofY = await prisma.reminder.create({
+        data: {
+          userId: s.user.id,
+          agentId: s.agent.id,
+          channelId: y.id,
+          chatRoomId: roomY.id,
+          prompt: "Of Y",
+          cronExpression: "0 8 * * *",
+          timezone: "UTC",
+          nextRunAt: new Date(Date.now() + 60_000),
+        },
+      });
+      return { ...s, ofY };
+    };
+    const markChannelDeleted = (channelId: string, userId: string) =>
+      prisma.channel.updateMany({ where: { id: channelId }, data: { deletedAt: new Date(), deletedById: userId } });
+    const clearChannelDeleted = (channelId: string) =>
+      prisma.channel.updateMany({ where: { id: channelId }, data: { deletedAt: null, deletedById: null } });
+
+    it("RNX-145 AC12: the list leaves out the deleted channel's reminders and nothing else changes; listed again once the channel is live", async () => {
+      const s = await seedTwoChannels();
+      const list = async () => (await app.inject({ method: "GET", url: "/reminders", headers: asSessionUser(s.user) })).json();
+      const before = await list();
+
+      await markChannelDeleted(s.channel.id, s.user.id);
+      const hidden = await list();
+      await clearChannelDeleted(s.channel.id);
+      const shown = await list();
+
+      expect(before.map((r: { id: string }) => r.id).sort()).toEqual([s.ofY.id, ...s.reminders.map((r) => r.id)].sort());
+      expect(hidden).toEqual(before.filter((r: { id: string }) => r.id === s.ofY.id));
+      expect(shown).toEqual(before);
+    });
+
+    it.each([
+      ["read it", "GET", undefined],
+      ["update it", "PATCH", { prompt: "Changed" }],
+      ["delete it", "DELETE", undefined],
+    ] as const)("RNX-145 AC12: %s → 404, the reminder row unchanged; readable again once the channel is live", async (_label, method, payload) => {
+      const s = await seedTwoChannels();
+      const id = s.reminders[0].id;
+      const before = await prisma.reminder.findUniqueOrThrow({ where: { id } });
+      await markChannelDeleted(s.channel.id, s.user.id);
+
+      const res = await app.inject({ method, url: `/reminders/${id}`, headers: asSessionUser(s.user), payload });
+
+      expect(res.statusCode).toBe(404);
+      await unchanged(id, before);
+      await clearChannelDeleted(s.channel.id);
+      const read = await app.inject({ method: "GET", url: `/reminders/${id}`, headers: asSessionUser(s.user) });
+      expect([read.statusCode, read.json().id]).toEqual([200, id]);
+    });
+
+    it("RNX-145 AC4: a new reminder in the deleted channel → 404, nothing stored", async () => {
+      const s = await seedTwoChannels();
+      await markChannelDeleted(s.channel.id, s.user.id);
+      const count = await prisma.reminder.count();
+
+      const res = await app.inject({ method: "POST", url: "/reminders", headers: asSessionUser(s.user), payload: payloadOf(s) });
+
+      expect(res.statusCode).toBe(404);
+      expect(await prisma.reminder.count()).toBe(count);
+    });
+  });
 });

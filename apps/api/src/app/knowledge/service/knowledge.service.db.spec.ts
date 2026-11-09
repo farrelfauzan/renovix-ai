@@ -461,7 +461,8 @@ describe("KnowledgeService: search results and chunk storage (RX-137, test datab
       expect(listed.map((kb) => [kb.name, kb._count.chunks])).toEqual([["Second", 1], ["First", 0]]);
       expect(updated).toMatchObject({ id: first.id, name: "Renamed", active: false, description: null });
       expect(await prisma.knowledgeBase.findUnique({ where: { id: second.id } })).toBeNull();
-      expect(await prisma.knowledgeChunk.count()).toBe(0);
+      // RNX-145: the delete is a soft delete; the base's chunk stays (it was ON DELETE CASCADE)
+      expect(await prisma.knowledgeChunk.count()).toBe(1);
       expect(await service.getKnowledgeBase(alice.id, first.id)).toMatchObject({ name: "Renamed", _count: { chunks: 0 } });
     });
   });

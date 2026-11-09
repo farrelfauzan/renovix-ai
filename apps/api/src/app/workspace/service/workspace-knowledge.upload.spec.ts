@@ -3,6 +3,7 @@ import { WorkspaceKnowledgeService } from "./workspace-knowledge.service";
 import type { PrismaService } from "../../prisma/prisma.service";
 import type { EmbeddingService } from "../../knowledge/service/embedding.service";
 import type { S3Service } from "../../knowledge/service/s3.service";
+import type { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
 import type { KnowledgeChunkRepository } from "../../knowledge/repository/knowledge-chunk.repository";
 import type { WorkspaceMemberRepository } from "../repository/workspace-member.repository";
 import type { WorkspaceQuotaService } from "./workspace-quota.service";
@@ -28,6 +29,7 @@ describe("RNX-173: WorkspaceKnowledgeService.uploadMarkdown leaves no S3 object 
     {} as KnowledgeChunkRepository,
     {} as WorkspaceMemberRepository,
     {} as WorkspaceQuotaService,
+    {} as KnowledgeBaseRepository,
   );
   const validFile = { filename: "notes.md", buffer: Buffer.from("# Title\n\nSome body text for a chunk.") };
 

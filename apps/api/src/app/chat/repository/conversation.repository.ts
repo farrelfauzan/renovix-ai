@@ -1,12 +1,14 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 
 /**
  * The queries on `conversations` (RX-136). Every method takes the transaction as its optional last argument.
- * The writes by id (`updateConversationTitle`, `deleteConversation`) take no user: the run that titles a
+ * The writes by id (`updateConversationTitle`, `softDeleteConversation`) take no user: the run that titles a
  * conversation created it for its user, and the service checks the owner with `findUserConversation`
- * before a delete.
+ * before a delete. RNX-145: PrismaService hides deleted conversations from top-level reads (VISIBLE_ONLY); the writes
+ * by id name `deletedAt: null` themselves.
  */
 @Injectable()
 export class ConversationRepository {
@@ -82,23 +84,31 @@ export class ConversationRepository {
     });
   }
 
-  /** Sets the title of the conversation with this id. */
+  /** Sets the title of the live conversation with this id; 404 when it is deleted (RNX-145). */
   updateConversationTitle(
     conversationId: string,
     title: string,
     tx?: DbTransaction,
   ) {
-    return (tx ?? this.prisma).conversation.update({
-      where: { id: conversationId },
-      data: { title },
-    });
+    return this.refuseDeleted(() =>
+      (tx ?? this.prisma).conversation.update({
+        where: { id: conversationId, deletedAt: null },
+        data: { title },
+      }),
+    );
   }
 
-  /** Deletes the conversation with this id (its messages cascade). */
-  deleteConversation(conversationId: string, tx?: DbTransaction) {
-    return (tx ?? this.prisma).conversation.delete({
-      where: { id: conversationId },
-    });
+  /**
+   * Soft-deletes the live conversation with this id, by this user (RNX-145): the row and its messages stay. Returns
+   * the conversation; 404 when it is already deleted.
+   */
+  softDeleteConversation(conversationId: string, deletedById: string, tx?: DbTransaction) {
+    return this.refuseDeleted(() =>
+      (tx ?? this.prisma).conversation.update({
+        where: { id: conversationId, deletedAt: null },
+        data: { deletedAt: new Date(), deletedById },
+      }),
+    );
   }
 
   /** This user's `take` most recently updated conversations, each with how many user messages it has. */
@@ -116,5 +126,17 @@ export class ConversationRepository {
         _count: { select: { messages: { where: { role: "user" } } } },
       },
     });
+  }
+
+  /** Runs a write on one live conversation; Prisma's "no such row" (P2025: deleted, or deleted meanwhile) becomes a 404. */
+  private async refuseDeleted<T>(write: () => Promise<T>): Promise<T> {
+    try {
+      return await write();
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+        throw new NotFoundException("Conversation not found");
+      }
+      throw err;
+    }
   }
 }

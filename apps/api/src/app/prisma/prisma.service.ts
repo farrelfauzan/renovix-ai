@@ -8,7 +8,9 @@ type VisibleOnly = Partial<Record<Prisma.ModelName, Record<string, unknown>>>;
 /**
  * The models that hide rows by default. RX-177: soft-deleted providers. RNX-124: soft-deleted agents. RNX-125:
  * soft-deleted workspaces, user memories and workspace memories; an agent or a workspace memory of a deleted workspace
- * is hidden with it (its own row is not marked).
+ * is hidden with it (its own row is not marked). RNX-145: soft-deleted knowledge bases, conversations and channels (a
+ * knowledge base of a deleted workspace stays hidden by the workspace routes, RNX-125; the channel of a deleted workspace
+ * by LIVE_CHANNEL, written by hand, so its workspace routes still answer "Workspace not found").
  */
 const VISIBLE_ONLY: VisibleOnly = {
   Provider: { deletedAt: null },
@@ -16,6 +18,9 @@ const VISIBLE_ONLY: VisibleOnly = {
   Workspace: { deletedAt: null },
   UserMemory: { deletedAt: null },
   WorkspaceMemory: { deletedAt: null, workspace: { deletedAt: null } },
+  KnowledgeBase: { deletedAt: null },
+  Conversation: { deletedAt: null },
+  Channel: { deletedAt: null },
 };
 
 /** The top-level reads the default condition is added to (not nested reads, `_count`, relation filters, raw SQL or writes). */

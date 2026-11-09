@@ -3,6 +3,7 @@ import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 import { LIVE_AGENT } from "../config/live-agent";
+import { LIVE_KNOWLEDGE_BASE } from "../../knowledge/config/live-knowledge-base";
 
 /** The queries on `agent_channels` (RX-133). Every method takes the transaction as its optional last argument. */
 @Injectable()
@@ -18,7 +19,8 @@ export class AgentChannelRepository {
 
   /**
    * Every active whatsapp channel of a live agent (RNX-124) whose config has this phone number, each with its agent
-   * and the agent's enabled tools, knowledge bases and connected integrations (the GOWA webhook, RX-115, RX-136).
+   * and the agent's enabled tools, live (RNX-145) knowledge bases and connected integrations (the GOWA webhook, RX-115,
+   * RX-136).
    */
   findActiveWhatsappChannels(phoneNumber: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agentChannel.findMany({
@@ -32,7 +34,7 @@ export class AgentChannelRepository {
         agent: {
           include: {
             tools: { where: { enabled: true } },
-            knowledgeBases: true,
+            knowledgeBases: { where: { knowledgeBase: LIVE_KNOWLEDGE_BASE } },
             integrations: { where: { status: "connected" } },
           },
         },

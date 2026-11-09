@@ -238,7 +238,7 @@ export class ConversationService {
   }
 
   /**
-   * Deletes a conversation and all its messages (cascade).
+   * RNX-145: soft-deletes the user's conversation (deletedAt, deletedById); its messages stay.
    */
   async deleteConversation(
     conversationId: string,
@@ -253,7 +253,7 @@ export class ConversationService {
       return false;
     }
 
-    await this.conversations.deleteConversation(conversationId);
+    await this.conversations.softDeleteConversation(conversationId, userId);
 
     return true;
   }

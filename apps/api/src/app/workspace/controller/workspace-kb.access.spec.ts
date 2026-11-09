@@ -27,6 +27,11 @@ import { GuardrailService } from "../../guardrail/service/guardrail.service";
 import { DocumentService } from "../../document/service/document.service";
 import { EmailJobService } from "../../email/service/email-job.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { AgentRepository } from "../../agent/repository/agent.repository";
+import { AgentChannelRepository } from "../../agent/repository/agent-channel.repository";
+import { ChannelAgentRepository } from "../../channel/repository/channel-agent.repository";
+import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
+import { KnowledgeChunkRepository } from "../../knowledge/repository/knowledge-chunk.repository";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import {
@@ -46,6 +51,9 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // only to an agent of that workspace. Real controllers and services on the
 // test database; embeddings are a fixed unit vector (no provider call), S3 and
 // email are never reached.
+// RNX-145: a deleted knowledge base (personal, or of a workspace) keeps its row, chunks and agent links; it is gone from
+// every list, route, search and agent knowledge base list, and back once the marker is cleared. `all` is a client
+// with nothing on PrismaService's default filter map, to read the rows as they are.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 jest.mock("../../usage/service/usage.service", () => ({ UsageService: class {} }));
 jest.mock("../../chat/service/prompt-tuning.service", () => ({ PromptTuningService: class {} }));
@@ -68,6 +76,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let app: NestFastifyApplication;
+  let all: PrismaService;
   const embedding = {
     modelName: "test-model",
     embed: jest.fn(async (texts: string[]) => texts.map(() => ({ embedding: unit(), tokenCount: 1 }))),
@@ -106,6 +115,7 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
     await app.getHttpAdapter().getInstance().register(require("@fastify/multipart"));
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
+    all = PrismaService.create({});
   });
 
   beforeEach(async () => {
@@ -113,7 +123,10 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
     embedding.embed.mockClear();
   });
 
-  afterAll(() => app?.close());
+  afterAll(async () => {
+    await app?.close();
+    await all?.$disconnect();
+  });
 
   const sessionAuth = (user: { id: string; email: string }) => asSessionUser(user);
   const portal = (user: { id: string; email: string }) => ({
@@ -363,6 +376,258 @@ describe("Workspace knowledge bases: access follows current membership (RX-113, 
       expect(await prisma.agentKnowledgeBase.findMany({ select: { knowledgeBaseId: true } })).toEqual([
         { knowledgeBaseId: ownerKb.id },
       ]);
+    });
+  });
+
+  describe("RNX-145: a deleted knowledge base", () => {
+    const PERSONAL = "personal note of the owner";
+
+    /**
+     * The RX-113 setup, plus the owner's personal base (one chunk) linked to the owner's personal agent, and the
+     * workspace base linked to the owner's agent in the workspace, which is also in the workspace channel.
+     */
+    const seed = async () => {
+      const ctx = await setup();
+      const personal = await prisma.knowledgeBase.create({ data: { userId: ctx.owner.id, name: "Owner personal" } });
+      await insertChunk(personal.id, PERSONAL);
+      const personalAgent = await createAgent(prisma, { userId: ctx.owner.id });
+      const workspaceAgent = await createAgent(prisma, { userId: ctx.owner.id, workspaceId: ctx.workspace.id });
+      await prisma.agentKnowledgeBase.createMany({
+        data: [
+          { agentId: personalAgent.id, knowledgeBaseId: personal.id },
+          { agentId: workspaceAgent.id, knowledgeBaseId: ctx.kb.id },
+        ],
+      });
+      await prisma.channelAgent.create({ data: { channelId: ctx.channel.id, agentId: workspaceAgent.id } });
+      return { ...ctx, personal, personalAgent, workspaceAgent };
+    };
+    type Seeded = Awaited<ReturnType<typeof seed>>;
+
+    /** Every row a knowledge base route could change, read as they are (deleted ones included). */
+    const readRows = async () => ({
+      bases: await all.knowledgeBase.findMany({ orderBy: { id: "asc" } }),
+      chunks: await all.knowledgeChunk.findMany({ orderBy: { id: "asc" }, select: { id: true, knowledgeBaseId: true, content: true } }),
+      links: await all.agentKnowledgeBase.findMany({ orderBy: { id: "asc" } }),
+    });
+    const mark = (id: string, userId: string) =>
+      all.knowledgeBase.updateMany({ where: { id }, data: { deletedAt: new Date(), deletedById: userId } });
+    const clear = (id: string) => all.knowledgeBase.updateMany({ where: { id }, data: { deletedAt: null, deletedById: null } });
+    const ws = (c: Seeded) => `/channels/${c.channel.id}/workspace/knowledge`;
+    const contents = (body: Array<{ content: string }>) => body.map((r) => r.content);
+
+    it.each([
+      ["DELETE /v1/knowledge/bases/:id (API key)", (c: Seeded) => ({ url: `/v1/knowledge/bases/${c.personal.id}`, headers: apiKey(c.owner) })],
+      ["DELETE /chat/portal/knowledge/:id (portal)", (c: Seeded) => ({ url: `/chat/portal/knowledge/${c.personal.id}`, headers: portal(c.owner) })],
+    ])("RNX-145 AC1: %s answers 204 with no body as before; the row gets deletedAt and deletedById, its chunks and agent link stay", async (_name, route) => {
+      const ctx = await seed();
+      const before = await readRows();
+
+      const res = await app.inject({ method: "DELETE", ...route(ctx) });
+
+      expect([res.statusCode, res.body]).toEqual([204, ""]);
+      const after = await readRows();
+      expect(after.bases.find((b) => b.id === ctx.personal.id)).toEqual({
+        ...before.bases.find((b) => b.id === ctx.personal.id),
+        deletedAt: expect.any(Date),
+        deletedById: ctx.owner.id,
+        updatedAt: expect.any(Date),
+      });
+      expect(after.bases.filter((b) => b.id !== ctx.personal.id)).toEqual(before.bases.filter((b) => b.id !== ctx.personal.id));
+      expect({ ...after, bases: [] }).toEqual({ ...before, bases: [] });
+    });
+
+    it("RNX-145 AC1: the workspace owner's DELETE of a workspace base answers 200 { deleted: true } as before; the row gets the marker, its chunks and agent link stay", async () => {
+      const ctx = await seed();
+      const before = await readRows();
+
+      const res = await app.inject({ method: "DELETE", url: `${ws(ctx)}/${ctx.kb.id}`, headers: sessionAuth(ctx.owner) });
+
+      expect([res.statusCode, res.json()]).toEqual([200, { deleted: true }]);
+      const after = await readRows();
+      expect(after.bases.find((b) => b.id === ctx.kb.id)).toEqual({
+        ...before.bases.find((b) => b.id === ctx.kb.id),
+        deletedAt: expect.any(Date),
+        deletedById: ctx.owner.id,
+        updatedAt: expect.any(Date),
+      });
+      expect({ ...after, bases: [] }).toEqual({ ...before, bases: [] });
+    });
+
+    it("RNX-145 AC2, AC6: a deleted personal base is not listed (API key and portal lists and their count), and read, update, delete, its chunks, upload and search by id answer 404 and change nothing; back once the marker is cleared", async () => {
+      const ctx = await seed();
+      await mark(ctx.personal.id, ctx.owner.id);
+      const before = await readRows();
+      const base = `/v1/knowledge/bases/${ctx.personal.id}`;
+      const routes = [
+        { method: "GET", url: base },
+        { method: "PUT", url: base, payload: { name: "Renamed" } },
+        { method: "DELETE", url: base },
+        { method: "GET", url: `${base}/chunks` },
+        { method: "POST", url: `${base}/chunks`, payload: { chunks: [{ content: "planted" }] } },
+        { method: "POST", url: `${base}/upload`, headers: upload.headers, payload: upload.payload },
+        { method: "POST", url: "/v1/knowledge/search", payload: { query: "note", knowledgeBaseId: ctx.personal.id } },
+      ] as const;
+
+      const list = await app.inject({ method: "GET", url: "/v1/knowledge/bases", headers: apiKey(ctx.owner) });
+      const portalList = await app.inject({ method: "GET", url: "/chat/portal/knowledge", headers: portal(ctx.owner) });
+      const statuses = [];
+      for (const r of routes) {
+        const res = await app.inject({ method: r.method, url: r.url, headers: { ...apiKey(ctx.owner), ...("headers" in r ? r.headers : {}) }, payload: "payload" in r ? r.payload : undefined });
+        statuses.push(res.statusCode);
+        expect(res.body).not.toContain(PERSONAL);
+      }
+
+      expect([list.json(), portalList.json()]).toEqual([[], []]);
+      expect(statuses).toEqual(routes.map(() => 404));
+      expect(await readRows()).toEqual(before);
+      expect(embedding.embed).not.toHaveBeenCalled();
+      await clear(ctx.personal.id);
+      const listBack = await app.inject({ method: "GET", url: "/v1/knowledge/bases", headers: apiKey(ctx.owner) });
+      const readBack = await app.inject({ method: "GET", url: base, headers: apiKey(ctx.owner) });
+      expect(listBack.json().map((b: { id: string }) => b.id)).toEqual([ctx.personal.id]);
+      expect(readBack.statusCode).toBe(200);
+    });
+
+    it("RNX-145 AC2, AC6: a deleted workspace base is not in the workspace list (nor its count); its chunks, adding chunks and deleting it again answer 404 and change nothing; back once the marker is cleared", async () => {
+      const ctx = await seed();
+      await mark(ctx.kb.id, ctx.owner.id);
+      const before = await readRows();
+
+      const list = await app.inject({ method: "GET", url: ws(ctx), headers: sessionAuth(ctx.member) });
+      const chunks = await app.inject({ method: "GET", url: `${ws(ctx)}/${ctx.kb.id}/chunks`, headers: sessionAuth(ctx.member) });
+      const add = await app.inject({ method: "POST", url: `${ws(ctx)}/${ctx.kb.id}/chunks`, headers: sessionAuth(ctx.member), payload: { chunks: [{ content: "planted" }] } });
+      const again = await app.inject({ method: "DELETE", url: `${ws(ctx)}/${ctx.kb.id}`, headers: sessionAuth(ctx.owner) });
+
+      expect(list.json()).toEqual([]);
+      expect([chunks.statusCode, add.statusCode, again.statusCode]).toEqual([404, 404, 404]);
+      expect(chunks.body).not.toContain(SECRET);
+      expect(await readRows()).toEqual(before);
+      await clear(ctx.kb.id);
+      const listBack = await app.inject({ method: "GET", url: ws(ctx), headers: sessionAuth(ctx.member) });
+      expect(listBack.json().map((b: { id: string }) => b.id)).toEqual([ctx.kb.id]);
+    });
+
+    it("RNX-145 AC3: a deleted base still linked to a live agent gives no chunk to the personal search (API key), or to the workspace search; both find it again once the marker is cleared", async () => {
+      const ctx = await seed();
+      await mark(ctx.personal.id, ctx.owner.id);
+      await mark(ctx.kb.id, ctx.owner.id);
+      const searchAll = () => app.inject({ method: "POST", url: "/v1/knowledge/search", headers: apiKey(ctx.owner), payload: { query: "note" } });
+      const searchWorkspace = () => app.inject({ method: "POST", url: `${ws(ctx)}/search`, headers: sessionAuth(ctx.member), payload: { query: "secret" } });
+
+      const personalHidden = await searchAll();
+      const workspaceHidden = await searchWorkspace();
+      await clear(ctx.personal.id);
+      await clear(ctx.kb.id);
+      const personalShown = await searchAll();
+      const workspaceShown = await searchWorkspace();
+
+      expect([personalHidden.statusCode, workspaceHidden.statusCode]).toEqual([200, 200]);
+      expect([personalHidden.json(), workspaceHidden.json()]).toEqual([[], []]);
+      expect(contents(personalShown.json())).toEqual([PERSONAL]);
+      expect(contents(workspaceShown.json())).toEqual([SECRET]);
+    });
+
+    it("RNX-145 AC3: the vector search of one base (the agent run's and the by-id search's raw SQL) returns no chunk of a deleted base; again once the marker is cleared", async () => {
+      const ctx = await seed();
+      const chunks = moduleRef.get(KnowledgeChunkRepository);
+      const search = () => chunks.searchChunksInKnowledgeBase(ctx.personal.id, unit(), embedding.modelName, 5);
+      await mark(ctx.personal.id, ctx.owner.id);
+
+      const hidden = await search();
+      await clear(ctx.personal.id);
+      const shown = await search();
+
+      expect(hidden).toEqual([]);
+      expect(contents(shown)).toEqual([PERSONAL]);
+    });
+
+    it("RNX-145 AC5, D99: the agent's knowledge base list (GET /agents/:id and GET /agents) leaves the deleted base's link out, and unlinking it answers 404; the link row stays and is shown again once the marker is cleared", async () => {
+      const ctx = await seed();
+      const linkIds = (agent: { knowledgeBases: Array<{ knowledgeBaseId: string }> }) => agent.knowledgeBases.map((k) => k.knowledgeBaseId);
+      const read = async () => (await app.inject({ method: "GET", url: `/agents/${ctx.personalAgent.id}`, headers: sessionAuth(ctx.owner) })).json();
+      const list = async () =>
+        (await app.inject({ method: "GET", url: "/agents", headers: sessionAuth(ctx.owner) })).json().find((a: { id: string }) => a.id === ctx.personalAgent.id);
+      await mark(ctx.personal.id, ctx.owner.id);
+      const before = await readRows();
+
+      const hidden = [linkIds(await read()), linkIds(await list())];
+      const unlink = await app.inject({ method: "DELETE", url: `/agents/${ctx.personalAgent.id}/knowledge-bases/${ctx.personal.id}`, headers: sessionAuth(ctx.owner) });
+
+      expect(hidden).toEqual([[], []]);
+      expect(unlink.statusCode).toBe(404);
+      expect(await readRows()).toEqual(before);
+      await clear(ctx.personal.id);
+      expect([linkIds(await read()), linkIds(await list())]).toEqual([[ctx.personal.id], [ctx.personal.id]]);
+    });
+
+    it("RNX-145 AC5, D99: the run lookups leave a deleted base's link out: the agent of a run, its relations, its channel link and its WhatsApp channel; again once the marker is cleared", async () => {
+      const ctx = await seed();
+      await prisma.agentChannel.create({ data: { agentId: ctx.workspaceAgent.id, channelType: "whatsapp", config: { phoneNumber: "+620000145" } } });
+      const agents = moduleRef.get(AgentRepository);
+      const lookups = async () => ({
+        forRun: (await agents.findAgentForRun(ctx.workspaceAgent.id))?.knowledgeBases.map((k) => k.knowledgeBaseId),
+        withRelations: (await agents.findAgentWithRelations(ctx.workspaceAgent.id))?.knowledgeBases.map((k) => k.knowledgeBaseId),
+        channelLink: (await moduleRef.get(ChannelAgentRepository).findChannelAgentWithAgent(ctx.channel.id, ctx.workspaceAgent.id))?.agent.knowledgeBases.map((k) => k.knowledgeBaseId),
+        whatsapp: (await moduleRef.get(AgentChannelRepository).findActiveWhatsappChannels("+620000145")).map((c) => c.agent.knowledgeBases.map((k) => k.knowledgeBaseId)),
+      });
+      await mark(ctx.kb.id, ctx.owner.id);
+
+      const hidden = await lookups();
+      await clear(ctx.kb.id);
+      const shown = await lookups();
+
+      expect(hidden).toEqual({ forRun: [], withRelations: [], channelLink: [], whatsapp: [[]] });
+      expect(shown).toEqual({ forRun: [ctx.kb.id], withRelations: [ctx.kb.id], channelLink: [ctx.kb.id], whatsapp: [[ctx.kb.id]] });
+    });
+
+    it.each(["admin", "member"] as const)("RNX-145 AC7: a workspace %s deleting the workspace base gets 403 as before; nothing changes", async (actor) => {
+      const ctx = await seed();
+      const before = await readRows();
+
+      const res = await app.inject({ method: "DELETE", url: `${ws(ctx)}/${ctx.kb.id}`, headers: sessionAuth(ctx[actor]) });
+
+      expect(res.statusCode).toBe(403);
+      expect(await readRows()).toEqual(before);
+    });
+
+    it("RNX-145 AC8: another workspace's base through the caller's own workspace route answers 404; another user's personal base answers 403 as before (RX-15); nothing is marked", async () => {
+      const ctx = await seed();
+      const otherChannel = await prisma.channel.create({ data: { userId: ctx.admin.id, name: "Admin's" } });
+      const other = await createWorkspace(prisma, { ownerId: ctx.admin.id, channelId: otherChannel.id });
+      await prisma.workspaceMember.create({ data: { workspaceId: other.id, userId: ctx.admin.id, role: "owner", status: "active" } });
+      const before = await readRows();
+
+      const viaOwnWorkspace = await app.inject({ method: "DELETE", url: `/channels/${otherChannel.id}/workspace/knowledge/${ctx.kb.id}`, headers: sessionAuth(ctx.admin) });
+      const personal = await app.inject({ method: "DELETE", url: `/v1/knowledge/bases/${ctx.personal.id}`, headers: apiKey(ctx.member) });
+
+      expect([viaOwnWorkspace.statusCode, personal.statusCode]).toEqual([404, 403]);
+      expect(await readRows()).toEqual(before);
+    });
+
+    it("RNX-145 AC13: a base of a deleted workspace (RNX-125) stays hidden: the workspace list and search answer 404, the personal search has no chunk of it and searching it by id is 404", async () => {
+      const ctx = await seed();
+      await all.workspace.updateMany({ where: { id: ctx.workspace.id }, data: { deletedAt: new Date(), deletedById: ctx.owner.id } });
+
+      const list = await app.inject({ method: "GET", url: ws(ctx), headers: sessionAuth(ctx.owner) });
+      const search = await app.inject({ method: "POST", url: `${ws(ctx)}/search`, headers: sessionAuth(ctx.owner), payload: { query: "secret" } });
+      const personalSearch = await app.inject({ method: "POST", url: "/v1/knowledge/search", headers: apiKey(ctx.owner), payload: { query: "secret" } });
+      const byId = await app.inject({ method: "POST", url: "/v1/knowledge/search", headers: apiKey(ctx.owner), payload: { query: "secret", knowledgeBaseId: ctx.kb.id } });
+
+      expect([list.statusCode, search.statusCode, byId.statusCode]).toEqual([404, 404, 404]);
+      expect(contents(personalSearch.json())).toEqual([PERSONAL]);
+      for (const res of [list, search, personalSearch, byId]) expect(res.body).not.toContain(SECRET);
+    });
+
+    it("RNX-145: the writes by id name deletedAt: null: a second soft delete and an update of a deleted base answer 404 and change nothing", async () => {
+      const ctx = await seed();
+      const bases = moduleRef.get(KnowledgeBaseRepository);
+      await bases.softDeleteKnowledgeBase(ctx.personal.id, ctx.owner.id);
+      const before = await readRows();
+
+      await expect(bases.softDeleteKnowledgeBase(ctx.personal.id, ctx.member.id)).rejects.toMatchObject({ status: 404 });
+      await expect(bases.updateKnowledgeBase(ctx.personal.id, { name: "Renamed" })).rejects.toMatchObject({ status: 404 });
+
+      expect(await readRows()).toEqual(before);
     });
   });
 });
