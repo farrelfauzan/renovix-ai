@@ -13,7 +13,6 @@ export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   "apps/api/src/app/guardrail/service/violation-tracker.service.ts",
   "apps/api/src/app/health/controller/health.controller.ts",
   "apps/api/src/app/usage/service/usage.service.ts",
-  "apps/api/src/app/workspace/controller/workspace-channel.controller.ts",
   "apps/api/src/app/workspace/service/workspace-invite.service.ts",
   "apps/api/src/app/workspace/service/workspace-knowledge.service.ts",
   "apps/api/src/app/workspace/service/workspace-member.service.ts",

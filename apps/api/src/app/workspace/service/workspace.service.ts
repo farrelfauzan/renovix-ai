@@ -14,6 +14,8 @@ import { DELETED_LIST_LIMIT } from "../../../common/config/deleted-list-limit";
 import { AgentRepository } from "../../agent/repository/agent.repository";
 import { EntitlementService } from "../../offers/service/entitlement.service";
 import { TransactionService } from "../../prisma/transaction.service";
+import { ChannelRepository } from "../../channel/repository/channel.repository";
+import { CHANNEL_WORKSPACE_SLUG_LENGTH } from "../config/channel-workspace-slug-length";
 
 @Injectable()
 export class WorkspaceService {
@@ -24,6 +26,7 @@ export class WorkspaceService {
     private readonly agents: AgentRepository,
     private readonly entitlements: EntitlementService,
     private readonly transactions: TransactionService,
+    private readonly channels: ChannelRepository,
   ) {}
 
   private async generateUniqueSlug(
@@ -59,6 +62,59 @@ export class WorkspaceService {
     await this.workspaceMembers.createOwnerMember(workspace.id, userId);
 
     return workspace;
+  }
+
+  /**
+   * The workspace of a channel (POST /channels/:channelId/workspace): its owner creates it, with their active owner
+   * member row; an existing one is returned as it is. 404 "Server not found" for a missing or deleted channel, 404
+   * "Workspace not found" when its workspace is deleted (RNX-125: channel_id stays taken), 403 for anyone else.
+   * RNX-295: in one transaction under the channel's row lock, which the channel's delete takes too, so a channel
+   * deleted meanwhile is seen here (404) and never gets a live workspace.
+   */
+  async createChannelWorkspace(channelId: string, userId: string) {
+    return this.transactions.run(async (tx) => {
+      await this.channels.lockLiveChannel(channelId, tx);
+      const channel = await this.channels.findChannelWithWorkspace(channelId, tx);
+      if (!channel) throw new NotFoundException("Server not found");
+      if (channel.workspace?.deletedAt) throw new NotFoundException("Workspace not found");
+      if (channel.userId !== userId) {
+        throw new ForbiddenException("Only the server owner can create a workspace");
+      }
+      if (channel.workspace) return channel.workspace;
+      const slug = slugify(channel.name).slice(0, CHANNEL_WORKSPACE_SLUG_LENGTH) || "workspace";
+      const workspace = await this.workspaces.createWorkspace(userId, { channelId: channel.id, name: channel.name, slug }, tx);
+      await this.workspaceMembers.createOwnerMember(workspace.id, userId, tx);
+      return workspace;
+    });
+  }
+
+  /**
+   * A channel and its workspace (null when it has none) for its owner or an active member of its workspace; 404
+   * "Server not found" for a missing or deleted channel, 404 "Workspace not found" when its workspace is deleted (a
+   * relation read: the default filter does not reach it, RNX-125), 403 for anyone else. Non-owners need a plan that
+   * allows collaboration (RX-113, D64).
+   */
+  async resolveChannelWorkspace(channelId: string, userId: string) {
+    const channel = await this.channels.findChannelWithWorkspace(channelId);
+    if (!channel) throw new NotFoundException("Server not found");
+    if (channel.workspace?.deletedAt) throw new NotFoundException("Workspace not found");
+    if (channel.userId !== userId) {
+      const member = channel.workspace
+        ? await this.workspaceMembers.findMembership(channel.workspace.id, userId)
+        : null;
+      if (!member || member.status !== "active") {
+        throw new ForbiddenException("You do not have access to this server");
+      }
+    }
+    if (channel.workspace && channel.workspace.ownerId !== userId) {
+      await this.quotaService.enforceCollaboration(channel.workspace.id);
+    }
+    return { channel, workspace: channel.workspace };
+  }
+
+  /** The active members of this workspace, each with its user's id and email (GET /channels/:channelId/workspace). */
+  async listActiveMembers(workspaceId: string) {
+    return this.workspaceMembers.listActiveMembersWithUser(workspaceId);
   }
 
   /** The workspaces this user is an active member of; a default (RNX-117, D219 a) or deleted (RNX-125) one is left out. */

@@ -12,6 +12,7 @@ import { ChannelRepository } from "../repository/channel.repository";
 import { extractDocumentFromMetadata } from "../utils/extract-document-from-metadata";
 import { withPurgeAt } from "../../../common/utils/with-purge-at";
 import { DELETED_LIST_LIMIT } from "../../../common/config/deleted-list-limit";
+import { TransactionService } from "../../prisma/transaction.service";
 
 @Injectable()
 export class ChannelService {
@@ -22,6 +23,7 @@ export class ChannelService {
     private readonly chatRooms: ChannelChatRoomRepository,
     private readonly agents: AgentRepository,
     private readonly policy: AgentRunPolicyService,
+    private readonly transactions: TransactionService,
   ) {}
 
   async create(
@@ -56,24 +58,31 @@ export class ChannelService {
     return this.channels.updateChannel(channelId, data);
   }
 
+  /**
+   * Soft-deletes this user's channel (RNX-145). RNX-295: in one transaction under the channel's row lock, which its
+   * workspace create takes too, so a workspace created meanwhile is seen by the read below (409) and never left on a
+   * deleted channel: the soft delete's own no-workspace condition is a subquery that does not see a workspace committed
+   * while its statement waits.
+   */
   async delete(userId: string, channelId: string) {
-    const channel = await this.channels.findUserChannelWorkspace(
-      channelId,
-      userId,
-    );
-    if (!channel) throw new NotFoundException("Channel not found");
-    // A channel that has a workspace is not deleted (RX-144): this 409 is the first answer, and the soft delete's own
-    // condition (no workspace, RNX-145; it was the foreign key of RNX-202 for the hard delete) closes the gap between
-    // this read and the delete below.
-    if (channel.workspace) {
-      throw new ConflictException(
-        "This channel belongs to a workspace and cannot be deleted",
+    return this.transactions.run(async (tx) => {
+      await this.channels.lockLiveChannel(channelId, tx);
+      const channel = await this.channels.findUserChannelWorkspace(
+        channelId,
+        userId,
+        tx,
       );
-    }
-
-    // RNX-145: soft delete (deletedAt, deletedById); its rooms, messages, agent links and reminders stay
-    await this.channels.softDeleteChannel(channelId, userId);
-    return { deleted: true };
+      if (!channel) throw new NotFoundException("Channel not found");
+      // A channel that has a workspace is not deleted (RX-144)
+      if (channel.workspace) {
+        throw new ConflictException(
+          "This channel belongs to a workspace and cannot be deleted",
+        );
+      }
+      // RNX-145: soft delete (deletedAt, deletedById); its rooms, messages, agent links and reminders stay
+      await this.channels.softDeleteChannel(channelId, userId, tx);
+      return { deleted: true };
+    });
   }
 
   /** RNX-126: the user's deleted channels, newest-deleted first, each with its purgeAt. */

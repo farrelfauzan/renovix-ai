@@ -4,7 +4,7 @@ describe('workspace detail read capabilities', () => {
   // RNX-125: the workspace read moved into WorkspaceRepository (findMemberWorkspaceDetail).
   const workspaces = { findMemberWorkspaceDetail: jest.fn() };
   const quota = { enforceCollaboration: jest.fn(), isCollaborationAllowed: jest.fn() };
-  const service = new WorkspaceService(quota as never, workspaces as never, {} as never, {} as never, {} as never, {} as never);
+  const service = new WorkspaceService(quota as never, workspaces as never, {} as never, {} as never, {} as never, {} as never, {} as never);
   beforeEach(() => jest.resetAllMocks());
 
   it.each([
