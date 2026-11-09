@@ -5,6 +5,7 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { McpUserController } from "./mcp-user.controller";
 import { McpUserService } from "../service/mcp-user.service";
 import { McpOAuthStateRepository } from "../repository/mcp-oauth-state.repository";
+import { UserMcpCredentialRepository } from "../repository/user-mcp-credential.repository";
 import { PrismaService } from "../../prisma/prisma.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
@@ -340,7 +341,7 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
   ])("the cookie lives as long as the state: MCP_OAUTH_STATE_TTL_SECONDS %s (%p) gives Max-Age %p", async (_label, ttl, expected) => {
     const service = new McpUserService(
       new ConfigService({ ...CONFIG, MCP_OAUTH_STATE_TTL_SECONDS: ttl }),
-      prisma,
+      moduleRef.get(UserMcpCredentialRepository),
       moduleRef.get(McpOAuthStateRepository),
       moduleRef.get(WorkspaceService),
     );
