@@ -242,6 +242,9 @@ export class ChannelService {
       userId,
     );
     if (!channel) throw new NotFoundException("Channel not found");
+    // RNX-145: the channel of a deleted workspace accepts no message, whatever agent (a relation read: the default
+    // filter does not reach it)
+    if (channel.workspace?.deletedAt) throw new NotFoundException("Channel not found");
 
     const channelAgent = await this.channelAgents.findChannelAgentWithAgent(
       channelId,

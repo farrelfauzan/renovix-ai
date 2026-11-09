@@ -67,10 +67,15 @@ RX-127. KnowledgeBase, Conversation and Channel are built by RNX-145 (next secti
 - A live row that points at a deleted knowledge base or channel through a required relation (an agent's knowledge
   base link, a reminder of the channel) is left out whole, with no "deleted" mark, and comes back if the marker is
   cleared.
-- A knowledge base or channel of a deleted workspace (RNX-125) is not on the default filter; it stays hidden as
-  RNX-125 hides it: the channel's workspace routes (its knowledge bases, their chunks and search) answer 404, the
-  personal routes and the personal search serve only bases without a workspace, and the workspace's agents are
-  hidden, so a room chat with them and their reminders are refused.
+- A knowledge base of a deleted workspace (RNX-125) is not on the default filter; it stays hidden as RNX-125 hides it:
+  the channel's workspace routes (its knowledge bases, their chunks and search) answer 404 "Workspace not found", and
+  the personal routes and the personal search serve only bases without a workspace.
+- The channel of a deleted workspace is written by hand: `LIVE_CHANNEL` (`channel/config/live-channel.ts`) is
+  `deletedAt: null` and not a channel whose workspace is deleted (a channel without a workspace matches). It is not
+  listed (`listUserChannels`), every room chat in it is refused with 404 before any model call
+  (`ChannelService.resolveChannelAgent`, whatever the agent), and its reminders are hidden and never fire
+  (`reminder.repository.ts`). Its workspace routes still answer "Workspace not found" (RNX-125). All of it comes back
+  when the workspace marker is cleared.
 
 ## Why Soft Delete
 

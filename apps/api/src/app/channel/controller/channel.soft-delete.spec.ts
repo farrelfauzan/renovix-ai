@@ -39,7 +39,8 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // RNX-145: DELETE /channels/:id soft-deletes the channel (deletedAt, deletedById, 204 with no body as before); its
 // agent links, rooms, messages and reminders stay. Every channel route then answers 404 and changes nothing, it is not
 // listed, its room chat is refused before the SSE headers; all of it is back once the marker is cleared. `all` is a
-// client with nothing on PrismaService's default filter map, to read the rows as they are.
+// client with nothing on PrismaService's default filter map, to read the rows as they are. RNX-145 AC13: the channel of
+// a deleted workspace is not listed and refuses every room chat; back once the workspace marker is cleared.
 jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }));
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
@@ -374,6 +375,51 @@ describe("RNX-124: a deleted agent in a channel (Fastify, test database, fake pr
       await expect(channels.updateChannel(channel.id, { name: "Renamed" })).rejects.toMatchObject({ status: 404 });
 
       expect(await readRows()).toEqual(before);
+    });
+
+    describe("RNX-145 AC13: the channel of a deleted workspace (RNX-125)", () => {
+      /** The seeded channel becomes a workspace's channel; agents A and B stay in the user's live default workspace. */
+      const seedWorkspaceChannel = async () => {
+        const s = await seedWithReminder();
+        const plain = await prisma.channel.create({ data: { userId: s.user.id, name: "Plain" } });
+        const workspace = await createWorkspace(prisma, { ownerId: s.user.id, channelId: s.channel.id });
+        return { ...s, plain, workspace };
+      };
+      const markWorkspace = (workspaceId: string, userId: string) =>
+        all.workspace.updateMany({ where: { id: workspaceId }, data: { deletedAt: new Date(), deletedById: userId } });
+      const clearWorkspace = (workspaceId: string) =>
+        all.workspace.updateMany({ where: { id: workspaceId }, data: { deletedAt: null, deletedById: null } });
+      const listIds = async (session: { cookie: string }) =>
+        (await app.inject({ method: "GET", url: "/channels", headers: session })).json().map((c: { id: string }) => c.id).sort();
+
+      it("RNX-145 AC13: GET /channels leaves it out and still lists the channel without a workspace; listed again once the workspace marker is cleared", async () => {
+        const { user, channel, plain, workspace, session } = await seedWorkspaceChannel();
+        await markWorkspace(workspace.id, user.id);
+
+        const hidden = await listIds(session);
+        await clearWorkspace(workspace.id);
+        const shown = await listIds(session);
+
+        expect(hidden).toEqual([plain.id]);
+        expect(shown).toEqual([channel.id, plain.id].sort());
+      });
+
+      it("RNX-145 AC13: a room chat with an agent of the user's live default workspace → HTTP 404 before the SSE headers; no model call, message, reservation or ledger entry. Control: with the workspace marker cleared it runs (200 SSE)", async () => {
+        const { user, a, channel, workspace, session } = await seedWorkspaceChannel();
+        await markWorkspace(workspace.id, user.id);
+        const before = await readRows();
+
+        const res = await postChat(channel.id, a.id, session);
+
+        expect([res.statusCode, res.contentType]).toEqual([404, expect.stringContaining("application/json")]);
+        expect(fake.requests).toHaveLength(0);
+        expect(await readRows()).toEqual(before);
+        await assertCreditLedgerInvariants(prisma);
+        await clearWorkspace(workspace.id);
+        fake.enqueue({ content: "none" }, { content: "Hello there", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+        const back = await postChat(channel.id, a.id, session);
+        expect([back.statusCode, back.contentType]).toEqual([200, "text/event-stream"]);
+      });
     });
 
     it("RNX-145 (RX-144, RNX-202): the soft delete itself refuses a channel that has a workspace (the read-then-delete race): 404, no marker; the channel without one is deleted (control)", async () => {

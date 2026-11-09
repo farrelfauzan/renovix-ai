@@ -24,7 +24,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 // answer in the room, the next fire time) and that the room's history reaches the model (this agent's last 10 messages
 // of the room, oldest first). Real ReminderScheduler, ReminderService, run policy, meter and CreditService on the test
 // database; fake provider. AgentToolService loads ESM-only packages and is stubbed. RNX-145: a reminder of a deleted
-// channel does not fire.
+// channel, or of the channel of a deleted workspace, does not fire.
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 
 describe("RNX-139: the scheduler's pick-up of due reminders (test database, fake provider)", () => {
@@ -179,6 +179,27 @@ describe("RNX-139: the scheduler's pick-up of due reminders (test database, fake
     expect(await prisma.creditLedgerEntry.count()).toBe(ledgerBefore);
     expect(await prisma.reminder.findUniqueOrThrow({ where: { id: due.id } })).toEqual(due);
     await prisma.channel.updateMany({ where: { id: s.channel.id }, data: { deletedAt: null, deletedById: null } });
+    fake.enqueue({ content: "Done", usage: { prompt_tokens: 10, completion_tokens: 2 } });
+    await scheduler.processReminders();
+    expect(fake.requests).toHaveLength(1);
+    expect((await prisma.reminder.findUniqueOrThrow({ where: { id: due.id } })).lastRunAt).not.toBeNull();
+  });
+
+  it("RNX-145 AC13: a due, active reminder in the channel of a deleted workspace (its agent in the user's live default workspace) does not fire: no model call, message, reservation or ledger entry; the reminder row unchanged; it fires once the workspace marker is cleared", async () => {
+    const s = await seedRoom();
+    const workspace = await createWorkspace(prisma, { ownerId: s.user.id, channelId: s.channel.id });
+    const due = await addReminder(s, { prompt: "DUE", nextRunAt: past() });
+    await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: new Date(), deletedById: s.user.id } });
+    const ledgerBefore = await prisma.creditLedgerEntry.count();
+
+    await scheduler.processReminders();
+
+    expect(fake.requests).toHaveLength(0);
+    expect(await prisma.channelMessage.count()).toBe(0);
+    expect(await prisma.creditReservation.count()).toBe(0);
+    expect(await prisma.creditLedgerEntry.count()).toBe(ledgerBefore);
+    expect(await prisma.reminder.findUniqueOrThrow({ where: { id: due.id } })).toEqual(due);
+    await prisma.workspace.updateMany({ where: { id: workspace.id }, data: { deletedAt: null, deletedById: null } });
     fake.enqueue({ content: "Done", usage: { prompt_tokens: 10, completion_tokens: 2 } });
     await scheduler.processReminders();
     expect(fake.requests).toHaveLength(1);

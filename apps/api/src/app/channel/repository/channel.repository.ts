@@ -3,6 +3,7 @@ import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 import { LIVE_AGENT } from "../../agent/config/live-agent";
+import { LIVE_CHANNEL } from "../config/live-channel";
 
 /** The live agents (RNX-124) a channel is returned with after a create and an update, and in the list. */
 const CHANNEL_AGENTS = {
@@ -49,10 +50,13 @@ export class ChannelRepository {
     });
   }
 
-  /** This user's channels, newest first, each with its live agents and their count (RNX-124). */
+  /**
+   * This user's live channels (RNX-145: not the channel of a deleted workspace), newest first, each with its live agents
+   * and their count (RNX-124).
+   */
   listUserChannels(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).channel.findMany({
-      where: { userId },
+      where: { userId, ...LIVE_CHANNEL },
       orderBy: { createdAt: "desc" },
       include: {
         ...CHANNEL_AGENTS,
