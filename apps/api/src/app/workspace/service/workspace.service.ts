@@ -95,7 +95,7 @@ export class WorkspaceService {
           where: { status: "active" },
           include: { user: { select: { id: true, email: true } } },
         },
-        _count: { select: { agents: true, memories: true } },
+        _count: { select: { agents: { where: { deletedAt: null } }, memories: true } },
       },
     });
 

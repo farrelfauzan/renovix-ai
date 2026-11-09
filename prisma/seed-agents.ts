@@ -232,10 +232,9 @@ async function main() {
   const workspace = await ensureDefaultWorkspace(prisma, systemUser.id);
 
   for (const agentData of publicAgents) {
-    const existing = await prisma.agent.findUnique({
-      where: {
-        userId_slug: { userId: systemUser.id, slug: agentData.slug },
-      },
+    // RNX-124: the slug is unique among live agents only (partial index), and this client has no default filter.
+    const existing = await prisma.agent.findFirst({
+      where: { userId: systemUser.id, slug: agentData.slug, deletedAt: null },
     });
 
     if (existing) {

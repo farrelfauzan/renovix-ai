@@ -147,7 +147,7 @@ export class ReminderService {
     const reminder = await this.reminders.findUserReminder(userId, id);
     if (!reminder) throw new NotFoundException("Reminder not found");
 
-    return this.reminders.updateReminder(id, { deletedAt: new Date(), status: "PAUSED" });
+    return this.reminders.updateReminder(id, { deletedAt: new Date(), deletedById: userId, status: "PAUSED" });
   }
 
   async getDueReminders(limit = 20) {

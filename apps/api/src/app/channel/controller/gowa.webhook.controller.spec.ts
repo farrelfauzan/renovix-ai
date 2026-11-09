@@ -220,6 +220,22 @@ describe("RX-115: GOWA webhook refuses unsigned calls (Fastify, test database)",
     expect(runService.chat).toHaveBeenNthCalledWith(2, other.userId, other.id, "Halo", `wa:${FROM}:${TO}`);
   });
 
+  it("RNX-124 AC3, D99: the whatsapp channel of a deleted agent is not found: a signed call is 401, the agent does not run, nothing stored; the channel row stays and runs again once the agent is live", async () => {
+    const agent = await withSecret();
+    const channelBefore = await prisma.agentChannel.findFirstOrThrow({ where: { agentId: agent.id } });
+    await prisma.agent.updateMany({ where: { id: agent.id }, data: { deletedAt: new Date(), deletedById: agent.userId } });
+    const raw = inbound("Halo");
+
+    const refused = await post(raw, signed(SECRET, raw));
+
+    await expectRefusedAndNothingProcessed(refused);
+    expect(await prisma.agentChannel.findUnique({ where: { id: channelBefore.id } })).toEqual(channelBefore);
+    await prisma.agent.updateMany({ where: { id: agent.id }, data: { deletedAt: null, deletedById: null } });
+    const processed = await post(raw, signed(SECRET, raw));
+    expect(processed.statusCode).toBe(200);
+    expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo", `wa:${FROM}:${TO}`);
+  });
+
   it("(g) no channel resolves for payload.to: 401, nothing processed", async () => {
     await withSecret();
     const raw = inbound("Halo", { to: "628999000999" });
