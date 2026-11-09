@@ -164,6 +164,30 @@ describe("Knowledge (/v1/knowledge, API key): ownership (RX-15, Fastify, test da
     expect(await prisma.knowledgeChunk.count({ where: { id: chunk.id } })).toBe(1);
   });
 
+  it("RNX-125 AC9: a knowledge base of a deleted workspace gives no chunk to POST /v1/knowledge/search: not in the personal search, and searching it by id is 404 (the owner's own personal chunk is found: control)", async () => {
+    const owner = await createUser(prisma);
+    await createApiKey(prisma, owner.id, { apiKey: testApiKey("rnx125_owner") });
+    const workspace = await createWorkspace(prisma, { ownerId: owner.id });
+    const personal = await prisma.knowledgeBase.create({ data: { userId: owner.id, name: "Mine" } });
+    const team = await prisma.knowledgeBase.create({ data: { userId: owner.id, workspaceId: workspace.id, name: "Team KB" } });
+    for (const [kbId, content] of [[personal.id, "personal note"], [team.id, "team secret"]]) {
+      await prisma.$executeRaw`
+        INSERT INTO "knowledge_chunks" (id, "knowledgeBaseId", content, embedding, "tokenCount", "createdAt", embedding_model, embedded_at)
+        VALUES (gen_random_uuid(), ${kbId}, ${content}, array_fill(1, ARRAY[1024])::real[]::vector, 2, now(), 'test-model', now())`;
+    }
+    await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: new Date(), deletedById: owner.id } });
+    const search = (payload: object) =>
+      app.inject({ method: "POST", url: "/v1/knowledge/search", headers: key(testApiKey("rnx125_owner")), payload });
+
+    const everything = await search({ query: "secret" });
+    const byId = await search({ query: "secret", knowledgeBaseId: team.id });
+
+    expect(everything.statusCode).toBe(200);
+    expect(everything.json().map((r: { content: string }) => r.content)).toEqual(["personal note"]);
+    expect(byId.statusCode).toBe(404);
+    expect(byId.body).not.toContain("team secret");
+  });
+
   // Was HOLE (RX-15), fixed by RX-113: a workspace knowledge base keeps the
   // creator's userId, and /v1/knowledge only checked kb.userId, so a removed
   // workspace admin still read the base they created. /v1/knowledge now serves

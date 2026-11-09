@@ -114,8 +114,9 @@ export class WorkspaceInviteService {
   async acceptInvite(token: string, userId: string) {
     const tokenHash = hashToken(token);
 
+    // RNX-125: the invite of a deleted workspace is not found (a relation filter: the default filter does not reach it)
     const invite = await this.prisma.workspaceInvite.findUnique({
-      where: { tokenHash },
+      where: { tokenHash, workspace: { deletedAt: null } },
     });
 
     if (!invite) {
@@ -300,8 +301,9 @@ export class WorkspaceInviteService {
   async resolveToken(token: string) {
     const tokenHash = hashToken(token);
 
+    // RNX-125: the invite of a deleted workspace is not found (a relation filter: the default filter does not reach it)
     const invite = await this.prisma.workspaceInvite.findUnique({
-      where: { tokenHash },
+      where: { tokenHash, workspace: { deletedAt: null } },
       include: {
         workspace: { select: { id: true, name: true, avatar: true } },
       },

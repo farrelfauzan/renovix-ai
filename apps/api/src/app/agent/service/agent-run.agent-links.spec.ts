@@ -3,6 +3,7 @@ import { AgentRunService } from "./agent-run.service";
 import { AgentService } from "./agent.service";
 import { EntitlementService } from "../../offers/service/entitlement.service";
 import { AgentLinkService } from "./agent-link.service";
+import { AgentLinkRepository } from "../repository/agent-link.repository";
 import { AgentToolService } from "./agent-tool.service";
 import { AgentMemoryService } from "./agent-memory.service";
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
@@ -261,6 +262,22 @@ describe("RNX-118: agent runs call only linked agents (test database)", () => {
       expect(sent()).not.toContain("CALLEE B PROMPT");
       expect(await prisma.creditLedgerEntry.count({ where: { agentId: b.id } })).toBe(0);
       expect(await prisma.agentLink.count({ where: { callerAgentId: a.id, calleeAgentId: b.id } })).toBe(1);
+    });
+
+    it("RNX-125 AC8: A -> B with their workspace deleted: A does not run (404 Agent not found), so B is never called; nothing charged; B is no callable agent; the link stays and A calls B again once the marker is cleared", async () => {
+      const { owner, a, b, workspace } = await seed({ linked: true });
+      await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: new Date(), deletedById: owner.id } });
+
+      await expect(service.chat(owner.id, a.id, "Hi")).rejects.toThrow("Agent not found");
+
+      expect(fake.requests).toHaveLength(0);
+      expect(await prisma.creditLedgerEntry.count({ where: { agentId: { in: [a.id, b.id] } } })).toBe(0);
+      expect(await moduleRef.get(AgentLinkRepository).listCallableAgents(a.id, workspace.id)).toEqual([]);
+      expect(await prisma.agentLink.count({ where: { callerAgentId: a.id, calleeAgentId: b.id } })).toBe(1);
+      await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: null, deletedById: null } });
+      fake.enqueue(callB(b.name), { content: "B answer" }, { content: "A final" });
+      await service.chat(owner.id, a.id, "Hi");
+      expect(fake.requests[1].messages[0]).toEqual({ role: "system", content: "CALLEE B PROMPT" });
     });
 
     it("RNX-124 D165: a delegation naming the callee in other casing (\"rESEARCH hELPER\") still finds and runs it", async () => {

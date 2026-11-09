@@ -18,6 +18,5 @@ export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
   "apps/api/src/app/workspace/service/workspace-knowledge.service.ts",
   "apps/api/src/app/workspace/service/workspace-member.service.ts",
   "apps/api/src/app/workspace/service/workspace-quota.service.ts",
-  "apps/api/src/app/workspace/service/workspace.service.ts",
   "apps/api/src/lib/auth.ts",
 ];

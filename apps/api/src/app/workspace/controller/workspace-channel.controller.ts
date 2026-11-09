@@ -49,6 +49,11 @@ export class WorkspaceChannelController {
     if (!channel) {
       throw new NotFoundException("Server not found");
     }
+    // RNX-125: the channel's deleted workspace is not found, for everyone (a relation read: the default filter does
+    // not reach it)
+    if (channel.workspace?.deletedAt) {
+      throw new NotFoundException("Workspace not found");
+    }
 
     // Channel owner or workspace member can access
     if (channel.userId !== userId) {
@@ -137,6 +142,10 @@ export class WorkspaceChannelController {
 
     if (!channel) {
       throw new NotFoundException("Server not found");
+    }
+    // RNX-125: a channel whose workspace is deleted gets no new one (channel_id stays taken): not found
+    if (channel.workspace?.deletedAt) {
+      throw new NotFoundException("Workspace not found");
     }
 
     if (channel.userId !== req.user.userId) {

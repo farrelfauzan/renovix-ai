@@ -68,7 +68,7 @@ export class WorkspaceController {
 
   @Delete(":id")
   async archive(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
-    return this.workspaceService.archive(id, req.user.userId);
+    return this.workspaceService.softDelete(id, req.user.userId);
   }
 
   // ─── Quota ──────────────────────────────────────────────────────────────────

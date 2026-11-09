@@ -9,7 +9,8 @@ import { createUser } from "../../../../test/factories";
 // into UserMemoryRepository. The memory module has no HTTP route, so the service is the surface (the chat
 // prompt reads getRelevantMemories, the extraction reads findDuplicate, confirmMemory, archiveConflicting
 // and create). Each test leaves exactly one condition of a query to decide the result: the other user's
-// row differs only in the user, the deleted row only in the status, and so on. Real service, test database.
+// row differs only in the user, the deleted row only in its marker (RNX-125: deletedAt, no longer a status), and so
+// on. Real service, test database.
 describe("RX-141: user memory queries (test database)", () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
@@ -25,9 +26,12 @@ describe("RX-141: user memory queries (test database)", () => {
   const memory = (
     userId: string,
     content: string,
-    data: { type?: string; status?: string; confidence?: number; isUserPinned?: boolean; lastConfirmedAt?: Date; expiresAt?: Date | null } = {},
+    data: { type?: string; status?: string; confidence?: number; isUserPinned?: boolean; lastConfirmedAt?: Date; expiresAt?: Date | null; deletedAt?: Date } = {},
   ) => prisma.userMemory.create({ data: { userId, type: "interest", content, ...data } });
   const row = (id: string) => prisma.userMemory.findUniqueOrThrow({ where: { id } });
+  /** RNX-125: a deleted row, read by naming the marker (the default filter hides it otherwise). */
+  const deletedRow = (id: string) => prisma.userMemory.findFirstOrThrow({ where: { id, deletedAt: { not: null } } });
+  const DELETED = { deletedAt: new Date("2026-01-01T00:00:00Z") };
   const contents = (items: { content: string }[]) => items.map((m) => m.content);
 
   it("listActive: only this user's active rows, pinned first then most recently confirmed", async () => {
@@ -37,7 +41,7 @@ describe("RX-141: user memory queries (test database)", () => {
     await memory(alice.id, "new", { lastConfirmedAt: new Date("2026-02-01") });
     await memory(alice.id, "pinned", { isUserPinned: true, lastConfirmedAt: new Date("2025-01-01") });
     await memory(alice.id, "archived", { status: "archived" });
-    await memory(alice.id, "deleted", { status: "deleted" });
+    await memory(alice.id, "deleted", DELETED);
     await memory(bob.id, "bob");
 
     expect(contents(await service.listActive(alice.id))).toEqual(["pinned", "new", "old"]);
@@ -48,7 +52,7 @@ describe("RX-141: user memory queries (test database)", () => {
     const bob = await createUser(prisma);
     await memory(alice.id, "active");
     await memory(alice.id, "archived", { status: "archived" });
-    await memory(alice.id, "deleted", { status: "deleted" });
+    await memory(alice.id, "deleted", DELETED);
     await memory(bob.id, "bob");
 
     expect(contents(await service.listAll(alice.id)).sort()).toEqual(["active", "archived"]);
@@ -60,7 +64,7 @@ describe("RX-141: user memory queries (test database)", () => {
     const own = await memory(alice.id, "own");
     const second = await memory(alice.id, "second");
     const foreign = await memory(bob.id, "foreign");
-    const deleted = await memory(alice.id, "deleted", { status: "deleted" });
+    const deleted = await memory(alice.id, "deleted", DELETED);
     const archived = await memory(alice.id, "archived", { status: "archived" });
 
     expect((await service.getById(alice.id, own.id))?.content).toBe("own");
@@ -111,7 +115,7 @@ describe("RX-141: user memory queries (test database)", () => {
     const alice = await createUser(prisma);
     const bob = await createUser(prisma);
     const foreign = await memory(bob.id, "foreign");
-    const deleted = await memory(alice.id, "deleted", { status: "deleted" });
+    const deleted = await memory(alice.id, "deleted", DELETED);
     const other = await memory(alice.id, "other");
     const target = await memory(alice.id, "target");
 
@@ -120,49 +124,52 @@ describe("RX-141: user memory queries (test database)", () => {
     await service.update(alice.id, target.id, { content: "edited" });
 
     expect((await row(foreign.id)).content).toBe("foreign");
-    expect((await row(deleted.id)).content).toBe("deleted");
+    expect((await deletedRow(deleted.id)).content).toBe("deleted");
     expect((await row(other.id)).content).toBe("other");
     expect((await row(target.id)).content).toBe("edited");
   });
 
-  it("delete: marks this user's row deleted, true; the other row of the same user stays active", async () => {
+  it("RNX-125 AC1: delete sets deletedAt and deletedById (the user) on this user's row, true; its status is not \"deleted\"; the other row stays live", async () => {
     const alice = await createUser(prisma);
     const target = await memory(alice.id, "target");
     const other = await memory(alice.id, "other");
 
     expect(await service.delete(alice.id, target.id)).toBe(true);
 
-    expect((await row(target.id)).status).toBe("deleted");
-    expect((await row(other.id)).status).toBe("active");
+    expect(await deletedRow(target.id)).toMatchObject({ deletedById: alice.id, status: "active", deletedAt: expect.any(Date) });
+    expect(await row(other.id)).toMatchObject({ status: "active", deletedAt: null, deletedById: null });
+    expect(await service.getById(alice.id, target.id)).toBeNull();
   });
 
-  it("delete: false and nothing written for another user's row and for a row already deleted", async () => {
+  it("RNX-125 AC5: delete of another user's row is not found (false) and changes nothing; a row already deleted keeps its marker", async () => {
     const alice = await createUser(prisma);
     const bob = await createUser(prisma);
     const foreign = await memory(bob.id, "foreign");
-    const deleted = await memory(alice.id, "deleted", { status: "deleted" });
-    const before = await row(deleted.id);
+    const deleted = await memory(alice.id, "deleted", DELETED);
+    const foreignBefore = await row(foreign.id);
+    const before = await deletedRow(deleted.id);
 
     expect(await service.delete(alice.id, foreign.id)).toBe(false);
     expect(await service.delete(alice.id, deleted.id)).toBe(false);
 
-    expect((await row(foreign.id)).status).toBe("active");
-    expect((await row(deleted.id)).updatedAt).toEqual(before.updatedAt);
+    expect(await row(foreign.id)).toEqual(foreignBefore);
+    expect(await deletedRow(deleted.id)).toEqual(before);
   });
 
-  it("clearAll: marks every non-deleted row of this user deleted and counts them; other users' rows stay, deleted rows are not counted", async () => {
+  it("clearAll: soft-deletes every non-deleted row of this user (RNX-125: deletedAt, deletedById) and counts them; other users' rows stay, deleted rows are not counted", async () => {
     const alice = await createUser(prisma);
     const bob = await createUser(prisma);
     const a = await memory(alice.id, "a");
     const b = await memory(alice.id, "b", { status: "archived" });
-    await memory(alice.id, "c", { status: "deleted" });
+    const c = await memory(alice.id, "c", DELETED);
     const foreign = await memory(bob.id, "foreign");
 
     expect(await service.clearAll(alice.id)).toBe(2);
 
-    expect((await row(a.id)).status).toBe("deleted");
-    expect((await row(b.id)).status).toBe("deleted");
-    expect((await row(foreign.id)).status).toBe("active");
+    expect(await deletedRow(a.id)).toMatchObject({ status: "active", deletedById: alice.id });
+    expect(await deletedRow(b.id)).toMatchObject({ status: "archived", deletedById: alice.id });
+    expect(await deletedRow(c.id)).toMatchObject({ deletedAt: DELETED.deletedAt, deletedById: null });
+    expect(await row(foreign.id)).toMatchObject({ status: "active", deletedAt: null });
   });
 
   describe("getRelevantMemories", () => {
@@ -177,7 +184,7 @@ describe("RX-141: user memory queries (test database)", () => {
       await memory(alice.id, "future", { confidence: 0.7, expiresAt: new Date(Date.now() + day) });
       await memory(alice.id, "expired", { confidence: 0.99, expiresAt: new Date(Date.now() - day) });
       await memory(alice.id, "archived", { confidence: 0.99, status: "archived" });
-      await memory(alice.id, "deleted", { confidence: 0.99, status: "deleted" });
+      await memory(alice.id, "deleted", { confidence: 0.99, ...DELETED });
       await memory(bob.id, "bob", { confidence: 0.99 });
 
       const result = await service.getRelevantMemories(alice.id);
@@ -219,7 +226,7 @@ describe("RX-141: user memory queries (test database)", () => {
     const noOverlap = await memory(alice.id, "likes hiking on weekends");
     const otherType = await memory(alice.id, "uses react for the frontend", { type: "context" });
     const archivedAlready = await memory(alice.id, "uses react for the frontend", { status: "archived" });
-    const deleted = await memory(alice.id, "uses react for the frontend", { status: "deleted" });
+    const deleted = await memory(alice.id, "uses react for the frontend", DELETED);
     const foreign = await memory(bob.id, "uses react for the frontend");
 
     await service.archiveConflicting(alice.id, "uses vue for the frontend", "interest");
@@ -227,7 +234,7 @@ describe("RX-141: user memory queries (test database)", () => {
     expect((await row(hit.id)).status).toBe("archived");
     expect((await row(noOverlap.id)).status).toBe("active");
     expect((await row(otherType.id)).status).toBe("active");
-    expect((await row(deleted.id)).status).toBe("deleted");
+    expect((await deletedRow(deleted.id)).status).toBe("active");
     expect((await row(foreign.id)).status).toBe("active");
     expect((await row(archivedAlready.id)).status).toBe("archived");
   });
@@ -249,7 +256,7 @@ describe("RX-141: user memory queries (test database)", () => {
       await memory(bob.id, "builds fintech apps");
       await memory(alice.id, "builds fintech apps", { type: "context" });
       await memory(alice.id, "builds fintech apps", { status: "archived" });
-      await memory(alice.id, "builds fintech apps", { status: "deleted" });
+      await memory(alice.id, "builds fintech apps", DELETED);
 
       expect(await service.findDuplicate(alice.id, "builds fintech apps", "interest")).toBeNull();
     });

@@ -224,7 +224,8 @@ describe("RNX-119: the run policy at reminder fire time (test database, fake pro
       expect((await prisma.reminder.findUniqueOrThrow({ where: { id: reminder.id } })).lastRunAt).not.toBeNull();
     });
 
-    it.each(["archived", "deleted"])(
+    // RNX-125: "deleted" is no longer a workspace status; a deleted workspace (deletedAt) is in reminder.scheduler.due.db.spec.ts.
+    it.each(["archived"])(
       "AC6: the workspace is %s: the owner's and the collaborator's fires are skipped, nothing charged",
       async (status) => {
         const { owner, workspace, agent, reminder } = await seed();

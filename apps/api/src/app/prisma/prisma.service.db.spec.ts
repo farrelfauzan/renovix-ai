@@ -4,7 +4,7 @@ import { createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import { createAgent, createUser } from "../../../test/factories";
 
-// The default filter's map holds Provider and Agent (RNX-124), not Reminder, so the tests that need a model on it
+// The default filter's map holds Provider, Agent (RNX-124), Workspace, UserMemory and WorkspaceMemory (RNX-125), not Reminder, so the tests that need a model on it
 // build a second client through the same factory, with Reminder on it.
 describe("PrismaService (test database)", () => {
   let moduleRef: TestingModule;

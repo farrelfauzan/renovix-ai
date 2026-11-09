@@ -28,17 +28,21 @@ export class AgentRepository {
     return tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('rnx76-entitlements:' || ${userId}))::text`;
   }
 
-  /** This user's live agent with this slug, if there is one (RNX-124: the slug key is a partial index, so findFirst). */
+  /**
+   * This user's live agent with this slug, if there is one (RNX-124: the slug key is a partial index, so findFirst).
+   * RNX-125: an agent of a deleted workspace is found too (its slug is still taken in the index): the empty
+   * `workspace` condition replaces the default filter's.
+   */
   findAgentBySlug(userId: string, slug: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
-      where: { userId, slug },
+      where: { userId, slug, workspace: {} },
     });
   }
 
   /** The agent with this id if this user owns its workspace (RNX-203). */
   findUserAgent(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
-      where: { id: agentId, workspace: { ownerId: userId } },
+      where: { id: agentId, workspace: { ownerId: userId, deletedAt: null } },
     });
   }
 
@@ -53,7 +57,7 @@ export class AgentRepository {
   /** The agent with this id in a workspace this user owns (RNX-203), with every relation and its knowledge bases. */
   findAgentDetail(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findFirst({
-      where: { id: agentId, workspace: { ownerId: userId } },
+      where: { id: agentId, workspace: { ownerId: userId, deletedAt: null } },
       include: {
         tools: true,
         integrations: true,
@@ -91,7 +95,7 @@ export class AgentRepository {
   /** The agents in the workspaces this user owns (RNX-203), newest change first, each with its relations. */
   listOwnedAgents(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agent.findMany({
-      where: { workspace: { ownerId: userId } },
+      where: { workspace: { ownerId: userId, deletedAt: null } },
       include: {
         tools: true,
         integrations: true,

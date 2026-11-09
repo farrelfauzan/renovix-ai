@@ -170,7 +170,7 @@ export class ReminderService {
 
   /**
    * RNX-119: a fire the run policy refused (the agent is no longer runnable by the reminder's owner, its workspace is
-   * archived or deleted (RNX-260), or the owner has no active subscription) is skipped: only the next fire time is
+   * archived (RNX-260), or the owner has no active subscription) is skipped: only the next fire time is
    * set. It is not a run and not a failure.
    */
   async markSkipped(id: string, cronExpression: string, timezone: string) {

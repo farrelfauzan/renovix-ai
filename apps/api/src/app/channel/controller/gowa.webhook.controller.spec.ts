@@ -10,7 +10,7 @@ import { AgentRunService } from "../../agent/service/agent-run.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createUser } from "../../../../test/factories";
+import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
 
 // RX-115: POST /webhooks/gowa through Fastify on the test database. GOWA (v9.6.0, note R-8)
 // signs with `X-Hub-Signature-256: sha256=<lowercase hex HMAC-SHA256(secret, raw body)>`.
@@ -231,6 +231,24 @@ describe("RX-115: GOWA webhook refuses unsigned calls (Fastify, test database)",
     await expectRefusedAndNothingProcessed(refused);
     expect(await prisma.agentChannel.findUnique({ where: { id: channelBefore.id } })).toEqual(channelBefore);
     await prisma.agent.updateMany({ where: { id: agent.id }, data: { deletedAt: null, deletedById: null } });
+    const processed = await post(raw, signed(SECRET, raw));
+    expect(processed.statusCode).toBe(200);
+    expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo", `wa:${FROM}:${TO}`);
+  });
+
+  it("RNX-125 AC8: the whatsapp channel of an agent in a deleted workspace is not found: a signed call is 401, the agent does not run, nothing stored; the channel row stays and runs again once the marker is cleared", async () => {
+    const agent = await withSecret();
+    const workspace = await createWorkspace(prisma, { ownerId: agent.userId });
+    await prisma.agent.update({ where: { id: agent.id }, data: { workspaceId: workspace.id } });
+    const channelBefore = await prisma.agentChannel.findFirstOrThrow({ where: { agentId: agent.id } });
+    await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: new Date(), deletedById: agent.userId } });
+    const raw = inbound("Halo");
+
+    const refused = await post(raw, signed(SECRET, raw));
+
+    await expectRefusedAndNothingProcessed(refused);
+    expect(await prisma.agentChannel.findUnique({ where: { id: channelBefore.id } })).toEqual(channelBefore);
+    await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: null, deletedById: null } });
     const processed = await post(raw, signed(SECRET, raw));
     expect(processed.statusCode).toBe(200);
     expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo", `wa:${FROM}:${TO}`);

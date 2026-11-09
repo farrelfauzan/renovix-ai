@@ -3,8 +3,8 @@ import {
   NotFoundException,
   ForbiddenException,
 } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service";
 import { WorkspaceRepository } from "../repository/workspace.repository";
+import { WorkspaceMemberRepository } from "../repository/workspace-member.repository";
 import type { CreateWorkspaceDto } from "../dto/create-workspace.dto";
 import type { UpdateWorkspaceDto } from "../dto/update-workspace.dto";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
@@ -13,9 +13,9 @@ import { slugify } from "../../../common/utils/slugify";
 @Injectable()
 export class WorkspaceService {
   constructor(
-    private readonly prisma: PrismaService,
     private readonly quotaService: WorkspaceQuotaService,
     private readonly workspaces: WorkspaceRepository,
+    private readonly workspaceMembers: WorkspaceMemberRepository,
   ) {}
 
   private async generateUniqueSlug(
@@ -27,9 +27,7 @@ export class WorkspaceService {
     let counter = 1;
 
     while (true) {
-      const existing = await this.prisma.workspace.findFirst({
-        where: { ownerId, slug },
-      });
+      const existing = await this.workspaces.findOwnerWorkspaceBySlug(ownerId, slug);
       if (!existing) return slug;
       slug = `${baseSlug}-${counter}`;
       counter++;
@@ -42,62 +40,27 @@ export class WorkspaceService {
 
     const slug = await this.generateUniqueSlug(userId, dto.name);
 
-    const workspace = await this.prisma.workspace.create({
-      data: {
-        ownerId: userId,
-        name: dto.name,
-        slug,
-        description: dto.description,
-        avatar: dto.avatar,
-      },
+    const workspace = await this.workspaces.createWorkspace(userId, {
+      name: dto.name,
+      slug,
+      description: dto.description,
+      avatar: dto.avatar,
     });
 
     // Auto-create owner as first member
-    await this.prisma.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId,
-        role: "owner",
-        status: "active",
-        joinedAt: new Date(),
-      },
-    });
+    await this.workspaceMembers.createOwnerMember(workspace.id, userId);
 
     return workspace;
   }
 
+  /** The workspaces this user is an active member of; a default (RNX-117, D219 a) or deleted (RNX-125) one is left out. */
   async list(userId: string) {
-    return this.prisma.workspace.findMany({
-      where: {
-        status: { not: "deleted" },
-        isDefault: false, // hidden (RNX-117, D219 a)
-        members: {
-          some: { userId, status: "active" },
-        },
-      },
-      include: {
-        _count: { select: { members: { where: { status: "active" } } } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    return this.workspaces.listMemberWorkspaces(userId);
   }
 
+  /** The workspace for one of its active members; 404 for a default (RNX-117, D219 a) or deleted (RNX-125) one. */
   async getById(workspaceId: string, userId: string) {
-    const workspace = await this.prisma.workspace.findFirst({
-      where: {
-        id: workspaceId,
-        status: { not: "deleted" },
-        isDefault: false, // hidden (RNX-117, D219 a)
-        members: { some: { userId, status: "active" } },
-      },
-      include: {
-        members: {
-          where: { status: "active" },
-          include: { user: { select: { id: true, email: true } } },
-        },
-        _count: { select: { agents: { where: { deletedAt: null } }, memories: true } },
-      },
-    });
+    const workspace = await this.workspaces.findMemberWorkspaceDetail(workspaceId, userId);
 
     if (!workspace) {
       throw new NotFoundException("Workspace not found");
@@ -117,23 +80,21 @@ export class WorkspaceService {
   async update(workspaceId: string, userId: string, dto: UpdateWorkspaceDto) {
     await this.requireRole(workspaceId, userId, ["owner", "admin"]);
 
-    return this.prisma.workspace.update({
-      where: { id: workspaceId },
-      data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.avatar !== undefined && { avatar: dto.avatar }),
-      },
+    return this.workspaces.updateWorkspace(workspaceId, {
+      ...(dto.name !== undefined && { name: dto.name }),
+      ...(dto.description !== undefined && { description: dto.description }),
+      ...(dto.avatar !== undefined && { avatar: dto.avatar }),
     });
   }
 
-  async archive(workspaceId: string, userId: string) {
+  /**
+   * RNX-125: the owner deletes the workspace (soft delete, by this user): it is gone for everyone, its children stay
+   * hidden with it. 403 for anyone else (requireRole), 404 for a default or deleted workspace (requireMembership).
+   */
+  async softDelete(workspaceId: string, userId: string) {
     await this.requireRole(workspaceId, userId, ["owner"]);
 
-    return this.prisma.workspace.update({
-      where: { id: workspaceId },
-      data: { status: "archived" },
-    });
+    return this.workspaces.softDeleteWorkspace(workspaceId, userId);
   }
 
   /**
@@ -157,20 +118,22 @@ export class WorkspaceService {
   }
 
   async requireMembership(workspaceId: string, userId: string) {
-    const member = await this.prisma.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: { workspaceId, userId },
-      },
-    });
+    // RNX-125: a deleted workspace is hidden (PrismaService default filter): not found for everyone, its owner, its
+    // members and its invitees included. Every route that takes a workspace id comes through here (requireRole too).
+    const workspace = await this.workspaces.findDefaultFlag(workspaceId);
+    if (!workspace) {
+      throw new NotFoundException("Workspace not found");
+    }
+
+    const member = await this.workspaceMembers.findMembership(workspaceId, userId);
 
     if (!member || member.status !== "active") {
       throw new ForbiddenException("Not a member of this workspace");
     }
 
-    // RNX-117 (D219 a): the default workspace is hidden from the workspace routes. Every route that takes a
-    // workspace id comes through here (requireRole too), so its member gets the not-found answer of getById.
-    const workspace = await this.workspaces.findDefaultFlag(workspaceId);
-    if (workspace?.isDefault) {
+    // RNX-117 (D219 a): the default workspace is hidden from the workspace routes, so its member gets the
+    // not-found answer of getById.
+    if (workspace.isDefault) {
       throw new NotFoundException("Workspace not found");
     }
 

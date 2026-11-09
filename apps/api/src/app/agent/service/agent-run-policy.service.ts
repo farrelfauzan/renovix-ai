@@ -7,8 +7,11 @@ import type { RunScope } from "../types/run-scope";
 import type { RunPolicyAgent } from "../types/run-policy-agent";
 import type { RunDecision } from "../types/run-decision";
 
-/** RNX-260 (D259, 77): no new run starts in a workspace with one of these statuses, for anyone. */
-const CLOSED_WORKSPACE_STATUSES: readonly string[] = ["archived", "deleted"];
+/**
+ * RNX-260 (D259, 77): no new run starts in a workspace with one of these statuses, for anyone. RNX-125: a deleted
+ * workspace is not a status; its agents are hidden (PrismaService default filter), so they are not found (404).
+ */
+const CLOSED_WORKSPACE_STATUSES: readonly string[] = ["archived"];
 
 /**
  * RNX-119 (D257): the one run policy, used by every run entry (agent chat, channel chat, reminder fire). The runner
@@ -17,7 +20,7 @@ const CLOSED_WORKSPACE_STATUSES: readonly string[] = ["archived", "deleted"];
  * active (R17: alone); anyone else is refused (404, as for an agent they cannot see). The runner pays (their own
  * paid wallet), so the D192 active-subscription gate applies to the runner on every entry. RNX-260 (D259): the owner
  * runs an agent of any status, a collaborator or an outsider only an active one (76); no new run starts in an archived
- * or deleted workspace (77: 409 for everyone, the owner included).
+ * workspace (77: 409 for everyone, the owner included).
  */
 @Injectable()
 export class AgentRunPolicyService {
@@ -47,7 +50,7 @@ export class AgentRunPolicyService {
   async assertRunStart(agent: RunPolicyAgent, runnerUserId: string): Promise<RunScope> {
     const scope = await this.assertRunScope(agent, runnerUserId);
     if (await this.isWorkspaceClosed(agent.workspaceId)) {
-      throw new ConflictException("This workspace is archived or deleted: no new run can start in it");
+      throw new ConflictException("This workspace is archived: no new run can start in it");
     }
     return scope;
   }

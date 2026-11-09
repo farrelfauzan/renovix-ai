@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LIVE_AGENT } from "../../agent/config/live-agent";
 import { RemindersTableMissingException } from "../errors/reminders-table-missing.exception";
 
 /** The agent and channel a reminder is returned with in the list and the read. */
@@ -37,7 +38,7 @@ export class ReminderRepository {
    */
   listUserReminders(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).reminder.findMany({
-      where: { userId, deletedAt: null, agent: { deletedAt: null } },
+      where: { userId, deletedAt: null, agent: LIVE_AGENT },
       orderBy: { createdAt: "desc" },
       include: REMINDER_RELATIONS,
     });
@@ -46,7 +47,7 @@ export class ReminderRepository {
   /** The reminder with this id if it is this user's, not deleted and of a live agent (RNX-124), with its agent and channel. */
   findUserReminderWithRelations(userId: string, reminderId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).reminder.findFirst({
-      where: { id: reminderId, userId, deletedAt: null, agent: { deletedAt: null } },
+      where: { id: reminderId, userId, deletedAt: null, agent: LIVE_AGENT },
       include: REMINDER_RELATIONS,
     });
   }
@@ -54,7 +55,7 @@ export class ReminderRepository {
   /** The reminder with this id if it is this user's, not deleted and of a live agent (RNX-124). */
   findUserReminder(userId: string, reminderId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).reminder.findFirst({
-      where: { id: reminderId, userId, deletedAt: null, agent: { deletedAt: null } },
+      where: { id: reminderId, userId, deletedAt: null, agent: LIVE_AGENT },
     });
   }
 
@@ -77,7 +78,7 @@ export class ReminderRepository {
         where: {
           status: "ACTIVE",
           deletedAt: null,
-          agent: { deletedAt: null },
+          agent: LIVE_AGENT,
           nextRunAt: { lte: new Date() },
         },
         orderBy: { nextRunAt: "asc" },

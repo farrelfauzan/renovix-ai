@@ -121,6 +121,47 @@ describe("RNX-203: agent ownership through the workspace owner (Fastify, test da
       expect([created.json().workspaceId, cloned.json().workspaceId]).toEqual([own.id, own.id]);
     });
 
+    it("RNX-125: POST /agents and POST /agents/clone/:templateId into the caller's own deleted workspace: 403, nothing stored; again after the marker is cleared: 201", async () => {
+      const caller = await createUser(prisma);
+      const other = await createUser(prisma);
+      await subscribe(caller);
+      const own = await createWorkspace(prisma, { ownerId: caller.id });
+      const template = await createAgent(prisma, { userId: other.id, isPublic: true, status: "active" });
+      await prisma.workspace.update({ where: { id: own.id }, data: { deletedAt: new Date(), deletedById: caller.id } });
+      const createInto = () =>
+        app.inject({ method: "POST", url: "/agents", headers: auth(caller), payload: { ...newAgent, workspaceId: own.id } });
+      const cloneInto = () =>
+        app.inject({ method: "POST", url: `/agents/clone/${template.id}`, headers: auth(caller), payload: { workspaceId: own.id } });
+
+      const [created, cloned] = [await createInto(), await cloneInto()];
+
+      expect([created.statusCode, cloned.statusCode]).toEqual([403, 403]);
+      expect(await prisma.agent.count({ where: { workspaceId: own.id, workspace: {} } })).toBe(0);
+      await prisma.workspace.updateMany({ where: { id: own.id }, data: { deletedAt: null, deletedById: null } });
+      const [createdAfter, clonedAfter] = [await createInto(), await cloneInto()];
+      expect([createdAfter.statusCode, clonedAfter.statusCode]).toEqual([201, 201]);
+      expect([createdAfter.json().workspaceId, clonedAfter.json().workspaceId]).toEqual([own.id, own.id]);
+    });
+
+    it("RNX-125: PATCH /agents/:id takes no workspaceId: a deleted workspace's id in the body moves nothing", async () => {
+      const caller = await createUser(prisma);
+      await subscribe(caller);
+      const own = await createWorkspace(prisma, { ownerId: caller.id });
+      const gone = await createWorkspace(prisma, { ownerId: caller.id });
+      const agent = await createAgent(prisma, { userId: caller.id, workspaceId: own.id });
+      await prisma.workspace.update({ where: { id: gone.id }, data: { deletedAt: new Date(), deletedById: caller.id } });
+
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/agents/${agent.id}`,
+        headers: auth(caller),
+        payload: { name: "Renamed", workspaceId: gone.id },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect((await prisma.agent.findUniqueOrThrow({ where: { id: agent.id } })).workspaceId).toBe(own.id);
+    });
+
     it("without a workspaceId, create and clone use the caller's default workspace (control)", async () => {
       const caller = await createUser(prisma);
       const other = await createUser(prisma);

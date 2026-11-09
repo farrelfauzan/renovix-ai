@@ -182,18 +182,18 @@ describe("RX-141: memory extraction conditions (test database)", () => {
   });
 
   describe("storing a fact", () => {
-    it("treats a deleted memory with the same text as no duplicate: stores a new active row and leaves the deleted one deleted", async () => {
+    it("RNX-125 AC2: treats a deleted memory (deletedAt) with the same text as no duplicate: stores a new active row and leaves the deleted one as it was", async () => {
       fake.enqueue({ content: fact("Builds fintech apps in Rust") });
       const user = await toppedUp();
       const conv = await conversation(user.id, 2);
-      const deleted = await prisma.userMemory.create({ data: { userId: user.id, type: "interest", content: "Builds fintech apps in Rust", status: "deleted", confidence: 0.6 } });
+      const deleted = await prisma.userMemory.create({ data: { userId: user.id, type: "interest", content: "Builds fintech apps in Rust", deletedAt: new Date(), deletedById: user.id, confidence: 0.6 } });
 
       await service.extract(user.id, conv.id);
 
       const rows = await memories(user.id);
-      expect(rows).toHaveLength(2);
-      expect(rows.find((r) => r.id === deleted.id)).toMatchObject({ status: "deleted", confidence: 0.6 });
-      expect(rows.find((r) => r.id !== deleted.id)).toMatchObject({ status: "active", sourceConversationId: conv.id });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ status: "active", sourceConversationId: conv.id });
+      expect(await prisma.userMemory.findFirstOrThrow({ where: { id: deleted.id, deletedAt: { not: null } } })).toEqual(deleted);
     });
 
     it("confirms an active duplicate of this user (confidence 0.9) and stores no new row", async () => {
@@ -228,13 +228,13 @@ describe("RX-141: memory extraction conditions (test database)", () => {
       const bob = await createUser(prisma);
       const conv = await conversation(alice.id, 2);
       const overridden = await prisma.userMemory.create({ data: { userId: alice.id, type: "interest", content: "Uses react for the frontend" } });
-      const deleted = await prisma.userMemory.create({ data: { userId: alice.id, type: "interest", content: "Uses angular for the frontend", status: "deleted" } });
+      const deleted = await prisma.userMemory.create({ data: { userId: alice.id, type: "interest", content: "Uses angular for the frontend", deletedAt: new Date() } });
       const foreign = await prisma.userMemory.create({ data: { userId: bob.id, type: "interest", content: "Uses react for the frontend" } });
 
       await service.extract(alice.id, conv.id);
 
       expect((await prisma.userMemory.findUniqueOrThrow({ where: { id: overridden.id } })).status).toBe("archived");
-      expect((await prisma.userMemory.findUniqueOrThrow({ where: { id: deleted.id } })).status).toBe("deleted");
+      expect(await prisma.userMemory.findFirstOrThrow({ where: { id: deleted.id, deletedAt: { not: null } } })).toEqual(deleted);
       expect((await prisma.userMemory.findUniqueOrThrow({ where: { id: foreign.id } })).status).toBe("active");
     });
   });

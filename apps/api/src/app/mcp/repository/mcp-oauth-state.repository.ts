@@ -18,19 +18,21 @@ export class McpOAuthStateRepository {
   /**
    * Uses a stored flow once: one DELETE of the row where nonce, user, workspace and provider all
    * match and it has not expired. True only when it deleted that row, so a second use (from any
-   * instance) finds nothing.
+   * instance) finds nothing. RNX-125 (D313): the flow of a deleted workspace is hidden, not erased: never used.
    */
   async consume(input: ConsumeMcpOAuthStateInput, tx?: DbTransaction): Promise<boolean> {
     const { nonce, userId, workspaceId, provider, now } = input;
     const { count } = await (tx ?? this.prisma).mcpOAuthState.deleteMany({
-      where: { nonce, userId, workspaceId, provider, expiresAt: { gt: now } },
+      where: { nonce, userId, workspaceId, provider, expiresAt: { gt: now }, workspace: { deletedAt: null } },
     });
     return count === 1;
   }
 
-  /** Removes the flows that expired before `now`. Returns how many. */
+  /** Removes the flows that expired before `now`, but not those of a deleted workspace (RNX-125, D313). Returns how many. */
   async deleteExpired(now: Date, tx?: DbTransaction): Promise<number> {
-    const { count } = await (tx ?? this.prisma).mcpOAuthState.deleteMany({ where: { expiresAt: { lte: now } } });
+    const { count } = await (tx ?? this.prisma).mcpOAuthState.deleteMany({
+      where: { expiresAt: { lte: now }, workspace: { deletedAt: null } },
+    });
     return count;
   }
 }

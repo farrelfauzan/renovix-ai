@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LIVE_AGENT } from "../../agent/config/live-agent";
 
 /**
  * The queries on `channel_agents`, the links between a channel and its agents (RX-136). Every method takes
@@ -37,7 +38,7 @@ export class ChannelAgentRepository {
   /** The link of this live agent (RNX-124) to this channel, if there is one. */
   findChannelAgent(channelId: string, agentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).channelAgent.findFirst({
-      where: { channelId, agentId, agent: { deletedAt: null } },
+      where: { channelId, agentId, agent: LIVE_AGENT },
     });
   }
 
@@ -51,7 +52,7 @@ export class ChannelAgentRepository {
     tx?: DbTransaction,
   ) {
     return (tx ?? this.prisma).channelAgent.findFirst({
-      where: { channelId, agentId, agent: { deletedAt: null } },
+      where: { channelId, agentId, agent: LIVE_AGENT },
       include: {
         channel: { include: { workspace: true } },
         agent: {
