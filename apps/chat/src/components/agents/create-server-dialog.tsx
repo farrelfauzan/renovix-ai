@@ -215,20 +215,20 @@ export function CreateServerDialog() {
         <Button
           size="icon"
           variant="ghost"
-          className="w-12 h-12 rounded-2xl bg-zinc-800 text-emerald-400 hover:bg-emerald-600 hover:text-white hover:rounded-xl transition-all"
+          className="w-12 h-12 rounded-2xl bg-rx-surface-2 text-rx-green hover:bg-rx-green hover:text-primary-foreground hover:rounded-xl transition-all"
           title="Create Server"
         >
           <Plus className="w-5 h-5" />
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-lg bg-zinc-900 border-zinc-700 text-zinc-100 p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-lg bg-muted border-border text-foreground p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4">
-          <DialogTitle className="flex items-center gap-2.5 text-zinc-100 text-lg">
-            <Server className="w-5 h-5 text-indigo-400" />
+          <DialogTitle className="flex items-center gap-2.5 text-foreground text-lg">
+            <Server className="w-5 h-5 text-primary" />
             Create Server
           </DialogTitle>
-          <DialogDescription className="text-zinc-400 text-sm">
+          <DialogDescription className="text-muted-foreground text-sm">
             Set up a new server and configure its agents.
           </DialogDescription>
         </DialogHeader>
@@ -242,14 +242,14 @@ export function CreateServerDialog() {
         >
           <div className="px-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <div className="grid w-full grid-cols-2 bg-zinc-800/80 h-10 p-1 rounded-lg">
+              <div className="grid w-full grid-cols-2 bg-rx-surface-2 h-10 p-1 rounded-lg">
                 <button
                   type="button"
                   onClick={() => setActiveTab("general")}
                   className={`h-8 rounded-md text-sm font-medium transition-all ${
                     activeTab === "general"
-                      ? "bg-zinc-700 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-200"
+                      ? "bg-rx-surface-2 text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   General
@@ -259,15 +259,15 @@ export function CreateServerDialog() {
                   onClick={() => setActiveTab("agents")}
                   className={`h-8 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
                     activeTab === "agents"
-                      ? "bg-zinc-700 text-white shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-200"
+                      ? "bg-rx-surface-2 text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   Agents
                   {selectedAgentIds.length > 0 && (
                     <Badge
                       variant="secondary"
-                      className="h-5 min-w-5 px-1.5 text-[10px] bg-indigo-600 text-white border-0"
+                      className="h-5 min-w-5 px-1.5 text-[10px] bg-primary text-primary-foreground border-0"
                     >
                       {selectedAgentIds.length}
                     </Badge>
@@ -279,7 +279,7 @@ export function CreateServerDialog() {
               <TabsContent value="general" className="mt-5 space-y-5">
                 {/* Server Icon Section */}
                 <div className="space-y-2.5">
-                  <label className="text-sm font-medium text-zinc-300">
+                  <label className="text-sm font-medium text-foreground">
                     Server Icon
                   </label>
                   <div className="flex items-center gap-4">
@@ -290,7 +290,7 @@ export function CreateServerDialog() {
                           {(iconField) => (
                             <div className="relative group">
                               <div
-                                className="w-16 h-16 rounded-2xl flex items-center justify-center text-lg font-bold text-white overflow-hidden cursor-pointer border-2 border-zinc-700 hover:border-zinc-500 transition-colors"
+                                className="w-16 h-16 rounded-2xl flex items-center justify-center text-lg font-bold text-primary-foreground overflow-hidden cursor-pointer border-2 border-border hover:border-muted-foreground transition-colors"
                                 style={{
                                   backgroundColor: imagePreview
                                     ? "transparent"
@@ -309,7 +309,7 @@ export function CreateServerDialog() {
                                     {iconField.state.value}
                                   </span>
                                 ) : (
-                                  <ImageIcon className="w-6 h-6 text-white/60" />
+                                  <ImageIcon className="w-6 h-6 text-muted-foreground" />
                                 )}
                               </div>
                               {imagePreview && (
@@ -325,7 +325,7 @@ export function CreateServerDialog() {
                               )}
                               {uploadIcon.isPending && (
                                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-2xl">
-                                  <Loader2 className="w-5 h-5 animate-spin text-white" />
+                                  <Loader2 className="w-5 h-5 animate-spin text-primary-foreground" />
                                 </div>
                               )}
                             </div>
@@ -340,7 +340,7 @@ export function CreateServerDialog() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1.5 text-xs border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white"
+                        className="h-8 gap-1.5 text-xs border-border bg-rx-surface-2 text-foreground hover:bg-rx-surface-2 hover:text-foreground"
                         onClick={() => fileInputRef.current?.click()}
                       >
                         <Upload className="w-3.5 h-3.5" />
@@ -350,7 +350,7 @@ export function CreateServerDialog() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1.5 text-xs border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white"
+                        className="h-8 gap-1.5 text-xs border-border bg-rx-surface-2 text-foreground hover:bg-rx-surface-2 hover:text-foreground"
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                       >
                         <Smile className="w-3.5 h-3.5" />
@@ -388,13 +388,13 @@ export function CreateServerDialog() {
                   )}
                 </div>
 
-                <Separator className="bg-zinc-800" />
+                <Separator className="bg-rx-surface-2" />
 
                 {/* Server Name */}
                 <form.Field name="name">
                   {(field) => (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-300">
+                      <label className="text-sm font-medium text-foreground">
                         Server Name
                       </label>
                       <Input
@@ -406,10 +406,10 @@ export function CreateServerDialog() {
                             setErrors((prev) => ({ ...prev, name: "" }));
                           }
                         }}
-                        className="h-10 bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500 focus-visible:ring-indigo-500"
+                        className="h-10 bg-rx-surface-2 border-border text-foreground placeholder:text-muted-foreground focus-visible:ring-primary"
                       />
                       {errors.name && (
-                        <p className="text-xs text-red-400">{errors.name}</p>
+                        <p className="text-xs text-destructive">{errors.name}</p>
                       )}
                     </div>
                   )}
@@ -419,7 +419,7 @@ export function CreateServerDialog() {
                 <form.Field name="color">
                   {(field) => (
                     <div className="space-y-2.5">
-                      <label className="text-sm font-medium text-zinc-300">
+                      <label className="text-sm font-medium text-foreground">
                         Color
                       </label>
                       <div className="flex flex-wrap gap-3 mt-3">
@@ -430,8 +430,8 @@ export function CreateServerDialog() {
                             onClick={() => field.handleChange(color)}
                             className={`w-8 h-8 rounded-full transition-all ${
                               field.state.value === color
-                                ? "ring-2 ring-white ring-offset-2 ring-offset-zinc-900 scale-110"
-                                : "hover:scale-110 hover:ring-1 hover:ring-zinc-500"
+                                ? "ring-2 ring-foreground ring-offset-2 ring-offset-background scale-110"
+                                : "hover:scale-110 hover:ring-1 hover:ring-muted-foreground"
                             }`}
                             style={{ backgroundColor: color }}
                           />
@@ -441,14 +441,14 @@ export function CreateServerDialog() {
                   )}
                 </form.Field>
 
-                <Separator className="bg-zinc-800" />
+                <Separator className="bg-rx-surface-2" />
 
                 {/* Preview */}
                 <div className="space-y-2.5">
-                  <label className="text-sm font-medium text-zinc-300">
+                  <label className="text-sm font-medium text-foreground">
                     Preview
                   </label>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-rx-surface-2 border border-border">
                     <form.Field name="name">
                       {(nameField) => (
                         <form.Field name="color">
@@ -456,7 +456,7 @@ export function CreateServerDialog() {
                             <form.Field name="icon">
                               {(iconField) => (
                                 <div
-                                  className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-white shrink-0 overflow-hidden"
+                                  className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-primary-foreground shrink-0 overflow-hidden"
                                   style={{
                                     backgroundColor: imagePreview
                                       ? "transparent"
@@ -490,10 +490,10 @@ export function CreateServerDialog() {
                     <form.Field name="name">
                       {(nameField) => (
                         <div className="flex flex-col">
-                          <span className="text-sm font-medium text-zinc-200">
+                          <span className="text-sm font-medium text-foreground">
                             {nameField.state.value || "Server Name"}
                           </span>
-                          <span className="text-xs text-zinc-500">
+                          <span className="text-xs text-muted-foreground">
                             {selectedAgentIds.length} agent
                             {selectedAgentIds.length !== 1 ? "s" : ""}
                           </span>
@@ -507,19 +507,19 @@ export function CreateServerDialog() {
               {/* ─── Agents Tab ─── */}
               <TabsContent value="agents" className="mt-5">
                 <div className="space-y-3">
-                  <p className="text-sm text-zinc-400">
+                  <p className="text-sm text-muted-foreground">
                     Select agents to add to this server. You can add more later.
                   </p>
 
-                  <ScrollArea className="h-64 rounded-lg border border-zinc-700 bg-zinc-800/30">
+                  <ScrollArea className="h-64 rounded-lg border border-border bg-rx-surface-2">
                     <div className="p-2">
                       {!agents || agents.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-                          <Bot className="w-10 h-10 mb-3 text-zinc-600" />
+                        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                          <Bot className="w-10 h-10 mb-3 text-muted-foreground" />
                           <p className="text-sm font-medium">
                             No agents available
                           </p>
-                          <p className="text-xs text-zinc-600 mt-1">
+                          <p className="text-xs text-muted-foreground mt-1">
                             Create agents first to add them here
                           </p>
                         </div>
@@ -534,17 +534,17 @@ export function CreateServerDialog() {
                                 key={agent.id}
                                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer overflow-hidden ${
                                   isSelected
-                                    ? "bg-indigo-500/10 ring-1 ring-indigo-500/30"
-                                    : "hover:bg-zinc-700/40"
+                                    ? "bg-primary/10 ring-1 ring-primary/30"
+                                    : "hover:bg-rx-surface-2"
                                 }`}
                               >
                                 <Checkbox
                                   checked={isSelected}
                                   onCheckedChange={() => toggleAgent(agent.id)}
-                                  className="border-zinc-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+                                  className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                                 />
                                 <div
-                                  className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0"
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-primary-foreground shrink-0"
                                   style={{
                                     backgroundColor:
                                       agent.avatarColor || "#10b981",
@@ -554,11 +554,11 @@ export function CreateServerDialog() {
                                     agent.name.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-zinc-200 truncate">
+                                  <p className="text-sm font-medium text-foreground truncate">
                                     {agent.name}
                                   </p>
                                   {agent.description && (
-                                    <p className="text-xs text-zinc-500 line-clamp-1 mt-0.5">
+                                    <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
                                       {agent.description.length > 40
                                         ? agent.description.slice(0, 40) + "…"
                                         : agent.description}
@@ -566,7 +566,7 @@ export function CreateServerDialog() {
                                   )}
                                 </div>
                                 {isSelected && (
-                                  <Check className="w-4 h-4 text-indigo-400 shrink-0" />
+                                  <Check className="w-4 h-4 text-primary shrink-0" />
                                 )}
                               </label>
                             );
@@ -577,7 +577,7 @@ export function CreateServerDialog() {
                   </ScrollArea>
 
                   {selectedAgentIds.length > 0 && (
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-muted-foreground">
                       {selectedAgentIds.length} agent
                       {selectedAgentIds.length !== 1 ? "s" : ""} selected
                     </p>
@@ -587,7 +587,7 @@ export function CreateServerDialog() {
             </Tabs>
           </div>
 
-          <Separator className="bg-zinc-800 mt-6" />
+          <Separator className="bg-rx-surface-2 mt-6" />
 
           <DialogFooter className="px-6 py-4">
             <Button
@@ -595,7 +595,7 @@ export function CreateServerDialog() {
               variant="ghost"
               size="sm"
               onClick={handleClose}
-              className="text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+              className="text-muted-foreground hover:text-foreground hover:bg-rx-surface-2"
             >
               Cancel
             </Button>
@@ -603,7 +603,7 @@ export function CreateServerDialog() {
               type="submit"
               size="sm"
               disabled={createChannel.isPending}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-5"
+              className="bg-primary hover:bg-rx-accent-hover text-primary-foreground font-medium px-5"
             >
               {createChannel.isPending ? (
                 <>

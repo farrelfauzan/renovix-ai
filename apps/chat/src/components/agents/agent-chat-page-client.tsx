@@ -196,17 +196,17 @@ export default function AgentChatPageClient({
                 >
                   {msg.role === "user" ? (
                     <div className="flex items-start gap-3 max-w-[85%] flex-row-reverse">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-indigo-500 to-purple-600 mt-0.5">
-                        <span className="text-xs text-white font-medium">U</span>
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
+                        <span className="text-xs text-primary-foreground font-medium">U</span>
                       </div>
-                      <div className="rounded-2xl rounded-tr-sm bg-indigo-600 px-4 py-2.5 text-sm text-white leading-relaxed">
+                      <div className="rounded-2xl rounded-tr-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground leading-relaxed">
                         {msg.content}
                       </div>
                     </div>
                   ) : (
                     <div className="flex items-start gap-3">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-emerald-500 to-teal-600 mt-0.5">
-                        <Bot className="h-3.5 w-3.5 text-white" />
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
+                        <Bot className="h-3.5 w-3.5 text-primary-foreground" />
                       </div>
                       <div className="prose prose-invert prose-sm max-w-none flex-1 min-w-0 leading-relaxed">
                         <ReactMarkdown
@@ -217,7 +217,7 @@ export default function AgentChatPageClient({
                               const text = String(children).replace(/\n$/, "");
                               if (match) {
                                 return (
-                                  <pre className="bg-zinc-900 rounded-lg p-4 overflow-x-auto my-3">
+                                  <pre className="bg-muted rounded-lg p-4 overflow-x-auto my-3">
                                     <code className={`language-${match[1]} text-sm`}>
                                       {text}
                                     </code>
@@ -244,8 +244,8 @@ export default function AgentChatPageClient({
             {/* Streaming content */}
             {isAgentStreaming && streamingAgentContent && (
               <div className="flex items-start gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-emerald-500 to-teal-600 mt-0.5">
-                  <Bot className="h-3.5 w-3.5 text-white" />
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
+                  <Bot className="h-3.5 w-3.5 text-primary-foreground" />
                 </div>
                 <div className="prose prose-invert prose-sm max-w-none flex-1 min-w-0 leading-relaxed">
                   <ReactMarkdown
@@ -256,7 +256,7 @@ export default function AgentChatPageClient({
                         const text = String(children).replace(/\n$/, "");
                         if (match) {
                           return (
-                            <pre className="bg-zinc-900 rounded-lg p-4 overflow-x-auto my-3">
+                            <pre className="bg-muted rounded-lg p-4 overflow-x-auto my-3">
                               <code className={`language-${match[1]} text-sm`}>
                                 {text}
                               </code>
@@ -280,13 +280,13 @@ export default function AgentChatPageClient({
             {/* Typing indicator */}
             {isAgentStreaming && !streamingAgentContent && (
               <div className="flex items-start gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-emerald-500 to-teal-600 mt-0.5">
-                  <Bot className="h-3.5 w-3.5 text-white" />
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
+                  <Bot className="h-3.5 w-3.5 text-primary-foreground" />
                 </div>
                 <div className="flex items-center gap-1 py-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: "0ms" }} />
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: "200ms" }} />
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: "400ms" }} />
+                  <span className="h-2 w-2 rounded-full bg-rx-green animate-pulse" style={{ animationDelay: "0ms" }} />
+                  <span className="h-2 w-2 rounded-full bg-rx-green animate-pulse" style={{ animationDelay: "200ms" }} />
+                  <span className="h-2 w-2 rounded-full bg-rx-green animate-pulse" style={{ animationDelay: "400ms" }} />
                 </div>
               </div>
             )}

@@ -6,10 +6,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProfileStepSelect } from "@/components/profile-step/profile-step-select";
+import { ProfileStepTopBar } from "@/components/profile-step/profile-step-top-bar";
 import { ProfileGoalChips } from "@/components/profile-step/profile-goal-chips";
 import type { CurrentUser } from "@/hooks/use-current-user";
 import apiClient from "@/lib/api-client";
-import { COUNTRY_CODES } from "@/lib/country-codes";
+import { buildCountryOptions } from "@/lib/build-country-options";
+import { buildTimeZoneOptions } from "@/lib/build-time-zone-options";
 import { currentUserQueryKey } from "@/lib/current-user-query-key";
 import { detectCountry } from "@/lib/detect-country";
 import { detectLanguage } from "@/lib/detect-language";
@@ -18,9 +20,6 @@ import { GOAL_OPTIONS, LANGUAGE_OPTIONS, ROLE_OPTIONS } from "@/lib/profile-step
 import { resolveDefaultTimeZone } from "@/lib/resolve-default-time-zone";
 import { safeRedirectPath } from "@/lib/safe-redirect";
 import { useAuthStore } from "@/lib/stores";
-
-/** The countries offered first (the design's list); the rest follow by name. */
-const FIRST_COUNTRIES = ["ID", "SG", "MY"];
 
 /**
  * RNX-33: the profile step (design artboard "Profile", step 1 of 3). Saves through PUT /auth/me/profile, then goes
@@ -37,16 +36,8 @@ export function ProfileStepForm({ user }: { user: CurrentUser }) {
   const [language, setLanguage] = useState<string>(detectLanguage());
   const [goals, setGoals] = useState<string[]>(() => GOAL_OPTIONS.filter((goal) => user.signupGoal?.includes(goal)));
   const [isSaving, setIsSaving] = useState(false);
-  const countryOptions = useMemo(() => {
-    const names = new Intl.DisplayNames(["en"], { type: "region" });
-    const rest = COUNTRY_CODES.filter((code) => !FIRST_COUNTRIES.includes(code));
-    const sorted = rest.map((code) => ({ value: code, label: names.of(code) ?? code })).sort((a, b) => a.label.localeCompare(b.label));
-    return [...FIRST_COUNTRIES.map((code) => ({ value: code, label: names.of(code) ?? code })), ...sorted];
-  }, []);
-  const timezoneOptions = useMemo(() => {
-    const zones = new Set([timezone, ...Intl.supportedValuesOf("timeZone")].filter(Boolean));
-    return [...zones].map((zone) => ({ value: zone, label: zone }));
-  }, [timezone]);
+  const countryOptions = useMemo(() => buildCountryOptions(), []);
+  const timezoneOptions = useMemo(() => buildTimeZoneOptions({ current: timezone, supported: Intl.supportedValuesOf("timeZone") }), [timezone]);
   const isComplete = Boolean(name.trim() && role && country && timezone && language && goals.length > 0);
 
   const handleCountryChange = (value: string) => {
@@ -79,71 +70,86 @@ export function ProfileStepForm({ user }: { user: CurrentUser }) {
   };
 
   return (
-    <main className="flex min-h-screen justify-center px-4 py-12 sm:px-8">
-      <div className="flex w-full max-w-3xl flex-col gap-7">
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">Step 1 of 3 · About you</p>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Welcome{user.name ? `, ${user.name}` : ""}. A few details so the agents know who they work for.
-          </h1>
-          <p className="text-sm text-muted-foreground">Takes under a minute. Each field says what it is used for.</p>
-        </div>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6 rounded-lg border bg-card p-6 sm:p-7">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <label htmlFor="profile-name" className="text-sm font-medium">
-                Your name
-              </label>
-              <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={100} />
-              <span className="text-xs text-muted-foreground">Used in greetings and as your member name.</span>
+    <div className="flex min-h-screen flex-col bg-muted">
+      <ProfileStepTopBar />
+      <main className="flex flex-1 justify-center px-4 py-12 sm:px-8">
+        <div className="flex w-full max-w-[720px] flex-col gap-7">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              Welcome{user.name ? `, ${user.name}` : ""}. A few details so the agents know who they work for.
+            </h1>
+            <p className="text-[15px] text-muted-foreground">
+              Takes under a minute. Each field says what it is used for. You can change or delete all of it in Settings.
+            </p>
+          </div>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-[22px] rounded-lg border bg-card p-4 sm:p-7">
+            <div className="grid gap-[18px] sm:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <label htmlFor="profile-name" className="text-sm font-medium">
+                  Your name
+                </label>
+                <Input
+                  id="profile-name"
+                  className="h-(--rx-button-height)"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                  maxLength={100}
+                />
+                <span className="text-xs text-muted-foreground">Used in greetings and as your member name.</span>
+              </div>
+              <ProfileStepSelect
+                id="profile-role"
+                label="Your role"
+                hint="Picks your first template agent."
+                placeholder="Choose your role"
+                value={role}
+                options={ROLE_OPTIONS.map((option) => ({ value: option, label: option }))}
+                onChange={setRole}
+              />
             </div>
-            <ProfileStepSelect
-              id="profile-role"
-              label="Your role"
-              hint="Picks your first template agent."
-              placeholder="Choose your role"
-              value={role}
-              options={ROLE_OPTIONS.map((option) => ({ value: option, label: option }))}
-              onChange={setRole}
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <ProfileStepSelect
-              id="profile-country"
-              label="Country"
-              hint="Sets currency and document formats."
-              placeholder="Choose your country"
-              value={country}
-              options={countryOptions}
-              onChange={handleCountryChange}
-            />
-            <ProfileStepSelect
-              id="profile-timezone"
-              label="Timezone"
-              hint="Reminders run at the right hour."
-              placeholder="Choose your timezone"
-              value={timezone}
-              options={timezoneOptions}
-              onChange={setTimezone}
-            />
-            <ProfileStepSelect
-              id="profile-language"
-              label="Language"
-              hint="Interface and agent replies."
-              placeholder="Choose your language"
-              value={language}
-              options={LANGUAGE_OPTIONS}
-              onChange={setLanguage}
-            />
-          </div>
-          <ProfileGoalChips selected={goals} onToggle={toggleGoal} />
-          <div className="flex justify-end border-t pt-5">
-            <Button type="submit" disabled={!isComplete || isSaving}>
-              {isSaving ? "Saving..." : "Continue"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </main>
+            <div className="grid gap-[18px] sm:grid-cols-3">
+              <ProfileStepSelect
+                id="profile-country"
+                label="Country"
+                hint="Sets currency and document formats."
+                placeholder="Choose your country"
+                value={country}
+                options={countryOptions}
+                onChange={handleCountryChange}
+              />
+              <ProfileStepSelect
+                id="profile-timezone"
+                label="Timezone"
+                hint="Reminders run at the right hour."
+                placeholder="Choose your timezone"
+                value={timezone}
+                options={timezoneOptions}
+                onChange={setTimezone}
+              />
+              <ProfileStepSelect
+                id="profile-language"
+                label="Language"
+                hint="Interface and agent replies."
+                placeholder="Choose your language"
+                value={language}
+                options={LANGUAGE_OPTIONS}
+                onChange={setLanguage}
+              />
+            </div>
+            <ProfileGoalChips selected={goals} onToggle={toggleGoal} />
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
+              <span className="max-w-[52ch] text-[13px] text-muted-foreground">
+                Stored under Indonesia&apos;s personal data protection law (UU PDP). Nothing here is shared with model providers beyond
+                the company name and language inside your own agents.
+              </span>
+              <Button type="submit" className="h-(--rx-button-height) px-[22px]" disabled={!isComplete || isSaving}>
+                {isSaving ? "Saving..." : "Continue"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
   );
 }

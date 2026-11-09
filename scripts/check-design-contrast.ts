@@ -16,6 +16,13 @@ const PAIRS: Pair[] = [
   { label: 'Teal 700 on Teal 100', foreground: 'teal-700', background: 'teal-100', documented: 5.1 },
   { label: 'Ink 300 on Ink', foreground: 'ink-300', background: 'ink', documented: 9.0 },
   { label: 'Amber text on amber tint', foreground: 'amber-text', background: 'amber-tint', documented: 7.5 },
+  { label: 'Muted on page ground', foreground: 'ink-muted', background: 'ground-surface', documented: 5.6 },
+  { label: 'Muted on surface 2', foreground: 'ink-muted', background: 'ground-surface-2', documented: 5.2 },
+  { label: 'Ink on page ground', foreground: 'ink', background: 'ground-surface', documented: 16.3 },
+  { label: 'Teal 700 on page ground', foreground: 'teal-700', background: 'ground-surface', documented: 5.5 },
+  { label: 'Green on white', foreground: 'green', background: 'white', documented: 5.3 },
+  { label: 'Red bar on white', foreground: 'red-bar', background: 'white', documented: 6.4 },
+  { label: 'Tag text on tag', foreground: 'tag-neutral-text', background: 'tag-neutral', documented: 6.2 },
   { label: 'Red text on red tint', foreground: 'red-text', background: 'red-tint', documented: 8.6 },
 ];
 

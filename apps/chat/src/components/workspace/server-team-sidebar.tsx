@@ -60,14 +60,14 @@ export function ServerTeamSidebar({ channelId, isOwner, onClose, embedded }: Ser
     if (embedded) {
       return (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       );
     }
     return (
       <SidebarShell onClose={onClose}>
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-500" />
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       </SidebarShell>
     );
@@ -77,8 +77,8 @@ export function ServerTeamSidebar({ channelId, isOwner, onClose, embedded }: Ser
     if (embedded) {
       return (
         <div className="flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
-          <Users className="w-10 h-10 text-zinc-600" />
-          <p className="text-sm text-zinc-400">Team workspace not enabled</p>
+          <Users className="w-10 h-10 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Team workspace not enabled</p>
           {isOwner && (
             <Button
               size="sm"
@@ -100,8 +100,8 @@ export function ServerTeamSidebar({ channelId, isOwner, onClose, embedded }: Ser
     return (
       <SidebarShell onClose={onClose}>
         <div className="flex-1 flex flex-col items-center justify-center gap-3 px-4 text-center">
-          <Users className="w-10 h-10 text-zinc-600" />
-          <p className="text-sm text-zinc-400">Team workspace not enabled</p>
+          <Users className="w-10 h-10 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Team workspace not enabled</p>
           {isOwner && (
             <Button
               size="sm"
@@ -135,10 +135,10 @@ export function ServerTeamSidebar({ channelId, isOwner, onClose, embedded }: Ser
 
 function SidebarShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="w-[260px] shrink-0 bg-zinc-900/80 border-l border-zinc-800 flex flex-col h-full">
-      <div className="flex items-center justify-between p-3 border-b border-zinc-800">
-        <h4 className="text-sm font-semibold text-zinc-200">Team</h4>
-        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300">
+    <div className="w-[260px] shrink-0 bg-muted border-l border-border flex flex-col h-full">
+      <div className="flex items-center justify-between p-3 border-b border-border">
+        <h4 className="text-sm font-semibold text-foreground">Team</h4>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -157,14 +157,14 @@ function TeamContent({ channelId, isOwner }: { channelId: string; isOwner: boole
     <div className="flex-1 overflow-y-auto">
       {/* Quota bar */}
       {quota && (
-        <div className="px-3 py-2 border-b border-zinc-800">
-          <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+        <div className="px-3 py-2 border-b border-border">
+          <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
             <span>Members</span>
             <span>{quota.used}/{quota.limit}</span>
           </div>
-          <div className="h-1 bg-zinc-800 rounded-full">
+          <div className="h-1 bg-rx-surface-2 rounded-full">
             <div
-              className="h-1 bg-indigo-500 rounded-full transition-all"
+              className="h-1 bg-primary rounded-full transition-all"
               style={{ width: `${Math.min((quota.used / quota.limit) * 100, 100)}%` }}
             />
           </div>
@@ -174,13 +174,13 @@ function TeamContent({ channelId, isOwner }: { channelId: string; isOwner: boole
       {/* Members */}
       <div className="px-3 py-2">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
             Members — {members?.length ?? 0}
           </span>
           {isOwner && (
             <button
               onClick={() => setShowInviteForm(!showInviteForm)}
-              className="text-zinc-500 hover:text-indigo-400"
+              className="text-muted-foreground hover:text-primary"
               title="Invite member"
             >
               <UserPlus className="w-3.5 h-3.5" />
@@ -199,8 +199,8 @@ function TeamContent({ channelId, isOwner }: { channelId: string; isOwner: boole
 
       {/* Pending Invites */}
       {isOwner && invites && invites.filter((i) => i.status === "pending").length > 0 && (
-        <div className="px-3 py-2 border-t border-zinc-800">
-          <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider block mb-2">
+        <div className="px-3 py-2 border-t border-border">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-2">
             Pending Invites
           </span>
           <div className="space-y-1">
@@ -248,13 +248,13 @@ function InviteForm({ channelId, onDone }: { channelId: string; onDone: () => vo
         placeholder="Email address"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="h-7 text-xs bg-zinc-800 border-zinc-700"
+        className="h-7 text-xs bg-rx-surface-2 border-border"
         type="email"
         required
       />
       <div className="flex gap-1">
         <Select value={role} onValueChange={setRole}>
-          <SelectTrigger className="h-7 text-xs flex-1 bg-zinc-800 border-zinc-700">
+          <SelectTrigger className="h-7 text-xs flex-1 bg-rx-surface-2 border-border">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -285,18 +285,18 @@ function MemberRow({
 
   const roleIcon =
     member.role === "owner" ? (
-      <Crown className="w-3 h-3 text-amber-400" />
+      <Crown className="w-3 h-3 text-rx-amber-text" />
     ) : member.role === "admin" ? (
-      <Shield className="w-3 h-3 text-indigo-400" />
+      <Shield className="w-3 h-3 text-primary" />
     ) : null;
 
   return (
-    <div className="flex items-center gap-2 px-1 py-1 rounded hover:bg-zinc-800/50 group">
-      <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-300">
+    <div className="flex items-center gap-2 px-1 py-1 rounded hover:bg-rx-surface-2 group">
+      <div className="w-6 h-6 rounded-full bg-rx-surface-2 flex items-center justify-center text-[10px] font-bold text-foreground">
         {member.user.email.charAt(0).toUpperCase()}
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-xs text-zinc-300 truncate block">{member.user.email}</span>
+        <span className="text-xs text-foreground truncate block">{member.user.email}</span>
       </div>
       {roleIcon}
       {isOwner && member.role !== "owner" && (
@@ -307,7 +307,7 @@ function MemberRow({
               { onSuccess: () => toast.success("Member removed") },
             )
           }
-          className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400"
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
           title="Remove"
         >
           <X className="w-3 h-3" />
@@ -322,10 +322,10 @@ function InviteRow({ invite, channelId }: { invite: any; channelId: string }) {
   const revoke = useRevokeInvite();
 
   return (
-    <div className="flex items-center gap-2 px-1 py-1 rounded hover:bg-zinc-800/50 group">
-      <Mail className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+    <div className="flex items-center gap-2 px-1 py-1 rounded hover:bg-rx-surface-2 group">
+      <Mail className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">
-        <span className="text-xs text-zinc-400 truncate block">{invite.email}</span>
+        <span className="text-xs text-muted-foreground truncate block">{invite.email}</span>
       </div>
       <button
         onClick={() =>
@@ -334,7 +334,7 @@ function InviteRow({ invite, channelId }: { invite: any; channelId: string }) {
             { onSuccess: () => toast.success("Invite resent") },
           )
         }
-        className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-indigo-400"
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
         title="Resend"
       >
         <RotateCw className="w-3 h-3" />
@@ -346,7 +346,7 @@ function InviteRow({ invite, channelId }: { invite: any; channelId: string }) {
             { onSuccess: () => toast.success("Invite revoked") },
           )
         }
-        className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400"
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
         title="Revoke"
       >
         <X className="w-3 h-3" />
@@ -374,15 +374,15 @@ function KnowledgeSection({ channelId, isOwner }: { channelId: string; isOwner: 
   };
 
   return (
-    <div className="px-3 py-2 border-t border-zinc-800">
+    <div className="px-3 py-2 border-t border-border">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           Shared Knowledge
         </span>
         {isOwner && (
           <button
             onClick={openCreateDialog}
-            className="text-zinc-500 hover:text-indigo-400"
+            className="text-muted-foreground hover:text-primary"
             title="Add knowledge base"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -391,20 +391,20 @@ function KnowledgeSection({ channelId, isOwner }: { channelId: string; isOwner: 
       </div>
 
       {(!knowledgeBases || knowledgeBases.length === 0) && (
-        <p className="text-xs text-zinc-600 mb-1">No shared knowledge yet</p>
+        <p className="text-xs text-muted-foreground mb-1">No shared knowledge yet</p>
       )}
 
       <div className="space-y-1">
         {knowledgeBases?.map((kb) => (
-          <div key={kb.id} className="flex items-center gap-2 px-1 py-1 rounded hover:bg-zinc-800/50 group">
-            <BookOpen className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          <div key={kb.id} className="flex items-center gap-2 px-1 py-1 rounded hover:bg-rx-surface-2 group">
+            <BookOpen className="w-3.5 h-3.5 text-rx-green shrink-0" />
             <div className="flex-1 min-w-0">
-              <span className="text-xs text-zinc-300 truncate block">{kb.name}</span>
-              <span className="text-[10px] text-zinc-600">{kb._count.chunks} chunks</span>
+              <span className="text-xs text-foreground truncate block">{kb.name}</span>
+              <span className="text-[10px] text-muted-foreground">{kb._count.chunks} chunks</span>
             </div>
             <button
               onClick={() => openAddContentDialog({ id: kb.id, name: kb.name })}
-              className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-emerald-400"
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-rx-green"
               title="Add knowledge"
             >
               <FileText className="w-3 h-3" />
@@ -417,7 +417,7 @@ function KnowledgeSection({ channelId, isOwner }: { channelId: string; isOwner: 
                     { onSuccess: () => toast.success("Knowledge base deleted") },
                   )
                 }
-                className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400"
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
                 title="Delete"
               >
                 <Trash2 className="w-3 h-3" />

@@ -145,19 +145,19 @@ export function BillingSettings() {
           <div
             className={`flex items-start gap-3 rounded-lg border p-4 ${
               result.success
-                ? "border-emerald-500/30 bg-emerald-500/5"
+                ? "border-rx-green/30 bg-rx-green/5"
                 : "border-destructive/30 bg-destructive/5"
             }`}
           >
             {result.success ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-rx-green shrink-0 mt-0.5" />
             ) : (
               <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             )}
             <div className="space-y-1">
               <p
                 className={`text-sm font-medium ${
-                  result.success ? "text-emerald-600" : "text-destructive"
+                  result.success ? "text-rx-green" : "text-destructive"
                 }`}
               >
                 {result.success ? "Success!" : "Error"}

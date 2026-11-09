@@ -58,7 +58,7 @@ export function ChatHeader() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex items-center gap-1.5 rounded-full bg-secondary/50 px-3 py-1 text-[11px] text-muted-foreground cursor-default">
-                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  <div className="h-1.5 w-1.5 rounded-full bg-rx-green" />
                   <span>{usage.remaining ?? 0} left</span>
                 </div>
               </TooltipTrigger>
@@ -76,7 +76,7 @@ export function ChatHeader() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex items-center gap-1.5 rounded-full bg-secondary/50 px-3 py-1 text-[11px] text-muted-foreground cursor-default">
-                  <div className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
                   <span>${Number(usage.balance ?? 0).toFixed(2)}</span>
                 </div>
               </TooltipTrigger>

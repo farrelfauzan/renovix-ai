@@ -91,7 +91,7 @@ export function AgentToolsTab({ agent, agentId }: AgentToolsTabProps) {
               <div className="flex items-center gap-2">
                 <p className="font-medium text-sm">{tool.name}</p>
                 {tool.configRequired && (
-                  <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                  <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-rx-amber-tint text-rx-amber-text border border-rx-amber-bar/30">
                     Needs setup
                   </span>
                 )}
@@ -104,7 +104,7 @@ export function AgentToolsTab({ agent, agentId }: AgentToolsTabProps) {
                   </p>
 
                   {!workspaceId && (
-                    <p className="text-xs text-amber-400">
+                    <p className="text-xs text-rx-amber-text">
                       Web search setup needs a workspace-linked agent.
                     </p>
                   )}

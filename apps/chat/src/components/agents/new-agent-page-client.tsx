@@ -208,7 +208,7 @@ export default function NewAgentPageClient() {
                   isActive
                     ? "bg-primary/10 text-primary"
                     : isCompleted
-                      ? "bg-green-500/10 text-green-500"
+                      ? "bg-rx-green/10 text-rx-green"
                       : "text-muted-foreground"
                 }`}
               >

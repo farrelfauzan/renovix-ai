@@ -125,7 +125,7 @@ export function UserMcpConnections({ workspaceId }: UserMcpConnectionsProps) {
                   {isConnected && credential ? (
                     <Badge
                       variant="outline"
-                      className="text-green-600 border-green-500/30 text-xs mt-0.5"
+                      className="text-rx-green border-rx-green/30 text-xs mt-0.5"
                     >
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Connected

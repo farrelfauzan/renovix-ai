@@ -1,7 +1,7 @@
 "use client";
 
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Check, Copy } from "lucide-react";
 import { useState, useCallback } from "react";
 
@@ -22,8 +22,8 @@ export function CodeBlock({
   }, [children]);
 
   return (
-    <div className="group/code relative my-3 rounded-lg overflow-hidden border border-border/40 bg-[#282c34]">
-      <div className="flex items-center justify-between px-4 py-1.5 bg-[#21252b] text-xs text-muted-foreground">
+    <div className="group/code relative my-3 rounded-lg overflow-hidden border border-border/40 bg-muted">
+      <div className="flex items-center justify-between px-4 py-1.5 bg-rx-surface-2 text-xs text-muted-foreground">
         <span>{lang}</span>
         <button
           onClick={handleCopy}
@@ -42,7 +42,7 @@ export function CodeBlock({
       </div>
       <SyntaxHighlighter
         language={lang}
-        style={oneDark}
+        style={oneLight}
         customStyle={{
           margin: 0,
           padding: "1rem",

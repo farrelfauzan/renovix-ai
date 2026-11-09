@@ -135,7 +135,7 @@ export function IdentityStep({ form }: IdentityStepProps) {
               {/* Preview */}
               <div className="relative group">
                 <div
-                  className="w-16 h-16 rounded-2xl flex items-center justify-center text-lg font-bold text-white overflow-hidden cursor-pointer border-2 border-muted hover:border-muted-foreground/50 transition-colors bg-primary/10"
+                  className="w-16 h-16 rounded-2xl flex items-center justify-center text-lg font-bold text-primary-foreground overflow-hidden cursor-pointer border-2 border-muted hover:border-muted-foreground/50 transition-colors bg-primary/10"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {imagePreview ? (
@@ -164,7 +164,7 @@ export function IdentityStep({ form }: IdentityStepProps) {
                 )}
                 {uploadAvatar.isPending && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-2xl">
-                    <Loader2 className="w-5 h-5 animate-spin text-white" />
+                    <Loader2 className="w-5 h-5 animate-spin text-primary-foreground" />
                   </div>
                 )}
               </div>

@@ -50,15 +50,15 @@ export function AppSidebar() {
             onClick={toggleSidebar}
             className="items-center gap-2 group/logo relative hidden group-data-[collapsible=icon]:group-data-[state=collapsed]:flex"
           >
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 group-hover/logo:from-indigo-600 group-hover/logo:to-purple-700 transition-all">
-              <Sparkles className="h-3.5 w-3.5 text-white group-hover/logo:hidden" />
-              <PanelLeft className="h-3.5 w-3.5 text-white hidden group-hover/logo:block" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary group-hover/logo:bg-rx-accent-hover transition-all">
+              <Sparkles className="h-3.5 w-3.5 text-primary-foreground group-hover/logo:hidden" />
+              <PanelLeft className="h-3.5 w-3.5 text-primary-foreground hidden group-hover/logo:block" />
             </div>
           </button>
           {/* Expanded: logo + toggle button */}
           <div className="flex items-center gap-2 group-data-[collapsible=icon]:group-data-[state=collapsed]:hidden">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-linear-to-br from-indigo-500 to-purple-600">
-              <Sparkles className="h-3.5 w-3.5 text-white" />
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
+              <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
             <span className="font-semibold text-sm">Renovix AI</span>
           </div>

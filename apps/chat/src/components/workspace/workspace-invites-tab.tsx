@@ -61,7 +61,7 @@ export function WorkspaceInvitesTab({ workspaceId, invites }: Props) {
           {pendingInvites.map((invite) => (
             <div
               key={invite.id}
-              className="flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-900/30"
+              className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted"
             >
               <div>
                 <p className="text-sm font-medium">{invite.email}</p>
@@ -88,7 +88,7 @@ export function WorkspaceInvitesTab({ workspaceId, invites }: Props) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-xs gap-1 text-red-400 hover:text-red-300"
+                  className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
                   onClick={() => handleRevoke(invite.id)}
                   disabled={revokeInvite.isPending}
                 >
