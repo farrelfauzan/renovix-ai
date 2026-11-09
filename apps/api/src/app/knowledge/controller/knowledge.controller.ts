@@ -44,6 +44,12 @@ export class KnowledgeController {
     return this.knowledgeService.listKnowledgeBases(req.user.id);
   }
 
+  /** RNX-126: the caller's deleted personal knowledge bases with their purgeAt (declared before `bases/:id`). */
+  @Get("bases/deleted")
+  async listDeletedKnowledgeBases(@Req() req: any) {
+    return this.knowledgeService.listDeletedKnowledgeBases(req.user.id);
+  }
+
   @Get("bases/:id")
   async getKnowledgeBase(
     @Req() req: any,
@@ -76,6 +82,16 @@ export class KnowledgeController {
     @Param("id", ParseUUIDPipe) id: string,
   ) {
     await this.knowledgeService.deleteKnowledgeBase(req.user.id, id);
+  }
+
+  /** RNX-126: restores the caller's deleted personal knowledge base (the owner only, as delete). */
+  @Post("bases/:id/restore")
+  @HttpCode(200)
+  async restoreKnowledgeBase(
+    @Req() req: any,
+    @Param("id", ParseUUIDPipe) id: string,
+  ) {
+    return this.knowledgeService.restoreKnowledgeBase(req.user.id, id);
   }
 
   // ─── Chunks ───

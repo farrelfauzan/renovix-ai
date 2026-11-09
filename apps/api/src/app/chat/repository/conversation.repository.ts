@@ -111,6 +111,27 @@ export class ConversationRepository {
     );
   }
 
+  /** RNX-126: this user's deleted conversations, newest-deleted first, `take` at most. */
+  listDeletedUserConversations(userId: string, take: number, tx?: DbTransaction) {
+    return (tx ?? this.prisma).conversation.findMany({
+      where: { userId, deletedAt: { not: null } },
+      select: { id: true, title: true, deletedAt: true },
+      orderBy: { deletedAt: "desc" },
+      take,
+    });
+  }
+
+  /** RNX-126: restores this user's deleted conversation with this id; one conditional write, 404 when there is none. */
+  restoreUserConversation(conversationId: string, userId: string, tx?: DbTransaction) {
+    return this.refuseDeleted(() =>
+      (tx ?? this.prisma).conversation.update({
+        where: { id: conversationId, userId, deletedAt: { not: null } },
+        data: { deletedAt: null, deletedById: null },
+        select: { id: true, title: true },
+      }),
+    );
+  }
+
   /** This user's `take` most recently updated conversations, each with how many user messages it has. */
   listRecentConversationsWithUserMessageCount(
     userId: string,

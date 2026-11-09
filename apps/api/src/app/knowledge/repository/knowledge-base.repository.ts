@@ -85,6 +85,48 @@ export class KnowledgeBaseRepository {
     );
   }
 
+  /** RNX-126: this user's deleted personal knowledge bases (no workspace base), newest-deleted first, `take` at most. */
+  listDeletedPersonalKnowledgeBases(userId: string, take: number, tx?: DbTransaction) {
+    return (tx ?? this.prisma).knowledgeBase.findMany({
+      where: { userId, workspaceId: null, deletedAt: { not: null } },
+      select: { id: true, name: true, deletedAt: true },
+      orderBy: { deletedAt: "desc" },
+      take,
+    });
+  }
+
+  /** RNX-126: restores this user's deleted personal knowledge base with this id; one conditional write, 404 when there is none. */
+  restorePersonalKnowledgeBase(id: string, userId: string, tx?: DbTransaction) {
+    return this.refuseDeleted(() =>
+      (tx ?? this.prisma).knowledgeBase.update({
+        where: { id, userId, workspaceId: null, deletedAt: { not: null } },
+        data: { deletedAt: null, deletedById: null },
+        select: { id: true, name: true },
+      }),
+    );
+  }
+
+  /** RNX-126: the deleted knowledge bases of this workspace, newest-deleted first, `take` at most. */
+  listDeletedWorkspaceKnowledgeBases(workspaceId: string, take: number, tx?: DbTransaction) {
+    return (tx ?? this.prisma).knowledgeBase.findMany({
+      where: { workspaceId, deletedAt: { not: null } },
+      select: { id: true, name: true, deletedAt: true },
+      orderBy: { deletedAt: "desc" },
+      take,
+    });
+  }
+
+  /** RNX-126: restores the deleted knowledge base with this id of this workspace; one conditional write, 404 when there is none. */
+  restoreWorkspaceKnowledgeBase(id: string, workspaceId: string, tx?: DbTransaction) {
+    return this.refuseDeleted(() =>
+      (tx ?? this.prisma).knowledgeBase.update({
+        where: { id, workspaceId, deletedAt: { not: null } },
+        data: { deletedAt: null, deletedById: null },
+        select: { id: true, name: true },
+      }),
+    );
+  }
+
   /** The system knowledge base, active or not, if there is one. */
   findSystemKnowledgeBase(tx?: DbTransaction) {
     return (tx ?? this.prisma).knowledgeBase.findFirst({

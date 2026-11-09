@@ -18,6 +18,9 @@ import {
   WhatsappChannelConfigSchema,
 } from "../dto/agent-chat.dto";
 import { slugify } from "../../../common/utils/slugify";
+import { withPurgeAt } from "../../../common/utils/with-purge-at";
+import { DELETED_LIST_LIMIT } from "../../../common/config/deleted-list-limit";
+import { pickFreeSlug } from "../utils/pick-free-slug";
 import { AgentRepository } from "../repository/agent.repository";
 import { AgentToolRepository } from "../repository/agent-tool.repository";
 import { AgentIntegrationRepository } from "../repository/agent-integration.repository";
@@ -130,6 +133,30 @@ export class AgentService {
       await this.agentIntegrations.deleteAgentIntegrations(agentId, tx);
     });
     return { deleted: true };
+  }
+
+  /** RNX-126: the deleted agents of the live workspaces this user owns, newest-deleted first, each with its purgeAt. */
+  async listDeleted(userId: string) {
+    const agents = await this.agents.listDeletedAgents(userId, DELETED_LIST_LIMIT);
+    return agents.map(withPurgeAt);
+  }
+
+  /**
+   * RNX-126: restores a deleted agent of a live workspace this user owns (404 otherwise: another's agent, a live one,
+   * one whose workspace is still deleted). Under create's lock, its creator's maxAgents is checked as create checks it
+   * (create's error). It gets its slug back, or the first free `<slug>-<n>` when a live agent of its creator holds it.
+   * Its integrations were erased at delete and stay gone (decision 25).
+   */
+  async restore(userId: string, agentId: string) {
+    return this.transactions.run(async (tx) => {
+      const agent = await this.agents.findDeletedOwnedAgent(agentId, userId, tx);
+      if (!agent) throw new NotFoundException("Agent not found");
+      await this.agents.acquireAccountEntitlementLock(agent.userId, tx);
+      await this.checkAgentLimit(agent.userId, tx);
+      const taken = await this.agents.listTakenSlugs(agent.userId, agent.slug, tx);
+      const slug = pickFreeSlug(agent.slug, taken.map((row) => row.slug));
+      return this.agents.restoreAgent(agentId, userId, slug, tx);
+    });
   }
 
   async publish(userId: string, agentId: string) {

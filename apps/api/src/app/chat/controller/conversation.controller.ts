@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Delete,
   Param,
   Query,
@@ -38,6 +39,12 @@ export class ConversationController {
     };
   }
 
+  /** RNX-126: the caller's deleted conversations with their purgeAt (declared before `:id`). */
+  @Get("deleted")
+  async listDeleted(@Req() req: any) {
+    return this.conversationService.listDeletedConversations(req.user.id);
+  }
+
   @Get(":id")
   async get(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
     const conversation = await this.conversationService.getConversation(
@@ -63,5 +70,12 @@ export class ConversationController {
     if (!deleted) {
       throw new NotFoundException("Conversation not found");
     }
+  }
+
+  /** RNX-126: restores the caller's deleted conversation (the owner only, as delete). */
+  @Post(":id/restore")
+  @HttpCode(200)
+  async restore(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.conversationService.restoreConversation(id, req.user.id);
   }
 }

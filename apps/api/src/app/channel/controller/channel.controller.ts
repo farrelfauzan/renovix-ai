@@ -101,6 +101,12 @@ export class ChannelController {
     return this.channelService.list(req.user.userId);
   }
 
+  /** RNX-126: the caller's deleted channels with their purgeAt (declared before `:id`). */
+  @Get("deleted")
+  async listDeleted(@Req() req: any) {
+    return this.channelService.listDeleted(req.user.userId);
+  }
+
   @Get(":id")
   async findById(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
     return this.channelService.findById(req.user.userId, id);
@@ -123,6 +129,13 @@ export class ChannelController {
   @HttpCode(204)
   async delete(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
     return this.channelService.delete(req.user.userId, id);
+  }
+
+  /** RNX-126: restores the caller's deleted channel (the owner only, as delete). */
+  @Post(":id/restore")
+  @HttpCode(200)
+  async restore(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.channelService.restore(req.user.userId, id);
   }
 
   // ─── Icon Upload ───

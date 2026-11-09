@@ -48,6 +48,12 @@ export class WorkspaceController {
     return this.workspaceService.list(req.user.userId);
   }
 
+  /** RNX-126: the caller's deleted workspaces (owner only) with their purgeAt (declared before `:id`). */
+  @Get("deleted")
+  async listDeleted(@Req() req: any) {
+    return this.workspaceService.listDeleted(req.user.userId);
+  }
+
   @Get(":id")
   async getById(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
     return this.workspaceService.getById(id, req.user.userId);
@@ -69,6 +75,13 @@ export class WorkspaceController {
   @Delete(":id")
   async archive(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
     return this.workspaceService.softDelete(id, req.user.userId);
+  }
+
+  /** RNX-126: the owner restores a deleted workspace with everything hidden with it. */
+  @Post(":id/restore")
+  @HttpCode(200)
+  async restore(@Param("id", ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.workspaceService.restore(id, req.user.userId);
   }
 
   // ─── Quota ──────────────────────────────────────────────────────────────────

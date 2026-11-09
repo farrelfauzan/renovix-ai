@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -192,6 +192,67 @@ export class AgentRepository {
       where: { id: agentId, deletedAt: { not: null } },
       select: { id: true },
     });
+  }
+
+  /**
+   * RNX-126: the deleted agents in the live workspaces this user owns, newest-deleted first, `take` at most. An agent of
+   * a deleted workspace is left out (its workspace is restored first).
+   */
+  listDeletedAgents(ownerId: string, take: number, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.findMany({
+      where: { deletedAt: { not: null }, workspace: { ownerId, deletedAt: null } },
+      select: { id: true, name: true, slug: true, deletedAt: true },
+      orderBy: { deletedAt: "desc" },
+      take,
+    });
+  }
+
+  /** RNX-126: the creator and slug of the deleted agent with this id, if it is in a live workspace this user owns. */
+  findDeletedOwnedAgent(agentId: string, ownerId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.findFirst({
+      where: { id: agentId, deletedAt: { not: null }, workspace: { ownerId, deletedAt: null } },
+      select: { userId: true, slug: true },
+    });
+  }
+
+  /**
+   * RNX-126: the slugs starting with `prefix` held in the slug key by this creator's live agents, those of a deleted
+   * workspace included (the empty `workspace` condition replaces the default filter's, as in findAgentBySlug).
+   */
+  listTakenSlugs(userId: string, prefix: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.findMany({
+      where: { userId, slug: { startsWith: prefix }, workspace: {} },
+      select: { slug: true },
+    });
+  }
+
+  /**
+   * RNX-126: the agents of this workspace that are not deleted themselves, whether the workspace is deleted or not (the
+   * empty `workspace` condition replaces the default filter's).
+   */
+  countUndeletedWorkspaceAgents(workspaceId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agent.count({ where: { workspaceId, workspace: {} } });
+  }
+
+  /**
+   * RNX-126: restores the deleted agent with this id in a live workspace this user owns, with this slug; one conditional
+   * write. 404 when there is no such deleted agent, 409 when a live agent of its creator took the slug meanwhile.
+   */
+  async restoreAgent(agentId: string, ownerId: string, slug: string, tx?: DbTransaction) {
+    try {
+      return await this.refuseDeleted(() =>
+        (tx ?? this.prisma).agent.update({
+          where: { id: agentId, deletedAt: { not: null }, workspace: { ownerId, deletedAt: null } },
+          data: { deletedAt: null, deletedById: null, slug },
+          select: { id: true, name: true, slug: true },
+        }),
+      );
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw new ConflictException("Another agent took this slug; try again");
+      }
+      throw err;
+    }
   }
 
   /** The workspace id of the agent with this id and whether it is a default workspace (RNX-117), if the agent exists. */

@@ -9,6 +9,11 @@ import type { CreateWorkspaceDto } from "../dto/create-workspace.dto";
 import type { UpdateWorkspaceDto } from "../dto/update-workspace.dto";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
 import { slugify } from "../../../common/utils/slugify";
+import { withPurgeAt } from "../../../common/utils/with-purge-at";
+import { DELETED_LIST_LIMIT } from "../../../common/config/deleted-list-limit";
+import { AgentRepository } from "../../agent/repository/agent.repository";
+import { EntitlementService } from "../../offers/service/entitlement.service";
+import { TransactionService } from "../../prisma/transaction.service";
 
 @Injectable()
 export class WorkspaceService {
@@ -16,6 +21,9 @@ export class WorkspaceService {
     private readonly quotaService: WorkspaceQuotaService,
     private readonly workspaces: WorkspaceRepository,
     private readonly workspaceMembers: WorkspaceMemberRepository,
+    private readonly agents: AgentRepository,
+    private readonly entitlements: EntitlementService,
+    private readonly transactions: TransactionService,
   ) {}
 
   private async generateUniqueSlug(
@@ -95,6 +103,33 @@ export class WorkspaceService {
     await this.requireRole(workspaceId, userId, ["owner"]);
 
     return this.workspaces.softDeleteWorkspace(workspaceId, userId);
+  }
+
+  /** RNX-126: the deleted workspaces this user owns, newest-deleted first, each with its purgeAt (a member sees none). */
+  async listDeleted(userId: string) {
+    const workspaces = await this.workspaces.listDeletedOwnedWorkspaces(userId, DELETED_LIST_LIMIT);
+    return workspaces.map(withPurgeAt);
+  }
+
+  /**
+   * RNX-126: the owner restores a deleted workspace; 404 for anyone else (a member included) or a live one. Only its
+   * own marker is cleared: the children hidden with it come back, a child deleted on its own stays deleted. D316: in
+   * one transaction under agent create's lock, refused as a whole with create's error when its agents not deleted on
+   * their own would take the owner over maxAgents.
+   */
+  async restore(workspaceId: string, userId: string) {
+    return this.transactions.run(async (tx) => {
+      const workspace = await this.workspaces.findDeletedOwnedWorkspace(workspaceId, userId, tx);
+      if (!workspace) throw new NotFoundException("Workspace not found");
+      await this.agents.acquireAccountEntitlementLock(userId, tx);
+      const returning = await this.agents.countUndeletedWorkspaceAgents(workspaceId, tx);
+      if (returning > 0) {
+        const owned = await this.agents.countAgentsByUser(userId, tx);
+        // requireLimit refuses `current` at or above the limit, as for one new agent: the last of `returning` is that one
+        await this.entitlements.requireLimit(userId, "maxAgents", owned + returning - 1, tx);
+      }
+      return this.workspaces.restoreWorkspace(workspaceId, userId, tx);
+    });
   }
 
   /**
