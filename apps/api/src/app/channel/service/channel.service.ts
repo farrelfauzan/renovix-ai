@@ -60,8 +60,8 @@ export class ChannelService {
       userId,
     );
     if (!channel) throw new NotFoundException("Channel not found");
-    // A channel that has a workspace is not deleted (RX-144): this 409 is the first answer, and the database
-    // refuses the delete as well (RNX-202: Workspace.channel onDelete: Restrict), which closes the gap between
+    // A channel that has a workspace is not deleted (RX-144): this 409 is the first answer, and the soft delete's own
+    // condition (no workspace, RNX-145; it was the foreign key of RNX-202 for the hard delete) closes the gap between
     // this read and the delete below.
     if (channel.workspace) {
       throw new ConflictException(
@@ -69,7 +69,8 @@ export class ChannelService {
       );
     }
 
-    await this.channels.deleteChannel(channelId);
+    // RNX-145: soft delete (deletedAt, deletedById); its rooms, messages, agent links and reminders stay
+    await this.channels.softDeleteChannel(channelId, userId);
     return { deleted: true };
   }
 

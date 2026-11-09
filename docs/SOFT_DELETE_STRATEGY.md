@@ -10,12 +10,16 @@ The goal is to make deletion safe, reversible, and predictable.
 
 ## What is built (RNX-124: agents)
 
-The rest of this page is the original proposal. For `Agent` it is built as follows; restore is RX-126/RNX-126, purge
-RX-127, and KnowledgeBase, Conversation and Channel are RX-145.
+The rest of this page is the original proposal. For `Agent` it is built as follows; restore is RX-126/RNX-126 and purge
+RX-127. KnowledgeBase, Conversation and Channel are built by RNX-145 (next section).
 
 - Schema: `agents.deleted_at` (timestamptz) and `agents.deleted_by_id` (the user who deleted it; a plain column, no
   foreign key to `users`). `status` keeps its `draft | active | archived` meaning; deletion is only `deletedAt`.
-  `reminders.deleted_by_id` was added next to the existing `reminders.deleted_at` (schema only).
+  `reminders.deleted_by_id` was added next to the existing `reminders.deleted_at`: `DELETE /reminders/:id` sets both
+  (and pauses the reminder).
+- Reminders of a deleted agent (`reminder.repository.ts`): the list, the read, the owner lookup of update and delete,
+  and the scheduler's due reminders all carry `agent: LIVE_AGENT`, so such a reminder is not listed, its routes answer
+  404 and it never fires. The reminder row is not changed, and it is back when the agent is.
 - Delete: `DELETE /agents/:id` (owner only, 204 as before) sets `deletedAt` and `deletedById` in one transaction with
   erasing the agent's `agent_integrations` rows (decision 25: a deleted agent keeps no credentials). Every other child
   row stays: tools, knowledge base links, channels (`agent_channels`), runs and messages, agent links, channel links.
@@ -33,6 +37,40 @@ RX-127, and KnowledgeBase, Conversation and Channel are RX-145.
 - Uniqueness: the slug key is a partial unique index, `agents_userId_slug_key` on `(userId, slug) WHERE deleted_at IS
   NULL`, so a deleted agent's slug can be used again at once (no tombstone suffix). Prisma leaves a partial index out
   of the client's unique keys, so the slug lookups use `findFirst`.
+
+## What is built (RNX-145: knowledge bases, conversations, channels)
+
+- Schema: `knowledge_bases`, `conversations` and `channels` each get `deleted_at` (timestamptz) and `deleted_by_id`
+  (the user who deleted it; a plain column, no foreign key to `users`). No data change and no new index.
+- Delete: `DELETE /v1/knowledge/bases/:id` and `DELETE /chat/portal/knowledge/:id` (a personal knowledge base),
+  `DELETE /channels/:channelId/workspace/knowledge/:kbId` (a workspace knowledge base, the workspace owner only),
+  `DELETE /conversations/:id` and `DELETE /chat/portal/conversations/:id`, and `DELETE /channels/:id` set
+  `deletedAt` and `deletedById`; the answers and the permission checks are as before (a channel with a workspace still
+  answers 409, RX-144, and the soft delete itself names `workspace: null`, where the hard delete had the foreign key of
+  RNX-202). Every child row stays: chunks, agent links (`agent_knowledge_bases`), messages, rooms, room
+  messages, the channel's agent links and its reminders. Usage rows are not touched.
+- Reads: the three models are on `PrismaService`'s default filter (`VISIBLE_ONLY`), so every top-level read hides a
+  deleted row; the routes then answer 404 as for a row that does not exist, and the lists and their totals (the
+  conversation list `total`, the knowledge base lists) leave it out. The writes by id (`softDeleteKnowledgeBase`,
+  `updateKnowledgeBase`, `softDeleteConversation`, `updateConversationTitle`, `softDeleteChannel`, `updateChannel`)
+  name `deletedAt: null` themselves and answer 404 on a deleted row.
+- Reads the filter does not reach carry the condition by hand, each with a test:
+  - the vector search SQL: `kb.deleted_at IS NULL` in the personal search and the search of one base
+    (`knowledge-chunk.repository.ts`, which now joins `knowledge_bases` for the one-base search) and in the workspace
+    search (`workspace-knowledge.service.ts`);
+  - an agent's knowledge base links, `where: { knowledgeBase: LIVE_KNOWLEDGE_BASE }`: the agent list and read, the
+    agent of a run, the agent returned after a change (`agent.repository.ts`), the link lookup of the unlink route
+    (`agent-knowledge-base.repository.ts`), the agent of a channel room chat (`channel-agent.repository.ts`) and of
+    the WhatsApp webhook (`agent-channel.repository.ts`);
+  - reminders, `channel: LIVE_CHANNEL` (`reminder.repository.ts`): the list, the read, the owner lookup of update
+    and delete, and the scheduler's due reminders.
+- A live row that points at a deleted knowledge base or channel through a required relation (an agent's knowledge
+  base link, a reminder of the channel) is left out whole, with no "deleted" mark, and comes back if the marker is
+  cleared.
+- A knowledge base or channel of a deleted workspace (RNX-125) is not on the default filter; it stays hidden as
+  RNX-125 hides it: the channel's workspace routes (its knowledge bases, their chunks and search) answer 404, the
+  personal routes and the personal search serve only bases without a workspace, and the workspace's agents are
+  hidden, so a room chat with them and their reminders are refused.
 
 ## Why Soft Delete
 

@@ -3,6 +3,7 @@ import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
 import { LIVE_AGENT } from "../../agent/config/live-agent";
+import { LIVE_CHANNEL } from "../../channel/config/live-channel";
 import { RemindersTableMissingException } from "../errors/reminders-table-missing.exception";
 
 /** The agent and channel a reminder is returned with in the list and the read. */
@@ -33,29 +34,32 @@ export class ReminderRepository {
   }
 
   /**
-   * This user's reminders that are not deleted, of a live agent (RNX-124), newest first, each with its agent and
-   * channel.
+   * This user's reminders that are not deleted, of a live agent (RNX-124) and a live channel (RNX-145), newest first,
+   * each with its agent and channel.
    */
   listUserReminders(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).reminder.findMany({
-      where: { userId, deletedAt: null, agent: LIVE_AGENT },
+      where: { userId, deletedAt: null, agent: LIVE_AGENT, channel: LIVE_CHANNEL },
       orderBy: { createdAt: "desc" },
       include: REMINDER_RELATIONS,
     });
   }
 
-  /** The reminder with this id if it is this user's, not deleted and of a live agent (RNX-124), with its agent and channel. */
+  /**
+   * The reminder with this id if it is this user's, not deleted and of a live agent (RNX-124) and a live channel
+   * (RNX-145), with its agent and channel.
+   */
   findUserReminderWithRelations(userId: string, reminderId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).reminder.findFirst({
-      where: { id: reminderId, userId, deletedAt: null, agent: LIVE_AGENT },
+      where: { id: reminderId, userId, deletedAt: null, agent: LIVE_AGENT, channel: LIVE_CHANNEL },
       include: REMINDER_RELATIONS,
     });
   }
 
-  /** The reminder with this id if it is this user's, not deleted and of a live agent (RNX-124). */
+  /** The reminder with this id if it is this user's, not deleted and of a live agent (RNX-124) and a live channel (RNX-145). */
   findUserReminder(userId: string, reminderId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).reminder.findFirst({
-      where: { id: reminderId, userId, deletedAt: null, agent: LIVE_AGENT },
+      where: { id: reminderId, userId, deletedAt: null, agent: LIVE_AGENT, channel: LIVE_CHANNEL },
     });
   }
 
@@ -68,9 +72,9 @@ export class ReminderRepository {
   }
 
   /**
-   * The active, not deleted reminders of a live agent (RNX-124) whose next fire time has come, earliest first, at
-   * most `limit`, each with its agent (and the agent's enabled tools) and its channel. The missing table (Prisma P2021) becomes
-   * `RemindersTableMissingException`.
+   * The active, not deleted reminders of a live agent (RNX-124) and a live channel (RNX-145) whose next fire time has
+   * come, earliest first, at most `limit`, each with its agent (and the agent's enabled tools) and its channel. The
+   * missing table (Prisma P2021) becomes `RemindersTableMissingException`.
    */
   async findDueReminders(limit: number, tx?: DbTransaction) {
     try {
@@ -79,6 +83,7 @@ export class ReminderRepository {
           status: "ACTIVE",
           deletedAt: null,
           agent: LIVE_AGENT,
+          channel: LIVE_CHANNEL,
           nextRunAt: { lte: new Date() },
         },
         orderBy: { nextRunAt: "asc" },

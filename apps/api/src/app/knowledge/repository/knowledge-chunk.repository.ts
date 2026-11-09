@@ -97,7 +97,7 @@ export class KnowledgeChunkRepository {
 
   /**
    * The `topK` chunks of this base closest to `embedding` (cosine distance), closest first; chunks without an
-   * embedding, or embedded by another model than `embeddingModel`, are left out.
+   * embedding, or embedded by another model than `embeddingModel`, are left out, and so is a deleted base (RNX-145).
    */
   searchChunksInKnowledgeBase(
     knowledgeBaseId: string,
@@ -116,7 +116,9 @@ export class KnowledgeChunkRepository {
             kc."knowledgeBaseId" AS knowledge_base_id,
             1 - (kc.embedding <=> ${vector}::vector) AS similarity
           FROM "knowledge_chunks" kc
+          INNER JOIN "knowledge_bases" kb ON kb.id = kc."knowledgeBaseId"
           WHERE kc."knowledgeBaseId" = ${knowledgeBaseId}
+            AND kb.deleted_at IS NULL
             AND kc.embedding_model = ${embeddingModel}
             AND kc.embedding IS NOT NULL
           ORDER BY kc.embedding <=> ${vector}::vector
@@ -125,7 +127,7 @@ export class KnowledgeChunkRepository {
   }
 
   /**
-   * The `topK` chunks closest to `embedding` across this user's active personal bases (no workspace base),
+   * The `topK` chunks closest to `embedding` across this user's active, live (RNX-145) personal bases (no workspace base),
    * closest first; chunks without an embedding, or embedded by another model than `embeddingModel`, are left out.
    */
   searchPersonalChunks(
@@ -149,6 +151,7 @@ export class KnowledgeChunkRepository {
         WHERE kb."userId" = ${userId}
           AND kb.workspace_id IS NULL
           AND kb.active = true
+          AND kb.deleted_at IS NULL
           AND kc.embedding_model = ${embeddingModel}
           AND kc.embedding IS NOT NULL
         ORDER BY kc.embedding <=> ${vector}::vector

@@ -277,6 +277,11 @@ model Conversation {
   createdAt DateTime  @default(now()) @db.Timestamptz()
   updatedAt DateTime  @updatedAt @db.Timestamptz()
   messages  Message[]
+  /// RNX-145: set when the conversation is deleted; the row and its messages stay, every read hides it (PrismaService
+  /// default filter).
+  deletedAt   DateTime?  @map("deleted_at") @db.Timestamptz()
+  /// RNX-145: the user who deleted it. A plain column, no relation to User.
+  deletedById String?    @map("deleted_by_id")
 
   @@index([userId])
   @@index([updatedAt])
@@ -312,6 +317,11 @@ model KnowledgeBase {
   updatedAt   DateTime         @updatedAt @db.Timestamptz()
   chunks      KnowledgeChunk[]
   agentKnowledgeBases AgentKnowledgeBase[]
+  /// RNX-145: set when the knowledge base is deleted; the row and its chunks stay, every read hides it (PrismaService
+  /// default filter).
+  deletedAt   DateTime?        @map("deleted_at") @db.Timestamptz()
+  /// RNX-145: the user who deleted it. A plain column, no relation to User.
+  deletedById String?          @map("deleted_by_id")
 
   @@index([userId])
   @@index([workspaceId])
@@ -664,6 +674,11 @@ model Channel {
   workspace Workspace?
   createdAt DateTime       @default(now()) @db.Timestamptz()
   updatedAt DateTime       @updatedAt @db.Timestamptz()
+  /// RNX-145: set when the channel is deleted; the row, its rooms, messages and agent links stay, every read hides it
+  /// (PrismaService default filter).
+  deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz()
+  /// RNX-145: the user who deleted it. A plain column, no relation to User.
+  deletedById String?      @map("deleted_by_id")
 
   @@index([userId])
   @@map("channels")

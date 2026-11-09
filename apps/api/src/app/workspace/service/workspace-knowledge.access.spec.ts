@@ -2,6 +2,7 @@ import { WorkspaceKnowledgeService } from "./workspace-knowledge.service";
 import type { PrismaService } from "../../prisma/prisma.service";
 import type { EmbeddingService } from "../../knowledge/service/embedding.service";
 import type { S3Service } from "../../knowledge/service/s3.service";
+import type { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-base.repository";
 import type { KnowledgeChunkRepository } from "../../knowledge/repository/knowledge-chunk.repository";
 import type { WorkspaceMemberRepository } from "../repository/workspace-member.repository";
 import type { WorkspaceQuotaService } from "./workspace-quota.service";
@@ -21,6 +22,7 @@ describe("RNX-116: canSearchKnowledgeBase on a personal base", () => {
     {} as KnowledgeChunkRepository,
     { findMembership } as unknown as WorkspaceMemberRepository,
     { isCollaborationAllowed } as unknown as WorkspaceQuotaService,
+    {} as KnowledgeBaseRepository,
   );
   const alicesPersonalBase = { userId: "alice", workspaceId: null };
 

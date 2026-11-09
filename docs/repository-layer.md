@@ -191,13 +191,13 @@ Step "prisma imports" of `bun run check` (`scripts/check-prisma-imports.ts`).
 
 ## PrismaService and the default filter (decision 26, D93)
 
-Decision 26: the soft delete filter lives in `prisma.service.ts`. RX-132 puts the mechanism in place with no model on it; RX-177 added `Provider`, RNX-124 added `Agent`, RNX-125 added `Workspace`, `UserMemory` and `WorkspaceMemory`.
+Decision 26: the soft delete filter lives in `prisma.service.ts`. RX-132 puts the mechanism in place with no model on it; RX-177 added `Provider`, RNX-124 added `Agent`, RNX-125 added `Workspace`, `UserMemory` and `WorkspaceMemory`, RNX-145 added `KnowledgeBase`, `Conversation` and `Channel`.
 
 ### How PrismaService is provided
 
 - `PrismaService` (`apps/api/src/app/prisma/prisma.service.ts`) is an abstract class: the injection token and the type, never constructed. `PrismaModule` provides the client that `PrismaService.create()` builds: a `PrismaClient` with the query extension that adds the default condition, and with the connect and disconnect hooks added as a client extension.
 - Nothing that injects it changed: the 40 files that still import it, the 10 `$transaction` uses in 8 files, the test factories and `resetDatabase`.
-- The map of models holds `Provider` (`deletedAt: null`, RX-177), `Agent` (`deletedAt: null`, RNX-124; and `workspace: { deletedAt: null }`, RNX-125), `Workspace` and `UserMemory` (`deletedAt: null`, RNX-125) and `WorkspaceMemory` (`deletedAt: null, workspace: { deletedAt: null }`, RNX-125); RX-145 adds the others (`VISIBLE_ONLY`). A relation filter, a nested read or a `_count` of agents names `LIVE_AGENT` (`agent/config/live-agent.ts`). `create()` takes the map as a parameter only so the database test can put a model on it.
+- The map of models holds `Provider` (`deletedAt: null`, RX-177), `Agent` (`deletedAt: null`, RNX-124; and `workspace: { deletedAt: null }`, RNX-125), `Workspace` and `UserMemory` (`deletedAt: null`, RNX-125) and `WorkspaceMemory` (`deletedAt: null, workspace: { deletedAt: null }`, RNX-125), `KnowledgeBase`, `Conversation` and `Channel` (`deletedAt: null`, RNX-145) (`VISIBLE_ONLY`). A relation filter, a nested read or a `_count` of agents names `LIVE_AGENT` (`agent/config/live-agent.ts`); of knowledge bases `LIVE_KNOWLEDGE_BASE` (`knowledge/config/live-knowledge-base.ts`); of channels `LIVE_CHANNEL` (`channel/config/live-channel.ts`). `create()` takes the map as a parameter only so the database test can put a model on it.
 - Why this form (measured): a class that extends `PrismaClient` and calls `$extends` inside itself is injected without the extension; a factory alone gives the extension but Nest then calls no lifecycle hook and connections stay open; a constructor that returns the extended client works but rests on Prisma internals.
 - A direct form would get a client without the filter, so it does not compile: `new PrismaService()` (TS2511), `providers: [PrismaService]` and `useClass: PrismaService` (TS2322).
 

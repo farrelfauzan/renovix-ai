@@ -2,6 +2,7 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ConversationController } from "./conversation.controller";
 import { ConversationService } from "../service/conversation.service";
+import { ConversationRepository } from "../repository/conversation.repository";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { DocumentService } from "../../document/service/document.service";
@@ -15,12 +16,16 @@ import { createUser, createApiKey, testApiKey } from "../../../../test/factories
 // into repositories: a caller who has a conversation of their own (so only the conversation id
 // refuses), the list's order, paging and fields, and a stored document on a message. Real controller
 // and ConversationService, test database; the document store is a stub.
+// RNX-145: DELETE /conversations/:id soft-deletes (deletedAt, deletedById); the row, its messages and the user's usage
+// rows stay; it is gone from the list, its total and every route, and comes back once the marker is cleared. `all` is
+// a client with nothing on PrismaService's default filter map, to read the rows as they are.
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 
 describe("RX-136: conversation routes (/conversations, API key, test database)", () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let app: NestFastifyApplication;
+  let all: PrismaService;
   const documentService = { getDocumentFromStorage: jest.fn() };
 
   beforeAll(async () => {
@@ -34,6 +39,7 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
       ],
     }));
     app = await createFastifyApp(moduleRef);
+    all = PrismaService.create({});
   });
 
   beforeEach(async () => {
@@ -41,7 +47,10 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
     documentService.getDocumentFromStorage.mockReset();
   });
 
-  afterAll(() => app?.close());
+  afterAll(async () => {
+    await app?.close();
+    await all?.$disconnect();
+  });
 
   const key = (apiKey: string) => ({ authorization: `Bearer ${apiKey}` });
 
@@ -140,6 +149,93 @@ describe("RX-136: conversation routes (/conversations, API key, test database)",
       format: "pdf",
       filename: "a.pdf",
       key: "documents/a.pdf",
+    });
+  });
+
+  describe("RNX-145: a deleted conversation", () => {
+    const call = (method: "GET" | "DELETE", url: string, who = "alice") =>
+      app.inject({ method, url, headers: key(testApiKey(who)) });
+
+    /** Alice's two conversations (one with a message), a usage row of hers, and the rows as they are. */
+    const seed = async () => {
+      const s = await setup();
+      const other = await prisma.conversation.create({ data: { userId: s.alice.id, model: "m2", title: "Other" } });
+      await prisma.usageLog.create({
+        data: { userId: s.alice.id, model: "test-model", inputTokens: 3, outputTokens: 4, cost: 0.01, latencyMs: 5, provider: "fake" },
+      });
+      return { ...s, other };
+    };
+    const readRows = async () => ({
+      conversations: await all.conversation.findMany({ orderBy: { id: "asc" } }),
+      messages: await all.message.findMany({ orderBy: { id: "asc" } }),
+      usage: await all.usageLog.findMany({ orderBy: { id: "asc" } }),
+    });
+
+    it("RNX-145 AC1, AC9: DELETE answers 204 with no body as before; the row gets deletedAt and deletedById, its messages and the usage rows stay", async () => {
+      const s = await seed();
+      const before = await readRows();
+
+      const res = await call("DELETE", `/conversations/${s.aliceConversation.id}`);
+
+      expect([res.statusCode, res.body]).toEqual([204, ""]);
+      const after = await readRows();
+      expect(after.conversations.find((c) => c.id === s.aliceConversation.id)).toEqual({
+        ...before.conversations.find((c) => c.id === s.aliceConversation.id),
+        deletedAt: expect.any(Date),
+        deletedById: s.alice.id,
+        updatedAt: expect.any(Date),
+      });
+      expect(after.conversations.filter((c) => c.id !== s.aliceConversation.id)).toEqual(
+        before.conversations.filter((c) => c.id !== s.aliceConversation.id),
+      );
+      expect(after.messages).toEqual(before.messages);
+      expect(after.usage).toEqual(before.usage);
+    });
+
+    it("RNX-145 AC2, AC6: after the delete it is not listed or counted in the total, GET and DELETE answer 404 and change nothing; back once the marker is cleared", async () => {
+      const s = await seed();
+      await call("DELETE", `/conversations/${s.aliceConversation.id}`);
+      const before = await readRows();
+
+      const list = await call("GET", "/conversations");
+      const read = await call("GET", `/conversations/${s.aliceConversation.id}`);
+      const again = await call("DELETE", `/conversations/${s.aliceConversation.id}`);
+
+      expect(list.json()).toMatchObject({ total: 1, data: [{ id: s.other.id }] });
+      expect([read.statusCode, again.statusCode]).toEqual([404, 404]);
+      expect(read.body).not.toContain("Alice's secret");
+      expect(await readRows()).toEqual(before);
+      await all.conversation.updateMany({ where: { id: s.aliceConversation.id }, data: { deletedAt: null, deletedById: null } });
+      const listBack = await call("GET", "/conversations");
+      const readBack = await call("GET", `/conversations/${s.aliceConversation.id}`);
+      expect(listBack.json().total).toBe(2);
+      expect(readBack.statusCode).toBe(200);
+      expect(readBack.json().messages).toEqual([expect.objectContaining({ content: "Alice's secret" })]);
+    });
+
+    it("RNX-145 AC8: another user's DELETE answers 404 and marks nothing", async () => {
+      const s = await seed();
+      const before = await readRows();
+
+      const res = await call("DELETE", `/conversations/${s.aliceConversation.id}`, "bob");
+
+      expect(res.statusCode).toBe(404);
+      expect(await readRows()).toEqual(before);
+    });
+
+    it("RNX-145: the writes by id name deletedAt: null: a second soft delete and a title update of a deleted conversation answer 404 and change nothing; the title is written again once the marker is cleared", async () => {
+      const s = await seed();
+      const conversations = moduleRef.get(ConversationRepository);
+      await conversations.softDeleteConversation(s.aliceConversation.id, s.alice.id);
+      const before = await readRows();
+
+      await expect(conversations.softDeleteConversation(s.aliceConversation.id, s.bob.id)).rejects.toMatchObject({ status: 404 });
+      await expect(conversations.updateConversationTitle(s.aliceConversation.id, "Renamed")).rejects.toMatchObject({ status: 404 });
+
+      expect(await readRows()).toEqual(before);
+      await all.conversation.updateMany({ where: { id: s.aliceConversation.id }, data: { deletedAt: null, deletedById: null } });
+      await conversations.updateConversationTitle(s.aliceConversation.id, "Renamed");
+      expect(await all.conversation.findUnique({ where: { id: s.aliceConversation.id } })).toMatchObject({ title: "Renamed" });
     });
   });
 });

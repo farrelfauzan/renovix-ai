@@ -391,7 +391,7 @@ export class WorkspaceChannelController {
       "owner",
       "admin",
     ]);
-    await this.knowledgeService.deleteKnowledgeBase(workspace.id, kbId);
+    await this.knowledgeService.deleteKnowledgeBase(workspace.id, kbId, req.user.userId);
     return { deleted: true };
   }
 

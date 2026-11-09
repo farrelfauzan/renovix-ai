@@ -2,6 +2,7 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ChannelController } from "./channel.controller";
 import { ChannelService } from "../service/channel.service";
+import { ChannelRepository } from "../repository/channel.repository";
 import { ChannelChatService } from "../service/channel-chat.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
@@ -17,7 +18,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -35,6 +36,10 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // changed; the link row itself stays and is shown again once the test clears the agent's deletedAt. Its channel
 // messages (ChannelMessage.agentId) stay. The agent is marked deleted straight in the database here
 // (agent.soft-delete.spec.ts covers DELETE /agents/:id). Real controller and services, test database, fake provider.
+// RNX-145: DELETE /channels/:id soft-deletes the channel (deletedAt, deletedById, 204 with no body as before); its
+// agent links, rooms, messages and reminders stay. Every channel route then answers 404 and changes nothing, it is not
+// listed, its room chat is refused before the SSE headers; all of it is back once the marker is cleared. `all` is a
+// client with nothing on PrismaService's default filter map, to read the rows as they are.
 jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }));
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
@@ -45,6 +50,7 @@ describe("RNX-124: a deleted agent in a channel (Fastify, test database, fake pr
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let app: NestFastifyApplication;
+  let all: PrismaService;
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule(
@@ -84,6 +90,7 @@ describe("RNX-124: a deleted agent in a channel (Fastify, test database, fake pr
       (b) => withFakeProvider(b, fake),
     ));
     app = await createFastifyApp(moduleRef);
+    all = PrismaService.create({});
   });
 
   beforeEach(async () => {
@@ -101,6 +108,7 @@ describe("RNX-124: a deleted agent in a channel (Fastify, test database, fake pr
 
   afterAll(async () => {
     await app?.close();
+    await all?.$disconnect();
   });
 
   /** A funded user's channel with agent A and agent B, a session cookie, and one stored room message of A. */
@@ -234,6 +242,151 @@ describe("RNX-124: a deleted agent in a channel (Fastify, test database, fake pr
 
       expect(hidden.map(agentIdsOf)).toEqual([[b.id], [b.id]]);
       expect(shown.map(agentIdsOf)).toEqual([[a.id, b.id].sort(), [a.id, b.id].sort()]);
+    });
+  });
+
+  describe("RNX-145: a deleted channel", () => {
+    /** Every row a channel route could change, read as they are (deleted ones included). */
+    const readRows = async () => ({
+      channels: await all.channel.findMany({ orderBy: { id: "asc" } }),
+      links: await all.channelAgent.findMany({ orderBy: { id: "asc" } }),
+      rooms: await all.channelChatRoom.findMany({ orderBy: { id: "asc" } }),
+      messages: await all.channelMessage.findMany({ orderBy: { id: "asc" } }),
+      reminders: await all.reminder.findMany({ orderBy: { id: "asc" } }),
+      reservations: await all.creditReservation.count(),
+      ledgerEntries: await all.creditLedgerEntry.count(),
+    });
+    /** The seed plus a reminder in the channel's room. */
+    const seedWithReminder = async () => {
+      const s = await seed();
+      const room = await prisma.channelChatRoom.findFirstOrThrow({ where: { channelId: s.channel.id } });
+      await prisma.reminder.create({
+        data: { userId: s.user.id, agentId: s.a.id, channelId: s.channel.id, chatRoomId: room.id, prompt: "Ping", cronExpression: "0 8 * * *", nextRunAt: new Date() },
+      });
+      return s;
+    };
+    const deleteChannel = (channelId: string, session: { cookie: string }) =>
+      app.inject({ method: "DELETE", url: `/channels/${channelId}`, headers: session });
+    const clearChannelMarker = (channelId: string) =>
+      all.channel.updateMany({ where: { id: channelId }, data: { deletedAt: null, deletedById: null } });
+
+    it("RNX-145 AC1: DELETE answers 204 with no body as before; the row gets deletedAt and deletedById, its links, rooms, messages and reminders stay", async () => {
+      const { user, channel, session } = await seedWithReminder();
+      const before = await readRows();
+
+      const res = await deleteChannel(channel.id, session);
+
+      expect([res.statusCode, res.body]).toEqual([204, ""]);
+      const after = await readRows();
+      expect(after.channels).toEqual([
+        { ...before.channels[0], deletedAt: expect.any(Date), deletedById: user.id, updatedAt: expect.any(Date) },
+      ]);
+      expect({ ...after, channels: [] }).toEqual({ ...before, channels: [] });
+    });
+
+    it("RNX-145 AC2: after the delete it is not listed; read, update and delete again answer 404 and change nothing; back once the marker is cleared", async () => {
+      const { channel, session } = await seedWithReminder();
+      await deleteChannel(channel.id, session);
+      const before = await readRows();
+
+      const list = await app.inject({ method: "GET", url: "/channels", headers: session });
+      const read = await app.inject({ method: "GET", url: `/channels/${channel.id}`, headers: session });
+      const update = await app.inject({ method: "PATCH", url: `/channels/${channel.id}`, headers: session, payload: { name: "Renamed" } });
+      const again = await deleteChannel(channel.id, session);
+
+      expect(list.json()).toEqual([]);
+      expect([read.statusCode, update.statusCode, again.statusCode]).toEqual([404, 404, 404]);
+      expect(await readRows()).toEqual(before);
+      await clearChannelMarker(channel.id);
+      const listBack = await app.inject({ method: "GET", url: "/channels", headers: session });
+      const readBack = await app.inject({ method: "GET", url: `/channels/${channel.id}`, headers: session });
+      expect(listBack.json().map((c: { id: string }) => c.id)).toEqual([channel.id]);
+      expect(readBack.statusCode).toBe(200);
+    });
+
+    it.each([
+      ["read its room messages", "GET", "messages"],
+      ["clear its room messages", "DELETE", "messages"],
+      ["unlink an agent", "DELETE", ""],
+    ] as const)("RNX-145 AC4: %s → 404; nothing changes", async (_label, method, suffix) => {
+      const { a, channel, session } = await seedWithReminder();
+      await deleteChannel(channel.id, session);
+      const before = await readRows();
+
+      const res = await app.inject({
+        method,
+        url: `/channels/${channel.id}/agents/${a.id}${suffix ? `/${suffix}` : ""}`,
+        headers: session,
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.body).not.toContain("Earlier");
+      expect(await readRows()).toEqual(before);
+    });
+
+    it("RNX-145 AC4: adding an agent to it → 404, no link added", async () => {
+      const { user, channel, session } = await seedWithReminder();
+      const c = await createAgent(prisma, { userId: user.id, name: "Agent C" });
+      await deleteChannel(channel.id, session);
+      const before = await readRows();
+
+      const res = await app.inject({ method: "POST", url: `/channels/${channel.id}/agents`, headers: session, payload: { agentId: c.id } });
+
+      expect(res.statusCode).toBe(404);
+      expect(await readRows()).toEqual(before);
+    });
+
+    it("RNX-145 AC4: a room chat message → HTTP 404 before the SSE headers; no model call, message, reservation or ledger entry. Control: with the marker cleared it runs (200 SSE)", async () => {
+      const { a, channel, session } = await seedWithReminder();
+      await deleteChannel(channel.id, session);
+      const before = await readRows();
+
+      const res = await postChat(channel.id, a.id, session);
+
+      expect([res.statusCode, res.contentType]).toEqual([404, expect.stringContaining("application/json")]);
+      expect(fake.requests).toHaveLength(0);
+      expect(await readRows()).toEqual(before);
+      await assertCreditLedgerInvariants(prisma);
+      await clearChannelMarker(channel.id);
+      fake.enqueue({ content: "none" }, { content: "Hello there", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+      const back = await postChat(channel.id, a.id, session);
+      expect([back.statusCode, back.contentType]).toEqual([200, "text/event-stream"]);
+    });
+
+    it("RNX-145 AC8: another user's DELETE answers 404 and marks nothing", async () => {
+      const { channel } = await seedWithReminder();
+      const mallory = await createUser(prisma);
+      const before = await readRows();
+
+      const res = await deleteChannel(channel.id, asSessionUser(mallory));
+
+      expect(res.statusCode).toBe(404);
+      expect(await readRows()).toEqual(before);
+    });
+
+    it("RNX-145: the writes by id name deletedAt: null: a second soft delete and an update of a deleted channel answer 404 and change nothing", async () => {
+      const { user, channel } = await seedWithReminder();
+      const channels = moduleRef.get(ChannelRepository);
+      await channels.softDeleteChannel(channel.id, user.id);
+      const before = await readRows();
+
+      await expect(channels.softDeleteChannel(channel.id, "someone-else")).rejects.toMatchObject({ status: 404 });
+      await expect(channels.updateChannel(channel.id, { name: "Renamed" })).rejects.toMatchObject({ status: 404 });
+
+      expect(await readRows()).toEqual(before);
+    });
+
+    it("RNX-145 (RX-144, RNX-202): the soft delete itself refuses a channel that has a workspace (the read-then-delete race): 404, no marker; the channel without one is deleted (control)", async () => {
+      const { user, channel } = await seedWithReminder();
+      const plain = await prisma.channel.create({ data: { userId: user.id, name: "Plain" } });
+      await createWorkspace(prisma, { ownerId: user.id, channelId: channel.id });
+      const channels = moduleRef.get(ChannelRepository);
+
+      await expect(channels.softDeleteChannel(channel.id, user.id)).rejects.toMatchObject({ status: 404 });
+      await channels.softDeleteChannel(plain.id, user.id);
+
+      expect(await all.channel.findUnique({ where: { id: channel.id } })).toMatchObject({ deletedAt: null, deletedById: null });
+      expect(await all.channel.findUnique({ where: { id: plain.id } })).toMatchObject({ deletedById: user.id });
     });
   });
 });
