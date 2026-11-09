@@ -2,11 +2,12 @@ import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LIVE_AGENT } from "../../agent/config/live-agent";
 
 /** The live agents (RNX-124) a channel is returned with after a create and an update, and in the list. */
 const CHANNEL_AGENTS = {
   agents: {
-    where: { agent: { deletedAt: null } },
+    where: { agent: LIVE_AGENT },
     include: {
       agent: {
         select: {
@@ -54,7 +55,7 @@ export class ChannelRepository {
       orderBy: { createdAt: "desc" },
       include: {
         ...CHANNEL_AGENTS,
-        _count: { select: { agents: { where: { agent: { deletedAt: null } } } } },
+        _count: { select: { agents: { where: { agent: LIVE_AGENT } } } },
       },
     });
   }
@@ -76,7 +77,7 @@ export class ChannelRepository {
       where: { id: channelId, userId },
       include: {
         agents: {
-          where: { agent: { deletedAt: null } },
+          where: { agent: LIVE_AGENT },
           include: {
             agent: {
               select: {

@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LIVE_AGENT } from "../config/live-agent";
 
 /** The queries on `agent_channels` (RX-133). Every method takes the transaction as its optional last argument. */
 @Injectable()
@@ -25,7 +26,7 @@ export class AgentChannelRepository {
         channelType: "whatsapp",
         status: "active",
         config: { path: ["phoneNumber"], equals: phoneNumber },
-        agent: { deletedAt: null },
+        agent: LIVE_AGENT,
       },
       include: {
         agent: {

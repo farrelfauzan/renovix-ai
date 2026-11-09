@@ -72,16 +72,14 @@ export class UserMemoryService {
     });
   }
 
+  /** RNX-125: soft-deletes this user's memory (deletedAt, deletedById); false when it is not theirs or already deleted. */
   async delete(userId: string, id: string): Promise<boolean> {
-    const existing = await this.memories.findVisibleMemory(id, userId);
-    if (!existing) return false;
-
-    await this.memories.updateMemory(id, { status: "deleted" });
-    return true;
+    return (await this.memories.softDeleteMemory(id, userId)) === 1;
   }
 
+  /** RNX-125: soft-deletes every memory of this user; returns how many. */
   async clearAll(userId: string): Promise<number> {
-    return this.memories.markAllMemoriesDeleted(userId);
+    return this.memories.softDeleteAllMemories(userId);
   }
 
   async getRelevantMemories(

@@ -375,9 +375,13 @@ model UserMemory {
   lastConfirmedAt      DateTime  @default(now()) @db.Timestamptz()
   expiresAt            DateTime? @db.Timestamptz()
   isUserPinned         Boolean   @default(false) @map("is_user_pinned")
-  status               String    @default("active") // "active" | "archived" | "deleted"
+  status               String    @default("active") // "active" | "archived"
   createdAt            DateTime  @default(now()) @db.Timestamptz()
   updatedAt            DateTime  @updatedAt @db.Timestamptz()
+  /// RNX-125: set when the memory is deleted; the row stays and every read hides it (PrismaService default filter).
+  deletedAt            DateTime? @map("deleted_at") @db.Timestamptz()
+  /// RNX-125: the user who deleted it. A plain column, no relation to User.
+  deletedById          String?   @map("deleted_by_id")
 
   @@index([userId, status])
   @@index([userId, type])
@@ -723,7 +727,7 @@ model Workspace {
   slug        String
   description String?
   avatar      String?
-  status      String            @default("active") // "active" | "archived" | "deleted"
+  status      String            @default("active") // "active" | "archived"
   /// The account's default workspace (RNX-117): one per owner, created at sign-up, never archived.
   isDefault   Boolean           @default(false) @map("is_default")
   members     WorkspaceMember[]
@@ -735,6 +739,11 @@ model Workspace {
   mcpOAuthStates McpOAuthState[]
   createdAt   DateTime          @default(now()) @db.Timestamptz()
   updatedAt   DateTime          @updatedAt @db.Timestamptz()
+  /// RNX-125: set when the workspace is deleted; the row and its children stay, every read hides it (PrismaService
+  /// default filter) and its agents and memories with it.
+  deletedAt   DateTime?         @map("deleted_at") @db.Timestamptz()
+  /// RNX-125: the user who deleted it. A plain column, no relation to User.
+  deletedById String?           @map("deleted_by_id")
 
   @@unique([ownerId], where: raw("is_default"))
   @@index([ownerId, status])
@@ -794,9 +803,13 @@ model WorkspaceMemory {
   lastConfirmedAt DateTime  @default(now()) @map("last_confirmed_at") @db.Timestamptz()
   expiresAt       DateTime? @map("expires_at") @db.Timestamptz()
   isPinned        Boolean   @default(false) @map("is_pinned")
-  status          String    @default("active") // "active" | "archived" | "deleted"
+  status          String    @default("active") // "active" | "archived"
   createdAt       DateTime  @default(now()) @db.Timestamptz()
   updatedAt       DateTime  @updatedAt @db.Timestamptz()
+  /// RNX-125: set when the memory is deleted; the row stays and every read hides it (PrismaService default filter).
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz()
+  /// RNX-125: the user who deleted it. A plain column, no relation to User.
+  deletedById     String?   @map("deleted_by_id")
 
   @@index([workspaceId, status])
   @@index([workspaceId, type])

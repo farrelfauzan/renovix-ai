@@ -21,7 +21,7 @@ import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
-import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
+import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -157,6 +157,30 @@ describe("RNX-124: a deleted agent does not run and its runs are hidden (Fastify
 
     expect([res.statusCode, res.contentType]).toEqual([200, "text/event-stream"]);
     expect(res.body).toContain("Hello there");
+  });
+
+  it("RNX-125 AC8: an agent in a deleted workspace: owner chat (the SSE route) → 404 before the SSE headers, no model call or row written; absent from GET /agents and GET /agents/public, GET /agents/:id 404; back once the marker is cleared", async () => {
+    const { user, agent: other, session } = await seed();
+    const workspace = await createWorkspace(prisma, { ownerId: user.id });
+    const agent = await createAgent(prisma, { userId: user.id, workspaceId: workspace.id, status: "active", isPublic: true });
+    await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: new Date(), deletedById: user.id } });
+    const before = await writtenRows();
+    const ids = async (url: string) => (await app.inject({ method: "GET", url, headers: session })).json().map((a: { id: string }) => a.id);
+
+    const res = await postChat(agent.id, session);
+
+    expect([res.statusCode, res.contentType]).toEqual([404, expect.stringContaining("application/json")]);
+    expect(res.body).toContain("Agent not found");
+    expect(fake.requests).toHaveLength(0);
+    expect(await writtenRows()).toEqual(before);
+    expect(await ids("/agents")).toEqual([other.id]);
+    expect(await ids("/agents/public")).toEqual([]);
+    expect((await app.inject({ method: "GET", url: `/agents/${agent.id}`, headers: session })).statusCode).toBe(404);
+    await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: null, deletedById: null } });
+    expect((await ids("/agents")).sort()).toEqual([other.id, agent.id].sort());
+    fake.enqueue({ content: "none" }, { content: "Hello there", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+    const again = await postChat(agent.id, session);
+    expect([again.statusCode, again.contentType]).toEqual([200, "text/event-stream"]);
   });
 
   describe("RNX-124 AC4: the run routes of a deleted agent", () => {

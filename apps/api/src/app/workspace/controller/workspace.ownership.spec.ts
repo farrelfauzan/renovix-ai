@@ -152,15 +152,15 @@ describe("Workspaces: membership and roles (RX-15, Fastify, test database)", () 
       expect(after?.description).toBe(expected === 200 ? `changed by ${actor}` : null);
     });
 
-    it.each([...MEMBERS, ...NON_MEMBERS])("DELETE /workspaces/:id (archive) as %s (owner only)", async (actor) => {
+    it.each([...MEMBERS, ...NON_MEMBERS])("DELETE /workspaces/:id (RNX-125: soft delete) as %s (owner only)", async (actor) => {
       const { workspace, as } = await setup();
 
       const res = await app.inject({ method: "DELETE", url: `/workspaces/${workspace.id}`, headers: as(actor) });
 
       const expected = expectFor({ owner: 200 }, actor);
       expect(res.statusCode).toBe(expected);
-      const after = await prisma.workspace.findUnique({ where: { id: workspace.id } });
-      expect(after?.status).toBe(expected === 200 ? "archived" : "active");
+      const after = await prisma.workspace.findFirstOrThrow({ where: { id: workspace.id, deletedAt: expected === 200 ? { not: null } : null } });
+      expect([after.status, after.deletedById]).toEqual(["active", expected === 200 ? workspace.ownerId : null]);
     });
 
     it.each([...MEMBERS, ...NON_MEMBERS])("PATCH and DELETE a member (the viewer) as %s (owner only; RNX-260: an admin row is 403)", async (actor) => {

@@ -39,7 +39,7 @@ export class ChannelChatService {
    * The refusals of a channel chat message, checked before any work on the chat route (the SSE headers, the classifier
    * call, the message), reads only. RX-178 (review B1): the room access check (403/404), RNX-119: then the run policy
    * on this run (404 "Agent not found" when the caller may no longer run the agent), RNX-260: then 409 in an archived
-   * or deleted workspace, then the fixed 400
+   * workspace, then the fixed 400
    * (ModelUnavailableException) for a model that cannot be resolved, RNX-119: then 403 without an active subscription
    * (D192). RNX-200: then the run's own pre-checks (the 400 for a model without credit rates, 402 RUN_CAP_EXCEEDED,
    * 402 CREDITS_EXHAUSTED) on a lower bound of the first call: the agent's system prompt, the message and max_tokens

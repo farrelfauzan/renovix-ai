@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LIVE_AGENT } from "../config/live-agent";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { MODEL_UNAVAILABLE_MESSAGE, ModelUnavailableException } from "../../config/errors/model-unavailable.exception";
 import type { ModelConnection } from "../../providers/types/model-connection";
@@ -187,7 +188,7 @@ export class AgentRunService {
   async listRuns(userId: string, agentId: string) {
     if (await this.agents.findDeletedAgent(agentId)) throw new NotFoundException("Agent not found");
     return this.prisma.agentRun.findMany({
-      where: { agentId, userId, agent: { deletedAt: null } },
+      where: { agentId, userId, agent: LIVE_AGENT },
       orderBy: { updatedAt: "desc" },
       take: 50,
       include: {
@@ -204,7 +205,7 @@ export class AgentRunService {
   /** One of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. RNX-124: 404 for a deleted agent's run. */
   async getRun(userId: string, agentId: string, runId: string) {
     const run = await this.prisma.agentRun.findFirst({
-      where: { id: runId, agentId, agent: { deletedAt: null } },
+      where: { id: runId, agentId, agent: LIVE_AGENT },
       include: {
         messages: { orderBy: { createdAt: "asc" } },
       },
@@ -216,7 +217,7 @@ export class AgentRunService {
   /** Deletes one of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. RNX-124: 404 for a deleted agent's run. */
   async deleteRun(userId: string, agentId: string, runId: string) {
     const run = await this.prisma.agentRun.findFirst({
-      where: { id: runId, agentId, agent: { deletedAt: null } },
+      where: { id: runId, agentId, agent: LIVE_AGENT },
     });
     await this.assertCallerRun(run, userId, agentId);
 
@@ -552,7 +553,7 @@ export class AgentRunService {
   /**
    * The refusals of an agent message, checked before any work on the chat route (the classifier call, the SSE
    * headers, the run and the message), reads only. RX-178 (review B1): 404 for an agent the user cannot run (RNX-119:
-   * the run policy), RNX-260: then 409 in an archived or deleted workspace, then the fixed 400
+   * the run policy), RNX-260: then 409 in an archived workspace, then the fixed 400
    * (ModelUnavailableException) for a model that cannot be resolved. RNX-200: then
    * 403 without an active subscription (D192) and the run's own pre-checks (the 400 for a model without credit rates,
    * 402 RUN_CAP_EXCEEDED, 402 CREDITS_EXHAUSTED) on a lower bound of the first call: the agent's system prompt, the

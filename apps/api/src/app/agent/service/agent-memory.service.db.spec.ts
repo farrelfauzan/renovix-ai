@@ -3,6 +3,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { AgentMemoryService } from "./agent-memory.service";
+import { WorkspaceMemoryRepository } from "../../workspace/repository/workspace-memory.repository";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createUser, createWorkspace } from "../../../../test/factories";
@@ -40,9 +41,9 @@ describe("RX-141: agent memory queries (test database)", () => {
   });
   afterAll(() => moduleRef?.close());
 
-  const workspaceMemory = (workspaceId: string, content: string, data: { type?: string; status?: string; confidence?: number } = {}) =>
+  const workspaceMemory = (workspaceId: string, content: string, data: { type?: string; status?: string; confidence?: number; deletedAt?: Date } = {}) =>
     prisma.workspaceMemory.create({ data: { workspaceId, type: "fact", content, ...data } });
-  const userMemory = (userId: string, content: string, data: { type?: string; status?: string; confidence?: number } = {}) =>
+  const userMemory = (userId: string, content: string, data: { type?: string; status?: string; confidence?: number; deletedAt?: Date } = {}) =>
     prisma.userMemory.create({ data: { userId, type: "interest", content, ...data } });
   const line = (type: string, content: string) => `- [${type}] ${content}`;
   const wsRows = (workspaceId: string) => prisma.workspaceMemory.findMany({ where: { workspaceId }, orderBy: { content: "asc" } });
@@ -69,6 +70,19 @@ describe("RX-141: agent memory queries (test database)", () => {
   };
 
   describe("getMemoryContext", () => {
+    it("RNX-125 AC9: the memories of a deleted workspace never reach a model: no workspace memory in either context (its agent is hidden with it), the user's own still; back once the marker is cleared", async () => {
+      const { alice, workspace, agent } = await setup();
+      await workspaceMemory(workspace.id, "ws-fact");
+      await userMemory(alice.id, "own");
+      await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: new Date(), deletedById: alice.id } });
+
+      expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(line("interest", "own"));
+      expect(await service.getWorkspaceMemoryContext(agent.id, "inside")).toBe("");
+      expect(await moduleRef.get(WorkspaceMemoryRepository).listActiveWorkspaceMemories(workspace.id, 20)).toEqual([]);
+      await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: null, deletedById: null } });
+      expect(await service.getWorkspaceMemoryContext(agent.id, "inside")).toBe(line("fact", "ws-fact"));
+    });
+
     it("lists the active workspace memories of the agent's workspace, then the active memories of the user, best confidence first", async () => {
       const { alice, workspace, agent } = await setup();
       await workspaceMemory(workspace.id, "ws-low", { confidence: 0.6 });
@@ -90,11 +104,11 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(line("fact", "mine"));
     });
 
-    it("leaves out archived and deleted workspace memories", async () => {
+    it("RNX-125 AC2: leaves out archived and deleted (deletedAt) workspace memories", async () => {
       const { alice, workspace, agent } = await setup();
       await workspaceMemory(workspace.id, "active");
       await workspaceMemory(workspace.id, "archived", { status: "archived" });
-      await workspaceMemory(workspace.id, "deleted", { status: "deleted" });
+      await workspaceMemory(workspace.id, "deleted", { deletedAt: new Date() });
 
       expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(line("fact", "active"));
     });
@@ -110,12 +124,12 @@ describe("RX-141: agent memory queries (test database)", () => {
       expect(lines).not.toContain(line("fact", "ws-1"));
     });
 
-    it("leaves out the memories of another user and the archived and deleted ones of the user", async () => {
+    it("RNX-125 AC2: leaves out the memories of another user and the archived and deleted (deletedAt) ones of the user", async () => {
       const { alice, agent } = await setup();
       const bob = await createUser(prisma);
       await userMemory(alice.id, "mine");
       await userMemory(alice.id, "archived", { status: "archived" });
-      await userMemory(alice.id, "deleted", { status: "deleted" });
+      await userMemory(alice.id, "deleted", { deletedAt: new Date() });
       await userMemory(bob.id, "bobs");
 
       expect(await service.getMemoryContext(agent.id, alice.id, "inside")).toBe(line("interest", "mine"));
@@ -194,7 +208,7 @@ describe("RX-141: agent memory queries (test database)", () => {
       const other = await createWorkspace(prisma, { ownerId: alice.id });
       await workspaceMemory(workspace.id, "mine");
       await workspaceMemory(workspace.id, "archived", { status: "archived" });
-      await workspaceMemory(workspace.id, "deleted", { status: "deleted" });
+      await workspaceMemory(workspace.id, "deleted", { deletedAt: new Date() });
       await workspaceMemory(other.id, "theirs");
 
       expect(await service.getWorkspaceMemoryContext(agent.id, "inside")).toBe(line("fact", "mine"));
@@ -345,15 +359,15 @@ describe("RX-141: agent memory queries (test database)", () => {
     it("does not match an archived or a deleted workspace memory: stores a new one and leaves them as they were", async () => {
       const { alice, workspace, agent } = await setup();
       const archived = await workspaceMemory(workspace.id, "Likes Rust", { confidence: 0.5, status: "archived" });
-      const deleted = await workspaceMemory(workspace.id, "Likes Rust", { confidence: 0.5, status: "deleted" });
+      const deleted = await workspaceMemory(workspace.id, "Likes Rust", { confidence: 0.5, deletedAt: new Date() });
       facts({ type: "interest", content: "Likes Rust" });
 
       await run(agent.id, alice.id);
 
       const rows = await wsRows(workspace.id);
-      expect(rows).toHaveLength(3);
+      expect(rows).toHaveLength(2);
       expect(rows.find((r) => r.id === archived.id)).toMatchObject({ confidence: 0.5, status: "archived" });
-      expect(rows.find((r) => r.id === deleted.id)).toMatchObject({ confidence: 0.5, status: "deleted" });
+      expect(await prisma.workspaceMemory.findFirstOrThrow({ where: { id: deleted.id, deletedAt: { not: null } } })).toEqual(deleted);
     });
 
     it("in the default workspace (as without a workspace) stores a user memory with the agent as its source, no workspace memory", async () => {
@@ -399,15 +413,16 @@ describe("RX-141: agent memory queries (test database)", () => {
       const solo = await createDefaultWorkspaceAgent(alice.id);
       const foreign = await userMemory(bob.id, "Likes Rust", { confidence: 0.5 });
       const archived = await userMemory(alice.id, "Likes Rust", { confidence: 0.5, status: "archived" });
-      const deleted = await userMemory(alice.id, "Likes Rust", { confidence: 0.5, status: "deleted" });
+      const deleted = await userMemory(alice.id, "Likes Rust", { confidence: 0.5, deletedAt: new Date() });
       facts({ type: "interest", content: "Likes Rust" });
 
       await run(solo.id, alice.id);
 
-      expect(await userRows(alice.id)).toHaveLength(3);
-      for (const memory of [foreign, archived, deleted]) {
+      expect(await userRows(alice.id)).toHaveLength(2);
+      for (const memory of [foreign, archived]) {
         expect((await prisma.userMemory.findUniqueOrThrow({ where: { id: memory.id } })).confidence).toBe(0.5);
       }
+      expect(await prisma.userMemory.findFirstOrThrow({ where: { id: deleted.id, deletedAt: { not: null } } })).toEqual(deleted);
     });
 
     it("stores nothing when the model returns no facts", async () => {

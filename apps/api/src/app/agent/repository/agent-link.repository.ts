@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LIVE_AGENT } from "../config/live-agent";
 
 /**
  * The queries on `agent_links` (RNX-118): which agents an agent may call. Every method takes the transaction as its
@@ -14,7 +15,7 @@ export class AgentLinkRepository {
   /** The links of this caller agent to live callees (RNX-124), oldest first, each with the callee's public fields. */
   listLinks(callerAgentId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agentLink.findMany({
-      where: { callerAgentId, calleeAgent: { deletedAt: null } },
+      where: { callerAgentId, calleeAgent: LIVE_AGENT },
       orderBy: { createdAt: "asc" },
       select: {
         callerAgentId: true,
@@ -46,7 +47,7 @@ export class AgentLinkRepository {
    */
   async listCallableAgents(callerAgentId: string, workspaceId: string, tx?: DbTransaction) {
     const links = await (tx ?? this.prisma).agentLink.findMany({
-      where: { callerAgentId, calleeAgent: { workspaceId, status: "active", deletedAt: null } },
+      where: { callerAgentId, calleeAgent: { ...LIVE_AGENT, workspaceId, status: "active" } },
       orderBy: { createdAt: "asc" },
       select: {
         calleeAgent: {

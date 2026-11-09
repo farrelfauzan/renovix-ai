@@ -12,7 +12,9 @@ const CONFIRMED_CONFIDENCE = 0.9;
 /**
  * The queries on `user_memories` (RX-141). Every method takes the transaction as its optional last argument.
  * `updateMemory` writes by id and takes no user: the service checks the owner first (`findVisibleMemory`),
- * as before; `confirmMemory` and `markAllMemoriesDeleted` keep the user in their condition.
+ * as before; `confirmMemory`, `softDeleteMemory` and `softDeleteAllMemories` keep the user in their condition.
+ * RNX-125: PrismaService hides deleted memories from top-level reads (VISIBLE_ONLY); the writes on a user's memories
+ * name `deletedAt: null` themselves.
  */
 @Injectable()
 export class UserMemoryRepository {
@@ -29,7 +31,7 @@ export class UserMemoryRepository {
   /** This user's memories that are not deleted (archived ones stay), pinned first, then the most recently confirmed. */
   listVisibleMemories(userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).userMemory.findMany({
-      where: { userId, status: { not: "deleted" } },
+      where: { userId },
       orderBy: [{ isUserPinned: "desc" }, { lastConfirmedAt: "desc" }],
     });
   }
@@ -37,7 +39,7 @@ export class UserMemoryRepository {
   /** The memory with this id if it belongs to this user and is not deleted. */
   findVisibleMemory(id: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).userMemory.findFirst({
-      where: { id, userId, status: { not: "deleted" } },
+      where: { id, userId },
     });
   }
 
@@ -64,11 +66,20 @@ export class UserMemoryRepository {
     });
   }
 
-  /** Marks every memory of this user that is not deleted as deleted; returns how many. */
-  async markAllMemoriesDeleted(userId: string, tx?: DbTransaction) {
+  /** Soft-deletes the memory with this id if it is this user's and not deleted, by this user (RNX-125); returns how many (0 or 1). */
+  async softDeleteMemory(id: string, userId: string, tx?: DbTransaction): Promise<number> {
     const result = await (tx ?? this.prisma).userMemory.updateMany({
-      where: { userId, status: { not: "deleted" } },
-      data: { status: "deleted" },
+      where: { id, userId, deletedAt: null },
+      data: { deletedAt: new Date(), deletedById: userId },
+    });
+    return result.count;
+  }
+
+  /** Soft-deletes every memory of this user that is not deleted, by this user (RNX-125); returns how many. */
+  async softDeleteAllMemories(userId: string, tx?: DbTransaction): Promise<number> {
+    const result = await (tx ?? this.prisma).userMemory.updateMany({
+      where: { userId, deletedAt: null },
+      data: { deletedAt: new Date(), deletedById: userId },
     });
     return result.count;
   }
@@ -97,7 +108,7 @@ export class UserMemoryRepository {
   /** Confirms the memory with this id if it belongs to this user: confidence 0.9 and confirmed now. */
   confirmMemory(userId: string, id: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).userMemory.updateMany({
-      where: { id, userId },
+      where: { id, userId, deletedAt: null },
       data: { lastConfirmedAt: new Date(), confidence: CONFIRMED_CONFIDENCE },
     });
   }
