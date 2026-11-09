@@ -10,11 +10,9 @@ import {
   HttpCode,
   ParseUUIDPipe,
   NotFoundException,
-  ForbiddenException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Access } from "../../../common/decorators/access.decorator";
-import { PrismaService } from "../../prisma/prisma.service";
 import { WorkspaceService } from "../service/workspace.service";
 import { WorkspaceMemberService } from "../service/workspace-member.service";
 import { WorkspaceInviteService } from "../service/workspace-invite.service";
@@ -31,7 +29,6 @@ import { createInvalidBodyException } from "../../../common/utils/create-invalid
 @Access({ auth: ["session"] })
 export class WorkspaceChannelController {
   constructor(
-    private readonly prisma: PrismaService,
     private readonly workspaceService: WorkspaceService,
     private readonly memberService: WorkspaceMemberService,
     private readonly inviteService: WorkspaceInviteService,
@@ -41,43 +38,7 @@ export class WorkspaceChannelController {
 
   /** Resolve channel → workspace, ensuring the user owns the channel */
   private async resolveWorkspace(channelId: string, userId: string) {
-    const channel = await this.prisma.channel.findUnique({
-      where: { id: channelId },
-      include: { workspace: true },
-    });
-
-    if (!channel) {
-      throw new NotFoundException("Server not found");
-    }
-    // RNX-125: the channel's deleted workspace is not found, for everyone (a relation read: the default filter does
-    // not reach it)
-    if (channel.workspace?.deletedAt) {
-      throw new NotFoundException("Workspace not found");
-    }
-
-    // Channel owner or workspace member can access
-    if (channel.userId !== userId) {
-      // Check if user is a workspace member
-      if (channel.workspace) {
-        const member = await this.prisma.workspaceMember.findUnique({
-          where: {
-            workspaceId_userId: { workspaceId: channel.workspace.id, userId },
-          },
-        });
-        if (!member || member.status !== "active") {
-          throw new ForbiddenException("You do not have access to this server");
-        }
-      } else {
-        throw new ForbiddenException("You do not have access to this server");
-      }
-    }
-
-    // Non-owners need a plan that allows collaboration (RX-113, D64)
-    if (channel.workspace && channel.workspace.ownerId !== userId) {
-      await this.quotaService.enforceCollaboration(channel.workspace.id);
-    }
-
-    return { channel, workspace: channel.workspace };
+    return this.workspaceService.resolveChannelWorkspace(channelId, userId);
   }
 
   /** Require that workspace exists for the channel */
@@ -112,10 +73,7 @@ export class WorkspaceChannelController {
       };
     }
 
-    const members = await this.prisma.workspaceMember.findMany({
-      where: { workspaceId: workspace.id, status: "active" },
-      include: { user: { select: { id: true, email: true } } },
-    });
+    const members = await this.workspaceService.listActiveMembers(workspace.id);
 
     return {
       exists: true,
@@ -135,58 +93,7 @@ export class WorkspaceChannelController {
     @Param("channelId", ParseUUIDPipe) channelId: string,
     @Req() req: any,
   ) {
-    const channel = await this.prisma.channel.findUnique({
-      where: { id: channelId },
-      include: { workspace: true },
-    });
-
-    if (!channel) {
-      throw new NotFoundException("Server not found");
-    }
-    // RNX-125: a channel whose workspace is deleted gets no new one (channel_id stays taken): not found
-    if (channel.workspace?.deletedAt) {
-      throw new NotFoundException("Workspace not found");
-    }
-
-    if (channel.userId !== req.user.userId) {
-      throw new ForbiddenException(
-        "Only the server owner can create a workspace",
-      );
-    }
-
-    if (channel.workspace) {
-      return channel.workspace;
-    }
-
-    // Create workspace linked to this channel
-    const slug =
-      channel.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 48) || "workspace";
-
-    const workspace = await this.prisma.workspace.create({
-      data: {
-        channelId: channel.id,
-        ownerId: req.user.userId,
-        name: channel.name,
-        slug,
-      },
-    });
-
-    // Auto-create owner as first member
-    await this.prisma.workspaceMember.create({
-      data: {
-        workspaceId: workspace.id,
-        userId: req.user.userId,
-        role: "owner",
-        status: "active",
-        joinedAt: new Date(),
-      },
-    });
-
-    return workspace;
+    return this.workspaceService.createChannelWorkspace(channelId, req.user.userId);
   }
 
   // ─── Members ────────────────────────────────────────────────────────────────

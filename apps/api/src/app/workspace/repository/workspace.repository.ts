@@ -23,10 +23,10 @@ export class WorkspaceRepository {
     });
   }
 
-  /** Creates a workspace of this owner (no member row: the caller adds the owner's). */
+  /** Creates a workspace of this owner, of a channel if given (no member row: the caller adds the owner's). */
   createWorkspace(
     ownerId: string,
-    data: Pick<Prisma.WorkspaceUncheckedCreateInput, "name" | "slug" | "description" | "avatar">,
+    data: Pick<Prisma.WorkspaceUncheckedCreateInput, "name" | "slug" | "description" | "avatar" | "channelId">,
     tx?: DbTransaction,
   ) {
     return (tx ?? this.prisma).workspace.create({

@@ -14,6 +14,14 @@ export class WorkspaceMemberRepository {
     });
   }
 
+  /** The active members of this workspace, each with its user's id and email. */
+  listActiveMembersWithUser(workspaceId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).workspaceMember.findMany({
+      where: { workspaceId, status: "active" },
+      include: { user: { select: { id: true, email: true } } },
+    });
+  }
+
   /** Adds this user to this workspace as its active owner member, joined now. */
   createOwnerMember(workspaceId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).workspaceMember.create({

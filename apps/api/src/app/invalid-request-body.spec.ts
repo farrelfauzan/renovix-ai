@@ -42,12 +42,12 @@ import { WebSearchService } from "./mcp/service/web-search.service";
 import { AdminPaymentsController } from "./payments/controller/admin-payments.controller";
 import { PaymentsController } from "./payments/controller/payments.controller";
 import { PortalController } from "./portal/controller/portal.controller";
-import { PrismaService } from "./prisma/prisma.service";
 import { ReminderController } from "./reminder/controller/reminder.controller";
 import { WorkspaceChannelController } from "./workspace/controller/workspace-channel.controller";
 import { WorkspaceInviteController } from "./workspace/controller/workspace-invite.controller";
 import { WorkspaceController } from "./workspace/controller/workspace.controller";
 import { WorkspaceKnowledgeService } from "./workspace/service/workspace-knowledge.service";
+import { WorkspaceService } from "./workspace/service/workspace.service";
 
 // RNX-28 (D237): every route that takes a request body answers an invalid body with the one 400 shape,
 // { error: { message: "Invalid request body", type: "invalid_request_error", details } }, built by
@@ -207,7 +207,11 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
   const agents = { updateStatus: jest.fn(), generatePrompt: jest.fn(), updateChannel: jest.fn() };
   const workspaceKnowledge = { searchWorkspaceKnowledge: jest.fn() };
   const knowledge = { createKnowledgeBase: jest.fn() };
-  const prisma = { channel: { findUnique: jest.fn(async () => ({ userId: USER_ID, workspace: { id: WORKSPACE_ID, ownerId: USER_ID } })) } };
+  const workspaces = {
+    resolveChannelWorkspace: jest.fn(async () => ({ channel: { userId: USER_ID }, workspace: { id: WORKSPACE_ID, ownerId: USER_ID } })),
+    requireRole: jest.fn(async () => undefined),
+    requireMembership: jest.fn(async () => undefined),
+  };
   const gowa = { findWhatsappChannels: jest.fn(async () => [{ agent: {}, channel: { config: { webhookSecret: GOWA_SECRET } } }]) };
 
   const send = (route: string, body: unknown) => {
@@ -238,7 +242,7 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
         { provide: AgentService, useValue: agents },
         { provide: WorkspaceKnowledgeService, useValue: workspaceKnowledge },
         { provide: KnowledgeService, useValue: knowledge },
-        { provide: PrismaService, useValue: prisma },
+        { provide: WorkspaceService, useValue: workspaces },
         { provide: GowaService, useValue: gowa },
       ],
     })
