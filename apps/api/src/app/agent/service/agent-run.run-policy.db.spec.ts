@@ -109,6 +109,8 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
     await prisma.tierRate.create({
       data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
     });
+    // RNX-284: the memory extraction runs only with its timeout setting, as its own metered run (own reservation).
+    await prisma.platformSetting.create({ data: { name: "memoryExtractionTimeoutSeconds", value: 15 } });
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
@@ -284,11 +286,15 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
 
       await chat(collaborator.id, agent.id, "Hi");
 
-      const reservations = await prisma.creditReservation.findMany({ include: { account: true } });
-      expect(reservations.map((r) => [r.account.userId, r.wallet, r.status])).toEqual([[collaborator.id, "paid", "settled"]]);
+      // RNX-284: the run's reservation, then the memory extraction's own (10 + 5 tokens), both on the collaborator.
+      const reservations = await prisma.creditReservation.findMany({ include: { account: true }, orderBy: { createdAt: "asc" } });
+      expect(reservations.map((r) => [r.account.userId, r.wallet, r.status])).toEqual([
+        [collaborator.id, "paid", "settled"],
+        [collaborator.id, "paid", "settled"],
+      ]);
       const entries = await prisma.creditLedgerEntry.findMany({ where: { type: "usage" } });
-      expect(entries.map((e) => e.memberUserId)).toEqual([collaborator.id]);
-      expect((await accountOf(collaborator.id)).balance.toFixed(6)).toBe("0.999890");
+      expect(entries.map((e) => e.memberUserId)).toEqual([collaborator.id, collaborator.id]);
+      expect((await accountOf(collaborator.id)).balance.toFixed(6)).toBe("0.999875");
       expect((await accountOf(owner.id)).balance.toFixed(6)).toBe("1.000000");
     });
   });

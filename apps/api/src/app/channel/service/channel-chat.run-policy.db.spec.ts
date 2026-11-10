@@ -82,6 +82,8 @@ describe("RNX-119: the run policy on every channel chat message (test database, 
     await prisma.tierRate.create({
       data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
     });
+    // RNX-284: the memory extraction runs only with its timeout setting, as its own metered run (own reservation).
+    await prisma.platformSetting.create({ data: { name: "memoryExtractionTimeoutSeconds", value: 15 } });
     await moduleRef.get(ModelRegistryService).refresh();
   });
 
@@ -165,8 +167,12 @@ describe("RNX-119: the run policy on every channel chat message (test database, 
     const result = await chat(collaborator.id, channel.id, agent.id, "Hi");
 
     expect(result.content).toBe("Hello");
-    const reservations = await prisma.creditReservation.findMany({ include: { account: true } });
-    expect(reservations.map((r) => [r.account.userId, r.wallet, r.status])).toEqual([[collaborator.id, "paid", "settled"]]);
+    // RNX-284: the run's reservation, then the memory extraction's own, both on the collaborator.
+    const reservations = await prisma.creditReservation.findMany({ include: { account: true }, orderBy: { createdAt: "asc" } });
+    expect(reservations.map((r) => [r.account.userId, r.wallet, r.status])).toEqual([
+      [collaborator.id, "paid", "settled"],
+      [collaborator.id, "paid", "settled"],
+    ]);
     const ownerAccount = await prisma.creditAccount.findUniqueOrThrow({ where: { userId_wallet: { userId: owner.id, wallet: "paid" } } });
     expect(ownerAccount.balance.toFixed(6)).toBe("1.000000");
     expect(String(fake.requests[0].messages[0].content)).toContain("TEAM MEMORY FACT");

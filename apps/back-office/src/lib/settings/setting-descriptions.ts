@@ -29,4 +29,5 @@ export const SETTING_DESCRIPTIONS: Readonly<Record<string, SettingDescription>> 
   repeatOffenderThreshold: count("Repeat-offender threshold, violations in 7 days (D59)", 1, true),
   paymentGatewayFeePercent: percent("Payment gateway fee, % of gross (RNX-228)"),
   reconciliationDriftThresholdPercent: percent("Reconciliation drift threshold, % of the high estimate (D84, RNX-228)"),
+  memoryExtractionTimeoutSeconds: count("Memory extraction: seconds per model call, no retry (RNX-284)"),
 };

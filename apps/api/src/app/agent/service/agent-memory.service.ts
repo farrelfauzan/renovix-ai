@@ -3,9 +3,17 @@ import { UserMemoryRepository } from "../../memory/repository/user-memory.reposi
 import { WorkspaceMemoryRepository } from "../../workspace/repository/workspace-memory.repository";
 import { WorkspaceRepository } from "../../workspace/repository/workspace.repository";
 import { AgentRepository } from "../repository/agent.repository";
-import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import type { ChatRequest } from "../../providers/provider.interface";
+import { errorName } from "../../../common/utils/error-name";
+import { AgentRunMeterService } from "./agent-run-meter.service";
 import type { RunScope } from "../types/run-scope";
+
+const MS_PER_SECOND = 1000;
+/** The extraction call's temperature and max_tokens (unchanged by RNX-284). */
+const EXTRACTION_TEMPERATURE = 0.1;
+const EXTRACTION_MAX_TOKENS = 500;
 
 @Injectable()
 export class AgentMemoryService {
@@ -16,8 +24,9 @@ export class AgentMemoryService {
     private readonly workspaces: WorkspaceRepository,
     private readonly workspaceMemories: WorkspaceMemoryRepository,
     private readonly userMemories: UserMemoryRepository,
-    private readonly providerRouter: ProviderRouter,
     private readonly registry: ModelRegistryService,
+    private readonly meter: AgentRunMeterService,
+    private readonly settings: PlatformSettingsService,
   ) {}
 
   /**
@@ -71,7 +80,9 @@ export class AgentMemoryService {
 
   /**
    * Extracts facts about the user from one exchange and stores them (the workspace's memory, else the user's). RNX-119
-   * (R17): a run outside the workspace writes nothing, and makes no extraction call.
+   * (R17): a run outside the workspace writes nothing, and makes no extraction call. RNX-284: the callers pass the
+   * approved, persisted answer and do not wait for it; it never throws: a failure (no setting, no credit, a provider
+   * error, a timeout) is only logged, by the error's name.
    */
   async extractAndStore(
     agentId: string,
@@ -83,9 +94,6 @@ export class AgentMemoryService {
   ): Promise<void> {
     if (scope !== "inside") return;
     try {
-      const cheapestModel = await this.registry.getCheapestModel();
-      if (!cheapestModel) return;
-
       const extractionPrompt = `Analyze this conversation and extract key facts about the user that would be useful to remember for future conversations.
 
 User message: "${userMessage}"
@@ -100,23 +108,7 @@ Rules:
 - Confidence should reflect how certain the fact is
 - Return [] if nothing noteworthy`;
 
-      const connection = await this.registry.resolveConnection(cheapestModel.slug);
-      const response = await this.providerRouter.chat({
-        model: cheapestModel.slug,
-        connection,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You extract user facts from conversations. Respond only with valid JSON.",
-          },
-          { role: "user", content: extractionPrompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 500,
-      });
-
-      const content = response.choices?.[0]?.message?.content;
+      const content = await this.callExtractionModel(agentId, userId, extractionPrompt);
       if (!content) return;
 
       // Parse JSON from response
@@ -179,9 +171,41 @@ Rules:
           }
         }
       }
-    } catch (err: any) {
-      this.logger.warn(`Memory extraction failed: ${err.message}`);
+    } catch (err) {
+      this.logger.warn(`Memory extraction failed for agent ${agentId}: ${errorName(err)}`);
     }
+  }
+
+  /**
+   * RNX-284 (D296, D322): the extraction's one model call (the cheapest model), as its own run on the runner's paid
+   * wallet (docs/credits.md section 13.6): its own hold, usage entry and settle, at the model's normal rates, released
+   * when nothing was charged. One attempt within the platform setting memoryExtractionTimeoutSeconds, never retried;
+   * without the setting there is no call. Null when there is no answer to read.
+   */
+  private async callExtractionModel(agentId: string, userId: string, prompt: string): Promise<string | null> {
+    const timeoutSeconds = await this.settings.getSetting("memoryExtractionTimeoutSeconds");
+    if (timeoutSeconds === null) {
+      this.logger.warn("Memory extraction skipped: the platform setting memoryExtractionTimeoutSeconds is not set");
+      return null;
+    }
+    const cheapestModel = await this.registry.getCheapestModel();
+    if (!cheapestModel) return null;
+    const request: ChatRequest = {
+      model: cheapestModel.slug,
+      connection: await this.registry.resolveConnection(cheapestModel.slug),
+      messages: [
+        { role: "system", content: "You extract user facts from conversations. Respond only with valid JSON." },
+        { role: "user", content: prompt },
+      ],
+      temperature: EXTRACTION_TEMPERATURE,
+      max_tokens: EXTRACTION_MAX_TOKENS,
+      singleAttemptTimeoutMs: timeoutSeconds * MS_PER_SECOND,
+    };
+    const workspaceId = (await this.agents.findAgentWorkspaceId(agentId))?.workspaceId;
+    const start = { runnerUserId: userId, workspaceId, firstCall: request, linkedAgents: [] };
+    const metered = await this.meter.meterRun(start, (run) => this.meter.callModel(run, { agentId, parentCallId: null, request }));
+    if (metered.status === "budget_stopped") this.logger.warn(`Memory extraction for agent ${agentId} stopped at its budget`);
+    return metered.status === "completed" ? (metered.value.response.choices?.[0]?.message?.content ?? null) : null;
   }
 
   /** The memory_store tool's write. RNX-119: nothing for a run outside the workspace (R17). */

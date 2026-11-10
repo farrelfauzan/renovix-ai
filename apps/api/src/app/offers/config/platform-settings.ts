@@ -84,4 +84,6 @@ export const PLATFORM_SETTINGS = {
   paymentsAllowedUserIds: z.array(z.string().trim().min(1)),
   /** Requests per minute per API key, counted in memory on each API instance (D47: 60; RNX-232). */
   apiKeyRequestsPerMinute: AT_LEAST_ONE,
+  /** Seconds the automatic memory extraction's one model call may take, never retried (RNX-284: 15). Not set: no extraction. */
+  memoryExtractionTimeoutSeconds: AT_LEAST_ONE,
 } as const;

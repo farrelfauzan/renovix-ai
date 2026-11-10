@@ -184,9 +184,12 @@ export class OpenRouterAdapter implements ProviderAdapter {
     throw await readProviderHttpError(response);
   }
 
-  /** One chat attempt within CHAT_TIMEOUT_MS; RNX-283: the caller's signal, when given, cancels it too (as openStream does). */
-  private async postChat(endpoint: LlmEndpoint, body: Record<string, unknown>, signal?: AbortSignal): Promise<any> {
-    const timeout = AbortSignal.timeout(CHAT_TIMEOUT_MS);
+  /**
+   * One chat attempt within `timeoutMs` (CHAT_TIMEOUT_MS, or a single attempt's own, RNX-284); RNX-283: the caller's
+   * signal, when given, cancels it too (as openStream does).
+   */
+  private async postChat(endpoint: LlmEndpoint, body: Record<string, unknown>, signal?: AbortSignal, timeoutMs = CHAT_TIMEOUT_MS): Promise<any> {
+    const timeout = AbortSignal.timeout(timeoutMs);
     const response = await this.post(endpoint, body, signal ? AbortSignal.any([signal, timeout]) : timeout);
     return readProviderJson(response);
   }
@@ -243,9 +246,9 @@ export class OpenRouterAdapter implements ProviderAdapter {
     }
 
     const send = (endpoint: LlmEndpoint) => this.postChat(endpoint, body, params.signal);
-    const data = await this.postChatWithRetries(connection, body, params).catch((err) =>
-      this.retryOnceAfter(err, connection, send, params),
-    );
+    const data = await (params.singleAttemptTimeoutMs === undefined
+      ? this.postChatWithRetries(connection, body, params).catch((err) => this.retryOnceAfter(err, connection, send, params))
+      : this.postSingleAttempt(connection, body, params));
 
     if (params.max_tokens && params.max_tokens <= 50) {
       this.logger.log(
@@ -274,6 +277,21 @@ export class OpenRouterAdapter implements ProviderAdapter {
       })),
       usage,
     };
+  }
+
+  /**
+   * RNX-284: one attempt within the caller's `singleAttemptTimeoutMs`, never retried (no back-off, no Retry-After
+   * wait) and without CHAT_TIMEOUT_MS. Its timeout ends in the typed ProviderTimeoutError; the caller's own abort
+   * reaches the caller as it is.
+   */
+  private async postSingleAttempt(
+    connection: LlmEndpoint,
+    body: Record<string, unknown>,
+    { signal, singleAttemptTimeoutMs }: Pick<ChatRequest, "signal" | "singleAttemptTimeoutMs">,
+  ): Promise<any> {
+    return this.postChat(connection, body, signal, singleAttemptTimeoutMs).catch((err) => {
+      throw err?.name === "TimeoutError" && !signal?.aborted ? new ProviderTimeoutError() : err;
+    });
   }
 
   /**

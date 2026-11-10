@@ -49,6 +49,11 @@ export interface ChatRequest {
    * call at once (no back-off, no Retry-After wait) so the router can move on. Never sent.
    */
   hasFallback?: boolean;
+  /**
+   * RNX-284: `chat` makes one attempt that gives up after this many milliseconds (a ProviderTimeoutError), in place of
+   * the adapter's own timeout and retries: no back-off retry and no Retry-After wait. Never sent.
+   */
+  singleAttemptTimeoutMs?: number;
 }
 
 export interface ChatUsage {

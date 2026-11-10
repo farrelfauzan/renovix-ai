@@ -174,8 +174,8 @@ describe("RNX-16: channel chat scenarios on POST /channels/:id/agents/:agentId/c
     expect([await prisma.creditReservation.count(), await prisma.creditLedgerEntry.count({ where: { type: "usage" } })]).toEqual([0, 0]);
   });
 
-  it("RNX-16 output guardrail block (CH): the streamed reply, the stored assistant message and the memory input are the sanitized text; the raw answer is in no stored message", async () => {
-    const { user, agent, channel, session } = await seed();
+  it("RNX-16 output guardrail block (CH): the streamed reply and the stored assistant message are the sanitized text; the raw answer is in no stored message and memory is not called", async () => {
+    const { agent, channel, session } = await seed();
     fake.enqueue({ content: "none" }, { content: RAW, usage: { prompt_tokens: 10, completion_tokens: 5 } });
     mockCheckOutput.mockImplementation(async () => ({ blocked: true, reason: "dangerous_output", sanitized: SANITIZED }));
 
@@ -188,7 +188,7 @@ describe("RNX-16: channel chat scenarios on POST /channels/:id/agents/:agentId/c
       { role: "assistant", content: SANITIZED, tokens: 15, cost: null },
     ]);
     expect(await prisma.channelMessage.count({ where: { content: { contains: RAW } } })).toBe(0);
-    // CH memorises a blocked answer, but its sanitized text (AR does not memorise it at all, RNX-275).
-    expect(mockExtractAndStore.mock.calls).toEqual([[agent.id, user.id, "Hi", SANITIZED, expect.anything(), channel.id]]);
+    // RNX-284 (AC2): CH no longer memorises a blocked answer (its sanitized text before); as AR (RNX-275).
+    expect(mockExtractAndStore).not.toHaveBeenCalled();
   });
 });

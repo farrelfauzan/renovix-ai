@@ -31,6 +31,7 @@ import { AgentRunPolicyService } from "./agent-run-policy.service";
 import { assertOwnRun } from "../utils/assert-own-run";
 import { AGENT_RUN_MAX_TOOL_ITERATIONS } from "../config/agent-run-max-tool-iterations";
 import { AGENT_RUN_MAX_STEPS_MESSAGE } from "../config/agent-run-max-steps-message";
+import { errorName } from "../../../common/utils/error-name";
 
 /** Chunks taken from each attached knowledge base for the run's knowledge context. */
 const KNOWLEDGE_TOP_K_PER_BASE = 3;
@@ -161,9 +162,7 @@ export class AgentRunService {
     if (!isAnswerBlocked) {
       this.memoryService
         .extractAndStore(agentId, userId, message, result.content, scope)
-        .catch((err: any) =>
-          this.logger.error(`Memory extraction failed: ${err.message}`),
-        );
+        .catch((err: unknown) => this.logger.error(`Memory extraction failed: ${errorName(err)}`));
     }
 
     return {

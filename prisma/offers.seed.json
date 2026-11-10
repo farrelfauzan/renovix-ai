@@ -30,7 +30,8 @@
     "apiKeyRequestsPerMinute": 60,
     "anonymousRequestsPerSession": 20,
     "anonymousSessionsPerIp": 3,
-    "invitationGrantCredits": 5
+    "invitationGrantCredits": 5,
+    "memoryExtractionTimeoutSeconds": 15
   },
   "packages": [
     { "name": "Starter", "displayOrder": 1, "active": false, "visible": false, "version": null },

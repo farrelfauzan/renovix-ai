@@ -9,7 +9,7 @@ import { WorkspaceInviteService } from "../service/workspace-invite.service";
 import { WorkspaceQuotaService } from "../service/workspace-quota.service";
 import { WorkspaceKnowledgeService } from "../service/workspace-knowledge.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
-import { ProviderRouter } from "../../providers/provider-router";
+import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { EmailJobService } from "../../email/service/email-job.service";
 import { EmbeddingService } from "../../knowledge/service/embedding.service";
@@ -87,7 +87,7 @@ describe("RNX-126: the owner lists and restores deleted workspaces and workspace
         WorkspaceQuotaService,
         WorkspaceKnowledgeService,
         AgentMemoryService,
-        { provide: ProviderRouter, useValue: {} },
+        { provide: AgentRunMeterService, useValue: {} },
         { provide: ModelRegistryService, useValue: {} },
         { provide: EmailJobService, useValue: { enqueue: async () => undefined } },
         { provide: EmbeddingService, useValue: embedding },
