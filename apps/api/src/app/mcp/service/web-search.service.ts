@@ -217,49 +217,56 @@ export class WebSearchService {
       policy.maxResults,
     );
 
-    await this.enforceDailyQuota(userId, workspaceId, policy.dailyLimitPerUser);
+    // RNX-294: the slot is taken before any provider call and given back unless the search returns results.
+    const usageKey = this.usageKey(userId, workspaceId);
+    await this.reserveDailySlot(usageKey, policy.dailyLimitPerUser);
+    let hasResults = false;
 
-    const route = buildProviderRoute(policy);
-    const errors: string[] = [];
+    try {
+      const route = buildProviderRoute(policy);
+      const errors: string[] = [];
 
-    for (const provider of route) {
-      try {
-        const results = await this.searchWithProvider(
-          provider,
-          userId,
-          workspaceId,
-          normalizedQuery,
-          effectiveMaxResults,
-        );
+      for (const provider of route) {
+        try {
+          const results = await this.searchWithProvider(
+            provider,
+            userId,
+            workspaceId,
+            normalizedQuery,
+            effectiveMaxResults,
+          );
 
-        if (results.length > 0) {
-          await this.incrementUsage(userId, workspaceId);
-          return formatForTool(normalizedQuery, provider, results);
+          if (results.length > 0) {
+            hasResults = true;
+            return formatForTool(normalizedQuery, provider, results);
+          }
+        } catch (err: any) {
+          const message = err?.message || `Provider ${provider} failed`;
+          errors.push(`${provider}: ${message}`);
         }
-      } catch (err: any) {
-        const message = err?.message || `Provider ${provider} failed`;
-        errors.push(`${provider}: ${message}`);
       }
+
+      const hasBraveAllowed = policy.allowedProviders.includes("brave-search");
+      const braveCreds = hasBraveAllowed
+        ? await this.mcpUserService.resolveCredentials(
+            userId,
+            workspaceId,
+            WebSearchService.BRAVE_CREDENTIAL_PROVIDER,
+          )
+        : null;
+
+      if (hasBraveAllowed && !braveCreds?.BRAVE_API_KEY) {
+        return `Web search is not configured for this user. Please connect your Brave API key in Integrations settings. Query: "${normalizedQuery}"`;
+      }
+
+      if (errors.length > 0) {
+        return `Web search could not retrieve results for "${normalizedQuery}". Provider attempts: ${errors.join(" | ")}`;
+      }
+
+      return `No relevant web results found for "${normalizedQuery}".`;
+    } finally {
+      if (!hasResults) await this.appConfig.decrementCounter(usageKey);
     }
-
-    const hasBraveAllowed = policy.allowedProviders.includes("brave-search");
-    const braveCreds = hasBraveAllowed
-      ? await this.mcpUserService.resolveCredentials(
-          userId,
-          workspaceId,
-          WebSearchService.BRAVE_CREDENTIAL_PROVIDER,
-        )
-      : null;
-
-    if (hasBraveAllowed && !braveCreds?.BRAVE_API_KEY) {
-      return `Web search is not configured for this user. Please connect your Brave API key in Integrations settings. Query: "${normalizedQuery}"`;
-    }
-
-    if (errors.length > 0) {
-      return `Web search could not retrieve results for "${normalizedQuery}". Provider attempts: ${errors.join(" | ")}`;
-    }
-
-    return `No relevant web results found for "${normalizedQuery}".`;
   }
 
   private async searchWithProvider(
@@ -269,7 +276,8 @@ export class WebSearchService {
     query: string,
     maxResults: number,
   ): Promise<SearchResult[]> {
-    const cacheKey = `${provider}:${workspaceId}:${query.toLowerCase()}:${maxResults}`;
+    // RNX-294: cached results are served only to the user whose search fetched them (the Brave key is personal, D312).
+    const cacheKey = `${provider}:${workspaceId}:${userId}:${query.toLowerCase()}:${maxResults}`;
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.results;
@@ -429,26 +437,16 @@ export class WebSearchService {
     return `${WebSearchService.USAGE_KEY_PREFIX}${workspaceId}:${userId}:${today}`;
   }
 
-  private async enforceDailyQuota(
-    userId: string,
-    workspaceId: string,
-    dailyLimit: number,
-  ): Promise<void> {
-    const value = await this.appConfig.findValue(this.usageKey(userId, workspaceId));
-
-    const used = value !== null ? Number(value || "0") : 0;
-    if (used >= dailyLimit) {
+  /**
+   * Takes one of the user's daily web searches, or refuses with 400 when all `dailyLimit` are used (RNX-294: the
+   * count and the limit are decided in one atomic statement, so concurrent searches never both take the last one).
+   */
+  private async reserveDailySlot(usageKey: string, dailyLimit: number): Promise<void> {
+    const count = await this.appConfig.incrementCounterBelowLimit(usageKey, dailyLimit);
+    if (count === null) {
       throw new BadRequestException(
         `Web search daily limit reached (${dailyLimit}/day).`,
       );
     }
-  }
-
-  private async incrementUsage(userId: string, workspaceId: string): Promise<void> {
-    const key = this.usageKey(userId, workspaceId);
-    const value = await this.appConfig.findValue(key);
-    const next = (value !== null ? Number(value || "0") : 0) + 1;
-
-    await this.appConfig.upsertValue(key, String(next));
   }
 }
