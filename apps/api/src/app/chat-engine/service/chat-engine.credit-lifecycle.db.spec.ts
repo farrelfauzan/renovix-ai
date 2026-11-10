@@ -48,8 +48,8 @@ const CALL_MAX_TOKENS = 100;
 const OFFERED_TOOL = "lookup";
 const MODES = [["streamed"], ["collected"]] as const;
 type Mode = (typeof MODES)[number][0];
-/** One scripted step of the execution: a metered model call (its text is yielded), a tool result, or a failure. */
-type Step = "call" | "tool" | "throw";
+/** One scripted step of the execution: a metered model call (its text is yielded), two calls started together, a tool result, or a failure. */
+type Step = "call" | "pair" | "tool" | "throw";
 
 describe("RNX-282: the chat engine on the credit ledger (test database, fake provider)", () => {
   const fake = new FakeProviderAdapter();
@@ -59,9 +59,12 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
       for (const step of script) {
         if (step === "throw") throw new Error("execution failed");
         if (step === "tool") yield { type: "tool_result", toolName: OFFERED_TOOL, content: "tool says hi" };
-        if (step !== "call") continue;
-        const { response } = await input.callModel({ messages: [{ role: "user", content: input.approvedInput }], max_tokens: CALL_MAX_TOKENS });
-        yield { type: "text", text: response.choices[0].message.content ?? "" };
+        const request = { messages: [{ role: "user" as const, content: input.approvedInput }], max_tokens: CALL_MAX_TOKENS };
+        const calls = step === "call" ? [input.callModel(request)] : step === "pair" ? [input.callModel(request), input.callModel(request)] : [];
+        const settled = await Promise.allSettled(calls);
+        for (const call of settled) if (call.status === "fulfilled") yield { type: "text", text: call.value.response.choices[0].message.content ?? "" };
+        const refused = settled.find((call) => call.status === "rejected");
+        if (refused) throw refused.reason;
       }
     }),
   };
@@ -301,6 +304,20 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
       expect(outputApproval.approveOutput).toHaveBeenCalledWith(stop, bob.id, request.conversation.agentId);
       expect(fake.requests).toHaveLength(1);
       expect(await moneyOf(bob.id)).toEqual({ balance: "0.999780", held: "0.000000", reservations: [["settled", "0.000450", "0.000220"]], entries: [["completed", "-0.000220"]] });
+      await assertCreditLedgerInvariants(prisma);
+    });
+
+    it.each(MODES)("%s: two calls started together: the second waits for the first's charge, then stops at the budget; charged <= cap, closed once", async (mode) => {
+      const { bob, request } = await seed();
+      await setRunCap(prisma, 0.00045);
+      script.push("pair");
+      fake.enqueue({ content: "first", usage: { prompt_tokens: 50, completion_tokens: 40 } }, { content: "second", usage: { prompt_tokens: 100, completion_tokens: 80 } });
+      const { settle, release } = closeCounts();
+      const { result } = await runIn(mode, request);
+      expect(result.content).toBe(budgetStopMessage(new Decimal("0.00045")));
+      expect(fake.requests).toHaveLength(1);
+      expect(await moneyOf(bob.id)).toEqual({ balance: "0.999780", held: "0.000000", reservations: [["settled", "0.000450", "0.000220"]], entries: [["completed", "-0.000220"]] });
+      expect([settle.mock.calls.length, release.mock.calls.length]).toEqual([1, 0]);
       await assertCreditLedgerInvariants(prisma);
     });
 
