@@ -7,15 +7,15 @@ import { usePortalModels } from "@/hooks/use-portal";
 import { useMyEntitlements } from "@/hooks/use-my-entitlements";
 import { ModelSelectItem } from "@/components/model-select-item";
 import { isPackageLimitError } from "@/lib/is-package-limit-error";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
+import { Textarea } from "@performa-ai/ui/components/textarea";
 import {
   Select,
   SelectContent,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@performa-ai/ui/components/select";
 
 type AgentSettingsTabProps = {
   agent: any;

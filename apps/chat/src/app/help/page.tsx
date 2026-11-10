@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@performa-ai/ui/components/button";
 import {
   ArrowLeft,
   MessageSquare,

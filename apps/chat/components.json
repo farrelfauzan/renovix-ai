@@ -11,8 +11,8 @@
   },
   "aliases": {
     "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
+    "utils": "@performa-ai/ui/lib/utils",
+    "ui": "@performa-ai/ui/components",
     "lib": "@/lib",
     "hooks": "@/hooks"
   },

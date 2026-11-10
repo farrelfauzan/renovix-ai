@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@performa-ai/ui/components/badge";
 import { useMyEntitlements } from "@/hooks/use-my-entitlements";
 
 type PackageLimitPillProps =

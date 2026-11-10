@@ -10,7 +10,7 @@ import {
   ArrowLeft,
   Lock,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@performa-ai/ui/components/button";
 import Link from "next/link";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import {
@@ -21,7 +21,7 @@ import {
 } from "@/hooks/use-knowledge";
 import { KBUploadDialog } from "@/components/kb-upload-dialog";
 import { AppSidebar } from "@/components/chat-sidebar";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset } from "@performa-ai/ui/components/sidebar";
 
 export default function KnowledgePage() {
   const [showUpload, setShowUpload] = useState(false);

@@ -9,9 +9,9 @@ import {
   Users,
   Settings,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@performa-ai/ui/components/tabs";
 import {
   useChannelWorkspace,
   useCreateChannelWorkspace,

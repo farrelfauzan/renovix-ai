@@ -16,9 +16,9 @@ import {
   Eraser,
   Lock,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@performa-ai/ui/components/button";
 import { AppSidebar } from "@/components/chat-sidebar";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset } from "@performa-ai/ui/components/sidebar";
 
 export default function MemoryPage() {
   const hydrated = useHydrated();

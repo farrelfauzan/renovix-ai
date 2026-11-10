@@ -22,14 +22,14 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+} from "@performa-ai/ui/components/dialog";
+import { Tabs, TabsContent } from "@performa-ai/ui/components/tabs";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
+import { Checkbox } from "@performa-ai/ui/components/checkbox";
+import { ScrollArea } from "@performa-ai/ui/components/scroll-area";
+import { Badge } from "@performa-ai/ui/components/badge";
+import { Separator } from "@performa-ai/ui/components/separator";
 import {
   useCreateChannel,
   useAddChannelAgent,

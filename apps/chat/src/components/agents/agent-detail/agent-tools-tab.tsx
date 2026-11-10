@@ -14,8 +14,8 @@ import {
   useWebSearchPolicy,
   useWebSearchStatus,
 } from "@/hooks/use-web-search";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import { PackageLimitPill } from "@/components/package-limit-pill";
 
 type AgentToolsTabProps = {

@@ -9,8 +9,8 @@ import {
   usePublishAgent,
   useUpdateAgentStatus,
 } from "@/hooks/use-agents";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@performa-ai/ui/components/button";
+import { Badge } from "@performa-ai/ui/components/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from "@performa-ai/ui/components/alert-dialog";
 import {
   ArrowLeft,
   Save,

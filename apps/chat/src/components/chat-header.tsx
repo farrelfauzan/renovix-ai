@@ -3,8 +3,8 @@
 import { usePortalUsage } from "@/hooks/use-portal";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@performa-ai/ui/components/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@performa-ai/ui/components/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,12 +12,12 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@performa-ai/ui/components/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@performa-ai/ui/components/tooltip";
 import { LogIn, LogOut, User, HelpCircle, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "@/lib/auth-client";

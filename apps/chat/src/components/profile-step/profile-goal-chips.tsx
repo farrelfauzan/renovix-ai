@@ -1,7 +1,7 @@
 "use client";
 
 import { BarChart3, Bell, FileText, MessageCircle, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@performa-ai/ui/components/button";
 import { GOAL_OPTIONS } from "@/lib/profile-step-options";
 
 const GOAL_ICONS: Record<(typeof GOAL_OPTIONS)[number], typeof FileText> = {

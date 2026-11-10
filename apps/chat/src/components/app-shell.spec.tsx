@@ -8,7 +8,7 @@ const mockToggle = jest.fn();
 jest.mock('next/navigation', () => ({ usePathname: () => mockPath }));
 jest.mock('@/lib/stores', () => ({ useHydrated: () => true, useAuthStore: () => ({ isLoggedIn: () => mockAuthenticated }) }));
 jest.mock('@/components/chat-sidebar', () => ({ AppSidebar: () => <nav aria-label="App navigation" /> }));
-jest.mock('@/components/ui/sidebar', () => ({
+jest.mock('@performa-ai/ui/components/sidebar', () => ({
   SidebarProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarInset: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   SidebarTrigger: () => <button onClick={mockToggle}>Toggle Sidebar</button>,

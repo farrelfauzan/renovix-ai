@@ -10,10 +10,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+} from "@performa-ai/ui/components/dialog";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
+import { Textarea } from "@performa-ai/ui/components/textarea";
 import type { IntegrationProvider } from "@/components/agents/agent-detail/integration-provider-config";
 import { IntegrationProviderLogo } from "@/components/agents/agent-detail/integration-provider-logo";
 

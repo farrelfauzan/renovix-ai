@@ -3,7 +3,7 @@
 import type { FormApi } from "@tanstack/react-form";
 import type { AgentFormValues } from "./identity-step";
 import { useAvailableTools } from "@/hooks/use-agents";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@performa-ai/ui/components/badge";
 import { Check } from "lucide-react";
 
 interface ToolsStepProps {

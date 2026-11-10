@@ -12,6 +12,9 @@ const nextConfig = {
 
   output: 'standalone',
 
+  // @performa-ai/ui (libs/ui) ships TypeScript source, not built files.
+  transpilePackages: ['@performa-ai/ui'],
+
   async headers() {
     return [
       {

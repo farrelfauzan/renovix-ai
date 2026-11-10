@@ -15,16 +15,16 @@ import {
   Trash2,
   FileText,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+} from "@performa-ai/ui/components/select";
+import { Badge } from "@performa-ai/ui/components/badge";
 import {
   useChannelWorkspace,
   useWorkspaceMembers,

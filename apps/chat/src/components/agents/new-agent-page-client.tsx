@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "@tanstack/react-form";
 import { useAgentStore } from "@/lib/agent-store";
 import { useCreateAgent, useAttachTool } from "@/hooks/use-agents";
-import { Button } from "@/components/ui/button";
+import { Button } from "@performa-ai/ui/components/button";
 import {
   ArrowLeft,
   ArrowRight,

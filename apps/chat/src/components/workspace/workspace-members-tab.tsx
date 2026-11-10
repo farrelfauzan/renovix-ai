@@ -1,8 +1,8 @@
 "use client";
 
 import { useRemoveMember, useUpdateMember } from "@/hooks/use-workspaces";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@performa-ai/ui/components/button";
+import { Badge } from "@performa-ai/ui/components/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+} from "@performa-ai/ui/components/alert-dialog";
 import { Shield, UserMinus } from "lucide-react";
 import { toast } from "sonner";
 import type { WorkspaceMember } from "@/lib/workspace-types";

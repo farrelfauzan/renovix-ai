@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { AppSidebar } from "@/components/chat-sidebar";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@performa-ai/ui/components/sidebar";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 
 export function AppShell({ children }: { children: React.ReactNode }) {

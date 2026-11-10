@@ -4,16 +4,16 @@ import type { FormApi } from "@tanstack/react-form";
 import type { AgentFormValues } from "./identity-step";
 import { useGeneratePrompt } from "@/hooks/use-agents";
 import { usePortalModels } from "@/hooks/use-portal";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
+import { Textarea } from "@performa-ai/ui/components/textarea";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@performa-ai/ui/components/select";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 

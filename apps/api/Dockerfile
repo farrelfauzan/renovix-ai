@@ -13,6 +13,7 @@ COPY apps/api-e2e/package.json ./apps/api-e2e/
 COPY apps/back-office/package.json ./apps/back-office/
 COPY apps/chat/package.json ./apps/chat/
 COPY apps/landing/package.json ./apps/landing/
+COPY libs/ui/package.json ./libs/ui/
 
 # --frozen-lockfile fails the build when bun.lock does not match the manifests.
 # --linker hoisted gives the flat, npm-style node_modules the build and runtime stages expect.

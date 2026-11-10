@@ -6,8 +6,8 @@ import Link from "next/link";
 import { useAgent, useAgentRuns, useAgentRun } from "@/hooks/use-agents";
 import { useAgentChat } from "@/hooks/use-agent-chat";
 import { useAgentStore } from "@/lib/agent-store";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import {
   ArrowLeft,
   ArrowDown,
@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@performa-ai/ui/components/scroll-area";
 import { DocumentCard } from "@/components/document-card";
 
 export default function AgentChatPageClient({

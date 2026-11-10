@@ -13,7 +13,7 @@ jest.mock('@/lib/stores', () => ({
 jest.mock('@/hooks/use-conversations', () => ({ useConversations: jest.fn(), useDeleteConversation: jest.fn() }));
 jest.mock('@/lib/api', () => ({ fetchConversation: jest.fn() }));
 jest.mock('sonner', () => ({ toast: {} }));
-jest.mock('@/components/ui/sidebar', () => {
+jest.mock('@performa-ai/ui/components/sidebar', () => {
   const React = require('react');
   const Container = ({ children }: any) => React.createElement('div', null, children);
   return {

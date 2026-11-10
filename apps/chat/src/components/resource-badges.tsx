@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@performa-ai/ui/components/badge";
 import { Globe } from "lucide-react";
 import { motion } from "framer-motion";
 

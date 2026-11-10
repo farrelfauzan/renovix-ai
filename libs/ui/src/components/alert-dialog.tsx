@@ -3,8 +3,8 @@
 import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { cn } from "@performa-ai/ui/lib/utils"
+import { Button } from "@performa-ai/ui/components/button"
 
 function AlertDialog({
   ...props

@@ -3,8 +3,8 @@
 import { usePublicAgents, useCloneTemplate } from "@/hooks/use-agents";
 import { useRouter } from "next/navigation";
 import { Bot, Loader2, Globe, ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@performa-ai/ui/components/button";
+import { Badge } from "@performa-ai/ui/components/badge";
 import { toast } from "sonner";
 import { isPackageLimitError } from "@/lib/is-package-limit-error";
 
