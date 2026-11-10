@@ -48,10 +48,14 @@ const nextConfig = {
     ];
   },
 
-  // RNX-303: /settings is redirected before any page renders. A redirect() in app/settings/page.tsx re-fired while
+  // RNX-303/307: /settings, /profile and /top-up are redirected before any page renders. A redirect() in app/settings/page.tsx re-fired while
   // ProfileGate swapped the route tree for its spinner, which made Next's Router render a different hook count (React #310).
   async redirects() {
-    return [{ source: '/settings', destination: '/settings/general', permanent: false }];
+    return [
+      { source: '/settings', destination: '/settings/general', permanent: false },
+      { source: '/profile', destination: '/settings/general', permanent: false },
+      { source: '/top-up', destination: '/settings/billing', permanent: false },
+    ];
   },
 
   images: {

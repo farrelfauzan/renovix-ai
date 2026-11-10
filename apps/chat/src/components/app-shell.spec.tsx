@@ -15,7 +15,7 @@ jest.mock('@performa-ai/ui/components/sidebar', () => ({
 }));
 afterEach(() => { cleanup(); mockAuthenticated = true; mockToggle.mockClear(); });
 
-it.each(['/', '/agents', '/agents/example/chat', '/settings', '/settings/general'])('shares navigation and mobile trigger on %s', (path) => {
+it.each(['/', '/agents', '/agents/example/chat', '/settings/general', '/settings/billing'])('shares navigation and mobile trigger on %s', (path) => {
   mockPath = path;
   render(<AppShell><p>Existing contents</p></AppShell>);
   expect(screen.getByRole('navigation', { name: 'App navigation' })).toBeTruthy();

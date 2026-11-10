@@ -96,7 +96,7 @@ export default function HelpPage() {
             Quick Links
           </h2>
           <div className="grid grid-cols-2 gap-3">
-            <Link href="/profile">
+            <Link href="/settings/general">
               <div className="rounded-lg border border-border/50 bg-secondary/20 p-4 hover:bg-secondary/40 transition-colors cursor-pointer">
                 <Key className="h-5 w-5 text-muted-foreground mb-2" />
                 <p className="text-sm font-medium">Profile Settings</p>
@@ -105,7 +105,7 @@ export default function HelpPage() {
                 </p>
               </div>
             </Link>
-            <Link href="/top-up">
+            <Link href="/settings/billing">
               <div className="rounded-lg border border-border/50 bg-secondary/20 p-4 hover:bg-secondary/40 transition-colors cursor-pointer">
                 <CreditCard className="h-5 w-5 text-muted-foreground mb-2" />
                 <p className="text-sm font-medium">Top Up</p>

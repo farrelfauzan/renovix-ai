@@ -26,11 +26,3 @@ it('shows specialized entries for an owner with collaboration allowed', () => {
   expect(screen.getByText('Workspace and members')).toBeTruthy();
   expect(screen.getByText('Company and credits')).toBeTruthy();
 });
-
-it.each([['profile', '/settings/general'], ['top-up', '/settings/billing']])('redirects legacy %s to %s', (route, destination) => {
-  jest.isolateModules(() => {
-    const { redirect } = require('next/navigation');
-    require(`../../app/${route}/page`).default();
-    expect(redirect).toHaveBeenCalledWith(destination);
-  });
-});

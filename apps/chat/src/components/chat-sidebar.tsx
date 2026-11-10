@@ -93,7 +93,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
               <SidebarMenuButton asChild className="gap-2 cursor-pointer">
-            <Link href="/settings" onClick={() => setOpenMobile(false)}>
+            <Link href="/settings/general" onClick={() => setOpenMobile(false)}>
                 <Settings className="h-4 w-4" />
                 <span>Settings</span>
             </Link>
