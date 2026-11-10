@@ -1,7 +1,7 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@performa-ai/ui/components/badge";
+import { Button } from "@performa-ai/ui/components/button";
 
 type AgentDeploymentsTabProps = {
   agent: any;

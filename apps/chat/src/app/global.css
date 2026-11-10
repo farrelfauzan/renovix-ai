@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "./tokens.css";
+@import "@performa-ai/ui/tokens.css";
+/* The shared primitives live in libs/ui, outside this app: Tailwind must scan them for their classes. */
+@source "../../../../libs/ui/src";
 
 @custom-variant dark (&:is(.dark *));
 

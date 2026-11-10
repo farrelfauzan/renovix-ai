@@ -3,8 +3,8 @@
 import { useSearchParams, useRouter } from "next/navigation";
 import { useResolveInvite, useAcceptInvite } from "@/hooks/use-workspaces";
 import { useAuthStore, useHydrated } from "@/lib/stores";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@performa-ai/ui/components/button";
+import { Badge } from "@performa-ai/ui/components/badge";
 import {
   Loader2,
   Building2,

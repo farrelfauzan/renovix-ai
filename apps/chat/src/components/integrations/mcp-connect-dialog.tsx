@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@performa-ai/ui/components/dialog";
 import { useStartUserOAuth, useConnectWithToken } from "@/hooks/use-user-mcp";
 import type { McpRegistryEntry } from "@/lib/mcp-types";
 

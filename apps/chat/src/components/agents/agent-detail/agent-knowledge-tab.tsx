@@ -7,14 +7,14 @@ import {
   useRemoveKnowledgeBase,
 } from "@/hooks/use-agents";
 import { useKnowledgeBases } from "@/hooks/use-knowledge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@performa-ai/ui/components/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@performa-ai/ui/components/select";
 import { Plus, X } from "lucide-react";
 
 type AgentKnowledgeTabProps = {

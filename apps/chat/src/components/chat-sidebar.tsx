@@ -20,7 +20,7 @@ import {
   SidebarMenuItem,
   SidebarMenuAction,
   useSidebar,
-} from "@/components/ui/sidebar";
+} from "@performa-ai/ui/components/sidebar";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useChatStore, useAuthStore, useHydrated } from "@/lib/stores";

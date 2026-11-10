@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import { apiClient } from "@/lib/api-client";
 import { usePortalUsage } from "@/hooks/use-portal";

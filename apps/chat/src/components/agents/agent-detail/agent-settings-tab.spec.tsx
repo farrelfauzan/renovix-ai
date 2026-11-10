@@ -16,7 +16,7 @@ jest.mock('@/hooks/use-portal', () => ({
   }),
 }));
 jest.mock('@/hooks/use-my-entitlements', () => ({ useMyEntitlements: () => mockEntitlements }));
-jest.mock('@/components/ui/select', () => {
+jest.mock('@performa-ai/ui/components/select', () => {
   const React = require('react');
   const Box = ({ children }: any) => React.createElement('div', null, children);
   return {

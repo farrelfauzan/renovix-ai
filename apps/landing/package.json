@@ -2,6 +2,9 @@
   "name": "@performa-ai/landing",
   "version": "0.0.1",
   "private": true,
+  "dependencies": {
+    "@performa-ai/ui": "workspace:*"
+  },
   "nx": {
     "name": "landing"
   }

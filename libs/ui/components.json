@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/tokens.css",
+    "baseColor": "neutral",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@performa-ai/ui/components",
+    "utils": "@performa-ai/ui/lib/utils",
+    "ui": "@performa-ai/ui/components",
+    "lib": "@performa-ai/ui/lib",
+    "hooks": "@performa-ai/ui/hooks"
+  },
+  "iconLibrary": "lucide"
+}

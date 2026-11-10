@@ -11,8 +11,8 @@ import {
   XCircle,
   TestTube,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@performa-ai/ui/components/badge";
+import { Button } from "@performa-ai/ui/components/button";
 import {
   useMcpServers,
   useMcpRegistry,

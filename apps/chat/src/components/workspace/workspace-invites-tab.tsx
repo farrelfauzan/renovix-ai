@@ -1,8 +1,8 @@
 "use client";
 
 import { useResendInvite, useRevokeInvite } from "@/hooks/use-workspaces";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@performa-ai/ui/components/button";
+import { Badge } from "@performa-ai/ui/components/badge";
 import { RefreshCw, X, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { isPackageLimitError } from "@/lib/is-package-limit-error";

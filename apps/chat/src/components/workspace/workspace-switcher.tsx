@@ -1,7 +1,7 @@
 "use client";
 
 import { useShellWorkspaces } from "@/hooks/use-shell-workspaces";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
 
 export function WorkspaceSwitcher() {
   const { workspaces, selected, setActiveWorkspace } = useShellWorkspaces();

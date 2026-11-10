@@ -38,7 +38,7 @@ jest.mock('@/hooks/use-portal', () => ({
 }));
 jest.mock('@/hooks/use-my-entitlements', () => ({ useMyEntitlements: () => mockEntitlements }));
 jest.mock('@/lib/api', () => ({ FREE_LIMIT_CODES: [], PortalError: class extends Error {}, streamCompletion: jest.fn() }));
-jest.mock('@/components/ui/select', () => {
+jest.mock('@performa-ai/ui/components/select', () => {
   const React = require('react');
   const Box = ({ children }: any) => React.createElement('div', null, children);
   return {

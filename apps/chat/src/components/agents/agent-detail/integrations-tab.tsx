@@ -8,8 +8,8 @@ import {
   Settings,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@performa-ai/ui/components/badge";
+import { Button } from "@performa-ai/ui/components/button";
 import {
   useMcpServers,
   useTestMcpConnection,

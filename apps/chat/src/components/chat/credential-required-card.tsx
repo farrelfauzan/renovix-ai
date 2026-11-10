@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink, KeyRound } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@performa-ai/ui/components/button";
 import { useStartUserOAuth } from "@/hooks/use-user-mcp";
 import { toast } from "sonner";
 

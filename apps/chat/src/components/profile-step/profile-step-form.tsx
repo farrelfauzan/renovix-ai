@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import { ProfileStepSelect } from "@/components/profile-step/profile-step-select";
 import { ProfileStepTopBar } from "@/components/profile-step/profile-step-top-bar";
 import { ProfileGoalChips } from "@/components/profile-step/profile-goal-chips";

@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "./tokens.css";
+@import "@performa-ai/ui/tokens.css";
 
 /* Back-office tokens that StyleGuide does not name (RNX-244): the ink sidebar's hover and active fills. */
 :root {

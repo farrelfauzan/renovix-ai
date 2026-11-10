@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import { apiClient } from "@/lib/api-client";
 import { isPackageLimitError } from "@/lib/is-package-limit-error";

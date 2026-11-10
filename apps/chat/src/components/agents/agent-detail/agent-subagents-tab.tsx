@@ -4,15 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAgents, useUpdateAgent } from "@/hooks/use-agents";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@performa-ai/ui/components/badge";
+import { Button } from "@performa-ai/ui/components/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@performa-ai/ui/components/select";
 import { Plus, X } from "lucide-react";
 
 type AgentSubAgentsTabProps = {

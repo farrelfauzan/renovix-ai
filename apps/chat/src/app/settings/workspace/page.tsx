@@ -2,7 +2,7 @@
 
 import { WorkspaceSettings } from "@/components/settings/workspace-settings";
 import { useChannels } from "@/hooks/use-channels";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
 
 export default function WorkspacePage() {
   const { data: channels, isLoading } = useChannels();

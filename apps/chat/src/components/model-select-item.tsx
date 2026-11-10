@@ -1,6 +1,6 @@
 "use client";
 
-import { SelectItem } from "@/components/ui/select";
+import { SelectItem } from "@performa-ai/ui/components/select";
 import type { MyEntitlements } from "@/hooks/use-my-entitlements";
 import type { PortalModel } from "@/hooks/use-portal";
 import { getModelLockLabel } from "@/lib/get-model-lock-label";

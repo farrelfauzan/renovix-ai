@@ -1,7 +1,7 @@
 "use client";
 
 import type { Message } from "@/lib/stores";
-import { cn } from "@/lib/utils";
+import { cn } from "@performa-ai/ui/lib/utils";
 import { User, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";

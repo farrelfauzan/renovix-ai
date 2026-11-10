@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { useInviteMember } from "@/hooks/use-workspaces";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@performa-ai/ui/components/dialog";
 import { UserPlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { isPackageLimitError } from "@/lib/is-package-limit-error";

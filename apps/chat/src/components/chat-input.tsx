@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, type KeyboardEvent } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@performa-ai/ui/components/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@performa-ai/ui/components/select";
 import { ArrowUp, Square, Sparkles, LogIn } from "lucide-react";
 import { useAuthStore, useChatStore, useHydrated } from "@/lib/stores";
 import { usePortalUsage, usePortalModels } from "@/hooks/use-portal";

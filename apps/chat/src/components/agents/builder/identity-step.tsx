@@ -4,10 +4,10 @@ import { useRef, useState } from "react";
 import type { FormApi } from "@tanstack/react-form";
 import { useUploadAgentAvatar } from "@/hooks/use-agents";
 import { config } from "@/lib/config";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
+import { Textarea } from "@performa-ai/ui/components/textarea";
+import { Checkbox } from "@performa-ai/ui/components/checkbox";
 import {
   Upload,
   Smile,
