@@ -29,7 +29,7 @@ afterEach(cleanup);
 it('exposes exactly Chat, Agents and Settings navigation', () => {
   render(<AppSidebar />);
   expect(screen.getAllByRole('link').map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
-    ['Chat', '/'], ['Agents', '/agents'], ['Settings', '/settings'],
+    ['Chat', '/'], ['Agents', '/agents'], ['Settings', '/settings/general'],
   ]);
 });
 

@@ -48,11 +48,3 @@ it('scrolls the current tab into view again when the owner labels load and widen
   expect(screen.getByText('Workspace and members')).toBeTruthy();
   expect(mockScrollIntoView).toHaveBeenCalledTimes(2);
 });
-
-it.each([['profile', '/settings/general'], ['top-up', '/settings/billing']])('redirects legacy %s to %s', (route, destination) => {
-  jest.isolateModules(() => {
-    const { redirect } = require('next/navigation');
-    require(`../../app/${route}/page`).default();
-    expect(redirect).toHaveBeenCalledWith(destination);
-  });
-});

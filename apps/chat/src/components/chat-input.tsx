@@ -162,7 +162,7 @@ export function ChatInput() {
           addMessage({
             role: "assistant",
             content: freeLimit
-              ? `${err.message}\n\n[Sign in](/login) · [Redeem an invitation code](/top-up)`
+              ? `${err.message}\n\n[Sign in](/login) · [Redeem an invitation code](/settings/billing)`
               : `Error: ${err.message}`,
           });
         }

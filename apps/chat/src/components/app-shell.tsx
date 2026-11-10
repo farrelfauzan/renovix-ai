@@ -9,7 +9,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const hydrated = useHydrated();
   const { isLoggedIn } = useAuthStore();
-  const shellRoute = pathname === "/" || pathname === "/agents" || pathname.startsWith("/agents/") || pathname === "/settings" || pathname.startsWith("/settings/");
+  const shellRoute = pathname === "/" || pathname === "/agents" || pathname.startsWith("/agents/") || pathname.startsWith("/settings/");
   if (!shellRoute) return <>{children}</>;
 
   const authenticated = hydrated && isLoggedIn();

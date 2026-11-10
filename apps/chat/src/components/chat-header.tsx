@@ -118,13 +118,13 @@ export function ChatHeader() {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/profile" className="cursor-pointer">
+                  <Link href="/settings/general" className="cursor-pointer">
                     <User className="mr-2 h-4 w-4" />
                     Profile
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/top-up" className="cursor-pointer">
+                  <Link href="/settings/billing" className="cursor-pointer">
                     <CreditCard className="mr-2 h-4 w-4" />
                     Top Up
                   </Link>

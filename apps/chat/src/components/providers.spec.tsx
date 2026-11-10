@@ -15,4 +15,13 @@ describe('Providers', () => {
     const toaster = await screen.findByText('Saved');
     expect(toaster.closest('[data-sonner-toaster]')?.getAttribute('data-sonner-theme')).toBe('light');
   });
+
+  it('maps the toaster colors to the theme tokens', async () => {
+    render(<Providers><div /></Providers>);
+    toast('Styled');
+    const toaster = (await screen.findByText('Styled')).closest('[data-sonner-toaster]') as HTMLElement;
+    expect(toaster.style.getPropertyValue('--normal-bg')).toBe('var(--background)');
+    expect(toaster.style.getPropertyValue('--normal-text')).toBe('var(--foreground)');
+    expect(toaster.style.getPropertyValue('--normal-border')).toBe('var(--border)');
+  });
 });
