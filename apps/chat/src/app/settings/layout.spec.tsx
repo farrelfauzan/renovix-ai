@@ -8,6 +8,7 @@ const mockGet = jest.fn();
 jest.mock('@/lib/api-client', () => ({ apiClient: { get: (...args: unknown[]) => mockGet(...args) } }));
 jest.mock('next/navigation', () => ({ usePathname: () => '/settings/general' }));
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
+Element.prototype.scrollIntoView = jest.fn();
 afterEach(() => { cleanup(); mockGet.mockReset(); useAuthStore.setState({ sessionAuth: false }); });
 
 it('renders the settings layout for a signed-in user across the hydration change without a hook-order error', async () => {
