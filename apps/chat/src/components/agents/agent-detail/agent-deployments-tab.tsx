@@ -29,7 +29,7 @@ export function AgentDeploymentsTab({ agent }: AgentDeploymentsTabProps) {
             </div>
             <Badge
               variant="outline"
-              className={ch.status === "active" ? "text-green-500" : ""}
+              className={ch.status === "active" ? "text-rx-green" : ""}
             >
               {ch.status}
             </Badge>

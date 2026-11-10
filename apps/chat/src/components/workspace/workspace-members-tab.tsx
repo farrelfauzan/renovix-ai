@@ -61,10 +61,10 @@ export function WorkspaceMembersTab({ workspaceId, members }: Props) {
         {members.map((member) => (
           <div
             key={member.id}
-            className="flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-900/30"
+            className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted"
           >
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-medium">
+              <div className="h-8 w-8 rounded-full bg-rx-surface-2 flex items-center justify-center text-xs font-medium">
                 {member.user.email.charAt(0).toUpperCase()}
               </div>
               <div>
@@ -90,7 +90,7 @@ export function WorkspaceMembersTab({ workspaceId, members }: Props) {
                   <select
                     value={member.role}
                     onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                    className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-300"
+                    className="text-xs bg-rx-surface-2 border border-border rounded px-2 py-1 text-foreground"
                   >
                     <option value="admin">Admin</option>
                     <option value="member">Member</option>
@@ -99,7 +99,7 @@ export function WorkspaceMembersTab({ workspaceId, members }: Props) {
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <UserMinus className="h-3.5 w-3.5 text-red-400" />
+                        <UserMinus className="h-3.5 w-3.5 text-destructive" />
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -113,7 +113,7 @@ export function WorkspaceMembersTab({ workspaceId, members }: Props) {
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
                           onClick={() => handleRemove(member.id)}
-                          className="bg-red-600 hover:bg-red-700"
+                          className="bg-destructive hover:bg-destructive/90 text-primary-foreground"
                         >
                           Remove
                         </AlertDialogAction>

@@ -16,22 +16,22 @@ const STATUS_CONFIG: Record<
   understanding: {
     icon: Brain,
     label: "Understanding your question...",
-    color: "text-violet-400",
+    color: "text-primary",
   },
   searching_knowledge: {
     icon: Search,
     label: "Searching knowledge base...",
-    color: "text-amber-400",
+    color: "text-rx-amber-text",
   },
   generating: {
     icon: PenTool,
     label: "Generating response...",
-    color: "text-emerald-400",
+    color: "text-rx-green",
   },
   generating_document: {
     icon: FileDown,
     label: "Generating document...",
-    color: "text-blue-400",
+    color: "text-primary",
   },
 };
 
@@ -93,8 +93,8 @@ export function StreamingBubble() {
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="flex items-start gap-3"
     >
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 mt-0.5">
-        <Sparkles className="h-3.5 w-3.5 text-white" />
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary mt-0.5">
+        <Sparkles className="h-3.5 w-3.5 text-primary-foreground" />
       </div>
       <div className="prose prose-invert prose-sm max-w-none flex-1 min-w-0 leading-relaxed">
         {showContent ? (
@@ -135,17 +135,17 @@ export function StreamingBubble() {
                 <motion.span
                   animate={{ opacity: [0.3, 1, 0.3] }}
                   transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
-                  className="h-2 w-2 rounded-full bg-emerald-400"
+                  className="h-2 w-2 rounded-full bg-rx-green"
                 />
                 <motion.span
                   animate={{ opacity: [0.3, 1, 0.3] }}
                   transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
-                  className="h-2 w-2 rounded-full bg-emerald-400"
+                  className="h-2 w-2 rounded-full bg-rx-green"
                 />
                 <motion.span
                   animate={{ opacity: [0.3, 1, 0.3] }}
                   transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
-                  className="h-2 w-2 rounded-full bg-emerald-400"
+                  className="h-2 w-2 rounded-full bg-rx-green"
                 />
               </motion.div>
             )}

@@ -20,7 +20,7 @@ export function ProfileStepSelect({ id, label, hint, value, placeholder, options
         {label}
       </label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={id} className="w-full">
+        <SelectTrigger id={id} className="w-full data-[size=default]:h-(--rx-button-height)">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent className="max-h-72">

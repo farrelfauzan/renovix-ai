@@ -91,7 +91,7 @@ export function AgentSettingsTab({ agent, agentId }: AgentSettingsTabProps) {
         <label className="text-sm font-medium mb-1.5 block">Avatar</label>
         <div className="flex items-center gap-4">
           <div
-            className="h-12 w-12 rounded-full flex items-center justify-center text-lg text-white font-bold"
+            className="h-12 w-12 rounded-full flex items-center justify-center text-lg text-primary-foreground font-bold"
             style={{ backgroundColor: form.avatarColor || "#6366f1" }}
           >
             {form.avatar || form.name?.slice(0, 2)?.toUpperCase() || "🤖"}

@@ -364,7 +364,7 @@ export function GeneralSettings() {
                 type="button"
               >
                 {copied ? (
-                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                  <Check className="h-3.5 w-3.5 text-rx-green" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}

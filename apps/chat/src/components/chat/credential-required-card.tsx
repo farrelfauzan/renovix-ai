@@ -46,21 +46,21 @@ export function CredentialRequiredCard({
   };
 
   return (
-    <div className="border rounded-lg p-4 bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800 max-w-md">
+    <div className="border rounded-lg p-4 bg-rx-amber-tint border-rx-amber-bar/30 max-w-md">
       <div className="flex items-start gap-3">
-        <KeyRound className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <KeyRound className="h-5 w-5 text-rx-amber-text shrink-0 mt-0.5" />
         <div className="space-y-2">
-          <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+          <p className="text-sm font-medium text-rx-amber-text">
             Connection required
           </p>
-          <p className="text-xs text-amber-700 dark:text-amber-300">
+          <p className="text-xs text-rx-amber-text">
             This action requires access to your {label} account. Connect it to
             allow the agent to perform this task on your behalf.
           </p>
           <Button
             size="sm"
             variant="outline"
-            className="border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900"
+            className="border-rx-amber-bar/40 hover:bg-rx-amber-tint"
             onClick={handleConnect}
             disabled={startOAuth.isPending || !workspaceId}
           >

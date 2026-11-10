@@ -1,7 +1,16 @@
 "use client";
 
+import { BarChart3, Bell, FileText, MessageCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GOAL_OPTIONS } from "@/lib/profile-step-options";
+
+const GOAL_ICONS: Record<(typeof GOAL_OPTIONS)[number], typeof FileText> = {
+  "Reports and documents": FileText,
+  "Data analysis": BarChart3,
+  "Customer support": MessageCircle,
+  "Internal knowledge search": Search,
+  "Automation and reminders": Bell,
+};
 
 interface ProfileGoalChipsProps {
   selected: readonly string[];
@@ -16,15 +25,17 @@ export function ProfileGoalChips({ selected, onToggle }: ProfileGoalChipsProps) 
       <div className="flex flex-wrap gap-2.5">
         {GOAL_OPTIONS.map((goal) => {
           const isSelected = selected.includes(goal);
+          const Icon = GOAL_ICONS[goal];
           return (
             <Button
               key={goal}
               type="button"
-              variant={isSelected ? "default" : "outline"}
-              className="rounded-full"
+              variant="outline"
+              className={`h-11 rounded-full px-4 text-[15px] ${isSelected ? "border-primary bg-accent text-accent-foreground hover:bg-accent" : ""}`}
               aria-pressed={isSelected}
               onClick={() => onToggle(goal)}
             >
+              <Icon aria-hidden="true" />
               {goal}
             </Button>
           );

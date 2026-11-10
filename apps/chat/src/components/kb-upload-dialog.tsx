@@ -182,12 +182,12 @@ export function KBUploadDialog({ open, onClose }: KBUploadDialogProps) {
                 onClick={() => fileInputRef.current?.click()}
                 className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors ${
                   dragOver
-                    ? "border-indigo-500 bg-indigo-500/5"
+                    ? "border-primary bg-accent"
                     : "border-border/60 hover:border-border"
                 }`}
               >
                 <Upload
-                  className={`h-8 w-8 ${dragOver ? "text-indigo-500" : "text-muted-foreground"}`}
+                  className={`h-8 w-8 ${dragOver ? "text-primary" : "text-muted-foreground"}`}
                 />
                 <div className="text-center">
                   <p className="text-xs font-medium">
@@ -202,7 +202,7 @@ export function KBUploadDialog({ open, onClose }: KBUploadDialogProps) {
 
                 {file && (
                   <div className="flex items-center gap-1.5 mt-2 rounded-md bg-secondary/50 px-2 py-1">
-                    <FileText className="h-3.5 w-3.5 text-indigo-500" />
+                    <FileText className="h-3.5 w-3.5 text-primary" />
                     <span className="text-[11px]">{file.name}</span>
                     <button
                       onClick={(e) => {
@@ -255,8 +255,8 @@ export function KBUploadDialog({ open, onClose }: KBUploadDialogProps) {
               animate={{ opacity: 1, scale: 1 }}
               className="flex flex-col items-center gap-3 py-4"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10">
-                <Check className="h-5 w-5 text-emerald-500" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rx-green/10">
+                <Check className="h-5 w-5 text-rx-green" />
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium">Upload Successful</p>

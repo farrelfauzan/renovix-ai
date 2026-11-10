@@ -97,10 +97,10 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
       <div className="max-w-3xl mx-auto p-6 space-y-8">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Settings2 className="h-5 w-5 text-zinc-400" />
+          <Settings2 className="h-5 w-5 text-muted-foreground" />
           <div>
-            <h2 className="text-lg font-semibold text-zinc-100">Agent Settings</h2>
-            <p className="text-xs text-zinc-500">
+            <h2 className="text-lg font-semibold text-foreground">Agent Settings</h2>
+            <p className="text-xs text-muted-foreground">
               Manage your MCP tools globally. Connected services here can be attached to any agent in any server.
             </p>
           </div>
@@ -109,17 +109,17 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
         {/* Connected MCP Servers */}
         <section>
           <div className="flex items-center gap-2 mb-3">
-            <Plug className="h-4 w-4 text-zinc-400" />
-            <h3 className="text-sm font-medium text-zinc-200">Connected MCP Servers</h3>
+            <Plug className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium text-foreground">Connected MCP Servers</h3>
             <Badge variant="outline" className="text-[10px] ml-auto">
               {servers?.length || 0} Connected
             </Badge>
           </div>
 
           {(!servers || servers.length === 0) ? (
-            <div className="border border-dashed border-zinc-700 rounded-lg p-6 text-center">
-              <Plug className="h-8 w-8 mx-auto mb-2 text-zinc-600" />
-              <p className="text-sm text-zinc-500">
+            <div className="border border-dashed border-border rounded-lg p-6 text-center">
+              <Plug className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
                 No MCP servers connected yet. Add one below to get started.
               </p>
             </div>
@@ -128,7 +128,7 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
               {servers.map((server) => (
                 <div
                   key={server.id}
-                  className="border border-zinc-800 rounded-lg bg-zinc-900/50"
+                  className="border border-border rounded-lg bg-muted"
                 >
                   <div className="flex items-center justify-between p-3">
                     <div className="flex items-center gap-3">
@@ -138,10 +138,10 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
                         size="sm"
                       />
                       <div>
-                        <p className="font-medium text-sm text-zinc-200">
+                        <p className="font-medium text-sm text-foreground">
                           {server.displayName}
                         </p>
-                        <p className="text-[11px] text-zinc-500 capitalize">
+                        <p className="text-[11px] text-muted-foreground capitalize">
                           {server.transport} · {server.isGlobal ? "Global" : "Workspace"}
                         </p>
                       </div>
@@ -151,8 +151,8 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
                         variant="outline"
                         className={
                           server.status === "connected"
-                            ? "text-green-500 border-green-500/30"
-                            : "text-red-500 border-red-500/30"
+                            ? "text-rx-green border-rx-green/30"
+                            : "text-destructive border-destructive/30"
                         }
                       >
                         {server.status === "connected" ? (
@@ -165,7 +165,7 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-zinc-400 hover:text-white"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
                         onClick={() => handleTest(server.id, server.displayName)}
                         disabled={testConn.isPending}
                         title="Test connection"
@@ -175,7 +175,7 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-red-400 hover:text-red-300 hover:bg-red-950/30"
+                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-rx-red-tint"
                         onClick={() => handleDisconnect(server.id, server.displayName)}
                         disabled={deleteMcp.isPending}
                         title="Disconnect"
@@ -193,25 +193,25 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
         {/* Available Integrations */}
         <section>
           <div className="flex items-center gap-2 mb-3">
-            <Plus className="h-4 w-4 text-zinc-400" />
-            <h3 className="text-sm font-medium text-zinc-200">Available Integrations</h3>
+            <Plus className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium text-foreground">Available Integrations</h3>
           </div>
-          <p className="text-xs text-zinc-500 mb-3">
+          <p className="text-xs text-muted-foreground mb-3">
             Connect MCP servers here. OAuth providers (Google/GitHub/Slack)
             use your per-user account for the selected server.
           </p>
 
           {!workspaceReady && (
-            <div className="border border-dashed border-zinc-700 rounded-lg p-3 mb-3">
-              <p className="text-xs text-zinc-500">
+            <div className="border border-dashed border-border rounded-lg p-3 mb-3">
+              <p className="text-xs text-muted-foreground">
                 Workspace is required before connecting integrations.
               </p>
             </div>
           )}
 
           {availableEntries.length === 0 ? (
-            <div className="border border-dashed border-zinc-700 rounded-lg p-6 text-center">
-              <p className="text-sm text-zinc-500">
+            <div className="border border-dashed border-border rounded-lg p-6 text-center">
+              <p className="text-sm text-muted-foreground">
                 All available integrations are already connected.
               </p>
             </div>
@@ -220,10 +220,10 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
               {availableEntries.map((entry) => (
                 <div
                   key={entry.name}
-                  className={`border border-zinc-800 rounded-lg p-3 flex items-center justify-between transition-colors ${
+                  className={`border border-border rounded-lg p-3 flex items-center justify-between transition-colors ${
                     workspaceReady
-                      ? "bg-zinc-900/30 hover:bg-zinc-900/60"
-                      : "bg-zinc-900/20 opacity-60"
+                      ? "bg-muted hover:bg-muted"
+                      : "bg-muted opacity-60"
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -233,10 +233,10 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
                       size="sm"
                     />
                     <div className="min-w-0">
-                      <p className="font-medium text-sm text-zinc-200">
+                      <p className="font-medium text-sm text-foreground">
                         {entry.displayName}
                       </p>
-                      <p className="text-[11px] text-zinc-500 truncate">
+                      <p className="text-[11px] text-muted-foreground truncate">
                         {entry.description}
                       </p>
                     </div>

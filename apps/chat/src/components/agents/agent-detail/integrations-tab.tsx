@@ -97,8 +97,8 @@ export function IntegrationsTab({ agent, agentId }: IntegrationsTabProps) {
                     variant="outline"
                     className={
                       server.status === "connected"
-                        ? "text-green-500 border-green-500/30"
-                        : "text-red-500 border-red-500/30"
+                        ? "text-rx-green border-rx-green/30"
+                        : "text-destructive border-destructive/30"
                     }
                   >
                     {server.status === "connected" ? (

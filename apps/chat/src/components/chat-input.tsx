@@ -205,10 +205,10 @@ export function ChatInput() {
               transition={{ duration: 0.3 }}
               className="mb-3 overflow-hidden"
             >
-              <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 backdrop-blur-sm p-4">
+              <div className="rounded-xl border border-primary/20 bg-accent backdrop-blur-sm p-4">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-indigo-500 to-purple-600">
-                    <Sparkles className="h-4 w-4 text-white" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
+                    <Sparkles className="h-4 w-4 text-primary-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground">
@@ -224,7 +224,7 @@ export function ChatInput() {
                   <Link href="/login" className="shrink-0">
                     <Button
                       size="sm"
-                      className="h-8 rounded-lg text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-500"
+                      className="h-8 rounded-lg text-xs gap-1.5 bg-primary hover:bg-rx-accent-hover"
                     >
                       <LogIn className="h-3.5 w-3.5" />
                       Sign In
@@ -237,7 +237,7 @@ export function ChatInput() {
         </AnimatePresence>
 
         {/* Chat input box */}
-        <div className="relative rounded-2xl border border-border/50 bg-secondary/30 backdrop-blur-sm shadow-lg focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/20 transition-all duration-200">
+        <div className="relative rounded-2xl border border-border/50 bg-secondary/30 backdrop-blur-sm shadow-lg focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
           <textarea
             ref={textareaRef}
             value={input}
@@ -264,7 +264,7 @@ export function ChatInput() {
                 <Button
                   onClick={handleStop}
                   size="icon"
-                  className="h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 text-foreground"
+                  className="h-8 w-8 rounded-full bg-muted hover:bg-accent text-foreground"
                 >
                   <Square className="h-3.5 w-3.5" />
                 </Button>
@@ -273,9 +273,9 @@ export function ChatInput() {
                   onClick={handleSend}
                   disabled={!input.trim()}
                   size="icon"
-                  className="h-8 w-8 rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:bg-muted transition-all duration-200"
+                  className="h-8 w-8 rounded-full bg-primary hover:bg-rx-accent-hover disabled:opacity-30 disabled:bg-muted transition-all duration-200"
                 >
-                  <ArrowUp className="h-4 w-4 text-white" />
+                  <ArrowUp className="h-4 w-4 text-primary-foreground" />
                 </Button>
               )}
             </div>

@@ -82,9 +82,9 @@ export const ChatMessages = forwardRef<ChatMessagesHandle, { onNearBottomChange?
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1, duration: 0.4 }}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/10"
+              className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-accent border border-primary/10"
             >
-              <Sparkles className="h-6 w-6 text-indigo-400" />
+              <Sparkles className="h-6 w-6 text-primary" />
             </motion.div>
             <motion.h2
               initial={{ opacity: 0, y: 10 }}
@@ -125,7 +125,7 @@ export const ChatMessages = forwardRef<ChatMessagesHandle, { onNearBottomChange?
                 }}
                 className="group flex items-center gap-2.5 rounded-xl border border-border/40 bg-secondary/20 px-3.5 py-3 text-left text-xs text-muted-foreground transition-all duration-200 hover:bg-secondary/40 hover:border-indigo-500/30 hover:text-foreground"
               >
-                <s.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60 group-hover:text-indigo-400 transition-colors" />
+                <s.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60 group-hover:text-primary transition-colors" />
                 <span className="line-clamp-1">{s.text}</span>
               </button>
             ))}

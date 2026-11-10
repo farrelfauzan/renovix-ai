@@ -113,10 +113,10 @@ export function WorkspaceKnowledgeDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl bg-zinc-900 border-zinc-800 text-zinc-100 max-h-[85vh] flex flex-col">
+      <DialogContent className="sm:max-w-2xl bg-muted border-border text-foreground max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-zinc-100">
-            <BookOpen className="w-4 h-4 text-emerald-500" />
+          <DialogTitle className="flex items-center gap-2 text-foreground">
+            <BookOpen className="w-4 h-4 text-rx-green" />
             {step === "create" ? "Create Shared Knowledge" : `Add to "${displayName}"`}
           </DialogTitle>
         </DialogHeader>
@@ -124,26 +124,26 @@ export function WorkspaceKnowledgeDialog({
         {step === "create" && (
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">Name</label>
+              <label className="text-xs font-medium text-muted-foreground">Name</label>
               <Input
                 placeholder="e.g. Product Guidelines, API Reference"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+                className="bg-rx-surface-2 border-border text-foreground placeholder:text-muted-foreground"
                 autoFocus
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">Description (optional)</label>
+              <label className="text-xs font-medium text-muted-foreground">Description (optional)</label>
               <Input
                 placeholder="Brief description of this knowledge base"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder:text-zinc-600"
+                className="bg-rx-surface-2 border-border text-foreground placeholder:text-muted-foreground"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">Content (Markdown)</label>
+              <label className="text-xs font-medium text-muted-foreground">Content (Markdown)</label>
               <MarkdownEditor content={content} onChange={setContent} tab={tab} onTabChange={setTab} />
             </div>
           </div>
@@ -151,7 +151,7 @@ export function WorkspaceKnowledgeDialog({
 
         {step === "content" && (
           <div className="space-y-3 py-2 flex-1 min-h-0">
-            <label className="text-xs font-medium text-zinc-400">
+            <label className="text-xs font-medium text-muted-foreground">
               Paste or write knowledge content in Markdown
             </label>
             <MarkdownEditor content={content} onChange={setContent} tab={tab} onTabChange={setTab} />
@@ -159,14 +159,14 @@ export function WorkspaceKnowledgeDialog({
         )}
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="ghost" onClick={() => handleClose(false)} className="text-zinc-400">
+          <Button variant="ghost" onClick={() => handleClose(false)} className="text-muted-foreground">
             Cancel
           </Button>
           {step === "create" ? (
             <Button
               onClick={handleCreate}
               disabled={!name.trim() || createKB.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-rx-green hover:bg-rx-green/90 text-primary-foreground"
             >
               {createKB.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               {content.trim() ? "Create & Save" : "Create"}
@@ -175,7 +175,7 @@ export function WorkspaceKnowledgeDialog({
             <Button
               onClick={handleSaveContent}
               disabled={!content.trim() || addChunks.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-rx-green hover:bg-rx-green/90 text-primary-foreground"
             >
               {addChunks.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
               Save Knowledge
@@ -201,16 +201,16 @@ function MarkdownEditor({
   onTabChange: (tab: Tab) => void;
 }) {
   return (
-    <div className="border border-zinc-700 rounded-md overflow-hidden">
+    <div className="border border-border rounded-md overflow-hidden">
       {/* Tab bar */}
-      <div className="flex border-b border-zinc-700 bg-zinc-850">
+      <div className="flex border-b border-border bg-muted">
         <button
           type="button"
           onClick={() => onTabChange("write")}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
             tab === "write"
-              ? "text-zinc-100 border-b-2 border-emerald-500 bg-zinc-800"
-              : "text-zinc-500 hover:text-zinc-300"
+              ? "text-foreground border-b-2 border-rx-green bg-rx-surface-2"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Pencil className="w-3 h-3" />
@@ -221,8 +221,8 @@ function MarkdownEditor({
           onClick={() => onTabChange("preview")}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
             tab === "preview"
-              ? "text-zinc-100 border-b-2 border-emerald-500 bg-zinc-800"
-              : "text-zinc-500 hover:text-zinc-300"
+              ? "text-foreground border-b-2 border-rx-green bg-rx-surface-2"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
           <Eye className="w-3 h-3" />
@@ -236,16 +236,16 @@ function MarkdownEditor({
           value={content}
           onChange={(e) => onChange(e.target.value)}
           placeholder="# Title&#10;&#10;Write your knowledge content here using Markdown...&#10;&#10;- Supports **bold**, *italic*, `code`&#10;- Lists, headings, links&#10;- Code blocks with syntax highlighting"
-          className="w-full h-56 bg-zinc-900 text-zinc-200 text-sm p-3 resize-none focus:outline-none placeholder:text-zinc-600 font-mono"
+          className="w-full h-56 bg-muted text-foreground text-sm p-3 resize-none focus:outline-none placeholder:text-muted-foreground font-mono"
         />
       ) : (
-        <div className="w-full h-56 overflow-y-auto bg-zinc-900 p-3">
+        <div className="w-full h-56 overflow-y-auto bg-muted p-3">
           {content.trim() ? (
-            <div className="prose prose-invert prose-sm max-w-none prose-headings:text-zinc-200 prose-p:text-zinc-300 prose-a:text-indigo-400 prose-strong:text-zinc-200 prose-code:text-emerald-400 prose-code:bg-zinc-800 prose-code:px-1 prose-code:rounded prose-pre:bg-zinc-800 prose-li:text-zinc-300">
+            <div className="prose prose-invert prose-sm max-w-none prose-headings:text-foreground prose-p:text-foreground prose-a:text-primary prose-strong:text-foreground prose-code:text-rx-green prose-code:bg-rx-surface-2 prose-code:px-1 prose-code:rounded prose-pre:bg-rx-surface-2 prose-li:text-foreground">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
           ) : (
-            <p className="text-xs text-zinc-600 italic">Nothing to preview</p>
+            <p className="text-xs text-muted-foreground italic">Nothing to preview</p>
           )}
         </div>
       )}

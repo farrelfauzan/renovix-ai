@@ -132,8 +132,8 @@
 }
 
 .prose code {
-  background-color: oklch(0.22 0 0);
-  color: oklch(0.85 0.05 160);
+  background-color: var(--muted);
+  color: var(--rx-accent);
   padding: 0.15em 0.35em;
   border-radius: 0.3rem;
   font-size: 0.85em;
@@ -141,8 +141,8 @@
 }
 
 .prose pre {
-  background-color: oklch(0.18 0 0);
-  border: 1px solid oklch(0.28 0 0);
+  background-color: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
   padding: 1em 1.25em;
   overflow-x: auto;
@@ -161,7 +161,7 @@
 }
 
 .prose blockquote {
-  border-left: 3px solid oklch(0.4 0.15 260);
+  border-left: 3px solid var(--border);
   padding-left: 1em;
   color: var(--muted-foreground);
   margin-top: 0.75em;
@@ -170,17 +170,17 @@
 }
 
 .prose a {
-  color: oklch(0.7 0.15 260);
+  color: var(--rx-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .prose a:hover {
-  color: oklch(0.8 0.15 260);
+  color: var(--rx-accent-hover);
 }
 
 .prose hr {
-  border-color: oklch(0.28 0 0);
+  border-color: var(--border);
   margin-top: 1.5em;
   margin-bottom: 1.5em;
 }
@@ -194,13 +194,13 @@
 }
 
 .prose th, .prose td {
-  border: 1px solid oklch(0.28 0 0);
+  border: 1px solid var(--border);
   padding: 0.5em 0.75em;
   text-align: left;
 }
 
 .prose th {
-  background-color: oklch(0.2 0 0);
+  background-color: var(--muted);
   font-weight: 600;
 }
 

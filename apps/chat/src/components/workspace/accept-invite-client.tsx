@@ -46,7 +46,7 @@ export default function AcceptInviteClient() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-6">
         <div className="text-center max-w-sm">
-          <XCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+          <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
           <h1 className="text-lg font-semibold mb-2">Invalid Link</h1>
           <p className="text-sm text-muted-foreground">
             This invitation link is missing a token. Please check the link from your email.
@@ -68,7 +68,7 @@ export default function AcceptInviteClient() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-6">
         <div className="text-center max-w-sm">
-          <AlertTriangle className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+          <AlertTriangle className="h-12 w-12 text-rx-amber-text mx-auto mb-4" />
           <h1 className="text-lg font-semibold mb-2">Invite Not Found</h1>
           <p className="text-sm text-muted-foreground mb-4">
             This invitation may have expired or been revoked. Ask your workspace admin for a new invite.
@@ -85,7 +85,7 @@ export default function AcceptInviteClient() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-6">
         <div className="text-center max-w-sm">
-          <CheckCircle2 className="h-12 w-12 text-green-400 mx-auto mb-4" />
+          <CheckCircle2 className="h-12 w-12 text-rx-green mx-auto mb-4" />
           <h1 className="text-lg font-semibold mb-2">Already Accepted</h1>
           <p className="text-sm text-muted-foreground mb-4">
             This invitation has already been used.
@@ -105,7 +105,7 @@ export default function AcceptInviteClient() {
       <div className="min-h-screen flex items-center justify-center bg-background p-6">
         <div className="max-w-sm w-full">
           <div className="text-center mb-6">
-            <Building2 className="h-12 w-12 text-indigo-400 mx-auto mb-4" />
+            <Building2 className="h-12 w-12 text-primary mx-auto mb-4" />
             <h1 className="text-lg font-semibold mb-1">
               Join {invite.workspaceName}
             </h1>
@@ -117,7 +117,7 @@ export default function AcceptInviteClient() {
             </p>
           </div>
 
-          <div className="rounded-lg border border-zinc-800 p-4 mb-6">
+          <div className="rounded-lg border border-border p-4 mb-6">
             <p className="text-sm text-muted-foreground text-center">
               Sign in with <strong>{invite.email}</strong> to accept this invitation.
             </p>
@@ -140,7 +140,7 @@ export default function AcceptInviteClient() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-6">
       <div className="max-w-sm w-full text-center">
-        <Building2 className="h-12 w-12 text-indigo-400 mx-auto mb-4" />
+        <Building2 className="h-12 w-12 text-primary mx-auto mb-4" />
         <h1 className="text-lg font-semibold mb-1">
           Join {invite.workspaceName}
         </h1>
@@ -151,7 +151,7 @@ export default function AcceptInviteClient() {
           </Badge>
         </p>
 
-        <div className="rounded-lg border border-zinc-800 p-4 mb-6 text-left text-sm">
+        <div className="rounded-lg border border-border p-4 mb-6 text-left text-sm">
           <div className="flex justify-between mb-2">
             <span className="text-muted-foreground">Workspace</span>
             <span className="font-medium">{invite.workspaceName}</span>

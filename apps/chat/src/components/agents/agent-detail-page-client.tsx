@@ -97,10 +97,10 @@ export default function AgentDetailPageClient({
                   variant="outline"
                   className={
                     agent.status === "active"
-                      ? "text-green-500 capitalize"
+                      ? "text-rx-green capitalize"
                       : agent.status === "draft"
-                        ? "text-yellow-500 capitalize"
-                        : "text-gray-500 capitalize"
+                        ? "text-rx-amber-text capitalize"
+                        : "text-muted-foreground capitalize"
                   }
                 >
                   {agent.status}

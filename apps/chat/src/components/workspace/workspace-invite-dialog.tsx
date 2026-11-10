@@ -73,7 +73,7 @@ export function WorkspaceInviteDialog({ workspaceId }: Props) {
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="w-full h-9 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm"
+              className="w-full h-9 rounded-md border border-border bg-muted px-3 text-sm"
             >
               <option value="member">Member — can use shared agents & knowledge</option>
               <option value="admin">Admin — can invite members & manage workspace</option>
