@@ -23,10 +23,14 @@ import type { MeteredRunState } from "../types/metered-run-state";
  * reserved, no provider call). The run's one reservation is opened at the execution's first model call, from that call
  * (402, the run-cap refusal and the 400 for a model without rates are refused before any hold or call); every call is
  * metered on it with its budget stop, one at a time (calls started together are queued, so each budget check sees the
- * previous call's charge; the queue is local to the execution, nothing is shared between runs or instances). The run is closed exactly once, in `finally`, by how the execution ended:
- * completed, budget stop (the stop message is yielded as the answer), or failed, which includes a provider error,
- * an exception, and a consumer that stops iterating (a disconnect) or throws into it (an abort); a stopped consumer
- * also stops the execution, so no further call is made.
+ * previous call's charge; the queue is local to the execution, nothing is shared between runs or instances).
+ * The run is closed exactly once, in `finally`, by how the execution ended: completed, budget stop (the stop message
+ * is yielded as the answer), or failed: a provider error, an exception, a disconnect or an abort. A disconnect is the
+ * consumer stopping iteration (generator `return()`): it takes effect at the engine's next yield, so a model call
+ * already in flight finishes first. An abort is the caller's AbortSignal: it is checked before the reservation, before
+ * and after every call, and when the execution ends, and it is passed on the provider request, so no further call
+ * starts and nothing is persisted. A provider call already in flight is not cancelled by the current adapter (its
+ * non-streaming `chat` sends only its own timeout): it finishes and stays charged, and the run stops right after it.
  */
 @Injectable()
 export class ChatEngineMeterService {
@@ -35,15 +39,17 @@ export class ChatEngineMeterService {
     private readonly registry: ModelRegistryService,
   ) {}
 
-  /** Runs `execute` with a metered model call for this target and yields its chunks; the run's reservation is closed once, however it ends. */
+  /** Runs `execute` with a metered model call for this target and yields its chunks; the run's reservation is closed once, however it ends. An aborted `signal` ends it as failed. */
   async *meterExecution(
     target: MeteredExecutionTarget,
     execute: (callModel: ChatModelCall) => AsyncIterable<ChatExecutionChunk>,
+    signal?: AbortSignal,
   ): AsyncGenerator<MeteredExecutionChunk> {
-    const run: MeteredRunState = { target, connection: await this.resolveConnection(target.model), queue: Promise.resolve() };
+    const run: MeteredRunState = { target, signal, connection: await this.resolveConnection(target.model), queue: Promise.resolve() };
     let ending: RunEnding = "failed";
     try {
       yield* execute((request) => this.queueCall(run, request));
+      signal?.throwIfAborted();
       ending = "completed";
     } catch (err) {
       if (!(err instanceof RunBudgetStoppedError)) throw err;
@@ -62,11 +68,18 @@ export class ChatEngineMeterService {
     return call;
   }
 
-  /** One metered call on the run's agent model: the run's reservation is opened by its first call, from that call. */
+  /**
+   * One metered call on the run's agent model: the run's reservation is opened by its first call, from that call. An
+   * aborted signal refuses the call before anything is reserved or called, and fails it once the provider has answered
+   * (that answer stays charged), so the execution does no further work.
+   */
   private async callOnRun(run: MeteredRunState, request: ChatModelRequest): Promise<MeteredResponse> {
-    const call: ChatRequest = { ...request, model: run.connection.slug, connection: run.connection };
+    run.signal?.throwIfAborted();
+    const call: ChatRequest = { ...request, model: run.connection.slug, connection: run.connection, ...(run.signal && { signal: run.signal }) };
     run.opened ??= this.meter.openRun({ runnerUserId: run.target.runnerUserId, workspaceId: run.target.workspaceId, firstCall: call, linkedAgents: [] });
-    return this.meter.callModel(await run.opened, { agentId: run.target.agentId, parentCallId: null, request: call });
+    const metered = await this.meter.callModel(await run.opened, { agentId: run.target.agentId, parentCallId: null, request: call });
+    run.signal?.throwIfAborted();
+    return metered;
   }
 
   /** The agent's model's connection; ModelUnavailableException for an unknown model or one whose provider is not usable. */
