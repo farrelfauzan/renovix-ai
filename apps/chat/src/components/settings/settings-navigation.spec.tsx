@@ -41,6 +41,14 @@ it('keeps the tabs in one row that scrolls sideways, with the current tab scroll
   expect(mockScrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
 });
 
+it('scrolls the current tab into view again when the owner labels load and widen the row', () => {
+  const { rerender } = render(<SettingsNavigation />);
+  mockCapability = { collaborationAllowed: true, effectiveRole: 'owner' };
+  rerender(<SettingsNavigation />);
+  expect(screen.getByText('Workspace and members')).toBeTruthy();
+  expect(mockScrollIntoView).toHaveBeenCalledTimes(2);
+});
+
 it.each([['profile', '/settings/general'], ['top-up', '/settings/billing']])('redirects legacy %s to %s', (route, destination) => {
   jest.isolateModules(() => {
     const { redirect } = require('next/navigation');
