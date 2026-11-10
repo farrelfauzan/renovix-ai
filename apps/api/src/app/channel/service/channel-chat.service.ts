@@ -16,8 +16,10 @@ import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
 import type { ChannelChatResult } from "../types/channel-chat-result";
 import type { ChannelToolLoop } from "../types/channel-tool-loop";
 import { createMcpRunSession } from "../../agent/utils/create-mcp-run-session";
-
-const MAX_TOOL_ITERATIONS = 30;
+import { CHANNEL_CHAT_MAX_TOOL_ITERATIONS } from "../config/channel-chat-max-tool-iterations";
+import { CHANNEL_CHAT_MAX_STEPS_MESSAGE } from "../config/channel-chat-max-steps-message";
+import { CHANNEL_CHAT_CONTINUE_PROMPT } from "../config/channel-chat-continue-prompt";
+import { TOOL_RESULT_MAX_CHARS } from "../../agent/config/tool-result-max-chars";
 
 @Injectable()
 export class ChannelChatService {
@@ -276,7 +278,7 @@ export class ChannelChatService {
     let totalTokens = 0;
     let accumulatedContent = "";
 
-    while (iterations < MAX_TOOL_ITERATIONS) {
+    while (iterations < CHANNEL_CHAT_MAX_TOOL_ITERATIONS) {
       const callParams: any = {
         model: modelEntry.slug,
         connection,
@@ -346,8 +348,8 @@ export class ChannelChatService {
               role: "tool",
               tool_call_id: toolCall.id,
               content:
-                result.length > 4000
-                  ? result.slice(0, 4000) + "\n...[truncated]"
+                result.length > TOOL_RESULT_MAX_CHARS
+                  ? result.slice(0, TOOL_RESULT_MAX_CHARS) + "\n...[truncated]"
                   : result,
             });
           } catch (err: any) {
@@ -378,8 +380,7 @@ export class ChannelChatService {
         });
         currentMessages.push({
           role: "user",
-          content:
-            "Continue from where you left off. Do not repeat what you already said.",
+          content: CHANNEL_CHAT_CONTINUE_PROMPT,
         });
         iterations++;
         continue;
@@ -429,10 +430,9 @@ export class ChannelChatService {
 
     // Hit max iterations — save what we have and inform user
     this.logger.warn(
-      `[chat] Reached MAX_TOOL_ITERATIONS (${MAX_TOOL_ITERATIONS}) for agent=${agent.id}`,
+      `[chat] Reached MAX_TOOL_ITERATIONS (${CHANNEL_CHAT_MAX_TOOL_ITERATIONS}) for agent=${agent.id}`,
     );
-    const fallbackContent =
-      "I've completed as much as I could, but the task required more steps than I can handle in a single turn. Please ask me to continue where I left off.";
+    const fallbackContent = CHANNEL_CHAT_MAX_STEPS_MESSAGE;
     const savedMsg = await this.channelService.saveMessage(
       channelAgent.id,
       userId,

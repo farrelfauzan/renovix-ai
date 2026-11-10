@@ -620,6 +620,53 @@ describe("RX-161: provider transport", () => {
     });
   });
 
+  describe("RNX-283 AC7: the caller's signal cancels the in-flight request (stubbed fetch), and an abort is never retried", () => {
+    /** Global fetch stubbed: every request hangs until its signal fires, then rejects with the signal's reason (as fetch does). */
+    const hangUntilAborted = () => {
+      const signals: AbortSignal[] = [];
+      const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+        const signal = init!.signal!;
+        signals.push(signal);
+        return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+      });
+      return { fetchSpy, signals };
+    };
+
+    const abortWhenSent = async (fetchSpy: jest.SpyInstance, controller: AbortController, reason?: unknown) => {
+      while (fetchSpy.mock.calls.length === 0) await new Promise((r) => realSetTimeout(r, 1));
+      controller.abort(reason);
+    };
+
+    it.each([
+      ["collected (chat)", (adapter: OpenRouterAdapter, params: ChatRequest) => adapter.chat(params)],
+      ["streaming (chatStream)", (adapter: OpenRouterAdapter, params: ChatRequest) => drain(adapter.chatStream(params))],
+    ] as const)("%s: an abort cancels the request in flight: its fetch signal is aborted, the call rejects with the abort, one request only", async (_mode, call) => {
+      const { fetchSpy, signals } = hangUntilAborted();
+      const controller = new AbortController();
+      const calling = call(makeAdapter(stubOnly()), request({ signal: controller.signal }));
+      await abortWhenSent(fetchSpy, controller);
+      await expect(calling).rejects.toMatchObject({ name: "AbortError" });
+      expect(signals.map((signal) => signal.aborted)).toEqual([true]);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(retryDelays).toEqual([]);
+    });
+
+    it("collected (chat): an abort whose reason is a TimeoutError is still the caller's: not retried (the back-off would retry a timeout 6 times)", async () => {
+      const { fetchSpy } = hangUntilAborted();
+      const controller = new AbortController();
+      const calling = makeAdapter(stubOnly()).chat(request({ signal: controller.signal }));
+      await abortWhenSent(fetchSpy, controller, new DOMException("caller gave up", "TimeoutError"));
+      await expect(calling).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(retryDelays).toEqual([]);
+    });
+
+    it("control: without a signal, chat still sends its own timeout signal and answers", async () => {
+      const res = await makeAdapter(stubOnly()).chat(request());
+      expect(res.choices[0].message.content).toBe("from provider");
+    });
+  });
+
   describe("RX-183: the stream's Retry-After wait follows the caller's signal", () => {
     const NOT_FAKED = [
       "Date", "setImmediate", "clearImmediate", "setInterval", "clearInterval",

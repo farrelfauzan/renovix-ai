@@ -232,4 +232,37 @@ describe("ChatEngineService", () => {
       expect(JSON.stringify(result)).not.toContain(rawResult);
     });
   });
+
+  describe("RNX-283 (RNX-282 review): the abort checks before a save", () => {
+    it("an abort while the output approval runs: the pre-save check stops the save and the memory handoff", async () => {
+      const controller = new AbortController();
+      const t = setup({
+        chunks: [{ type: "text", text: "answer" }],
+        outputApproval: (raw) => {
+          controller.abort();
+          return { status: "approved", content: raw };
+        },
+      });
+      await expect(t.engine.collect(t.request("hi"), { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+      expect(t.outputApproval.approveOutput).toHaveBeenCalledTimes(1);
+      expect([t.persistence.saveExchange.mock.calls.length, t.persistence.handToMemory.mock.calls.length]).toEqual([0, 0]);
+    });
+
+    it("an abort while the input guardrail runs and then rejects the input: the decline is not saved", async () => {
+      const controller = new AbortController();
+      const t = setup();
+      t.guardrail.checkInput.mockImplementationOnce(async () => {
+        controller.abort();
+        return { blocked: true, userMessage: "declined" };
+      });
+      const events: ChatEngineEvent["type"][] = [];
+      await expect(
+        (async () => {
+          for await (const event of t.engine.run(t.request("hi"), { signal: controller.signal })) events.push(event.type);
+        })(),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      expect(events).toEqual([]);
+      expect(t.persistence.saveExchange).not.toHaveBeenCalled();
+    });
+  });
 });

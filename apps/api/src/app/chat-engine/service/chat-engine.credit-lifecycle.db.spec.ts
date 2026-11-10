@@ -49,8 +49,8 @@ const CALL_MAX_TOKENS = 100;
 const OFFERED_TOOL = "lookup";
 const MODES = [["streamed"], ["collected"]] as const;
 type Mode = (typeof MODES)[number][0];
-/** One scripted step of the execution: a metered model call (its text is yielded), two calls started together, a tool result, or a failure. */
-type Step = "call" | "pair" | "tool" | "throw";
+/** One scripted step of the execution: a metered model call (its text is yielded), two calls started together, a tool result, a failure, or (RNX-283) a call started and not awaited. */
+type Step = "call" | "pair" | "tool" | "throw" | "fire";
 
 describe("RNX-282: the chat engine on the credit ledger (test database, fake provider)", () => {
   const fake = new FakeProviderAdapter();
@@ -59,6 +59,7 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
     execute: jest.fn(async function* (input: ChatExecutionInput): AsyncGenerator<ChatExecutionChunk> {
       for (const step of script) {
         if (step === "throw") throw new Error("execution failed");
+        if (step === "fire") void input.callModel({ messages: [{ role: "user" as const, content: input.approvedInput }], max_tokens: CALL_MAX_TOKENS }).catch(() => undefined);
         if (step === "tool") yield { type: "tool_result", toolName: OFFERED_TOOL, content: "tool says hi" };
         const request = { messages: [{ role: "user" as const, content: input.approvedInput }], max_tokens: CALL_MAX_TOKENS };
         const calls = step === "call" ? [input.callModel(request)] : step === "pair" ? [input.callModel(request), input.callModel(request)] : [];
@@ -476,6 +477,34 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
       expect([settle.mock.calls.length, release.mock.calls.length]).toEqual([1, 0]);
       expect(await moneyOf(bob.id)).toEqual({ balance: "0.999965", held: "0.000000", reservations: [["settled", "1.000000", "0.000035"]], entries: [["completed", "-0.000035"]] });
       expect([outputApproval.approveOutput.mock.calls.length, persistence.saveExchange.mock.calls.length, persistence.handToMemory.mock.calls.length]).toEqual([0, 0, 0]);
+      await assertCreditLedgerInvariants(prisma);
+    });
+
+    it.each(MODES)("%s: RNX-283 (RNX-282 review): an abort after the last model call (while a tool result is approved): the end-of-execution check fails the run before the output approval; settled once", async (mode) => {
+      const { bob, request } = await seed();
+      script.push("call", "tool");
+      fake.enqueue({ content: "first", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+      const controller = new AbortController();
+      outputApproval.approveToolResult.mockImplementationOnce(async (content: string) => {
+        controller.abort();
+        return { status: "approved" as const, content };
+      });
+      const closeRun = jest.spyOn(moduleRef.get(AgentRunMeterService), "closeRun");
+      const { error } = await failIn(mode, request, { signal: controller.signal });
+      expect((error as Error).name).toBe("AbortError");
+      expect(closeRun.mock.calls.map(([, ending]) => ending)).toEqual(["failed"]);
+      expect([outputApproval.approveOutput.mock.calls.length, persistence.saveExchange.mock.calls.length]).toEqual([0, 0]);
+      expect((await moneyOf(bob.id)).reservations).toEqual([["settled", "1.000000", "0.000035"]]);
+      await assertCreditLedgerInvariants(prisma);
+    });
+
+    it.each(MODES)("%s: RNX-283 (RNX-282 review): a call the execution started but did not await: the close waits for it (the queue in finally), so it is charged and settled", async (mode) => {
+      const { bob, request } = await seed();
+      script.push("fire");
+      fake.enqueue({ content: "unawaited", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+      await runIn(mode, request);
+      expect(fake.requests).toHaveLength(1);
+      expect(await moneyOf(bob.id)).toEqual({ balance: "0.999965", held: "0.000000", reservations: [["settled", "1.000000", "0.000035"]], entries: [["completed", "-0.000035"]] });
       await assertCreditLedgerInvariants(prisma);
     });
 

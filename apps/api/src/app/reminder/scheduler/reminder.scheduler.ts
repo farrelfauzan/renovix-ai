@@ -13,8 +13,9 @@ import type { ReminderToolLoop } from "../types/reminder-tool-loop";
 import { createMcpRunSession } from "../../agent/utils/create-mcp-run-session";
 import { RemindersTableMissingException } from "../errors/reminders-table-missing.exception";
 import { ReminderRoomService } from "../service/reminder-room.service";
-
-const MAX_TOOL_ITERATIONS = 15;
+import { REMINDER_MAX_TOOL_ITERATIONS } from "../config/reminder-max-tool-iterations";
+import { REMINDER_MAX_STEPS_MESSAGE } from "../config/reminder-max-steps-message";
+import { TOOL_RESULT_MAX_CHARS } from "../../agent/config/tool-result-max-chars";
 
 @Injectable()
 export class ReminderScheduler {
@@ -203,7 +204,7 @@ export class ReminderScheduler {
     let iterations = 0;
     let totalTokens = 0;
 
-    while (iterations < MAX_TOOL_ITERATIONS) {
+    while (iterations < REMINDER_MAX_TOOL_ITERATIONS) {
       const callParams: any = {
         model: modelEntry.slug,
         connection,
@@ -250,8 +251,8 @@ export class ReminderScheduler {
               role: "tool",
               tool_call_id: toolCall.id,
               content:
-                result.length > 4000
-                  ? result.slice(0, 4000) + "\n...[truncated]"
+                result.length > TOOL_RESULT_MAX_CHARS
+                  ? result.slice(0, TOOL_RESULT_MAX_CHARS) + "\n...[truncated]"
                   : result,
             });
           } catch (err: any) {
@@ -307,8 +308,7 @@ export class ReminderScheduler {
       chatRoomId: chatRoom.id,
       agentId: agent.id,
       role: "assistant",
-      content:
-        "I was unable to fully complete this scheduled task. Please try again or adjust the reminder.",
+      content: REMINDER_MAX_STEPS_MESSAGE,
       metadata: {
         source: "reminder",
         reminderId: reminder.id,
