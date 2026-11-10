@@ -15,6 +15,7 @@ import type { ChatEngineContext } from "../types/chat-engine-context";
 import type { ChatEngineEvent } from "../types/chat-engine-event";
 import type { ChatEngineRequest } from "../types/chat-engine-request";
 import type { ChatEngineResult } from "../types/chat-engine-result";
+import type { ChatEngineRunOptions } from "../types/chat-engine-run-options";
 import { applyChatEngineEvent } from "../utils/apply-chat-engine-event";
 import { approveInput } from "../utils/approve-input";
 import { toExchangeRecord } from "../utils/to-exchange-record";
@@ -30,7 +31,8 @@ import { ChatEngineMeterService } from "./chat-engine-meter.service";
  * approval, then the persistence port. Nothing is persisted or executed for a denied request, and the raw model output
  * and the raw rejected input never leave this class. No production entrypoint uses it yet. RNX-282: the execution runs
  * inside ChatEngineMeterService, its only way to the model a call metered on the run's one reservation, closed once
- * however the run ends; a budget stop's message is the raw answer and goes through the output approval.
+ * however the run ends; a budget stop's message is the raw answer and goes through the output approval. An aborted
+ * `signal` (ChatEngineRunOptions) stops the run, in-flight model work included, and nothing of it is persisted.
  */
 @Injectable()
 export class ChatEngineService {
@@ -45,9 +47,10 @@ export class ChatEngineService {
     private readonly persistence: ChatEnginePersistence,
   ) {}
 
-  /** Runs the request and yields the events; throws a ZodError for a request that is not valid. */
-  async *run(rawRequest: unknown): AsyncGenerator<ChatEngineEvent> {
+  /** Runs the request and yields the events; throws a ZodError for a request that is not valid, and the signal's reason once it is aborted. */
+  async *run(rawRequest: unknown, options: ChatEngineRunOptions = {}): AsyncGenerator<ChatEngineEvent> {
     const request = ChatEngineRequestSchema.parse(rawRequest);
+    options.signal?.throwIfAborted();
     const authorization = await this.authorize(request);
     if (!authorization.allowed) {
       yield { type: "denied", reason: authorization.reason };
@@ -56,7 +59,7 @@ export class ChatEngineService {
     const verdict = await this.guardrail.checkInput(request.input, request.principal.runnerUserId, request.conversation.agentId);
     const approval = approveInput(request.input, verdict, CHAT_ENGINE_DEFAULT_DECLINE);
     if (approval.rejected) {
-      yield* this.decline(request, approval.message);
+      yield* this.decline(request, approval.message, options.signal);
       return;
     }
     const context = await this.contexts.buildContext({
@@ -68,13 +71,13 @@ export class ChatEngineService {
       offeredTools: request.options.offeredTools,
     });
     yield { type: "context", context };
-    yield* this.executeApproved(request, approval.input, context, authorization.agent);
+    yield* this.executeApproved(request, approval.input, context, authorization.agent, options.signal);
   }
 
   /** Runs the request to the end and returns the folded result of the same events `run` yields. */
-  async collect(rawRequest: unknown): Promise<ChatEngineResult> {
+  async collect(rawRequest: unknown, options: ChatEngineRunOptions = {}): Promise<ChatEngineResult> {
     let result = EMPTY_CHAT_ENGINE_RESULT;
-    for await (const event of this.run(rawRequest)) result = applyChatEngineEvent(result, event);
+    for await (const event of this.run(rawRequest, options)) result = applyChatEngineEvent(result, event);
     return result;
   }
 
@@ -87,19 +90,21 @@ export class ChatEngineService {
   }
 
   /** A rejected input: the decline is the answer, stored without the raw input, with no context, execution or memory. */
-  private async *decline(request: ChatEngineRequest, message: string): AsyncGenerator<ChatEngineEvent> {
+  private async *decline(request: ChatEngineRequest, message: string, signal?: AbortSignal): AsyncGenerator<ChatEngineEvent> {
+    signal?.throwIfAborted();
     await this.persistence.saveExchange(toExchangeRecord(request, null, message, null));
     yield { type: "declined", message };
     yield { type: "done" };
   }
 
-  /** Runs the injected execution, metered, on the approved input; only approved tool results and the approved answer come out. */
-  private async *executeApproved(request: ChatEngineRequest, approvedInput: string, context: ChatEngineContext, agent: ChatEngineAgent): AsyncGenerator<ChatEngineEvent> {
+  /** Runs the injected execution, metered, on the approved input; only approved tool results and the approved answer come out, and nothing is persisted once the signal is aborted. */
+  private async *executeApproved(request: ChatEngineRequest, approvedInput: string, context: ChatEngineContext, agent: ChatEngineAgent, signal?: AbortSignal): AsyncGenerator<ChatEngineEvent> {
     const { principal, conversation } = request;
     const offered = new Set(context.offeredTools.map((tool) => tool.name));
     let rawOutput = "";
     const chunks = this.meter.meterExecution(toMeteredExecutionTarget(request, agent), (callModel) =>
       this.execution.execute({ principal, conversation, approvedInput, context, callModel }),
+      signal,
     );
     for await (const chunk of chunks) {
       if (chunk.type === "text") rawOutput += chunk.text;
@@ -107,6 +112,7 @@ export class ChatEngineService {
       else yield* this.approveToolResult(request, offered, chunk.toolName, chunk.content);
     }
     const output = await this.outputApproval.approveOutput(rawOutput, principal.runnerUserId, conversation.agentId);
+    signal?.throwIfAborted();
     const record = toExchangeRecord(request, approvedInput, output.content, context);
     await this.persistence.saveExchange(record);
     if (output.status !== "blocked") await this.persistence.handToMemory(record);

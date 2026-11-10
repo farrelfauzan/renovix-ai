@@ -11,6 +11,7 @@ import { EMPTY_CHAT_ENGINE_RESULT } from "../config/empty-chat-engine-result";
 import { applyChatEngineEvent } from "../utils/apply-chat-engine-event";
 import type { ChatEngineEvent } from "../types/chat-engine-event";
 import type { ChatEngineResult } from "../types/chat-engine-result";
+import type { ChatEngineRunOptions } from "../types/chat-engine-run-options";
 import type { ChatExecutionChunk } from "../types/chat-execution-chunk";
 import type { ChatExecutionInput } from "../types/chat-execution-input";
 import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
@@ -48,8 +49,8 @@ const CALL_MAX_TOKENS = 100;
 const OFFERED_TOOL = "lookup";
 const MODES = [["streamed"], ["collected"]] as const;
 type Mode = (typeof MODES)[number][0];
-/** One scripted step of the execution: a metered model call (its text is yielded), a tool result, or a failure. */
-type Step = "call" | "tool" | "throw";
+/** One scripted step of the execution: a metered model call (its text is yielded), two calls started together, a tool result, or a failure. */
+type Step = "call" | "pair" | "tool" | "throw";
 
 describe("RNX-282: the chat engine on the credit ledger (test database, fake provider)", () => {
   const fake = new FakeProviderAdapter();
@@ -59,9 +60,12 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
       for (const step of script) {
         if (step === "throw") throw new Error("execution failed");
         if (step === "tool") yield { type: "tool_result", toolName: OFFERED_TOOL, content: "tool says hi" };
-        if (step !== "call") continue;
-        const { response } = await input.callModel({ messages: [{ role: "user", content: input.approvedInput }], max_tokens: CALL_MAX_TOKENS });
-        yield { type: "text", text: response.choices[0].message.content ?? "" };
+        const request = { messages: [{ role: "user" as const, content: input.approvedInput }], max_tokens: CALL_MAX_TOKENS };
+        const calls = step === "call" ? [input.callModel(request)] : step === "pair" ? [input.callModel(request), input.callModel(request)] : [];
+        const settled = await Promise.allSettled(calls);
+        for (const call of settled) if (call.status === "fulfilled") yield { type: "text", text: call.value.response.choices[0].message.content ?? "" };
+        const refused = settled.find((call) => call.status === "rejected");
+        if (refused) throw refused.reason;
       }
     }),
   };
@@ -132,11 +136,11 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
   };
 
   /** The run in one output mode: the streamed events folded as `collect` folds them (with their types), or `collect` itself. */
-  const runIn = async (mode: Mode, request: unknown): Promise<{ result: ChatEngineResult; seen: ChatEngineEvent["type"][] }> => {
-    if (mode === "collected") return { result: await engine.collect(request), seen: [] };
+  const runIn = async (mode: Mode, request: unknown, options: ChatEngineRunOptions = {}): Promise<{ result: ChatEngineResult; seen: ChatEngineEvent["type"][] }> => {
+    if (mode === "collected") return { result: await engine.collect(request, options), seen: [] };
     const seen: ChatEngineEvent["type"][] = [];
     let result = EMPTY_CHAT_ENGINE_RESULT;
-    for await (const event of engine.run(request)) {
+    for await (const event of engine.run(request, options)) {
       seen.push(event.type);
       result = applyChatEngineEvent(result, event);
     }
@@ -144,11 +148,11 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
   };
 
   /** Runs in `mode` and returns the error it ends with, and the event types a streamed consumer saw before it. */
-  const failIn = async (mode: Mode, request: unknown): Promise<{ error: unknown; seen: ChatEngineEvent["type"][] }> => {
+  const failIn = async (mode: Mode, request: unknown, options: ChatEngineRunOptions = {}): Promise<{ error: unknown; seen: ChatEngineEvent["type"][] }> => {
     const seen: ChatEngineEvent["type"][] = [];
     try {
-      if (mode === "collected") await engine.collect(request);
-      else for await (const event of engine.run(request)) seen.push(event.type);
+      if (mode === "collected") await engine.collect(request, options);
+      else for await (const event of engine.run(request, options)) seen.push(event.type);
     } catch (error) {
       return { error, seen };
     }
@@ -304,6 +308,20 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
       await assertCreditLedgerInvariants(prisma);
     });
 
+    it.each(MODES)("%s: two calls started together: the second waits for the first's charge, then stops at the budget; charged <= cap, closed once", async (mode) => {
+      const { bob, request } = await seed();
+      await setRunCap(prisma, 0.00045);
+      script.push("pair");
+      fake.enqueue({ content: "first", usage: { prompt_tokens: 50, completion_tokens: 40 } }, { content: "second", usage: { prompt_tokens: 100, completion_tokens: 80 } });
+      const { settle, release } = closeCounts();
+      const { result } = await runIn(mode, request);
+      expect(result.content).toBe(budgetStopMessage(new Decimal("0.00045")));
+      expect(fake.requests).toHaveLength(1);
+      expect(await moneyOf(bob.id)).toEqual({ balance: "0.999780", held: "0.000000", reservations: [["settled", "0.000450", "0.000220"]], entries: [["completed", "-0.000220"]] });
+      expect([settle.mock.calls.length, release.mock.calls.length]).toEqual([1, 0]);
+      await assertCreditLedgerInvariants(prisma);
+    });
+
     it.each(MODES)("%s: a first call alone over the cap: RUN_CAP_EXCEEDED before any hold or call", async (mode) => {
       const { bob, request } = await seed();
       await setRunCap(prisma, 0.0001);
@@ -436,6 +454,42 @@ describe("RNX-282: the chat engine on the credit ledger (test database, fake pro
       expect([settle.mock.calls.length, release.mock.calls.length]).toEqual([1, 0]);
       expect((await moneyOf(bob.id)).reservations).toEqual([["settled", "1.000000", "0.000035"]]);
       await assertCreditLedgerInvariants(prisma);
+    });
+
+    it.each(MODES)("%s: the abort signal fires while the first call is in flight: that call stays charged, no second call, closed once, nothing persisted", async (mode) => {
+      const { bob, request } = await seed();
+      script.push("call", "call");
+      fake.enqueue({ content: "first", usage: { prompt_tokens: 10, completion_tokens: 5 } }, { content: "second", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+      const controller = new AbortController();
+      const signalsSent: (AbortSignal | undefined)[] = [];
+      const providerChat = fake.chat.bind(fake);
+      jest.spyOn(fake, "chat").mockImplementation(async (params: ChatRequest) => {
+        signalsSent.push(params.signal);
+        controller.abort();
+        return providerChat(params);
+      });
+      const { settle, release } = closeCounts();
+      const { error } = await failIn(mode, request, { signal: controller.signal });
+      expect((error as Error).name).toBe("AbortError");
+      expect(signalsSent.map((sent) => sent === controller.signal)).toEqual([true]);
+      expect(fake.requests).toHaveLength(1);
+      expect([settle.mock.calls.length, release.mock.calls.length]).toEqual([1, 0]);
+      expect(await moneyOf(bob.id)).toEqual({ balance: "0.999965", held: "0.000000", reservations: [["settled", "1.000000", "0.000035"]], entries: [["completed", "-0.000035"]] });
+      expect([outputApproval.approveOutput.mock.calls.length, persistence.saveExchange.mock.calls.length, persistence.handToMemory.mock.calls.length]).toEqual([0, 0, 0]);
+      await assertCreditLedgerInvariants(prisma);
+    });
+
+    it.each(MODES)("%s: a signal aborted before the run starts: no execution, no reservation, no provider call, nothing persisted", async (mode) => {
+      const { bob, request } = await seed();
+      script.push("call");
+      const controller = new AbortController();
+      controller.abort();
+      const { error } = await failIn(mode, request, { signal: controller.signal });
+      expect((error as Error).name).toBe("AbortError");
+      expect(execution.execute).not.toHaveBeenCalled();
+      expect(fake.requests).toHaveLength(0);
+      expect(await moneyOf(bob.id)).toEqual({ balance: "1.000000", held: "0.000000", reservations: [], entries: [] });
+      expect(persistence.saveExchange).not.toHaveBeenCalled();
     });
 
     it("process death: a run left open is expired by the sweep (hold released); its late close changes nothing", async () => {
