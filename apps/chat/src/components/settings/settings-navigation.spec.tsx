@@ -6,7 +6,9 @@ let mockCapability: { collaborationAllowed: boolean; effectiveRole: 'owner' | 'm
 jest.mock('next/navigation', () => ({ redirect: jest.fn(), usePathname: () => '/settings/general' }));
 jest.mock('@/hooks/use-shell-workspaces', () => ({ useShellWorkspaces: () => ({ capability: mockCapability }) }));
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
-afterEach(() => { cleanup(); mockCapability = null; });
+const mockScrollIntoView = jest.fn();
+Element.prototype.scrollIntoView = mockScrollIntoView;
+afterEach(() => { cleanup(); mockCapability = null; mockScrollIntoView.mockClear(); });
 
 it.each([
   [{ collaborationAllowed: true, effectiveRole: 'member' }, 'Enterprise member'],
@@ -25,6 +27,26 @@ it('shows specialized entries for an owner with collaboration allowed', () => {
   render(<SettingsNavigation />);
   expect(screen.getByText('Workspace and members')).toBeTruthy();
   expect(screen.getByText('Company and credits')).toBeTruthy();
+});
+
+it('keeps the tabs in one row that scrolls sideways, with the current tab scrolled into view', () => {
+  render(<SettingsNavigation />);
+  const nav = screen.getByRole('navigation', { name: 'Settings' });
+  expect(nav.classList.contains('flex-wrap')).toBe(false);
+  expect(nav.classList.contains('flex-nowrap')).toBe(true);
+  expect(nav.classList.contains('overflow-x-auto')).toBe(true);
+  screen.getAllByRole('link').forEach((link) => expect(link.classList.contains('whitespace-nowrap')).toBe(true));
+  expect(mockScrollIntoView).toHaveBeenCalledTimes(1);
+  expect(mockScrollIntoView.mock.contexts[0]).toBe(screen.getByRole('link', { name: 'General' }));
+  expect(mockScrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+});
+
+it('scrolls the current tab into view again when the owner labels load and widen the row', () => {
+  const { rerender } = render(<SettingsNavigation />);
+  mockCapability = { collaborationAllowed: true, effectiveRole: 'owner' };
+  rerender(<SettingsNavigation />);
+  expect(screen.getByText('Workspace and members')).toBeTruthy();
+  expect(mockScrollIntoView).toHaveBeenCalledTimes(2);
 });
 
 it.each([['profile', '/settings/general'], ['top-up', '/settings/billing']])('redirects legacy %s to %s', (route, destination) => {
