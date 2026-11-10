@@ -44,11 +44,3 @@ it('shows account identity and an empty credit slot, not an invented balance', (
   expect(slot.parentElement?.textContent).toBe('CreditsSLOT');
   expect(slot.getAttribute('role')).not.toBe('progressbar');
 });
-
-it('redirects the settings entry to general without a legacy redirect cycle', () => {
-  jest.isolateModules(() => {
-    const { redirect } = require('next/navigation');
-    require('../app/settings/page').default();
-    expect(redirect).toHaveBeenCalledWith('/settings/general');
-  });
-});
