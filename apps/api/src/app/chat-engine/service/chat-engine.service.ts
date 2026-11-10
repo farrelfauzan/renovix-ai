@@ -99,11 +99,11 @@ export class ChatEngineService {
 
   /** Runs the injected execution, metered, on the approved input; only approved tool results and the approved answer come out, and nothing is persisted once the signal is aborted. */
   private async *executeApproved(request: ChatEngineRequest, approvedInput: string, context: ChatEngineContext, agent: ChatEngineAgent, signal?: AbortSignal): AsyncGenerator<ChatEngineEvent> {
-    const { principal, conversation } = request;
+    const { principal, source, conversation } = request;
     const offered = new Set(context.offeredTools.map((tool) => tool.name));
     let rawOutput = "";
     const chunks = this.meter.meterExecution(toMeteredExecutionTarget(request, agent), (callModel) =>
-      this.execution.execute({ principal, conversation, approvedInput, context, callModel }),
+      this.execution.execute({ principal, source, conversation, agent, approvedInput, context, callModel, signal }),
       signal,
     );
     for await (const chunk of chunks) {

@@ -29,8 +29,9 @@ import type { CallableAgent } from "../types/callable-agent";
 import type { RunScope } from "../types/run-scope";
 import { AgentRunPolicyService } from "./agent-run-policy.service";
 import { assertOwnRun } from "../utils/assert-own-run";
+import { AGENT_RUN_MAX_TOOL_ITERATIONS } from "../config/agent-run-max-tool-iterations";
+import { AGENT_RUN_MAX_STEPS_MESSAGE } from "../config/agent-run-max-steps-message";
 
-const MAX_TOOL_ITERATIONS = 15;
 /** Chunks taken from each attached knowledge base for the run's knowledge context. */
 const KNOWLEDGE_TOP_K_PER_BASE = 3;
 /** The smallest charge: an agent message needs at least this much available before any work (RX-22b). */
@@ -351,7 +352,7 @@ export class AgentRunService {
     let totalTokens = 0;
     let totalCost: Decimal | undefined;
 
-    while (iterations < MAX_TOOL_ITERATIONS) {
+    while (iterations < AGENT_RUN_MAX_TOOL_ITERATIONS) {
       const callParams: any = {
         model: context.model,
         connection: context.connection,
@@ -443,8 +444,7 @@ export class AgentRunService {
     }
 
     return {
-      content:
-        "I've reached the maximum number of processing steps. Here's what I have so far.",
+      content: AGENT_RUN_MAX_STEPS_MESSAGE,
       totalTokens,
       totalCost,
     };

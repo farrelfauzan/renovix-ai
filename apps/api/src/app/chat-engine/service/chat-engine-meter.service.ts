@@ -29,8 +29,10 @@ import type { MeteredRunState } from "../types/metered-run-state";
  * consumer stopping iteration (generator `return()`): it takes effect at the engine's next yield, so a model call
  * already in flight finishes first. An abort is the caller's AbortSignal: it is checked before the reservation, before
  * and after every call, and when the execution ends, and it is passed on the provider request, so no further call
- * starts and nothing is persisted. A provider call already in flight is not cancelled by the current adapter (its
- * non-streaming `chat` sends only its own timeout): it finishes and stays charged, and the run stops right after it.
+ * starts and nothing is persisted. RNX-283: a provider call already in flight is cancelled too (the adapter's `chat`
+ * request carries the signal, and an aborted call is not retried): like any failed call it gets a provider_error usage
+ * entry of 0, so nothing is debited for it, and the run is closed as failed: released when no call was charged,
+ * otherwise settled for the calls that completed.
  */
 @Injectable()
 export class ChatEngineMeterService {

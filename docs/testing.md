@@ -214,6 +214,37 @@ Lines are in agent/service/agent-run.service.ts (AR), channel/service/channel-ch
 - **Cost and tokens.** AR's loop never sets `totalCost` (:349, returned at :437 and :446), so the stored assistant message has no cost and the reply's `usage.cost` is undefined (an input block answers `cost: "0"`, :113); CH stores no cost either. A budget stop stores tokens 0 on AR (:301) and none (null) on CH (:249-253).
 - **Memory.** AR does not memorise an answer the output guardrail blocked (RNX-275, :159-165); CH memorises the sanitized text (:413-418). CH saves (and memorises) nothing for an empty answer (:402, :427); AR saves an empty assistant message.
 
+### Chat engine tool loop: scenario map (RNX-283)
+
+The engine's tool loop (`chat-engine/service/chat-engine-tool-loop.service.ts`) runs the rows of the index above for the sources that have a tool loop today, AR (`agent-run`), CH (`channel-chat`) and RM (`reminder`), on the fake provider in both output modes (streamed `run` and collected `collect`). Each source keeps its own legacy behaviour through its profile (`chat-engine/config/chat-engine-loop-profiles.ts`; the round limits are the legacy loops' own constants, now in `agent/config/agent-run-max-tool-iterations.ts`, `channel/config/channel-chat-max-tool-iterations.ts`, `reminder/config/reminder-max-tool-iterations.ts` and `agent/config/tool-result-max-chars.ts`). Tests: `chat-engine/service/chat-engine-tool-loop.service.spec.ts` (unit, fake provider, real AgentToolService) and `chat-engine/service/chat-engine.tool-loop.db.spec.ts` (ledger); an abort that cancels the provider request in flight: `chat-engine/service/chat-engine.provider-abort.db.spec.ts` and `providers/openrouter.adapter.spec.ts` ("RNX-283 AC7").
+
+| Scenario | Engine test | Per-source behaviour kept |
+|---|---|---|
+| Plain reply | "a plain answer: one call with the agent's prompt, settings and no tools …" | Same for AR, CH, RM |
+| Tool call and follow-up | "a tool call with its follow-up …", "several tool calls in one reply …"; ledger: "a tool call and its follow-up: one reservation, one usage entry per model call …" | Same |
+| Budget stop | "the budget stop at the second call …", "a budget stop raised inside a tool call (the peer port) …", "a budget-stop answer goes through the approval too …"; ledger: "the budget stop inside the loop (non-default cap) …" | Same (the stop message is the raw answer, approved before it is stored) |
+| Tool not connected: unknown name, a tool of the agent the request does not offer, code_exec | "an unknown name, a tool of the agent the request does not offer, and code_exec run nothing …" (each source) | Same "not available" text (RNX-276 check in AgentToolService) |
+| Guardrail block, output | "the approval sees the raw answer first …" (approved, transformed, blocked), "the next run's history is built from the stored exchange …" | The output approval runs for every source (the ticket's rule), RM included |
+| Loop limit | "a non-default limit of 2 rounds …" (each source), "rounds: the agent run counts a call_agent attempt 3 …"; ledger: "a non-default limit of 2 rounds …" | AR 15 and a call_agent attempt counts 3; CH 30; RM 15; each source's own max-steps text |
+| `finish_reason: "length"` | "an answer cut at max_tokens …", "the channel chat's continuations count as rounds …" | CH continues and joins; AR and RM take the cut answer |
+| Tool result size | "a tool result is cut for the channel chat and the reminder …" | CH and RM cut at 4,000 characters plus "\n...[truncated]"; AR passes it whole |
+| A response without a choice | "a response without a choice …"; ledger: "the agent run's response without a choice …" | AR fails with 400 "No response from LLM"; CH and RM end with their max-steps text |
+| Empty answer | "an empty answer is the (empty) raw answer for every source …" | The engine hands "" to the approval and the persistence port for every source (see exclusions) |
+| Malformed call, failing tool, tool timeout | "malformed arguments …", "a failing tool …", "a tool that never answers …", "RNX-276 retained: a tool that answers in time leaves no pending timeout timer" | Same "Error: …" tool result (AR, CH, RM catch blocks) |
+| Abort, disconnect | "an abort during a tool …", "disconnect at the first tool_result …"; ledger: "an abort during a tool …", "disconnect at the first tool_result …"; AC7: "an abort during the first call cancels its request …" | Same: no further tool or model call, the run closed once as failed, nothing stored |
+| Collaborator run, public agent run by a non-member | Unchanged: the engine's run policy (chat-engine.service.spec.ts, chat-engine.credit-lifecycle.db.spec.ts); a run outside the workspace: "a run outside the agent's workspace: memory_store is refused …" | Same |
+| Input guardrail block, quota failure, provider error and fallback | Unchanged from RNX-281/RNX-282 (chat-engine.service.spec.ts, chat-engine.credit-lifecycle.db.spec.ts) | Same |
+
+Excluded, and why:
+
+- **Agent call, one hop; refused cycle (AR, CH):** deferred to RNX-121 (delegation) and not passed here. The engine's peer port is empty (`chat-engine/config/unavailable-peer-call.ts`): a call_agent attempt calls nothing and gets "Error: Calling another agent is unavailable." ("a call_agent attempt calls no agent and no model …"); call_agent is never offered.
+- **PO free, PO paid, CC:** no tool loop ("Does not apply" above). The engine refuses the `portal` source before any model call ("the portal has no tool loop …"); CC is not an engine source.
+- **Gate order and SSE events (AR and CH differences above):** they belong to the entry points (the subscription gate, the document-intent classifier, the SSE framing, heartbeats), which this ticket does not wire (no controller change); the legacy routes keep them unchanged. The engine's own event order is the RNX-281 contract and is the same for every source.
+- **Stored tokens and cost, saving nothing for an empty answer (CH, RM), the reminder's stored metadata, CH memorising the sanitized text of a blocked answer:** persistence and memory are the injected ChatEnginePersistence port, whose contract (RNX-281) is never to hand a blocked answer to memory; each entry point's adapter comes with its migration ticket.
+- **Prompt composition:** the legacy loops build different system prompts (AR "You are …" with knowledge and memory sections, CH and RM workspace memory and their own policies, the callable-agents list, the document mode). The tool loop sends the agent's prompt with the permitted knowledge and memory (`chat-engine/utils/to-initial-messages.ts`); each source's prompt wording is not ported here.
+- **The channel id of CH and RM tool calls** (memory_store with a channel, create_reminder): the engine request has no channel; it comes with the CH and RM entry point migrations.
+- **Max-steps and stop texts going through the output approval for CH and RM** (the legacy CH max-steps text and the RM texts skip the guardrail): the ticket requires the approval before every save, so the engine approves them.
+
 ## Notes
 
 - The Prisma client is generated as CommonJS (`moduleFormat = "cjs"`, RX-64); `jest.config.js` maps its `@generated/prisma/*.js` alias and the `.js` suffixes of its relative imports.

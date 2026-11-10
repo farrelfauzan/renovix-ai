@@ -140,8 +140,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
    * RX-161: a 502/503 with Retry-After is retried once against the same connection after the stated
    * wait, unless a fallback model remains (RNX-179: ProviderRouter moves on instead, no wait).
    * RX-183: when `signal` fires during the wait, the timer is cleared, the wait rejects with the
-   * signal's reason (as an aborted fetch does) and the provider is not called again; chat passes no
-   * signal and waits the full time exactly as before.
+   * signal's reason (as an aborted fetch does) and the provider is not called again. RNX-283: chat passes
+   * the caller's signal too (none: it waits the full time exactly as before).
    */
   private async retryOnceAfter<T>(
     err: unknown,
@@ -184,8 +184,10 @@ export class OpenRouterAdapter implements ProviderAdapter {
     throw await readProviderHttpError(response);
   }
 
-  private async postChat(endpoint: LlmEndpoint, body: Record<string, unknown>): Promise<any> {
-    const response = await this.post(endpoint, body, AbortSignal.timeout(CHAT_TIMEOUT_MS));
+  /** One chat attempt within CHAT_TIMEOUT_MS; RNX-283: the caller's signal, when given, cancels it too (as openStream does). */
+  private async postChat(endpoint: LlmEndpoint, body: Record<string, unknown>, signal?: AbortSignal): Promise<any> {
+    const timeout = AbortSignal.timeout(CHAT_TIMEOUT_MS);
+    const response = await this.post(endpoint, body, signal ? AbortSignal.any([signal, timeout]) : timeout);
     return readProviderJson(response);
   }
 
@@ -240,8 +242,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
       body.tool_choice = params.tool_choice ?? "auto";
     }
 
-    const send = (endpoint: LlmEndpoint) => this.postChat(endpoint, body);
-    const data = await this.postChatWithRetries(connection, body, params.hasFallback).catch((err) =>
+    const send = (endpoint: LlmEndpoint) => this.postChat(endpoint, body, params.signal);
+    const data = await this.postChatWithRetries(connection, body, params).catch((err) =>
       this.retryOnceAfter(err, connection, send, params),
     );
 
@@ -279,17 +281,23 @@ export class OpenRouterAdapter implements ProviderAdapter {
    * A 502/503 with Retry-After leaves the loop at once (RX-161, see retryOnceAfter); a 502 or 503
    * without one keeps this back-off when no fallback model remains; with one (`hasFallback`, RNX-179) a 502 or 503
    * leaves at once so ProviderRouter can move on. RNX-190 (D199): timeouts on every attempt end in the typed
-   * ProviderTimeoutError.
+   * ProviderTimeoutError. RNX-283: every attempt carries the caller's `signal`; once it is aborted the error goes to the
+   * caller at once, never retried.
    */
-  private async postChatWithRetries(connection: LlmEndpoint, body: Record<string, unknown>, hasFallback = false): Promise<any> {
+  private async postChatWithRetries(
+    connection: LlmEndpoint,
+    body: Record<string, unknown>,
+    { hasFallback = false, signal }: Pick<ChatRequest, "hasFallback" | "signal">,
+  ): Promise<any> {
     const maxRetries = 6;
     let lastError: any;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        return await this.postChat(connection, body);
+        return await this.postChat(connection, body, signal);
       } catch (err: any) {
         lastError = err;
+        if (signal?.aborted) throw err;
         if (isRetryAfterOutage(err)) throw err;
         const status = err instanceof ProviderHttpError ? err.status : undefined;
         if (hasFallback && status && OUTAGE_STATUSES.includes(status)) throw err;
