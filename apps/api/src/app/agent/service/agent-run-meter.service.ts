@@ -22,6 +22,7 @@ import type { LinkedAgent } from "../types/linked-agent";
 import type { MeteredCall } from "../types/metered-call";
 import type { MeteredResponse } from "../types/metered-response";
 import type { MeteredRun } from "../types/metered-run";
+import type { RunEnding } from "../types/run-ending";
 import type { RunStart } from "../types/run-start";
 import type { TierCallRates } from "../types/tier-call-rates";
 import { estimateRunCredits } from "../utils/estimate-run-credits";
@@ -63,16 +64,25 @@ export class AgentRunMeterService {
     const run = await this.openRun(start);
     try {
       const value = await work(run);
-      await this.credits.settle(run.reservationId);
+      await this.closeRun(run, "completed");
       return { status: "completed", value };
     } catch (err) {
-      if (!(err instanceof RunBudgetStoppedError)) {
-        await (run.spent.isZero() ? this.credits.release(run.reservationId) : this.credits.settle(run.reservationId));
-        throw err;
-      }
-      await this.credits.settle(run.reservationId);
+      const isBudgetStop = err instanceof RunBudgetStoppedError;
+      await this.closeRun(run, isBudgetStop ? "budget_stopped" : "failed");
+      if (!isBudgetStop) throw err;
       return { status: "budget_stopped", held: run.held };
     }
+  }
+
+  /**
+   * RNX-282: closes a run's reservation by how its work ended (the policy of `meterRun`): settled when it completed or
+   * stopped at its budget; when it failed (an error, an abort or a disconnect), settled when calls were charged
+   * (docs/credits.md section 2, I6: released means nothing charged), else released. A reservation already closed
+   * (by an earlier close or the expiry sweep) is left as it is, so a repeated close changes nothing.
+   */
+  async closeRun(run: AgentRunBudget, ending: RunEnding): Promise<void> {
+    const isUncharged = ending === "failed" && run.spent.isZero();
+    await (isUncharged ? this.credits.release(run.reservationId) : this.credits.settle(run.reservationId));
   }
 
   /**
@@ -146,8 +156,12 @@ export class AgentRunMeterService {
       .catch((err) => this.logger.error("Failed to log agent usage", err));
   }
 
-  /** Reserves the run's hold after the pre-run checks (docs/credits.md sections 13.2 and 13.3). */
-  private async openRun(start: RunStart): Promise<AgentRunBudget> {
+  /**
+   * Reserves the run's hold after the pre-run checks (docs/credits.md sections 13.2 and 13.3): the 400 for a model
+   * without credit rates, RunCapExceededException and 402 CREDITS_EXHAUSTED, each before anything is reserved.
+   * RNX-282: public for a caller that cannot wrap its work in `meterRun` (a stream); it closes the run with `closeRun`.
+   */
+  async openRun(start: RunStart): Promise<AgentRunBudget> {
     const [cap, agentCallSetting] = await Promise.all([this.readRunCap(), this.settings.getSetting("peerRunMaxAgentCalls")]);
     const rootCall = this.estimateCall(start.firstCall, (await this.ratesOf(start.firstCall.connection.slug)).rates);
     if (rootCall.greaterThan(cap)) throw new RunCapExceededException(cap);

@@ -9,6 +9,7 @@ import type { RunDecision } from "../../agent/types/run-decision";
 import type { GuardrailResult } from "../../guardrail/dto/guardrail-result.dto";
 
 // RNX-281: the engine's orchestration with test doubles for every port and a fake execution (no provider, no database).
+// RNX-282: the meter is a pass-through double here; the money paths are in chat-engine.credit-lifecycle.db.spec.ts.
 
 type Setup = {
   runnerUserId?: string;
@@ -48,8 +49,9 @@ function setup(options: Setup = {}) {
     }),
     approveToolResult: jest.fn(async (content: string): Promise<OutputApproval> => options.toolApproval?.(content) ?? { status: "approved", content }),
   };
+  const meter = { meterExecution: jest.fn((_target: unknown, execute: (callModel: unknown) => AsyncIterable<ChatExecutionChunk>) => execute(jest.fn())) };
   const persistence = { saveExchange: jest.fn().mockResolvedValue(undefined), handToMemory: jest.fn().mockResolvedValue(undefined) };
-  const engine = new ChatEngineService(agents as never, policy as never, guardrail as never, contexts as never, execution as never, outputApproval as never, persistence as never);
+  const engine = new ChatEngineService(agents as never, policy as never, guardrail as never, contexts as never, meter as never, execution as never, outputApproval as never, persistence as never);
   const request = (input: string) => ({
     principal: { runnerUserId },
     source: "agent-run",
@@ -57,7 +59,7 @@ function setup(options: Setup = {}) {
     input,
     options: { offeredTools: (options.offeredToolNames ?? []).map((name) => ({ name })) },
   });
-  return { engine, request, runnerUserId, agentId, knowledgeBaseId, context, agents, policy, guardrail, contexts, execution, outputApproval, persistence };
+  return { engine, request, runnerUserId, agentId, knowledgeBaseId, context, agents, policy, guardrail, contexts, meter, execution, outputApproval, persistence };
 }
 
 async function streamEvents(events: AsyncIterable<ChatEngineEvent>): Promise<ChatEngineEvent[]> {
@@ -78,7 +80,7 @@ describe("ChatEngineService", () => {
       expect(events.map((event) => event.type)).toEqual(["context", "content", "done"]);
       expect(events).toContainEqual({ type: "content", status: "approved", content: rawText });
       expect(events[0]).toEqual({ type: "context", context: t.context });
-      expect(result).toEqual({ status: "completed", content: rawText, context: t.context, toolResults: [] });
+      expect(result).toEqual({ status: "completed", reason: null, content: rawText, context: t.context, toolResults: [] });
       expect(t.persistence.saveExchange).toHaveBeenCalledTimes(2);
       const [streamedRecord, collectedRecord] = t.persistence.saveExchange.mock.calls.map((call) => call[0]);
       expect(streamedRecord).toEqual(collectedRecord);
@@ -102,8 +104,10 @@ describe("ChatEngineService", () => {
         const t = setup({ decision: { allowed: false, reason }, chunks: [{ type: "text", text: "never" }] });
         const events = await streamEvents(t.engine.run(t.request("hi")));
         expect(events).toEqual([{ type: "denied", reason }]);
+        expect(await t.engine.collect(t.request("hi"))).toEqual({ status: "denied", reason, content: null, context: null, toolResults: [] });
         expect(t.guardrail.checkInput).not.toHaveBeenCalled();
         expect(t.contexts.buildContext).not.toHaveBeenCalled();
+        expect(t.meter.meterExecution).not.toHaveBeenCalled();
         expect(t.execution.execute).not.toHaveBeenCalled();
         expect(t.persistence.saveExchange).not.toHaveBeenCalled();
         expect(t.persistence.handToMemory).not.toHaveBeenCalled();
@@ -113,7 +117,7 @@ describe("ChatEngineService", () => {
     it("an agent that does not exist is denied as not runnable, before the policy", async () => {
       const t = setup({ agentExists: false });
       const result = await t.engine.collect(t.request("hi"));
-      expect(result.status).toBe("denied");
+      expect([result.status, result.reason]).toEqual(["denied", "not_runnable"]);
       expect(t.policy.decideRun).not.toHaveBeenCalled();
       expect(t.execution.execute).not.toHaveBeenCalled();
       expect(t.persistence.saveExchange).not.toHaveBeenCalled();
@@ -157,6 +161,7 @@ describe("ChatEngineService", () => {
       const events = await streamEvents(t.engine.run(t.request(rawInput)));
       expect(events).toEqual([{ type: "declined", message: userMessage }, { type: "done" }]);
       expect(t.contexts.buildContext).not.toHaveBeenCalled();
+      expect(t.meter.meterExecution).not.toHaveBeenCalled();
       expect(t.execution.execute).not.toHaveBeenCalled();
       expect(t.persistence.saveExchange).toHaveBeenCalledTimes(1);
       expect(t.persistence.saveExchange.mock.calls[0][0]).toMatchObject({ approvedInput: null, approvedOutput: userMessage, context: null });

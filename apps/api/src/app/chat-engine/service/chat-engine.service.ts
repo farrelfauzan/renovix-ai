@@ -9,6 +9,7 @@ import { ChatEngineToolResultSchema } from "../dto/chat-engine-tool-result.dto";
 import { ChatEngineExecution } from "../ports/chat-engine-execution.port";
 import { ChatEngineOutputApproval } from "../ports/chat-engine-output-approval.port";
 import { ChatEnginePersistence } from "../ports/chat-engine-persistence.port";
+import type { ChatEngineAgent } from "../types/chat-engine-agent";
 import type { ChatEngineAuthorization } from "../types/chat-engine-authorization";
 import type { ChatEngineContext } from "../types/chat-engine-context";
 import type { ChatEngineEvent } from "../types/chat-engine-event";
@@ -17,7 +18,9 @@ import type { ChatEngineResult } from "../types/chat-engine-result";
 import { applyChatEngineEvent } from "../utils/apply-chat-engine-event";
 import { approveInput } from "../utils/approve-input";
 import { toExchangeRecord } from "../utils/to-exchange-record";
+import { toMeteredExecutionTarget } from "../utils/to-metered-execution-target";
 import { ChatEngineContextService } from "./chat-engine-context.service";
+import { ChatEngineMeterService } from "./chat-engine-meter.service";
 
 /**
  * RNX-281: the typed orchestration core of the chat engine, on the existing ports only. One path for every mode:
@@ -25,7 +28,9 @@ import { ChatEngineContextService } from "./chat-engine-context.service";
  * content and context. Order: validate the request (Zod), the run policy (AgentRunPolicyService.decideRun), the
  * input guardrail (GuardrailService.checkInput), the permitted context, the injected execution, the injected output
  * approval, then the persistence port. Nothing is persisted or executed for a denied request, and the raw model output
- * and the raw rejected input never leave this class. No production entrypoint uses it yet.
+ * and the raw rejected input never leave this class. No production entrypoint uses it yet. RNX-282: the execution runs
+ * inside ChatEngineMeterService, its only way to the model a call metered on the run's one reservation, closed once
+ * however the run ends; a budget stop's message is the raw answer and goes through the output approval.
  */
 @Injectable()
 export class ChatEngineService {
@@ -34,6 +39,7 @@ export class ChatEngineService {
     private readonly policy: AgentRunPolicyService,
     private readonly guardrail: GuardrailService,
     private readonly contexts: ChatEngineContextService,
+    private readonly meter: ChatEngineMeterService,
     private readonly execution: ChatEngineExecution,
     private readonly outputApproval: ChatEngineOutputApproval,
     private readonly persistence: ChatEnginePersistence,
@@ -62,7 +68,7 @@ export class ChatEngineService {
       offeredTools: request.options.offeredTools,
     });
     yield { type: "context", context };
-    yield* this.executeApproved(request, approval.input, context);
+    yield* this.executeApproved(request, approval.input, context, authorization.agent);
   }
 
   /** Runs the request to the end and returns the folded result of the same events `run` yields. */
@@ -87,13 +93,17 @@ export class ChatEngineService {
     yield { type: "done" };
   }
 
-  /** Runs the injected execution on the approved input; only approved tool results and the approved answer come out. */
-  private async *executeApproved(request: ChatEngineRequest, approvedInput: string, context: ChatEngineContext): AsyncGenerator<ChatEngineEvent> {
+  /** Runs the injected execution, metered, on the approved input; only approved tool results and the approved answer come out. */
+  private async *executeApproved(request: ChatEngineRequest, approvedInput: string, context: ChatEngineContext, agent: ChatEngineAgent): AsyncGenerator<ChatEngineEvent> {
     const { principal, conversation } = request;
     const offered = new Set(context.offeredTools.map((tool) => tool.name));
     let rawOutput = "";
-    for await (const chunk of this.execution.execute({ principal, conversation, approvedInput, context })) {
+    const chunks = this.meter.meterExecution(toMeteredExecutionTarget(request, agent), (callModel) =>
+      this.execution.execute({ principal, conversation, approvedInput, context, callModel }),
+    );
+    for await (const chunk of chunks) {
       if (chunk.type === "text") rawOutput += chunk.text;
+      else if (chunk.type === "budget_stopped") rawOutput = chunk.message;
       else yield* this.approveToolResult(request, offered, chunk.toolName, chunk.content);
     }
     const output = await this.outputApproval.approveOutput(rawOutput, principal.runnerUserId, conversation.agentId);
