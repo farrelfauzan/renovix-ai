@@ -179,8 +179,9 @@ Rules:
   /**
    * RNX-284 (D296, D322): the extraction's one model call (the cheapest model), as its own run on the runner's paid
    * wallet (docs/credits.md section 13.6): its own hold, usage entry and settle, at the model's normal rates, released
-   * when nothing was charged. One attempt within the platform setting memoryExtractionTimeoutSeconds, never retried;
-   * without the setting there is no call. Null when there is no answer to read.
+   * when nothing was charged. One attempt within the platform setting memoryExtractionTimeoutSeconds, never retried and
+   * never moved to a fallback model (D331: a failed extraction stays silent, with no hidden extra cost); without the
+   * setting there is no call. Null when there is no answer to read.
    */
   private async callExtractionModel(agentId: string, userId: string, prompt: string): Promise<string | null> {
     const timeoutSeconds = await this.settings.getSetting("memoryExtractionTimeoutSeconds");
@@ -192,7 +193,7 @@ Rules:
     if (!cheapestModel) return null;
     const request: ChatRequest = {
       model: cheapestModel.slug,
-      connection: await this.registry.resolveConnection(cheapestModel.slug),
+      connection: { ...(await this.registry.resolveConnection(cheapestModel.slug)), fallbacks: [] },
       messages: [
         { role: "system", content: "You extract user facts from conversations. Respond only with valid JSON." },
         { role: "user", content: prompt },

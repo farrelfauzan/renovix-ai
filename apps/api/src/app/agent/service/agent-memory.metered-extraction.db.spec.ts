@@ -149,6 +149,23 @@ describe("RNX-284: the memory extraction's own metered model call (test database
       expectRedacted(lines, "PROVIDER BODY TEXT");
     });
 
+    it("D331: a 503 is not moved to the model's fallback model: one request, the hold released, nothing stored", async () => {
+      const fallback = await createResolvableModel(prisma, { slug: "fallback-model", modelName: "fallback-model", maxTokens: 8192 });
+      const primary = await prisma.aiModel.findFirstOrThrow({ where: { slug: "test-model" } });
+      await prisma.aiModelFallback.create({ data: { modelId: primary.id, fallbackModelId: fallback.model.id, position: 0 } });
+      await prisma.aiModelFallback.create({ data: { modelId: fallback.model.id, fallbackModelId: primary.id, position: 0 } });
+      await moduleRef.get(ModelRegistryService).refresh();
+      const { alice, agent } = await seed();
+      await setTimeoutSetting(15);
+      fake.enqueue({ error: { code: 503, message: "unavailable" } });
+
+      await expect(extract(agent.id, alice.id)).resolves.toBeUndefined();
+
+      expect(fake.requests).toHaveLength(1);
+      expect(fake.requests[0].connection.fallbacks ?? []).toEqual([]);
+      await expectReleasedUncharged(alice.id);
+    });
+
     it.each([
       ["timeout", () => new ProviderTimeoutError(), "ProviderTimeoutError"],
       // An Error named AbortError: Jest's sandbox has its own Error, so a DOMException is not `instanceof Error` here.
