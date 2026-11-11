@@ -8,7 +8,7 @@ import { CreditService } from "../../billing/service/credit.service";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { ProvidersModule } from "../../providers/providers.module";
 import { OpenRouterAdapter } from "../../providers/openrouter.adapter";
-import { ProviderTimeoutError } from "../../providers/errors/provider-timeout-error";
+import { ProviderAttemptDeadlineError } from "../../providers/errors/provider-attempt-deadline-error";
 import type { ChatRequest } from "../../providers/provider.interface";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
@@ -19,6 +19,7 @@ import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { captureLogLines } from "../../../../test/capture-log-lines";
+import { countPromptTokens } from "../../billing/utils/count-prompt-tokens";
 
 // RNX-284 (D296, D322): the automatic memory extraction (AgentMemoryService.extractAndStore) is metered. Its one model
 // call is its own run on the runner's paid wallet: its own reservation, one usage entry at the model's normal rates,
@@ -118,6 +119,38 @@ describe("RNX-284: the memory extraction's own metered model call (test database
       await assertCreditLedgerInvariants(prisma);
     });
 
+    it("review finding 2: the hold is only this one call's estimate (counted prompt + max_tokens 500 at the rates), not min(cap, available)", async () => {
+      const { alice, agent } = await seed();
+      await setTimeoutSetting(15);
+      fake.enqueue({ content: "[]", usage: { prompt_tokens: 100, completion_tokens: 20 } });
+
+      await extract(agent.id, alice.id);
+
+      // Standard 1 / 1 / 1: E_call = (counted prompt + 500) micro-credits; min(cap 10, available 1) would be 1.
+      const expectedHeld = ((countPromptTokens(fake.requests[0].messages) + 500) / 1_000_000).toFixed(6);
+      const [reservation] = await reservationsOf(alice.id);
+      expect(reservation.amountHeld.toFixed(6)).toBe(expectedHeld);
+      expect(reservation.amountHeld.lessThan(1)).toBe(true);
+      expect([reservation.status, reservation.consumed.toFixed(6)]).toEqual(["settled", "0.000120"]);
+      await assertCreditLedgerInvariants(prisma);
+    });
+
+    it("a provider that reports more than the estimate (over max_tokens): the hold is used up, the rest is charged from the available balance, settled", async () => {
+      const { alice, agent } = await seed();
+      await setTimeoutSetting(15);
+      fake.enqueue({ content: "[]", usage: { prompt_tokens: 5000, completion_tokens: 600 } });
+
+      await extract(agent.id, alice.id);
+
+      const [reservation] = await reservationsOf(alice.id);
+      expect(reservation.status).toBe("settled");
+      expect(reservation.consumed.toFixed(6)).toBe(reservation.amountHeld.toFixed(6));
+      expect((await usageEntriesOf(alice.id)).map((e) => [e.outcome, e.amount.toFixed(6)])).toEqual([["completed", "-0.005600"]]);
+      const account = await accountOf(alice.id);
+      expect([account.balance.toFixed(6), account.held.toFixed(6)]).toEqual(["0.994400", "0.000000"]);
+      await assertCreditLedgerInvariants(prisma);
+    });
+
     it("insufficient credit: the reservation is refused before any call; no hold, no usage, nothing stored; logged by name, never thrown", async () => {
       const { alice, agent } = await seed("0");
       await setTimeoutSetting(15);
@@ -167,7 +200,7 @@ describe("RNX-284: the memory extraction's own metered model call (test database
     });
 
     it.each([
-      ["timeout", () => new ProviderTimeoutError(), "ProviderTimeoutError"],
+      ["timeout (the single attempt's deadline)", () => new ProviderAttemptDeadlineError(), "ProviderAttemptDeadlineError"],
       // An Error named AbortError: Jest's sandbox has its own Error, so a DOMException is not `instanceof Error` here.
       ["cancel (the call aborted)", () => Object.assign(new Error("This operation was aborted"), { name: "AbortError" }), "AbortError"],
     ] as const)("%s: the hold is released, the call's usage entry is 0, nothing stored; logged by name", async (_name, failure, name) => {
@@ -256,6 +289,7 @@ describe("RNX-284: the memory extraction's own metered model call (test database
         return deadlines[deadlines.length - 1].signal;
       });
       let isSettled = false;
+      const { lines } = captureLogLines();
 
       const extraction = extract(agent.id, alice.id).then(() => void (isSettled = true));
       while (fetchSpy.mock.calls.length === 0) await new Promise((r) => setImmediate(r));
@@ -269,6 +303,7 @@ describe("RNX-284: the memory extraction's own metered model call (test database
       expect(timeouts).toEqual([15000]);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       await expectReleasedUncharged(alice.id);
+      expect(lines.filter((line) => line.includes("Memory extraction failed"))).toEqual([expect.stringContaining("ProviderAttemptDeadlineError")]);
     });
   });
 

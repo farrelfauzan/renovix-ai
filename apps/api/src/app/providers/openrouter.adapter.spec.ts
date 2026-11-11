@@ -4,6 +4,8 @@ import { ConfigService } from "@nestjs/config";
 import { OpenRouterAdapter } from "./openrouter.adapter";
 import { ChatRequest } from "./provider.interface";
 import type { ModelConnection } from "./types/model-connection";
+import { ProviderAttemptDeadlineError } from "./errors/provider-attempt-deadline-error";
+import { ProviderTimeoutError } from "./errors/provider-timeout-error";
 import {
   blockOutbound,
   chatCompletion,
@@ -880,13 +882,15 @@ describe("RNX-284 AC4: a single-attempt chat (singleAttemptTimeoutMs)", () => {
       return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
     });
 
-  it("a pending request is stopped when its timeout fires: one request, the typed timeout error, no retry", async () => {
+  it("a pending request is stopped when its timeout fires: one request, the typed deadline error (not ProviderTimeoutError), no retry", async () => {
     const fetchSpy = hangUntilAborted();
     const startedAt = Date.now();
 
     const thrown = await makeAdapter(withoutEnvEndpoint()).chat(request({ singleAttemptTimeoutMs: 50 })).catch((err: unknown) => err);
 
-    expect(thrown).toMatchObject({ name: "ProviderTimeoutError", kind: "timeout" });
+    expect(thrown).toBeInstanceOf(ProviderAttemptDeadlineError);
+    expect(thrown).not.toBeInstanceOf(ProviderTimeoutError);
+    expect(thrown).toMatchObject({ name: "ProviderAttemptDeadlineError", kind: "timeout", message: "Provider timed out" });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(retryDelays).toEqual([]);
     expect(Date.now() - startedAt).toBeLessThan(CHAT_TIMEOUT_MS / 100);
@@ -906,7 +910,7 @@ describe("RNX-284 AC4: a single-attempt chat (singleAttemptTimeoutMs)", () => {
     while (fetchSpy.mock.calls.length === 0) await new Promise((r) => realSetTimeout(r, 1));
     deadlines[0].abort(new DOMException("timed out", "TimeoutError"));
 
-    await expect(calling).rejects.toMatchObject({ name: "ProviderTimeoutError" });
+    await expect(calling).rejects.toMatchObject({ name: "ProviderAttemptDeadlineError" });
     expect(timeouts).toEqual([EXTRACTION_TIMEOUT_MS]);
     expect(timeouts).not.toContain(CHAT_TIMEOUT_MS);
     expect(fetchSpy).toHaveBeenCalledTimes(1);

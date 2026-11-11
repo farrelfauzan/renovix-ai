@@ -10,6 +10,7 @@ import {
 import { LlmEndpoint } from "./types/llm-endpoint";
 import { ProviderHttpError } from "./errors/provider-http-error";
 import { ProviderTimeoutError } from "./errors/provider-timeout-error";
+import { ProviderAttemptDeadlineError } from "./errors/provider-attempt-deadline-error";
 import { isOpenRouterUrl } from "./utils/is-open-router-url";
 import { normalizeModelId } from "./utils/normalize-model-id";
 import { readProviderHttpError } from "./utils/read-provider-http-error";
@@ -281,8 +282,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
 
   /**
    * RNX-284: one attempt within the caller's `singleAttemptTimeoutMs`, never retried (no back-off, no Retry-After
-   * wait) and without CHAT_TIMEOUT_MS. Its timeout ends in the typed ProviderTimeoutError; the caller's own abort
-   * reaches the caller as it is.
+   * wait) and without CHAT_TIMEOUT_MS. Its timeout ends in the typed ProviderAttemptDeadlineError (the caller's own
+   * deadline, which the circuit breaker does not count); the caller's own abort reaches the caller as it is.
    */
   private async postSingleAttempt(
     connection: LlmEndpoint,
@@ -290,7 +291,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
     { signal, singleAttemptTimeoutMs }: Pick<ChatRequest, "signal" | "singleAttemptTimeoutMs">,
   ): Promise<any> {
     return this.postChat(connection, body, signal, singleAttemptTimeoutMs).catch((err) => {
-      throw err?.name === "TimeoutError" && !signal?.aborted ? new ProviderTimeoutError() : err;
+      throw err?.name === "TimeoutError" && !signal?.aborted ? new ProviderAttemptDeadlineError() : err;
     });
   }
 

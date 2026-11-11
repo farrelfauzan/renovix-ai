@@ -50,8 +50,9 @@ export interface ChatRequest {
    */
   hasFallback?: boolean;
   /**
-   * RNX-284: `chat` makes one attempt that gives up after this many milliseconds (a ProviderTimeoutError), in place of
-   * the adapter's own timeout and retries: no back-off retry and no Retry-After wait. Never sent.
+   * RNX-284: `chat` makes one attempt that gives up after this many milliseconds (a ProviderAttemptDeadlineError, which
+   * the circuit breaker does not count), in place of the adapter's own timeout and retries: no back-off retry and no
+   * Retry-After wait. Never sent.
    */
   singleAttemptTimeoutMs?: number;
 }

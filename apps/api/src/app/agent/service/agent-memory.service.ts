@@ -178,10 +178,10 @@ Rules:
 
   /**
    * RNX-284 (D296, D322): the extraction's one model call (the cheapest model), as its own run on the runner's paid
-   * wallet (docs/credits.md section 13.6): its own hold, usage entry and settle, at the model's normal rates, released
-   * when nothing was charged. One attempt within the platform setting memoryExtractionTimeoutSeconds, never retried and
-   * never moved to a fallback model (D331: a failed extraction stays silent, with no hidden extra cost); without the
-   * setting there is no call. Null when there is no answer to read.
+   * wallet (docs/credits.md section 13.6): its own hold (only this one call's estimate), usage entry and settle, at the
+   * model's normal rates, released when nothing was charged. One attempt within the platform setting
+   * memoryExtractionTimeoutSeconds, never retried and never moved to a fallback model (D331: a failed extraction stays
+   * silent, with no hidden extra cost); without the setting there is no call. Null when there is no answer to read.
    */
   private async callExtractionModel(agentId: string, userId: string, prompt: string): Promise<string | null> {
     const timeoutSeconds = await this.settings.getSetting("memoryExtractionTimeoutSeconds");
@@ -203,7 +203,7 @@ Rules:
       singleAttemptTimeoutMs: timeoutSeconds * MS_PER_SECOND,
     };
     const workspaceId = (await this.agents.findAgentWorkspaceId(agentId))?.workspaceId;
-    const start = { runnerUserId: userId, workspaceId, firstCall: request, linkedAgents: [] };
+    const start = { runnerUserId: userId, workspaceId, firstCall: request, linkedAgents: [], isSingleCall: true };
     const metered = await this.meter.meterRun(start, (run) => this.meter.callModel(run, { agentId, parentCallId: null, request }));
     if (metered.status === "budget_stopped") this.logger.warn(`Memory extraction for agent ${agentId} stopped at its budget`);
     return metered.status === "completed" ? (metered.value.response.choices?.[0]?.message?.content ?? null) : null;

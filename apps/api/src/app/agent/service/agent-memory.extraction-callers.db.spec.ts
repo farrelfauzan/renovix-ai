@@ -189,6 +189,35 @@ describe("RNX-284: the extraction's callers, agent chat and channel chat (test d
       await assertCreditLedgerInvariants(prisma);
     });
 
+    it("review finding 2: with 1 paid credit, a second chat while the first answer's extraction is held at the provider reserves and completes (no 402); then everything settles", async () => {
+      const { owner, agent } = await seed();
+      const run = await prepare(mode, owner.id, agent.id);
+      const usage = { prompt_tokens: 100, completion_tokens: 10 };
+      fake.enqueue({ content: "Hello", usage }, { content: "Hello again", usage }, { content: "[]", usage }, { content: "[]", usage });
+      const held = holdExtractionCalls();
+      const extraction = spyExtraction();
+      const first = await run("I like Rust");
+      await held.arrived;
+      const whileHeld = (await reservationsOf(owner.id)).map((r) => r.status);
+      const second = await run("And Go").catch((err: unknown) => err);
+      held.release();
+      await waitForExtractions(extraction);
+
+      expect([first, whileHeld]).toEqual(["Hello", ["settled", "open"]]);
+      expect(second).toBe("Hello again");
+      expect(extraction).toHaveBeenCalledTimes(2);
+      expect(extractionRequests()).toHaveLength(2);
+      expect((await reservationsOf(owner.id)).map((r) => [r.status, r.consumed.toFixed(6)])).toEqual([
+        ["settled", "0.000110"],
+        ["settled", "0.000110"],
+        ["settled", "0.000110"],
+        ["settled", "0.000110"],
+      ]);
+      const account = await prisma.creditAccount.findUniqueOrThrow({ where: { userId_wallet: { userId: owner.id, wallet: "paid" } } });
+      expect([account.balance.toFixed(6), account.held.toFixed(6)]).toEqual(["0.999560", "0.000000"]);
+      await assertCreditLedgerInvariants(prisma);
+    });
+
     it("AC7 failure: a failed extraction call leaves the chat's answer, stored message and settled reservation as they are; its own hold is released", async () => {
       const { owner, agent } = await seed();
       const run = await prepare(mode, owner.id, agent.id);

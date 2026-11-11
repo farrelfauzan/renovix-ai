@@ -160,6 +160,8 @@ export class AgentRunMeterService {
    * Reserves the run's hold after the pre-run checks (docs/credits.md sections 13.2 and 13.3): the 400 for a model
    * without credit rates, RunCapExceededException and 402 CREDITS_EXHAUSTED, each before anything is reserved.
    * RNX-282: public for a caller that cannot wrap its work in `meterRun` (a stream); it closes the run with `closeRun`.
+   * RNX-284: a single-call run (`isSingleCall`) holds only its first call's estimate (at most the cap, checked above),
+   * and needs that much available.
    */
   async openRun(start: RunStart): Promise<AgentRunBudget> {
     const [cap, agentCallSetting] = await Promise.all([this.readRunCap(), this.settings.getSetting("peerRunMaxAgentCalls")]);
@@ -167,8 +169,9 @@ export class AgentRunMeterService {
     if (rootCall.greaterThan(cap)) throw new RunCapExceededException(cap);
     const linkedCalls = await Promise.all(start.linkedAgents.map((agent) => this.estimateLinkedCall(agent)));
     const estimate = estimateRunCredits(rootCall, linkedCalls, agentCallSetting ?? DEFAULT_AGENT_CALLS_PER_RUN);
+    const holdCap = start.isSingleCall ? rootCall : cap;
     const runId = randomUUID();
-    const reservation = await this.credits.reserveRun({ userId: start.runnerUserId, runId, cap, minimum: Decimal.min(estimate, cap) });
+    const reservation = await this.credits.reserveRun({ userId: start.runnerUserId, runId, cap: holdCap, minimum: Decimal.min(estimate, holdCap) });
     return {
       runId,
       reservationId: reservation.id,
