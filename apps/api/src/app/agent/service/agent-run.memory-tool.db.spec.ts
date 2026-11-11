@@ -108,6 +108,8 @@ describe("RNX-119: the memory_store tool follows the run's scope (test database,
     await prisma.tierRate.create({
       data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
     });
+    // RNX-284: the memory extraction runs only with its timeout setting, as its own metered run (own reservation).
+    await prisma.platformSetting.create({ data: { name: "memoryExtractionTimeoutSeconds", value: 15 } });
     await moduleRef.get(ModelRegistryService).refresh();
   });
 

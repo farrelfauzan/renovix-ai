@@ -15,6 +15,8 @@ import { RunBudgetStoppedError } from "../../agent/errors/run-budget-stopped.err
 import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
 import type { ChannelChatResult } from "../types/channel-chat-result";
 import type { ChannelToolLoop } from "../types/channel-tool-loop";
+import type { ChannelToolLoopResult } from "../types/channel-tool-loop-result";
+import { errorName } from "../../../common/utils/error-name";
 import { createMcpRunSession } from "../../agent/utils/create-mcp-run-session";
 import { CHANNEL_CHAT_MAX_TOOL_ITERATIONS } from "../config/channel-chat-max-tool-iterations";
 import { CHANNEL_CHAT_MAX_STEPS_MESSAGE } from "../config/channel-chat-max-steps-message";
@@ -246,7 +248,10 @@ export class ChannelChatService {
           return this.runToolLoop(loop, meteredRun);
         },
       );
-      if (metered.status === "completed") return { ...metered.value, document: mcpSession.document };
+      if (metered.status === "completed") {
+        this.startMemoryExtraction(loop, metered.value.memoryInput);
+        return { ...metered.value.reply, document: mcpSession.document };
+      }
       const stopContent = budgetStopMessage(metered.held);
       const stopMessage = await this.channelService.saveMessage(
         channelAgent.id,
@@ -264,12 +269,26 @@ export class ChannelChatService {
     }
   }
 
-  /** The tool loop of one channel chat message, every model call metered on the run (RX-22b). */
+  /**
+   * RNX-284: hands the approved, saved answer to the memory extraction once the run's reservation is closed, without
+   * waiting for it (it has its own model call and reservation, and never throws).
+   */
+  private startMemoryExtraction(loop: ChannelToolLoop, memoryInput: string | null): void {
+    if (memoryInput === null) return;
+    this.memoryService
+      .extractAndStore(loop.channelAgent.agent.id, loop.userId, loop.message, memoryInput, loop.scope, loop.channelId)
+      .catch((err: unknown) => this.logger.error(`Memory extraction failed: ${errorName(err)}`));
+  }
+
+  /**
+   * The tool loop of one channel chat message, every model call metered on the run (RX-22b). RNX-284: with the reply,
+   * the approved answer to memorise once the run is closed; none for a blocked answer (as the agent run, RNX-275).
+   */
   private async runToolLoop(
     loop: ChannelToolLoop,
     meteredRun: AgentRunBudget,
-  ): Promise<ChannelChatResult> {
-    const { userId, channelId, agentId, message, channelAgent } = loop;
+  ): Promise<ChannelToolLoopResult> {
+    const { userId, channelId, agentId, channelAgent } = loop;
     const { modelEntry, connection, currentMessages, toolSchemas, mcpSession, callableAgents, scope } = loop;
     const agent = channelAgent.agent;
 
@@ -411,21 +430,13 @@ export class ChannelChatService {
           },
         );
 
-        // Extract and store memory asynchronously
-        this.memoryService
-          .extractAndStore(agent.id, userId, message, fullContent, scope, channelId)
-          .catch((err: any) =>
-            this.logger.error(`Memory extraction failed: ${err.message}`),
-          );
-
         return {
-          content: fullContent,
-          totalTokens,
-          assistantMessageId: savedMessage.id,
+          reply: { content: fullContent, totalTokens, assistantMessageId: savedMessage.id },
+          memoryInput: outputCheck.blocked ? null : fullContent,
         };
       }
 
-      return { content: fullContent, totalTokens };
+      return { reply: { content: fullContent, totalTokens }, memoryInput: null };
     }
 
     // Hit max iterations — save what we have and inform user
@@ -440,9 +451,8 @@ export class ChannelChatService {
     );
 
     return {
-      content: fallbackContent,
-      totalTokens,
-      assistantMessageId: savedMsg.id,
+      reply: { content: fallbackContent, totalTokens, assistantMessageId: savedMsg.id },
+      memoryInput: null,
     };
   }
 

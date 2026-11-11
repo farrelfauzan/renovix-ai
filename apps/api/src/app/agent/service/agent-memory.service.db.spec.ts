@@ -1,8 +1,10 @@
 import { TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
-import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import type { MeteredCall } from "../types/metered-call";
 import { AgentMemoryService } from "./agent-memory.service";
+import { AgentRunMeterService } from "./agent-run-meter.service";
 import { WorkspaceMemoryRepository } from "../../workspace/repository/workspace-memory.repository";
 import { createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -13,13 +15,19 @@ import { testConnection } from "../../../../test/provider-model";
 // extraction after a chat turn and the explicit "remember this" tool), written against the code before the
 // queries moved into repositories. Each test leaves exactly one condition of a query to decide the result:
 // the other workspace's memory differs only in the workspace, the archived one only in the status, and so on.
-// Real service, test database; the model call is a stub that returns the facts a test scripts.
+// Real service, test database; the model call is a stub that returns the facts a test scripts. RNX-284: it is reached
+// through a stub of the meter (the metering itself: agent-memory.metered-extraction.db.spec.ts), with the extraction's
+// timeout setting set.
 describe("RX-141: agent memory queries (test database)", () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let service: AgentMemoryService;
   let reply = "[]";
-  const router = { chat: jest.fn(async () => ({ choices: [{ message: { content: reply } }] })) };
+  const router = { chat: jest.fn(async (_request: unknown) => ({ choices: [{ message: { content: reply } }] })) };
+  const meter = {
+    meterRun: async <T>(_start: unknown, work: (run: object) => Promise<T>) => ({ status: "completed" as const, value: await work({}) }),
+    callModel: async (_run: object, call: MeteredCall) => ({ response: await router.chat(call.request), callId: "call" }),
+  };
   const registry = {
     getCheapestModel: jest.fn(async () => ({ slug: "cheap" })),
     resolveConnection: jest.fn(async (slug: string) => testConnection({ slug })),
@@ -29,7 +37,8 @@ describe("RX-141: agent memory queries (test database)", () => {
     ({ moduleRef, prisma } = await createTestModule({
       providers: [
         AgentMemoryService,
-        { provide: ProviderRouter, useValue: router },
+        { provide: AgentRunMeterService, useValue: meter },
+        { provide: PlatformSettingsService, useValue: { getSetting: async () => 15 } },
         { provide: ModelRegistryService, useValue: registry },
       ],
     }));

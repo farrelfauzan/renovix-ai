@@ -4,6 +4,8 @@ import { ConfigService } from "@nestjs/config";
 import { OpenRouterAdapter } from "./openrouter.adapter";
 import { ChatRequest } from "./provider.interface";
 import type { ModelConnection } from "./types/model-connection";
+import { ProviderAttemptDeadlineError } from "./errors/provider-attempt-deadline-error";
+import { ProviderTimeoutError } from "./errors/provider-timeout-error";
 import {
   blockOutbound,
   chatCompletion,
@@ -863,5 +865,88 @@ describe("RNX-190 AC2: typed upstream errors with fixed text", () => {
       message: "The provider answered with something other than JSON",
       leaks: [],
     });
+  });
+});
+
+// RNX-284: a chat with `singleAttemptTimeoutMs` (the memory extraction's call) is one attempt within that time: no
+// back-off retry, no Retry-After wait and not the adapter's own 300 s timeout. Every other call keeps them (above).
+describe("RNX-284 AC4: a single-attempt chat (singleAttemptTimeoutMs)", () => {
+  const CHAT_TIMEOUT_MS = 300000;
+  const EXTRACTION_TIMEOUT_MS = 15000;
+  const withoutEnvEndpoint = (): Env => ({ LLM_API_KEY: ENV_KEY });
+
+  /** Global fetch stubbed: every request hangs until its signal fires, then rejects with the signal's reason (as fetch does). */
+  const hangUntilAborted = (): jest.SpyInstance =>
+    jest.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      const signal = init!.signal!;
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    });
+
+  it("a pending request is stopped when its timeout fires: one request, the typed deadline error (not ProviderTimeoutError), no retry", async () => {
+    const fetchSpy = hangUntilAborted();
+    const startedAt = Date.now();
+
+    const thrown = await makeAdapter(withoutEnvEndpoint()).chat(request({ singleAttemptTimeoutMs: 50 })).catch((err: unknown) => err);
+
+    expect(thrown).toBeInstanceOf(ProviderAttemptDeadlineError);
+    expect(thrown).not.toBeInstanceOf(ProviderTimeoutError);
+    expect(thrown).toMatchObject({ name: "ProviderAttemptDeadlineError", kind: "timeout", message: "Provider timed out" });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(retryDelays).toEqual([]);
+    expect(Date.now() - startedAt).toBeLessThan(CHAT_TIMEOUT_MS / 100);
+  });
+
+  it("15 s: the request's only deadline is a 15000 ms timeout, never the 300 s one; when it fires the request is aborted and not sent again", async () => {
+    const fetchSpy = hangUntilAborted();
+    const timeouts: number[] = [];
+    const deadlines: AbortController[] = [];
+    jest.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+      timeouts.push(ms);
+      deadlines.push(new AbortController());
+      return deadlines[deadlines.length - 1].signal;
+    });
+
+    const calling = makeAdapter(withoutEnvEndpoint()).chat(request({ singleAttemptTimeoutMs: EXTRACTION_TIMEOUT_MS }));
+    while (fetchSpy.mock.calls.length === 0) await new Promise((r) => realSetTimeout(r, 1));
+    deadlines[0].abort(new DOMException("timed out", "TimeoutError"));
+
+    await expect(calling).rejects.toMatchObject({ name: "ProviderAttemptDeadlineError" });
+    expect(timeouts).toEqual([EXTRACTION_TIMEOUT_MS]);
+    expect(timeouts).not.toContain(CHAT_TIMEOUT_MS);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(retryDelays).toEqual([]);
+  });
+
+  it.each([
+    ["500", 500, {}],
+    ["503", 503, {}],
+    ["429", 429, {}],
+    ["503 with Retry-After", 503, { "Retry-After": "1" }],
+  ] as const)("%s: the error reaches the caller after one request, with no back-off or Retry-After wait", async (_name, status, headers) => {
+    provider.respond((_r, res) => {
+      res.writeHead(status, { "Content-Type": "application/json", ...headers });
+      res.end('{"error":"busy"}');
+    });
+
+    const thrown = await makeAdapter(withoutEnvEndpoint()).chat(request({ singleAttemptTimeoutMs: EXTRACTION_TIMEOUT_MS })).catch((err: unknown) => err);
+
+    expect(thrown).toMatchObject({ name: "ProviderHttpError", status });
+    expect(provider.requests).toHaveLength(1);
+    expect(retryDelays).toEqual([]);
+  });
+
+  it("the single-attempt time is never sent to the provider, and an answer within it is returned", async () => {
+    const actual = await makeAdapter(withoutEnvEndpoint()).chat(request({ singleAttemptTimeoutMs: EXTRACTION_TIMEOUT_MS }));
+
+    expect(actual.choices[0].message.content).toBe("from provider");
+    expect(JSON.stringify(provider.requests[0].body)).not.toContain(String(EXTRACTION_TIMEOUT_MS));
+  });
+
+  it("control: the same 503 without singleAttemptTimeoutMs keeps the 6-attempt back-off", async () => {
+    answer503();
+
+    await expect(makeAdapter(withoutEnvEndpoint()).chat(request())).rejects.toMatchObject({ status: 503 });
+
+    expect(provider.requests).toHaveLength(6);
   });
 });

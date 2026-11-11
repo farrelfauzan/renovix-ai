@@ -246,6 +246,50 @@ describe("RNX-179 AC5: per-provider circuit breaker (5 failures, 30 s)", () => {
   });
 });
 
+// RNX-284 (review finding 1): the memory extraction's one attempt has its own deadline (singleAttemptTimeoutMs). A
+// deadline the caller chose is not the provider failing: however often it passes, P1's breaker stays closed. The
+// adapter's own timeout (CHAT_TIMEOUT_MS, shortened here) still counts.
+describe("RNX-284: a single attempt's own deadline does not count against the breaker", () => {
+  const DEADLINE_MS = 20;
+  const ANSWER_AFTER_MS = 200;
+  const CHAT_TIMEOUT_MS = 300000;
+  const CALLS = FAILURES_TO_OPEN + 2;
+
+  /** P1 answers, but only after every deadline used here has passed. */
+  const answerLate = () => p1.respond((_r, res) => void realSetTimeout(() => sendJson(res, 200, chatCompletion("late from P1")), ANSWER_AFTER_MS));
+
+  it(`${CALLS} single attempts past their deadline on P1 → the breaker stays closed: the next ordinary chat is served by P1`, async () => {
+    answerLate();
+    const router = makeRouter();
+    const deadlineRequest = { ...request(modelM({ fallbacks: [] })), singleAttemptTimeoutMs: DEADLINE_MS };
+    const failures: unknown[] = [];
+    for (let call = 0; call < CALLS; call++) failures.push(await router.chat(deadlineRequest).catch((err: unknown) => err));
+    p1.respond((_r, res) => sendJson(res, 200, chatCompletion("from P1")));
+
+    const next = await router.chat(request());
+
+    expect(failures.map((err) => (err as Error).name)).toEqual(Array(CALLS).fill("ProviderAttemptDeadlineError"));
+    expect(next.servedBy).toEqual({ slug: "cc/x", providerName: "P1" });
+    expect(p1.requests).toHaveLength(CALLS + 1);
+    expect(p2.requests).toHaveLength(0);
+    expect(warnings.filter((w) => /\[circuit\]/.test(w))).toEqual([]);
+  });
+
+  it("control: the adapter's own timeout still counts: 5 ordinary timed-out calls on P1 open its breaker (the next chat goes to P2)", async () => {
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    jest.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => realTimeout(ms === CHAT_TIMEOUT_MS ? DEADLINE_MS : ms));
+    answerLate();
+    const router = makeRouter();
+    const failures: unknown[] = [];
+    for (let call = 0; call < FAILURES_TO_OPEN; call++) failures.push(await router.chat(request(modelM({ fallbacks: [] }))).catch((err: unknown) => err));
+
+    const next = await router.chat(request());
+
+    expect(failures.map((err) => (err as Error).name)).toEqual(Array(FAILURES_TO_OPEN).fill("ProviderTimeoutError"));
+    expect(next.servedBy).toEqual({ slug: "y", providerName: "P2" });
+  });
+});
+
 describe("RNX-179 AC6: streams fail over only before the first byte", () => {
   it("P1 answers 503 to the stream → P2 streams it (model y, P2's key); the hooks name both attempts and the failed one", async () => {
     answer(p1, 503);
