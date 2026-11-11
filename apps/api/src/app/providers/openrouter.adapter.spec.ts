@@ -950,3 +950,136 @@ describe("RNX-284 AC4: a single-attempt chat (singleAttemptTimeoutMs)", () => {
     expect(provider.requests).toHaveLength(6);
   });
 });
+
+// RNX-310: every back-off wait of a chat call follows the caller's signal, as the Retry-After wait does (RX-183). Fake
+// timers drive the waits; the global fetch is stubbed and, as a real fetch does, rejects with its signal's reason once
+// that signal aborts (at once when it already has).
+describe("RNX-310: the chat back-off waits follow the caller's signal (fake timers, stubbed fetch)", () => {
+  const CHAT_TIMEOUT_MS = 300000;
+  /** The back-off after attempts 1 to 5 on a timeout or a 503: 2 + 4 + 8 + 15 + 15 s. */
+  const TIMEOUT_BACK_OFFS_MS = 44000;
+  const NOT_FAKED = [
+    "Date", "setImmediate", "clearImmediate", "setInterval", "clearInterval",
+    "nextTick", "queueMicrotask", "performance", "requestAnimationFrame",
+    "cancelAnimationFrame", "requestIdleCallback", "cancelIdleCallback", "hrtime",
+  ] as const;
+  const PENDING = Symbol("pending");
+
+  beforeEach(() => {
+    setTimeoutSpy.mockRestore();
+    jest.useFakeTimers({ doNotFake: [...NOT_FAKED] });
+  });
+
+  afterEach(() => jest.useRealTimers());
+
+  /** One real macrotask: every pending promise callback runs; no fake timer moves. */
+  const flush = (): Promise<void> => new Promise((resolve) => realSetTimeout(resolve, 0));
+
+  /** The call's outcome as it stands (its value, its error, or PENDING), read without awaiting it. */
+  const track = (calling: Promise<unknown>): { outcome: unknown } => {
+    const state: { outcome: unknown } = { outcome: PENDING };
+    calling.then(
+      (value) => void (state.outcome = value),
+      (err: unknown) => void (state.outcome = err),
+    );
+    return state;
+  };
+
+  /** Global fetch stubbed: each request answers with `answer(n)` (its 0-based index), or hangs until its signal fires when that is undefined. */
+  const stubFetch = (answer: (index: number) => Response | undefined = () => undefined) => {
+    const signals: AbortSignal[] = [];
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      const signal = init!.signal!;
+      signals.push(signal);
+      if (signal.aborted) return Promise.reject(signal.reason);
+      const answered = answer(signals.length - 1);
+      if (answered) return Promise.resolve(answered);
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    });
+    return { fetchSpy, signals };
+  };
+
+  /** AbortSignal.timeout on the fake clock: it fires a TimeoutError after `ms`, as the real one does. */
+  const fakeTimeoutSignals = (): number[] => {
+    const timeouts: number[] = [];
+    jest.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+      timeouts.push(ms);
+      const deadline = new AbortController();
+      setTimeout(() => deadline.abort(new DOMException("The operation was aborted due to timeout", "TimeoutError")), ms);
+      return deadline.signal;
+    });
+    return timeouts;
+  };
+
+  /** Real turns of the event loop until a fake timer (the back-off wait) is pending. */
+  const waitForBackOff = async (): Promise<void> => {
+    for (let i = 0; i < 100 && jest.getTimerCount() === 0; i++) await flush();
+  };
+
+  it("AC1: a caller signal that never fires and a provider that never answers: each attempt is stopped at CHAT_TIMEOUT_MS, and after the 6 attempts the call ends in ProviderTimeoutError", async () => {
+    const { fetchSpy, signals } = stubFetch();
+    const timeouts = fakeTimeoutSignals();
+    const state = track(makeAdapter({ LLM_API_KEY: ENV_KEY }).chat(request({ signal: new AbortController().signal })));
+
+    await jest.advanceTimersByTimeAsync(CHAT_TIMEOUT_MS - 1);
+    expect([fetchSpy.mock.calls.length, signals[0].aborted]).toEqual([1, false]);
+    await jest.advanceTimersByTimeAsync(1 + 5 * CHAT_TIMEOUT_MS + TIMEOUT_BACK_OFFS_MS);
+
+    expect(state.outcome).toBeInstanceOf(ProviderTimeoutError);
+    expect(timeouts).toEqual(Array(6).fill(CHAT_TIMEOUT_MS));
+    expect(signals.map((signal) => [signal.aborted, (signal.reason as DOMException).name])).toEqual(Array(6).fill([true, "TimeoutError"]));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    ["a 429 (5 s back-off)", 429],
+    ["a 503 without Retry-After (2 s back-off)", 503],
+  ] as const)("AC2: %s, then the caller aborts during the back-off: the call rejects with the signal's reason at once, no further request, no timer left", async (_name, status) => {
+    const { fetchSpy } = stubFetch(() => new Response('{"error":"busy"}', { status, headers: { "Content-Type": "application/json" } }));
+    const controller = new AbortController();
+    const reason = new Error("caller went away");
+    const state = track(makeAdapter({ LLM_API_KEY: ENV_KEY }).chat(request({ signal: controller.signal })));
+    await waitForBackOff();
+    expect([fetchSpy.mock.calls.length, jest.getTimerCount(), state.outcome]).toEqual([1, 1, PENDING]);
+
+    controller.abort(reason);
+    await flush();
+
+    expect(state.outcome).toBe(reason);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it("AC2: the first attempt times out, then the caller aborts during the back-off: the call rejects with the signal's reason at once, no further request, no timer left", async () => {
+    const { fetchSpy, signals } = stubFetch();
+    fakeTimeoutSignals();
+    const controller = new AbortController();
+    const reason = new Error("caller went away");
+    const state = track(makeAdapter({ LLM_API_KEY: ENV_KEY }).chat(request({ signal: controller.signal })));
+    await jest.advanceTimersByTimeAsync(CHAT_TIMEOUT_MS);
+    await waitForBackOff();
+    expect([fetchSpy.mock.calls.length, signals[0].aborted, jest.getTimerCount(), state.outcome]).toEqual([1, true, 1, PENDING]);
+
+    controller.abort(reason);
+    await flush();
+
+    expect(state.outcome).toBe(reason);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it("an already aborted signal never starts a wait: the Retry-After wait rejects with its reason at once, no second request", async () => {
+    const controller = new AbortController();
+    const reason = new Error("caller went away");
+    const { fetchSpy } = stubFetch(() => {
+      controller.abort(reason);
+      return new Response('{"error":"busy"}', { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "30" } });
+    });
+    const state = track(makeAdapter({ LLM_API_KEY: ENV_KEY }).chat(request({ signal: controller.signal })));
+    for (let i = 0; i < 10 && state.outcome === PENDING; i++) await flush();
+
+    expect(state.outcome).toBe(reason);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});

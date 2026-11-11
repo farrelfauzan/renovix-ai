@@ -154,7 +154,17 @@ export class OpenRouterAdapter implements ProviderAdapter {
     this.logger.warn(
       `[LLM] provider (${new URL(connection.baseUrl).host}) answered ${err.status} with Retry-After; retrying once in ${err.retryAfterMs}ms`,
     );
-    await new Promise<void>((resolve, reject) => {
+    await this.waitUnlessAborted(err.retryAfterMs, signal);
+    return send(connection);
+  }
+
+  /**
+   * Waits `delayMs` (RX-183, RNX-310: the Retry-After wait and every chat back-off). When `signal` fires during the
+   * wait, or has already fired, the timer is cleared and the wait rejects with the signal's reason (as an aborted fetch
+   * does). Without a signal it waits the full time.
+   */
+  private waitUnlessAborted(delayMs: number, signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       const onAbort = (): void => {
         clearTimeout(timer);
         reject(signal?.reason);
@@ -162,11 +172,10 @@ export class OpenRouterAdapter implements ProviderAdapter {
       const timer = setTimeout(() => {
         signal?.removeEventListener("abort", onAbort);
         resolve();
-      }, err.retryAfterMs);
+      }, delayMs);
       if (signal?.aborted) return onAbort();
       signal?.addEventListener("abort", onAbort, { once: true });
     });
-    return send(connection);
   }
 
   /** POST /chat/completions with Node's fetch; a non-2xx answer becomes a typed ProviderHttpError, without its body (RNX-190). */
@@ -301,7 +310,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
    * without one keeps this back-off when no fallback model remains; with one (`hasFallback`, RNX-179) a 502 or 503
    * leaves at once so ProviderRouter can move on. RNX-190 (D199): timeouts on every attempt end in the typed
    * ProviderTimeoutError. RNX-283: every attempt carries the caller's `signal`; once it is aborted the error goes to the
-   * caller at once, never retried.
+   * caller at once, never retried. RNX-310: an abort during a back-off wait ends it at once (waitUnlessAborted).
    */
   private async postChatWithRetries(
     connection: LlmEndpoint,
@@ -331,7 +340,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
           this.logger.warn(
             `[OpenRouter chat] Attempt ${attempt + 1}/${maxRetries} failed (${isTimeout ? "timeout" : status}). Retrying in ${delay}ms...`,
           );
-          await new Promise((r) => setTimeout(r, delay));
+          await this.waitUnlessAborted(delay, signal);
           continue;
         }
 
