@@ -132,6 +132,10 @@ async function backOfficeTestStep(): Promise<boolean> {
   return (await run(["npx", "nx", "run", "back-office:test", "--skip-nx-cache"])) === 0;
 }
 
+async function chatTestStep(): Promise<boolean> {
+  return (await run(["npx", "nx", "run", "chat:test", "--skip-nx-cache"])) === 0;
+}
+
 type Err = { key: string; line: string };
 
 /** One tsc program -> errors. Key = file, TS code, first message line (no line:column). */
@@ -237,6 +241,7 @@ const steps: Array<[string, () => Promise<boolean>]> = [
   ["prisma validate", async () => (await run(["bunx", "prisma", "validate"])) === 0],
   ["api tests", testStep],
   ["back-office tests", backOfficeTestStep],
+  ["chat tests", chatTestStep],
   ["typecheck (vs origin/main baseline)", typecheckStep],
 ];
 
