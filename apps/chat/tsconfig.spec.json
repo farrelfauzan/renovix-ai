@@ -1,0 +1,16 @@
+// Chat .spec.ts files: type-checked with `tsc --noEmit -p apps/chat/tsconfig.spec.json` (tsconfig.json excludes them).
+// The .spec.tsx files are already in tsconfig.json.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "composite": false,
+    "declarationMap": false,
+    "incremental": false,
+    "tsBuildInfoFile": null,
+    "types": ["jest", "node"]
+  },
+  "include": ["src/**/*.spec.ts", "src/**/*.d.ts", "index.d.ts", "next-env.d.ts"],
+  "exclude": []
+}
