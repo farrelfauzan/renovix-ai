@@ -225,6 +225,40 @@ describe("RNX-44 AC6: the caller's abort wins over the budget; the budget is nev
   });
 });
 
+describe("RNX-44 AC3: no limit after the first token, with the real adapter", () => {
+  /** An SSE response: one chunk at 1 s, the next at B + 5 s, then [DONE]; it errors with the signal's reason if aborted. */
+  const slowAfterFirstToken = (signal: AbortSignal): Response => {
+    const chunk = (content: string): string => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
+    const encoder = new TextEncoder();
+    return new Response(
+      new ReadableStream({
+        start: (controller) => {
+          signal.addEventListener("abort", () => controller.error(signal.reason), { once: true });
+          setTimeout(() => controller.enqueue(encoder.encode(chunk("first"))), 1_000);
+          setTimeout(() => {
+            if (signal.aborted) return;
+            controller.enqueue(encoder.encode(chunk("second")));
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          }, BUDGET_MS + 5_000);
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "text/event-stream" } },
+    );
+  };
+
+  it("the first token comes before B and the next after B → the stream is not cut; both chunks arrive and the request is never aborted", async () => {
+    const { signals } = stubFetch((_index, signal) => slowAfterFirstToken(signal));
+    const state = track(drain(new ProviderRouter(adapter).chatStream(request({ timeBudgetMs: BUDGET_MS }))));
+
+    await jest.advanceTimersByTimeAsync(BUDGET_MS + 6_000);
+
+    expect(state.outcome).not.toBeInstanceOf(Error);
+    expect((state.outcome as string[]).join("")).toContain("second");
+    expect(signals[0].aborted).toBe(false);
+  });
+});
+
 describe("RNX-44 AC3: a stream whose response never comes, in the adapter", () => {
   it("the request is cut at B with the time budget error (not the 120 s connect timeout)", async () => {
     const { signals } = stubFetch();
