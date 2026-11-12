@@ -63,6 +63,29 @@ it('AC2: after the OAuth return Gmail is Connected with no switch on', async () 
   switches.forEach((toggle) => expect(toggle.getAttribute('aria-checked')).toBe('false'));
 });
 
+it('AC2: Connect on this page starts OAuth for the account, without a workspaceId, even with a workspace selected', async () => {
+  mockSelectedId = 'ws-a';
+  const defaultGet = mockApi.get.getMockImplementation() as (url: string) => Promise<unknown>;
+  mockApi.get.mockImplementation(async (url: string) => (url.startsWith('/mcp/user/oauth/start') ? { authUrl: 'about:blank' } : defaultGet(url)));
+  renderScreen();
+  fireEvent.click(within(await waitFor(() => screen.getByText('Gmail').closest('div.rounded-lg') as HTMLElement)).getByRole('button', { name: /Connect/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /Authorize Gmail/ }));
+  await waitFor(() => expect(mockApi.get).toHaveBeenCalledWith('/mcp/user/oauth/start?provider=google-gmail'));
+  expect(mockApi.get).not.toHaveBeenCalledWith(expect.stringMatching(/oauth\/start.*workspaceId/));
+});
+
+it('AC2: a token connect on this page sends no workspaceId, even with a workspace selected', async () => {
+  mockSelectedId = 'ws-a';
+  mockApi.post.mockResolvedValue({ connected: true, provider: 'notion' });
+  renderScreen();
+  fireEvent.click(within(await waitFor(() => screen.getByText('Notion').closest('div.rounded-lg') as HTMLElement)).getByRole('button', { name: /Connect/ }));
+  fireEvent.change(await screen.findByPlaceholderText(/notion token/i), { target: { value: 'test-notion-token-not-real' } });
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Connect & Test/ }));
+  await waitFor(() => expect(mockApi.post).toHaveBeenCalledTimes(1));
+  expect(mockApi.post.mock.calls[0][0]).toBe('/mcp/user/connect');
+  expect(mockApi.post.mock.calls[0][1].workspaceId).toBeUndefined();
+});
+
 it('AC3: connected and a member of A and B, both are listed off; turning A on calls PUT for A only and stays on', async () => {
   mockAccount = [gmail([])];
   renderScreen();
