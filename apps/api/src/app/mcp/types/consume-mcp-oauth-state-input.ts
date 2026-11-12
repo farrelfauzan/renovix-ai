@@ -2,7 +2,6 @@
 export type ConsumeMcpOAuthStateInput = {
   readonly nonce: string;
   readonly userId: string;
-  readonly workspaceId: string;
   readonly provider: string;
   readonly now: Date;
 };

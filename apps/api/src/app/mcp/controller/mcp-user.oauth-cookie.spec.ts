@@ -6,6 +6,7 @@ import { McpUserController } from "./mcp-user.controller";
 import { McpUserService } from "../service/mcp-user.service";
 import { McpOAuthStateRepository } from "../repository/mcp-oauth-state.repository";
 import { UserMcpCredentialRepository } from "../repository/user-mcp-credential.repository";
+import { WorkspaceMcpConnectionRepository } from "../repository/workspace-mcp-connection.repository";
 import { PrismaService } from "../../prisma/prisma.service";
 import { WorkspaceService } from "../../workspace/service/workspace.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
@@ -238,7 +239,11 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
     expectCleared(res, flow.name);
     const rows = await credentials();
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ userId: userB.id, workspaceId, provider: GMAIL, status: "connected" });
+    // RNX-292: the credential is the account's, switched on in the workspace the flow started from.
+    expect(rows[0]).toMatchObject({ userId: userB.id, provider: GMAIL, status: "connected" });
+    expect(await prisma.workspaceMcpConnection.findMany({ select: { workspaceId: true, credentialId: true } })).toEqual([
+      { workspaceId, credentialId: rows[0].id },
+    ]);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -344,6 +349,7 @@ describe("MCP OAuth callback tied to the starting browser (RX-152, Fastify, test
       moduleRef.get(UserMcpCredentialRepository),
       moduleRef.get(McpOAuthStateRepository),
       moduleRef.get(WorkspaceService),
+      moduleRef.get(WorkspaceMcpConnectionRepository),
     );
     const { oneTimeValue, maxAgeSeconds } = await service.startOAuthFlow(userA.id, workspaceId, GMAIL);
     markers.push(oneTimeValue);

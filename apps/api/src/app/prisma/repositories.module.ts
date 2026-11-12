@@ -39,6 +39,7 @@ import { KnowledgeBaseRepository } from "../knowledge/repository/knowledge-base.
 import { KnowledgeChunkRepository } from "../knowledge/repository/knowledge-chunk.repository";
 import { McpOAuthStateRepository } from "../mcp/repository/mcp-oauth-state.repository";
 import { UserMcpCredentialRepository } from "../mcp/repository/user-mcp-credential.repository";
+import { WorkspaceMcpConnectionRepository } from "../mcp/repository/workspace-mcp-connection.repository";
 import { ModelCallCostRepository } from "../model-call-costs/repository/model-call-cost.repository";
 import { UserMemoryRepository } from "../memory/repository/user-memory.repository";
 import { CatalogChangeRepository } from "../offers/repository/catalog-change.repository";
@@ -100,6 +101,7 @@ const REPOSITORIES = [
   KnowledgeChunkRepository,
   McpOAuthStateRepository,
   UserMcpCredentialRepository,
+  WorkspaceMcpConnectionRepository,
   ModelCallCostRepository,
   UserMemoryRepository,
   CatalogChangeRepository,

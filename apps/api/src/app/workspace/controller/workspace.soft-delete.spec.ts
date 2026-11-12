@@ -84,6 +84,7 @@ const routesOf = (s: Seeded): Record<string, Route> => {
     "PUT /integrations/web-search/providers/:provider/key": { method: "PUT", url: "/integrations/web-search/providers/brave-search/key", payload: { workspaceId: w, apiKey: "k" } },
     "DELETE /integrations/web-search/brave/key": { method: "DELETE", url: `/integrations/web-search/brave/key?workspaceId=${w}` },
     "DELETE /mcp/user/credentials/:provider": { method: "DELETE", url: `/mcp/user/credentials/github?workspaceId=${w}` },
+    "PUT /mcp/user/credentials/:provider/workspaces/:workspaceId": { method: "PUT", url: `/mcp/user/credentials/github/workspaces/${w}` },
     "DELETE /channels/:channelId/workspace/knowledge/:kbId/chunks/:chunkId": { method: "DELETE", url: `/channels/${c}/workspace/knowledge/${s.kb.id}/chunks/${s.chunk.id}` },
     "DELETE /channels/:channelId/workspace/knowledge/:kbId": { method: "DELETE", url: `/channels/${c}/workspace/knowledge/${s.kb.id}` },
     "POST /channels/:channelId/workspace/invites/:inviteId/revoke": { method: "POST", url: `/channels/${c}/workspace/invites/${s.invite.id}/revoke` },
@@ -120,7 +121,8 @@ async function seedWorkspace(prisma: PrismaService) {
   });
   await prisma.workspaceMemory.create({ data: { workspaceId: workspace.id, type: "fact", content: "team fact" } });
   const agent = await createAgent(prisma, { userId: owner.id, workspaceId: workspace.id });
-  await prisma.userMcpCredential.create({ data: { userId: owner.id, workspaceId: workspace.id, provider: "github", envEncrypted: "sealed" } });
+  // RNX-292: the credential is the owner's account credential (not switched on here; workspace-mcp-connections.spec.ts covers the switches).
+  await prisma.userMcpCredential.create({ data: { userId: owner.id, provider: "github", envEncrypted: "sealed" } });
   await prisma.mcpOAuthState.create({
     data: { nonce: `n-${workspace.id}`, userId: owner.id, workspaceId: workspace.id, provider: "google-gmail", expiresAt: new Date(Date.now() + 600_000) },
   });
@@ -304,7 +306,7 @@ describe("RNX-125: a deleted workspace is gone for everyone, its children stay h
       expect((await all.mcpOAuthState.findMany({ select: { nonce: true }, orderBy: { nonce: "asc" } })).map((r) => r.nonce)).toEqual(
         [`n-${s.workspace.id}`, `old-${s.workspace.id}`].sort(),
       );
-      expect(await all.userMcpCredential.count({ where: { workspaceId: s.workspace.id } })).toBe(1);
+      expect(await all.userMcpCredential.count({ where: { userId: s.owner.id } })).toBe(1);
     });
   });
 

@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { signOAuthState } from "./sign-oauth-state";
 
 const SECRET = "rx151-unit-secret";
-const PAYLOAD = { n: "A".repeat(43), u: "user-1", w: "workspace-1", p: "google-gmail", exp: 2_000_000_000 };
+const PAYLOAD = { n: "A".repeat(43), u: "user-1", p: "google-gmail", exp: 2_000_000_000 };
 
 describe("signOAuthState (RX-151)", () => {
   it("is base64url(JSON payload).base64url(HMAC-SHA256(secret, encoded payload))", () => {

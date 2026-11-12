@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Delete,
   Query,
   Param,
@@ -9,6 +10,7 @@ import {
   Req,
   Res,
   BadRequestException,
+  ParseUUIDPipe,
 } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { ConfigService } from "@nestjs/config";
@@ -26,6 +28,8 @@ import { createInvalidBodyException } from "../../../common/utils/create-invalid
  * Per-user MCP OAuth and credential management.
  * Users connect their own accounts (Google, GitHub, Slack) via platform-level OAuth apps.
  * Credentials are stored per-user and used at runtime when agents execute MCP tools.
+ * RNX-292 (D312): a credential belongs to the account (connect once) and is used in a workspace only where its
+ * owner switched it on; a `workspaceId` on these routes names that workspace (membership checked, RNX-206).
  */
 @Controller("mcp/user")
 export class McpUserController {
@@ -38,22 +42,20 @@ export class McpUserController {
   /**
    * Start OAuth flow for the authenticated user.
    * Returns an auth URL to redirect the user to, and sets the flow's one-time value as a cookie
-   * for the provider (RX-152), so only this browser can complete the flow.
+   * for the provider (RX-152), so only this browser can complete the flow. RNX-292: `workspaceId` is
+   * optional; given, the callback also switches the connection on in that workspace.
    */
   @Get("oauth/start")
   @Access({ auth: ["session"] })
   async startOAuth(
     @Req() req: any,
     @Query("provider") provider: string,
-    @Query("workspaceId") workspaceId: string,
+    @Query("workspaceId") workspaceId: string | undefined,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
     res.header("cache-control", "no-store");
     if (!provider) {
       throw new BadRequestException("provider query param is required");
-    }
-    if (!workspaceId) {
-      throw new BadRequestException("workspaceId query param is required");
     }
 
     const isProduction = process.env.NODE_ENV === "production";
@@ -63,7 +65,7 @@ export class McpUserController {
     }
     const { authUrl, oneTimeValue, maxAgeSeconds } = await this.mcpUserService.startOAuthFlow(
       req.user.userId,
-      workspaceId,
+      workspaceId || undefined,
       provider,
     );
     res.header("set-cookie", mcpOAuthSetCookie({ name: cookieName, value: oneTimeValue, maxAgeSeconds, isProduction }));
@@ -118,7 +120,8 @@ export class McpUserController {
   }
 
   /**
-   * Connect a token-based MCP provider (e.g., Notion with API key).
+   * Connect a token-based MCP provider (e.g., Notion with API key) for the caller's account; with `workspaceId`
+   * also switched on in that workspace (RNX-292).
    */
   @Post("connect")
   @Access({ auth: ["session"] })
@@ -128,7 +131,7 @@ export class McpUserController {
   ) {
     const parsed = ConnectMcpTokenSchema.safeParse(body);
     if (!parsed.success) throw createInvalidBodyException(parsed.error);
-    await this.workspaceService.requireMembership(parsed.data.workspaceId, req.user.userId);
+    if (parsed.data.workspaceId) await this.workspaceService.requireMembership(parsed.data.workspaceId, req.user.userId);
     return this.mcpUserService.connectWithToken(
       req.user.userId,
       parsed.data.workspaceId,
@@ -138,35 +141,50 @@ export class McpUserController {
   }
 
   /**
-   * List current user's connected credentials for a workspace.
+   * List current user's connected credentials switched on in a workspace; without `workspaceId`, every account
+   * connection with the workspaces it is switched on in (RNX-292).
    */
   @Get("credentials")
   @Access({ auth: ["session"] })
   async listCredentials(
     @Req() req: any,
-    @Query("workspaceId") workspaceId: string,
+    @Query("workspaceId") workspaceId: string | undefined,
   ) {
     if (!workspaceId) {
-      throw new BadRequestException("workspaceId query param is required");
+      return this.mcpUserService.getAccountCredentials(req.user.userId);
     }
     await this.workspaceService.requireMembership(workspaceId, req.user.userId);
     return this.mcpUserService.getUserCredentials(req.user.userId, workspaceId);
   }
 
+  /** RNX-292: switches the caller's account connection of a provider on in a workspace they are an active member of. */
+  @Put("credentials/:provider/workspaces/:workspaceId")
+  @Access({ auth: ["session"] })
+  async enableInWorkspace(
+    @Req() req: any,
+    @Param("provider") provider: string,
+    @Param("workspaceId", ParseUUIDPipe) workspaceId: string,
+  ) {
+    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
+    return this.mcpUserService.enableInWorkspace(req.user.userId, workspaceId, provider);
+  }
+
   /**
-   * Disconnect (revoke) a provider for the current user.
+   * Disconnect (revoke) a provider for the current user. RNX-292: with `workspaceId` it is switched off in that
+   * workspace and the account keeps it; without, the account credential and every switch of it go.
    */
   @Delete("credentials/:provider")
   @Access({ auth: ["session"] })
   async disconnect(
     @Req() req: any,
     @Param("provider") provider: string,
-    @Query("workspaceId") workspaceId: string,
+    @Query("workspaceId") workspaceId: string | undefined,
   ) {
-    if (!workspaceId) {
-      throw new BadRequestException("workspaceId query param is required");
+    // An empty workspaceId is refused, never read as "disconnect the account".
+    if (workspaceId === "") {
+      throw new BadRequestException("workspaceId query param must not be empty");
     }
-    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
+    if (workspaceId) await this.workspaceService.requireMembership(workspaceId, req.user.userId);
     return this.mcpUserService.revokeCredential(
       req.user.userId,
       workspaceId,

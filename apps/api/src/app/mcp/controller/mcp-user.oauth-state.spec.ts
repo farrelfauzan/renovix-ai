@@ -22,6 +22,9 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // RNX-206: start and callback check the workspace with WorkspaceService.requireMembership (a member row,
 // the collaboration rule of RX-113, the default-workspace 404 of RNX-117). So the owner has its owner member
 // row (as WorkspaceService.create makes it) and is on the Enterprise plan, which lets `member` use W.
+// RNX-292 (D312): the credential is stored for the account; the workspace a flow was started from is kept on its
+// stored row only (never in the signed state), and the callback switches the credential on there only if the user
+// may still use it (requireMembership checked again). Losing access stores the credential and adds no switch.
 const STATE_SECRET = "rx151-marker-state-secret-not-a-real-secret";
 const PROVIDER = "google-gmail";
 const CHAT_APP_URL = "http://chat.test.local";
@@ -181,22 +184,22 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     return new URL(location).searchParams.get("oauth");
   };
 
-  /** The refusal message the callback's error redirect carries. */
-  const redirectMessage = (res: { headers: Record<string, unknown> }) =>
-    new URL(String(res.headers.location)).searchParams.get("message");
-
   const credentials = () => prisma.userMcpCredential.findMany();
+  /** RNX-292: the workspace switches, as (user, workspace) pairs. */
+  const switches = async () =>
+    (await prisma.workspaceMcpConnection.findMany({ include: { credential: true } })).map((c) => ({ userId: c.credential.userId, workspaceId: c.workspaceId }));
   const stateRowCount = async (): Promise<number> => {
     const [{ n }] = await prisma.$queryRawUnsafe<{ n: number }[]>("SELECT count(*)::int AS n FROM mcp_oauth_states");
     return n;
   };
 
-  it("AC 7: a valid, fresh, unused state stores the credential for the user and workspace that started", async () => {
+  it("AC 7: a valid, fresh, unused state stores the credential for the user that started, switched on in its workspace", async () => {
     const state = await startFlow(owner);
     expect(oauthResult(await callback(state))).toBe("success");
     const rows = await credentials();
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ userId: owner.id, workspaceId, provider: PROVIDER, status: "connected" });
+    expect(rows[0]).toMatchObject({ userId: owner.id, provider: PROVIDER, status: "connected" });
+    expect(await switches()).toEqual([{ userId: owner.id, workspaceId }]);
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -215,11 +218,13 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it("AC 2: a signed state whose workspace id was changed afterwards is refused", async () => {
+  it("AC 2 (RNX-292): the signed state carries no workspace, and one with a workspace id added afterwards is refused", async () => {
     const state = await startFlow(owner);
-    const forged = editPayload(state, (json) => json.replaceAll(workspaceId, otherWorkspaceId));
+    expect(decodePart(state.split(".")[0])).not.toHaveProperty("w");
+    const forged = editPayload(state, (json) => json.replace(/}$/, `,"w":"${otherWorkspaceId}"}`));
     expect(oauthResult(await callback(forged))).toBe("error");
     expect(await credentials()).toEqual([]);
+    expect(await switches()).toEqual([]);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
@@ -269,15 +274,15 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("AC 6: a member of the Enterprise owner's workspace removed after starting is refused", async () => {
+  it("AC 6 (RNX-292): a member removed after starting gets the credential stored for the account, not switched on in W", async () => {
     const state = await startFlow(member);
     await prisma.workspaceMember.updateMany({ where: { workspaceId, userId: member.id }, data: { status: "removed" } });
     const res = await callback(state);
-    expect(oauthResult(res)).toBe("error");
-    // RNX-206 AC 3: refused by WorkspaceService.requireMembership (its 403 message), not the old helper.
-    expect(redirectMessage(res)).toBe("Not a member of this workspace");
-    expect(await credentials()).toEqual([]);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(oauthResult(res)).toBe("success");
+    expect((await credentials()).map((c) => ({ userId: c.userId, provider: c.provider }))).toEqual([{ userId: member.id, provider: PROVIDER }]);
+    // requireMembership (checked again after the callback's checks) refused W: no switch.
+    expect(await switches()).toEqual([]);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
   describe("RNX-206: the workspace check of WorkspaceService.requireMembership", () => {
@@ -306,30 +311,31 @@ describe("MCP OAuth callback state (RX-151, Fastify, test database)", () => {
       await expectStartRefused(await start(owner, defaultWorkspace.id), 404, "Workspace not found");
     });
 
-    it("AC 3: started while allowed, W's owner now on a plan without collaboration: error, no code exchange, nothing stored", async () => {
+    it("AC 3 (RNX-292): started while allowed, W's owner now on a plan without collaboration: stored for the account, not switched on in W", async () => {
       const state = await startFlow(member);
       withdrawCollaboration(owner.id);
       const res = await callback(state);
-      expect(oauthResult(res)).toBe("error");
-      expect(redirectMessage(res)).toBe("Workspace collaboration requires an Enterprise plan.");
-      expect(await credentials()).toEqual([]);
-      expect(globalThis.fetch).not.toHaveBeenCalled();
+      expect(oauthResult(res)).toBe("success");
+      expect((await credentials()).map((c) => c.userId)).toEqual([member.id]);
+      expect(await switches()).toEqual([]);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
 
-    it("AC 3: started while allowed, W is now a default workspace: error, no code exchange, nothing stored", async () => {
+    it("AC 3 (RNX-292): started while allowed, W is now a default workspace: stored for the account, not switched on in W", async () => {
       const state = await startFlow(owner);
       await prisma.workspace.update({ where: { id: workspaceId }, data: { isDefault: true } });
       const res = await callback(state);
-      expect(oauthResult(res)).toBe("error");
-      expect(redirectMessage(res)).toBe("Workspace not found");
-      expect(await credentials()).toEqual([]);
-      expect(globalThis.fetch).not.toHaveBeenCalled();
+      expect(oauthResult(res)).toBe("success");
+      expect((await credentials()).map((c) => c.userId)).toEqual([owner.id]);
+      expect(await switches()).toEqual([]);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
 
     it("AC 7 (control): a member of the Enterprise owner's workspace completes the flow", async () => {
       const state = await startFlow(member);
       expect(oauthResult(await callback(state))).toBe("success");
-      expect((await credentials()).map((c) => ({ userId: c.userId, workspaceId: c.workspaceId }))).toEqual([{ userId: member.id, workspaceId }]);
+      expect((await credentials()).map((c) => c.userId)).toEqual([member.id]);
+      expect(await switches()).toEqual([{ userId: member.id, workspaceId }]);
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
   });

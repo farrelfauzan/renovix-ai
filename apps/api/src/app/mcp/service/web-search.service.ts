@@ -136,9 +136,10 @@ export class WebSearchService {
     return merged;
   }
 
+  /** RNX-292: stores the user's account Brave key; with `workspaceId`, also switched on in that workspace. */
   async upsertBraveApiKey(
     userId: string,
-    workspaceId: string,
+    workspaceId: string | undefined,
     apiKey: string,
   ): Promise<{ connected: boolean; provider: string; maskedKey: string }> {
     const trimmed = (apiKey || "").trim();
@@ -164,7 +165,8 @@ export class WebSearchService {
     };
   }
 
-  async revokeBraveApiKey(userId: string, workspaceId: string) {
+  /** RNX-292: with `workspaceId`, switches the user's Brave key off there (kept); without, removes the account key. */
+  async revokeBraveApiKey(userId: string, workspaceId: string | undefined) {
     try {
       return await this.mcpUserService.revokeCredential(
         userId,

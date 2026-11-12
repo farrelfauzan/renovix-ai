@@ -23,6 +23,8 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // these routes answer today; a credential is stored as iv:tag:data (AES-256-GCM, hex) of its env JSON and
 // listed without it; no planted secret reaches a log line or a response. Real services, test database; the
 // MCP client is a stub (no package is started, no third party is called).
+// RNX-292 (D312): a credential is the account's (one per user and provider) and is used in a workspace where a
+// workspace_mcp_connections row switches it on; a seeded credential is switched on in the workspace it names.
 const PROVIDER = "notion";
 const OWNER_SECRET = "rnx140-marker-owner-notion-token";
 const MEMBER_SECRET = "rnx140-marker-member-notion-token";
@@ -139,24 +141,29 @@ describe("RNX-140: MCP credential routes (Fastify, test database)", () => {
     prisma.userMcpCredential.create({
       data: {
         userId: actor.id,
-        workspaceId: data.workspaceId ?? workspaceId,
         provider: data.provider ?? PROVIDER,
         envEncrypted: data.envEncrypted ?? encryptStored({ NOTION_TOKEN: actor.id === owner.id ? OWNER_SECRET : MEMBER_SECRET }),
         status: data.status ?? "connected",
         connectedAt: data.connectedAt,
+        workspaceConnections: { create: { workspaceId: data.workspaceId ?? workspaceId } },
       },
     });
 
   const rows = () => prisma.userMcpCredential.findMany({ orderBy: { id: "asc" } });
 
+  /** RNX-292: the workspace switches, as (credential, workspace) pairs. */
+  const switches = async () =>
+    (await prisma.workspaceMcpConnection.findMany()).map((c) => ({ credentialId: c.credentialId, workspaceId: c.workspaceId })).sort((a, b) => (a.credentialId + a.workspaceId).localeCompare(b.credentialId + b.workspaceId));
+
   describe("connect: POST /mcp/user/connect", () => {
-    it("stores the env encrypted as iv:tag:data for the caller, workspace and provider, and answers { connected, provider }", async () => {
+    it("stores the env encrypted as iv:tag:data for the caller and provider, switched on in the workspace, and answers { connected, provider }", async () => {
       const res = await connect(owner, { NOTION_TOKEN: OWNER_SECRET });
 
       expect({ status: res.statusCode, body: res.json() }).toEqual({ status: 201, body: { connected: true, provider: PROVIDER } });
       const [row, ...others] = await rows();
       expect(others).toEqual([]);
-      expect(row).toMatchObject({ userId: owner.id, workspaceId, provider: PROVIDER, status: "connected", expiresAt: null });
+      expect(row).toMatchObject({ userId: owner.id, provider: PROVIDER, status: "connected", expiresAt: null });
+      expect(await switches()).toEqual([{ credentialId: row.id, workspaceId }]);
       expect(row.envEncrypted).toMatch(STORED_FORM);
       expect(row.envEncrypted).not.toContain(OWNER_SECRET);
       expect(decryptStored(row.envEncrypted)).toEqual({ NOTION_TOKEN: OWNER_SECRET });
@@ -214,7 +221,7 @@ describe("RNX-140: MCP credential routes (Fastify, test database)", () => {
       expect(res.json().map((c: { id: string }) => c.id)).toEqual([own.id]);
     });
 
-    it("GET /mcp/servers lists the caller's credentials of every workspace that the registry knows, newest first", async () => {
+    it("GET /mcp/servers lists the caller's account credentials that the registry knows, newest first", async () => {
       const notion = await seedCredential(owner, { connectedAt: new Date("2026-01-01T00:00:00Z") });
       const slack = await seedCredential(owner, { workspaceId: otherWorkspaceId, provider: "slack", status: "expired", connectedAt: new Date("2026-03-01T00:00:00Z") });
       await seedCredential(owner, { provider: "rnx140-unknown-provider", connectedAt: new Date("2026-04-01T00:00:00Z") });
@@ -301,15 +308,20 @@ describe("RNX-140: MCP credential routes (Fastify, test database)", () => {
   });
 
   describe("disconnect: DELETE /mcp/user/credentials/:provider and DELETE /mcp/servers/:id", () => {
-    it("DELETE /mcp/user/credentials/:provider removes only the caller's credential of that workspace and provider", async () => {
-      await seedCredential(owner);
-      const otherWorkspace = await seedCredential(owner, { workspaceId: otherWorkspaceId });
+    it("RNX-292: DELETE /mcp/user/credentials/:provider?workspaceId switches only the caller's connection off in that workspace; the credential stays", async () => {
+      const ownerCred = await seedCredential(owner);
+      await prisma.workspaceMcpConnection.create({ data: { workspaceId: otherWorkspaceId, credentialId: ownerCred.id } });
       const memberCred = await seedCredential(member);
 
       const res = await send(owner, "DELETE", `/mcp/user/credentials/${PROVIDER}?workspaceId=${workspaceId}`);
 
       expect({ status: res.statusCode, body: res.json() }).toEqual({ status: 200, body: { disconnected: true, provider: PROVIDER } });
-      expect((await rows()).map((row) => row.id).sort()).toEqual([otherWorkspace.id, memberCred.id].sort());
+      expect((await rows()).map((row) => row.id).sort()).toEqual([ownerCred.id, memberCred.id].sort());
+      expect(await switches()).toEqual(
+        [{ credentialId: ownerCred.id, workspaceId: otherWorkspaceId }, { credentialId: memberCred.id, workspaceId }].sort((a, b) =>
+          (a.credentialId + a.workspaceId).localeCompare(b.credentialId + b.workspaceId),
+        ),
+      );
     });
 
     it("another user's credential is not deleted: the member gets 404 Credential not found, the owner's row stays", async () => {
@@ -321,14 +333,16 @@ describe("RNX-140: MCP credential routes (Fastify, test database)", () => {
       expect(await rows()).toEqual([cred]);
     });
 
-    it("DELETE /mcp/servers/:id removes the caller's credential", async () => {
+    it("DELETE /mcp/servers/:id removes the caller's credential and (RNX-292) its workspace switches", async () => {
       const cred = await seedCredential(owner, { workspaceId: otherWorkspaceId });
-      const kept = await seedCredential(owner);
+      await prisma.workspaceMcpConnection.create({ data: { workspaceId, credentialId: cred.id } });
+      const kept = await seedCredential(owner, { provider: "github" });
 
       const res = await send(owner, "DELETE", `/mcp/servers/${cred.id}`);
 
       expect({ status: res.statusCode, body: res.json() }).toEqual({ status: 200, body: { deleted: true } });
       expect(await rows()).toEqual([kept]);
+      expect(await switches()).toEqual([{ credentialId: kept.id, workspaceId }]);
     });
 
     it("another user's credential is not deleted: DELETE /mcp/servers/:id by the member is 404, the row stays", async () => {

@@ -448,6 +448,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "PUT /integrations/web-search/brave/key (WebSearchController.upsertBraveKey)",
     "PUT /integrations/web-search/policy (WebSearchController.updatePolicy)",
     "PUT /integrations/web-search/providers/:provider/key (WebSearchController.upsertProviderKey)",
+    // RNX-292: the caller switches their account MCP connection on in a workspace.
+    "PUT /mcp/user/credentials/:provider/workspaces/:workspaceId (McpUserController.enableInWorkspace)",
   ];
   const declares = (route: Route, methods: string[]) =>
     !route.access?.public && JSON.stringify(route.access?.auth) === JSON.stringify(methods);

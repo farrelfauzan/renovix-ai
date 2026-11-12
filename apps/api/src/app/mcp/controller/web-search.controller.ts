@@ -38,13 +38,14 @@ export class WebSearchController {
     );
   }
 
+  /** Stores the caller's account Brave key; RNX-292: with `workspaceId`, also switched on in that workspace. */
   @Put("brave/key")
   async upsertBraveKey(@Req() req: any, @Body() body: unknown) {
     const parsed = WebSearchKeySchema.safeParse(body);
     if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { workspaceId, apiKey } = parsed.data;
 
-    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
+    if (workspaceId) await this.workspaceService.requireMembership(workspaceId, req.user.userId);
 
     return this.webSearchService.upsertBraveApiKey(
       req.user.userId,
@@ -53,13 +54,18 @@ export class WebSearchController {
     );
   }
 
+  /**
+   * RNX-292: with `workspaceId`, switches the caller's Brave key off in that workspace and keeps it; without, removes
+   * the account key and every switch of it.
+   */
   @Delete("brave/key")
-  async deleteBraveKey(@Req() req: any, @Query("workspaceId") workspaceId: string) {
-    if (!workspaceId) {
-      throw new BadRequestException("workspaceId query param is required");
+  async deleteBraveKey(@Req() req: any, @Query("workspaceId") workspaceId: string | undefined) {
+    // An empty workspaceId is refused, never read as "remove the account key".
+    if (workspaceId === "") {
+      throw new BadRequestException("workspaceId query param must not be empty");
     }
 
-    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
+    if (workspaceId) await this.workspaceService.requireMembership(workspaceId, req.user.userId);
 
     return this.webSearchService.revokeBraveApiKey(req.user.userId, workspaceId);
   }
@@ -102,7 +108,7 @@ export class WebSearchController {
     if (!parsed.success) throw createInvalidBodyException(parsed.error);
     const { workspaceId, apiKey } = parsed.data;
 
-    await this.workspaceService.requireMembership(workspaceId, req.user.userId);
+    if (workspaceId) await this.workspaceService.requireMembership(workspaceId, req.user.userId);
 
     return this.webSearchService.upsertBraveApiKey(
       req.user.userId,

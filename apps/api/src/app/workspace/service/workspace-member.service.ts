@@ -6,12 +6,14 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import type { UpdateMemberDto } from "../dto/update-member.dto";
 import { WorkspaceQuotaService } from "./workspace-quota.service";
+import { WorkspaceMcpConnectionRepository } from "../../mcp/repository/workspace-mcp-connection.repository";
 
 @Injectable()
 export class WorkspaceMemberService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly quotaService: WorkspaceQuotaService,
+    private readonly mcpConnections: WorkspaceMcpConnectionRepository,
   ) {}
 
   async listMembers(workspaceId: string) {
@@ -46,12 +48,17 @@ export class WorkspaceMemberService {
       await this.quotaService.requireOwnerCollaboration(workspaceId);
     }
 
-    return this.prisma.workspaceMember.update({
-      where: { id: memberId },
-      data: {
-        ...(dto.role !== undefined && { role: dto.role }),
-        ...(dto.status !== undefined && { status: dto.status }),
-      },
+    // RNX-292: a member set to removed loses their MCP switches in this workspace, in the same transaction.
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.workspaceMember.update({
+        where: { id: memberId },
+        data: {
+          ...(dto.role !== undefined && { role: dto.role }),
+          ...(dto.status !== undefined && { status: dto.status }),
+        },
+      });
+      if (updated.status !== "active") await this.mcpConnections.deleteMemberConnections(workspaceId, member.userId, tx);
+      return updated;
     });
   }
 
@@ -68,9 +75,14 @@ export class WorkspaceMemberService {
       throw new BadRequestException("Cannot remove the workspace owner");
     }
 
-    return this.prisma.workspaceMember.update({
-      where: { id: memberId },
-      data: { status: "removed" },
+    // RNX-292: the removed member's MCP switches in this workspace go in the same transaction.
+    return this.prisma.$transaction(async (tx) => {
+      const removed = await tx.workspaceMember.update({
+        where: { id: memberId },
+        data: { status: "removed" },
+      });
+      await this.mcpConnections.deleteMemberConnections(workspaceId, member.userId, tx);
+      return removed;
     });
   }
 }
