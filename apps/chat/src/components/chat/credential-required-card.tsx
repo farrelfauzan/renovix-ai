@@ -1,8 +1,13 @@
 "use client";
 
-import { ExternalLink, KeyRound } from "lucide-react";
+import { ExternalLink, KeyRound, Power } from "lucide-react";
 import { Button } from "@performa-ai/ui/components/button";
-import { useStartUserOAuth } from "@/hooks/use-user-mcp";
+import {
+  useAccountMcpCredentials,
+  useEnableMcpInWorkspace,
+  useStartUserOAuth,
+} from "@/hooks/use-user-mcp";
+import { useShellWorkspaces } from "@/hooks/use-shell-workspaces";
 import { toast } from "sonner";
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -27,7 +32,24 @@ export function CredentialRequiredCard({
   workspaceId,
 }: CredentialRequiredCardProps) {
   const startOAuth = useStartUserOAuth();
+  const enable = useEnableMcpInWorkspace();
+  const { data: credentials } = useAccountMcpCredentials();
+  const { workspaces } = useShellWorkspaces();
   const label = PROVIDER_LABELS[provider] || provider;
+
+  // RNX-293: connected on the account but off in this (shared) workspace: offer the switch, not a new connect.
+  const credential = credentials?.find((c) => c.provider === provider);
+  const workspace = workspaces.find((w) => w.id === workspaceId);
+  const isOnHere = !!credential && !!workspace && credential.workspaceIds.includes(workspace.id);
+  const canTurnOn = !!credential && !!workspace && !isOnHere;
+
+  const handleTurnOn = () => {
+    if (!workspace) return;
+    enable.mutate(
+      { provider, workspaceId: workspace.id },
+      { onError: () => toast.error(`Could not turn ${label} on in ${workspace.name}`) },
+    );
+  };
 
   const handleConnect = async () => {
     if (!workspaceId) {
@@ -57,16 +79,33 @@ export function CredentialRequiredCard({
             This action requires access to your {label} account. Connect it to
             allow the agent to perform this task on your behalf.
           </p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-rx-amber-bar/40 hover:bg-rx-amber-tint"
-            onClick={handleConnect}
-            disabled={startOAuth.isPending || !workspaceId}
-          >
-            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-            Connect {label}
-          </Button>
+          {isOnHere ? (
+            <p className="text-xs font-medium text-rx-amber-text">
+              {label} is on in {workspace?.name}. Ask the agent again.
+            </p>
+          ) : canTurnOn ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-rx-amber-bar/40 hover:bg-rx-amber-tint"
+              onClick={handleTurnOn}
+              disabled={enable.isPending}
+            >
+              <Power className="h-3.5 w-3.5 mr-1.5" />
+              Turn on in {workspace?.name}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-rx-amber-bar/40 hover:bg-rx-amber-tint"
+              onClick={handleConnect}
+              disabled={startOAuth.isPending || !workspaceId}
+            >
+              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+              Connect {label}
+            </Button>
+          )}
         </div>
       </div>
     </div>
