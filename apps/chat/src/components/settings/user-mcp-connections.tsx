@@ -18,18 +18,7 @@ import {
 } from "@/hooks/use-user-mcp";
 import { useMcpRegistry } from "@/hooks/use-mcp";
 import { IntegrationProviderLogo } from "@/components/agents/agent-detail/integration-provider-logo";
-
-const MCP_LOGOS: Record<string, string> = {
-  "google-gmail":
-    "https://www.gstatic.com/images/branding/product/1x/gmail_2020q4_32dp.png",
-  "google-calendar":
-    "https://www.gstatic.com/images/branding/product/1x/calendar_2020q4_32dp.png",
-  "google-sheets":
-    "https://www.gstatic.com/images/branding/product/1x/sheets_2020q4_32dp.png",
-  github: "https://github.com/fluidicon.png",
-  slack: "https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png",
-  notion: "https://www.notion.so/front-static/favicon.ico",
-};
+import { MCP_LOGOS } from "@/lib/mcp-logos";
 
 // Providers that support per-user OAuth
 const OAUTH_PROVIDERS = [
