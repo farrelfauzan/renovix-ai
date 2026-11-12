@@ -145,6 +145,9 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
       const result = await service.chat(bob.id, parent.id, "Hi");
 
       expect(result.message.content).toBe("Parent final");
+      // RNX-25: the run's tokens are the root agent's calls only (110 + 230); the hop's 70 stay out, as on main.
+      const answer = await prisma.agentMessage.findFirstOrThrow({ where: { role: "assistant" } });
+      expect([answer.tokens, result.usage.totalTokens]).toEqual([340, 340]);
       const entries = await usageEntriesOf(bob.id);
       const reservations = await prisma.creditReservation.findMany();
       expect(reservations).toHaveLength(1);
