@@ -11,6 +11,7 @@ const PROGRAMS = [
   "apps/api/tsconfig.app.json",
   "apps/api/tsconfig.spec.json",
   "apps/chat/tsconfig.json",
+  "apps/chat/tsconfig.spec.json",
   "apps/back-office/tsconfig.json",
   "apps/back-office/tsconfig.spec.json",
   "apps/landing/tsconfig.json",
