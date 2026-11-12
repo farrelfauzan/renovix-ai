@@ -119,10 +119,10 @@ describe("RNX-16: agent run scenarios on POST /agents/:id/chat (Fastify, test da
       role: m.role,
       content: m.content,
       tokens: m.tokens,
-      cost: m.cost,
+      cost: m.cost?.toFixed(6) ?? null,
     }));
 
-  it("RNX-16 plain reply (AR): the exact SSE events are status, one content chunk, session info, [DONE]; the stored assistant message has the call's total tokens and no cost", async () => {
+  it("RNX-16 plain reply (AR): the exact SSE events are status, one content chunk, session info, [DONE]; the stored assistant message has the call's total tokens and, RNX-25 (Bug B), its cost", async () => {
     const { agent, session } = await seed();
     fake.enqueue({ content: "none" }, { content: "Hello there", usage: { prompt_tokens: 10, completion_tokens: 5 } });
 
@@ -136,10 +136,10 @@ describe("RNX-16: agent run scenarios on POST /agents/:id/chat (Fastify, test da
       { sessionId: run.sessionId, runId: run.id },
       "[DONE]",
     ]);
-    // AR stores no cost on the assistant message: its loop never sets totalCost (RNX-23).
+    // RNX-25 (Bug B): the answer's cost is the run's charged calls, 10 + 5 tokens at 1 micro-credit each (was none).
     expect(await storedMessages()).toEqual([
       { role: "user", content: "Hi", tokens: null, cost: null },
-      { role: "assistant", content: "Hello there", tokens: 15, cost: null },
+      { role: "assistant", content: "Hello there", tokens: 15, cost: "0.000015" },
     ]);
     await assertCreditLedgerInvariants(prisma);
   });
@@ -178,7 +178,7 @@ describe("RNX-16: agent run scenarios on POST /agents/:id/chat (Fastify, test da
     expect(actual.body).not.toContain(RAW);
     expect(await storedMessages()).toEqual([
       { role: "user", content: "Hi", tokens: null, cost: null },
-      { role: "assistant", content: SANITIZED, tokens: 15, cost: null },
+      { role: "assistant", content: SANITIZED, tokens: 15, cost: "0.000015" }, // RNX-25 (Bug B): was no cost
     ]);
     expect(await prisma.agentMessage.count({ where: { content: { contains: RAW } } })).toBe(0);
     expect(mockExtractAndStore).not.toHaveBeenCalled();
