@@ -390,10 +390,97 @@ describe("RNX-283: the chat engine's tool loop (fake provider, no database)", ()
       const { result } = await t.runIn(mode);
       expect(result.content).toBe("Alone");
       expect(t.toolNamesSent(0)).toEqual(["calculator"]);
-      expect(t.peers.callPeer.mock.calls).toEqual([[{ runnerUserId: t.runnerUserId, agentId: t.agent.id, args: { agent: "B", task: "t" } }]]);
+      // RNX-25 (D341 D1): the peer request also carries the run's scope, the calling call (its parent) and the metered call.
+      const [firstCall] = t.runMeter.callModel.mock.results;
+      const parentCallId = (await firstCall.value).callId;
+      expect(t.peers.callPeer.mock.calls).toEqual([[{ runnerUserId: t.runnerUserId, agentId: t.agent.id, args: { agent: "B", task: "t" }, scope: "inside", parentCallId, callModel: expect.any(Function) }]]);
       expect(t.lastMessage(1)).toEqual({ role: "tool", tool_call_id: "p", content: CHAT_ENGINE_PEER_UNAVAILABLE });
       expect(t.executeTool).not.toHaveBeenCalled();
       expect(t.fake.requests).toHaveLength(2);
+    });
+  });
+
+  describe("RNX-25 (D341 D1): the opt-in engine changes, off unless the request or the caller asks", () => {
+    const callTurn = () => toolTurn({ id: "p", name: "call_agent", arguments: { agent: "B", task: "t" } });
+
+    it.each(MODES)("%s: offersCallAgent offers call_agent; without it (same agent, same offered list) it is not offered", async (mode) => {
+      const asked = setup({ toolTypes: ["calculator"], offered: ["calculator"], turns: [{ content: "ok" }] });
+      const notAsked = setup({ toolTypes: ["calculator"], offered: ["calculator"], turns: [{ content: "ok" }] });
+      const body = asked.request();
+      await asked.runIn(mode, {}, { ...body, options: { ...body.options, offersCallAgent: true } });
+      await notAsked.runIn(mode);
+      expect(asked.toolNamesSent(0)).toEqual(["calculator", "call_agent"]);
+      expect(notAsked.toolNamesSent(0)).toEqual(["calculator"]);
+    });
+
+    it.each(MODES)("%s: offersAgentTools offers every tool the agent has without listing it (create_document is always built); without it an unlisted tool is not offered", async (mode) => {
+      const asked = setup({ toolTypes: ["calculator"], turns: [{ content: "ok" }] });
+      const notAsked = setup({ toolTypes: ["calculator"], turns: [{ content: "ok" }] });
+      const body = asked.request();
+      await asked.runIn(mode, {}, { ...body, options: { ...body.options, offersAgentTools: true } });
+      await notAsked.runIn(mode);
+      expect(asked.toolNamesSent(0)).toEqual(["calculator", "create_document"]);
+      expect(notAsked.toolNamesSent(0)).toEqual([]);
+    });
+
+    it.each(MODES)("%s: the caller's mcpSession is the run's: its offered names are set and it is closed once", async (mode) => {
+      const t = setup({ toolTypes: ["calculator"], offered: ["calculator"], turns: [{ content: "ok" }] });
+      const mcpSession = { connections: [], toolConnections: new Map(), offeredToolNames: new Set<string>(), document: null };
+      await t.runIn(mode, { mcpSession });
+      expect([...mcpSession.offeredToolNames]).toEqual(["calculator"]);
+      expect(t.cleanup.mock.calls).toEqual([[mcpSession]]);
+    });
+
+    it.each(MODES)("%s: a hop's call through the peer request is metered on the run against the called agent's connection, with the calling call as parent", async (mode) => {
+      const t = setup({ turns: [callTurn(), { content: "B says hi" }, { content: "Done" }] });
+      const calleeConnection = { slug: "callee-model", baseUrl: "http://provider.invalid/v1", apiKey: "fake-key", providerName: "fake" };
+      t.peers.callPeer.mockImplementation(async (request) => {
+        const hop = { agentId: "callee-agent", connection: calleeConnection, parentCallId: request.parentCallId };
+        const { response } = await request.callModel({ messages: [{ role: "user", content: "t" }], max_tokens: 50 }, hop);
+        return response.choices[0].message.content ?? "";
+      });
+      const body = t.request();
+      const { result } = await t.runIn(mode, {}, { ...body, options: { ...body.options, offersCallAgent: true } });
+      const [rootCall, hopCall] = t.runMeter.callModel.mock.calls.map(([, call]) => call as { agentId: string; parentCallId: string | null; request: ChatRequest });
+      const rootCallId = (await t.runMeter.callModel.mock.results[0].value).callId;
+      expect(result.content).toBe("Done");
+      expect([rootCall.agentId, rootCall.parentCallId, rootCall.request.connection.slug]).toEqual([t.agent.id, null, "test-model"]);
+      expect([hopCall.agentId, hopCall.parentCallId, hopCall.request.connection.slug, hopCall.request.model]).toEqual(["callee-agent", rootCallId, "callee-model", "callee-model"]);
+      expect(t.runMeter.openRun).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(MODES)("%s: the reservation counts the caller's linked agents (none by default), and onReserved runs once, after the reservation and before the first call", async (mode) => {
+      const linked = [{ model: "test-model", systemPrompt: "B", maxTokens: 10 }];
+      const order: string[] = [];
+      const t = setup({ toolTypes: ["calculator"], offered: ["calculator"], turns: [toolTurn({ name: "calculator", arguments: { expression: "1" } }), { content: "ok" }] });
+      const plain = setup({ turns: [{ content: "ok" }] });
+      t.runMeter.openRun.mockImplementation(async () => (order.push("reserved"), t.budget));
+      const callModel = t.runMeter.callModel.getMockImplementation()!;
+      t.runMeter.callModel.mockImplementation(async (run, call) => (order.push("call"), callModel(run, call)));
+      await t.runIn(mode, { linkedAgents: linked, onReserved: async () => void order.push("onReserved") });
+      await plain.runIn(mode);
+      expect(order).toEqual(["reserved", "onReserved", "call", "call"]);
+      expect((t.runMeter.openRun.mock.calls[0] as unknown[])[0]).toMatchObject({ linkedAgents: linked });
+      expect((plain.runMeter.openRun.mock.calls[0] as unknown[])[0]).toMatchObject({ linkedAgents: [] });
+    });
+
+    it.each(MODES)("%s: each call returns its charge, what the run's spent grew by", async (mode) => {
+      const t = setup({ turns: [{ content: "ok" }] });
+      const charges: string[] = [];
+      const callModel = t.runMeter.callModel.getMockImplementation()!;
+      t.runMeter.callModel.mockImplementation(async (run, call) => {
+        const metered = await callModel(run, call);
+        t.budget.spent = t.budget.spent.plus("0.000042");
+        return metered;
+      });
+      const execute = jest.spyOn(ChatEngineToolLoop.prototype, "execute").mockImplementation(async function* (input) {
+        const metered = await input.callModel({ messages: [{ role: "user", content: input.approvedInput }], max_tokens: 10 });
+        charges.push(metered.charge.toFixed(6));
+        yield { type: "text", text: "ok" };
+      });
+      await t.runIn(mode);
+      execute.mockRestore();
+      expect(charges).toEqual(["0.000042"]);
     });
   });
 

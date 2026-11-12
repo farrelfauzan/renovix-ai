@@ -5,7 +5,8 @@ import type { MeteredExecutionTarget } from "./metered-execution-target";
 /**
  * RNX-282: one metered execution's run, local to that execution: whose run it is, the caller's abort signal, the
  * model's connection, its reservation once the first call opened it, and the tail of its call queue (its calls run one
- * at a time, so each call's budget check sees the charge of the call before it).
+ * at a time, so each call's budget check sees the charge of the call before it). RNX-25: `onReserved`, the caller's hook
+ * run once its reservation holds.
  */
 export type MeteredRunState = {
   readonly target: MeteredExecutionTarget;
@@ -13,4 +14,5 @@ export type MeteredRunState = {
   readonly connection: ModelConnection;
   opened?: Promise<AgentRunBudget>;
   queue: Promise<unknown>;
+  readonly onReserved?: () => Promise<void>;
 };
