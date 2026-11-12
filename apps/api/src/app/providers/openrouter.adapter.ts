@@ -11,6 +11,7 @@ import { LlmEndpoint } from "./types/llm-endpoint";
 import { ProviderHttpError } from "./errors/provider-http-error";
 import { ProviderTimeoutError } from "./errors/provider-timeout-error";
 import { ProviderAttemptDeadlineError } from "./errors/provider-attempt-deadline-error";
+import { ProviderTimeBudgetExceededError } from "./errors/provider-time-budget-exceeded-error";
 import { isOpenRouterUrl } from "./utils/is-open-router-url";
 import { normalizeModelId } from "./utils/normalize-model-id";
 import { readProviderHttpError } from "./utils/read-provider-http-error";
@@ -142,15 +143,17 @@ export class OpenRouterAdapter implements ProviderAdapter {
    * wait, unless a fallback model remains (RNX-179: ProviderRouter moves on instead, no wait).
    * RX-183: when `signal` fires during the wait, the timer is cleared, the wait rejects with the
    * signal's reason (as an aborted fetch does) and the provider is not called again. RNX-283: chat passes
-   * the caller's signal too (none: it waits the full time exactly as before).
+   * the caller's signal too (none: it waits the full time exactly as before). RNX-44: a wait longer than the call's
+   * time budget has left ends the call in ProviderTimeBudgetExceededError instead.
    */
   private async retryOnceAfter<T>(
     err: unknown,
     connection: LlmEndpoint,
     send: (endpoint: LlmEndpoint) => Promise<T>,
-    { signal, hasFallback }: Pick<ChatRequest, "signal" | "hasFallback">,
+    { signal, hasFallback, budget }: Pick<ChatRequest, "signal" | "hasFallback" | "budget">,
   ): Promise<T> {
     if (!isRetryAfterOutage(err) || hasFallback) throw err;
+    this.assertBudgetCovers(err.retryAfterMs, budget);
     this.logger.warn(
       `[LLM] provider (${new URL(connection.baseUrl).host}) answered ${err.status} with Retry-After; retrying once in ${err.retryAfterMs}ms`,
     );
@@ -176,6 +179,22 @@ export class OpenRouterAdapter implements ProviderAdapter {
       if (signal?.aborted) return onAbort();
       signal?.addEventListener("abort", onAbort, { once: true });
     });
+  }
+
+  /** RNX-44: a wait of `delayMs` starts only when the call's time budget has that much left; else ProviderTimeBudgetExceededError. */
+  private assertBudgetCovers(delayMs: number, budget?: ChatRequest["budget"]): void {
+    if (!budget || delayMs <= budget.deadlineAt - Date.now()) return;
+    this.logger.warn(`[LLM] a ${delayMs}ms wait does not fit the call's time budget; giving up`);
+    throw new ProviderTimeBudgetExceededError();
+  }
+
+  /**
+   * RNX-44: the signal of one try: the caller's signal, and the call's time budget signal when it has one, so the try in
+   * flight is cut when the budget runs out (it rejects with ProviderTimeBudgetExceededError, the budget's reason).
+   */
+  private attemptSignalOf({ signal, budget }: Pick<ChatRequest, "signal" | "budget">): AbortSignal | undefined {
+    if (!budget) return signal;
+    return AbortSignal.any(signal ? [signal, budget.signal] : [budget.signal]);
   }
 
   /** POST /chat/completions with Node's fetch; a non-2xx answer becomes a typed ProviderHttpError, without its body (RNX-190). */
@@ -255,7 +274,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
       body.tool_choice = params.tool_choice ?? "auto";
     }
 
-    const send = (endpoint: LlmEndpoint) => this.postChat(endpoint, body, params.signal);
+    const send = (endpoint: LlmEndpoint) => this.postChat(endpoint, body, this.attemptSignalOf(params));
     const data = await (params.singleAttemptTimeoutMs === undefined
       ? this.postChatWithRetries(connection, body, params).catch((err) => this.retryOnceAfter(err, connection, send, params))
       : this.postSingleAttempt(connection, body, params));
@@ -311,18 +330,21 @@ export class OpenRouterAdapter implements ProviderAdapter {
    * leaves at once so ProviderRouter can move on. RNX-190 (D199): timeouts on every attempt end in the typed
    * ProviderTimeoutError. RNX-283: every attempt carries the caller's `signal`; once it is aborted the error goes to the
    * caller at once, never retried. RNX-310: an abort during a back-off wait ends it at once (waitUnlessAborted).
+   * RNX-44: with the call's time budget, each try is also cut when the budget runs out (so its timeout is at most the
+   * time left), and a retry starts only when the time left covers its back-off wait (ProviderTimeBudgetExceededError).
    */
   private async postChatWithRetries(
     connection: LlmEndpoint,
     body: Record<string, unknown>,
-    { hasFallback = false, signal }: Pick<ChatRequest, "hasFallback" | "signal">,
+    { hasFallback = false, signal, budget }: Pick<ChatRequest, "hasFallback" | "signal" | "budget">,
   ): Promise<any> {
     const maxRetries = 6;
+    const attemptSignal = this.attemptSignalOf({ signal, budget });
     let lastError: any;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        return await this.postChat(connection, body, signal);
+        return await this.postChat(connection, body, attemptSignal);
       } catch (err: any) {
         lastError = err;
         if (signal?.aborted) throw err;
@@ -337,6 +359,7 @@ export class OpenRouterAdapter implements ProviderAdapter {
             status === 429
               ? Math.min(5000 * 2 ** attempt, 60000)
               : Math.min(2000 * 2 ** attempt, 15000);
+          this.assertBudgetCovers(delay, budget);
           this.logger.warn(
             `[OpenRouter chat] Attempt ${attempt + 1}/${maxRetries} failed (${isTimeout ? "timeout" : status}). Retrying in ${delay}ms...`,
           );
@@ -384,7 +407,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
 
     // RX-161: the upstream request is aborted when the caller's signal fires (client gone).
     // RX-183: a consumer that stops iterating closes the upstream by leaving the for await.
-    const { signal } = params;
+    // RNX-44: until the first token the call's time budget cuts the request too (ProviderRouter stops it after that).
+    const signal = this.attemptSignalOf(params);
     const send = (endpoint: LlmEndpoint) => this.openStream(endpoint, body, signal);
     // No retries on a stream (today's behaviour) beyond one Retry-After wait; none with a fallback left (RNX-179).
     const response = await this.openStream(connection, body, signal).catch((err) =>

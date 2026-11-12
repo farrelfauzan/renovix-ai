@@ -12,6 +12,7 @@ import { UsageModule } from "../usage/usage.module";
 import { KnowledgeModule } from "../knowledge/knowledge.module";
 import { DocumentModule } from "../document/document.module";
 import { MemoryModule } from "../memory/memory.module";
+import { OffersModule } from "../offers/offers.module";
 
 @Module({
   imports: [
@@ -21,6 +22,8 @@ import { MemoryModule } from "../memory/memory.module";
     KnowledgeModule,
     DocumentModule,
     MemoryModule,
+    // RNX-44: PlatformSettingsService, for the model call time budget.
+    OffersModule,
   ],
   controllers: [ChatController, ConversationController, ModelsController],
   providers: [

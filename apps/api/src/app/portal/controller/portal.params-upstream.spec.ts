@@ -204,7 +204,7 @@ describe("RNX-221: the portal route passes response_format and reasoning_effort 
     const registry = moduleRef.get(ModelRegistryService);
     const tuning = { applyTuning: async (messages: unknown) => ({ tunedMessages: messages, matchedTemplate: null }) };
     const chatService = new ChatService(
-      credits as never, moduleRef.get(ProviderRouter), { logUsage: async () => undefined } as never, registry, tuning as never, {} as never, {} as never,
+      credits as never, moduleRef.get(ProviderRouter), { logUsage: async () => undefined } as never, registry, tuning as never, {} as never, {} as never, { getSetting: async () => null } as never,
     );
     const params = { response_format: { type: "json_object" }, reasoning_effort: "high" };
     upstream.respond((_r, res) => sendJson(res, 200, chatCompletion("ok")));

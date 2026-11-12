@@ -86,4 +86,9 @@ export const PLATFORM_SETTINGS = {
   apiKeyRequestsPerMinute: AT_LEAST_ONE,
   /** Seconds the automatic memory extraction's one model call may take, never retried (RNX-284: 15). Not set: no extraction. */
   memoryExtractionTimeoutSeconds: AT_LEAST_ONE,
+  /**
+   * Seconds one user-facing model call may take across its tries, back-off waits and fallback models; a stream until its
+   * first token (RNX-44: 120). Not set: no limit.
+   */
+  modelCallBudgetSeconds: AT_LEAST_ONE,
 } as const;

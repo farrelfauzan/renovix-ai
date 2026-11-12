@@ -16,6 +16,10 @@ import { ProviderHttpError } from "./errors/provider-http-error";
 import { isFailoverError } from "./utils/is-failover-error";
 import { isProviderFailure } from "./utils/is-provider-failure";
 import { servedByOf } from "./utils/served-by-of";
+import { startCallBudget } from "./utils/start-call-budget";
+import { withinCallBudget } from "./utils/within-call-budget";
+import type { CallBudget } from "./types/call-budget";
+import type { RunningCallBudget } from "./types/running-call-budget";
 
 /**
  * RNX-179: variables of the env fallback that RX-178 removed (D199-4). Nothing reads them; at boot a warning names
@@ -53,8 +57,23 @@ export class ProviderRouter {
    * adapter (the fake in LLM_PROVIDER=fake mode). RNX-179: a 502 or 503 moves the call to the connection's next
    * fallback model (its own provider and slug); any other error ends it. A provider record whose breaker is open is
    * skipped. The response names the model and provider that answered (`servedBy`); `hooks` report each attempt.
+   * RNX-44: `timeBudgetMs` covers the whole call (every try, back-off wait and fallback hop): running out ends it in
+   * ProviderTimeBudgetExceededError, and a fallback hop starts only while time is left.
    */
   async chat(params: ChatRequest, hooks: CallHooks = {}): Promise<ChatResponse> {
+    const budget = this.startBudget(params);
+    try {
+      return await this.chatWithin(params, hooks, budget);
+    } finally {
+      budget?.stop();
+    }
+  }
+
+  /**
+   * RNX-44: `chat` within its budget, if any: the adapter gets the budget, and the wait for each attempt is cut at it. A
+   * fallback hop reached after the budget ran out fails at once (its signal is already aborted: nothing is sent).
+   */
+  private async chatWithin(params: ChatRequest, hooks: CallHooks, budget?: CallBudget): Promise<ChatResponse> {
     const adapter = this.fakeAdapter ?? this.openRouterAdapter;
     const candidates = this.candidatesOf(params.connection);
     for (const [index, connection] of candidates.entries()) {
@@ -65,7 +84,7 @@ export class ProviderRouter {
         `[chat] provider=${connection.providerName} model=${connection.slug} messages=${params.messages?.length} tools=${params.tools?.length ?? 0}`,
       );
       try {
-        const response = await adapter.chat({ ...params, connection, ...(hasFallback && { hasFallback }) });
+        const response = await withinCallBudget(adapter.chat({ ...params, connection, ...(hasFallback && { hasFallback }), ...(budget && { budget }) }), budget?.signal);
         this.recordOutcome(connection);
         return { ...response, servedBy: attempt };
       } catch (error: any) {
@@ -87,8 +106,20 @@ export class ProviderRouter {
    * payload moves the call to the next fallback model; once a payload has been yielded there is no fallback, and an
    * error reaches the caller (who ends its stream with an error event). `hooks` report each attempt; the last
    * `onAttempt` before the first payload names the model and provider that answered.
+   * RNX-44: `timeBudgetMs` covers the fallback hops and the wait for the first payload (ProviderTimeBudgetExceededError
+   * when it runs out), never the stream after it.
    */
   async *chatStream(params: ChatRequest, hooks: CallHooks = {}): AsyncGenerator<string, void, unknown> {
+    const budget = this.startBudget(params);
+    try {
+      yield* this.streamWithin(params, hooks, budget);
+    } finally {
+      budget?.stop();
+    }
+  }
+
+  /** RNX-44: `chatStream` within its budget, if any, until the first payload; then the budget stops. */
+  private async *streamWithin(params: ChatRequest, hooks: CallHooks, budget?: RunningCallBudget): AsyncGenerator<string, void, unknown> {
     const adapter = this.fakeAdapter ?? this.openRouterAdapter;
     if (!adapter.chatStream) {
       throw new Error(`Provider ${params.connection.providerName} does not support streaming`);
@@ -101,10 +132,10 @@ export class ProviderRouter {
       this.logger.log(
         `[chatStream] provider=${connection.providerName} model=${connection.slug} messages=${params.messages?.length} tools=${params.tools?.length ?? 0} tool_choice=${JSON.stringify(params.tool_choice)} toolNames=[${(params.tools || []).map((t: any) => t.function?.name).join(",")}]`,
       );
-      const stream = adapter.chatStream({ ...params, connection, ...(hasFallback && { hasFallback }) });
+      const stream = adapter.chatStream({ ...params, connection, ...(hasFallback && { hasFallback }), ...(budget && { budget }) });
       let first: IteratorResult<string, void>;
       try {
-        first = await stream.next();
+        first = await withinCallBudget(stream.next(), budget?.signal);
       } catch (error: any) {
         this.recordOutcome(connection, error);
         if (!hasFallback || !isFailoverError(error)) throw error;
@@ -112,6 +143,7 @@ export class ProviderRouter {
         await hooks.onAttemptFailed?.(attempt, error);
         continue;
       }
+      budget?.stop();
       this.recordOutcome(connection);
       if (first.done) return;
       try {
@@ -123,6 +155,12 @@ export class ProviderRouter {
       return;
     }
     throw this.allOpenError(params.connection);
+  }
+
+  /** RNX-44: the call's time budget, started now; none without `timeBudgetMs`, nor for a single attempt (RNX-284). */
+  private startBudget(params: ChatRequest): RunningCallBudget | undefined {
+    if (params.timeBudgetMs === undefined || params.singleAttemptTimeoutMs !== undefined) return undefined;
+    return startCallBudget(params.timeBudgetMs);
   }
 
   /** RNX-179: the connection and its fallbacks, in order, without those whose provider's breaker is open (logged). */
