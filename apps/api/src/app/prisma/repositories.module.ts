@@ -15,6 +15,7 @@ import { AgentChannelRepository } from "../agent/repository/agent-channel.reposi
 import { AgentIntegrationRepository } from "../agent/repository/agent-integration.repository";
 import { AgentKnowledgeBaseRepository } from "../agent/repository/agent-knowledge-base.repository";
 import { AgentLinkRepository } from "../agent/repository/agent-link.repository";
+import { AgentRunRepository } from "../agent/repository/agent-run.repository";
 import { AgentToolRepository } from "../agent/repository/agent-tool.repository";
 import { AgentRepository } from "../agent/repository/agent.repository";
 import { AiModelRepository } from "../config/repository/ai-model.repository";
@@ -77,6 +78,7 @@ const REPOSITORIES = [
   AgentIntegrationRepository,
   AgentKnowledgeBaseRepository,
   AgentLinkRepository,
+  AgentRunRepository,
   AgentToolRepository,
   AgentRepository,
   AiModelRepository,
