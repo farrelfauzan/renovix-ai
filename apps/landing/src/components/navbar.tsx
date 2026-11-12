@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Button } from '@performa-ai/ui/components/button';
+import { cn } from '@performa-ai/ui/lib/utils';
 import { RenovixLogo } from '@/components/renovix-logo';
 
 const navLinks = [
@@ -59,22 +60,23 @@ export function Navbar() {
           >
             Sign In
           </a>
-          <a
-            href={process.env.NEXT_PUBLIC_CHAT_URL}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
-          >
-            Get Started
-          </a>
+          <Button asChild className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 h-auto whitespace-normal">
+            <a href={process.env.NEXT_PUBLIC_CHAT_URL}>
+              Get Started
+            </a>
+          </Button>
         </div>
 
         {/* Mobile toggle */}
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="text-gray-400 md:hidden"
+          className="size-auto text-gray-400 hover:bg-transparent hover:text-gray-400 md:hidden"
           aria-label="Toggle menu"
         >
-          {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
+          {mobileOpen ? <X className="size-6" /> : <Menu className="size-6" />}
+        </Button>
       </nav>
 
       {/* Mobile menu */}
@@ -95,12 +97,11 @@ export function Navbar() {
             <a href="#" className="text-sm font-medium text-gray-300">
               Sign In
             </a>
-            <a
-              href={process.env.NEXT_PUBLIC_CHAT_URL}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-center text-sm font-semibold text-white"
-            >
-              Get Started
-            </a>
+            <Button asChild className="rounded-lg bg-indigo-600 px-4 py-2 text-center text-sm font-semibold text-white h-auto whitespace-normal hover:bg-indigo-600">
+              <a href={process.env.NEXT_PUBLIC_CHAT_URL}>
+                Get Started
+              </a>
+            </Button>
           </div>
         </div>
       )}

@@ -7,6 +7,7 @@ import { createApiClient } from "@/lib/api/create-api-client";
 import { createPublicApiClient } from "@/lib/api/create-public-api-client";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
+import { pickOption } from "@/test/pick-option";
 import { AdminsAndRolesScreen } from "./admins-and-roles-screen";
 
 // RNX-189: the admins and roles screen against a stateful fake of the API at the ApiClient boundary. The API's
@@ -124,6 +125,15 @@ const renderScreen = async (fake: ReturnType<typeof createFakeApi>, me = profile
   await screen.findByRole("table", { name: "Admins" });
 };
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole("button", { name }));
+// The role and provider pickers are the shared Select (Radix, RNX-291): open the trigger, then click the option.
+// jsdom has no scrollIntoView, which the open list calls on its selected item, and no ResizeObserver, which the
+// shared Checkbox of the role form uses to size its hidden form input.
+Element.prototype.scrollIntoView = jest.fn();
+global.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 const confirmIdentity = async (password = "pw", totp = "123456") => {
   const prompt = await screen.findByRole("dialog", { name: "Confirm it is you" });
   fireEvent.change(within(prompt).getByLabelText("Password"), { target: { value: password } });
@@ -162,7 +172,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("active"));
       click("Reset MFA ops@example.com");
       await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[3].textContent).toBe("not enrolled"));
-      fireEvent.change(screen.getByLabelText("Role for ops@example.com"), { target: { value: "custom_ro" } });
+      pickOption(screen.getByLabelText("Role for ops@example.com"), "custom_ro");
       click("Assign role to ops@example.com");
       await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[2].textContent).toBe("custom_ro"));
       click("Force password reset ops@example.com");
@@ -385,7 +395,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       const fake = createFakeApi({ isReauthed: true });
       fake.state.admins = [admin("owner", { role: "owner" }), admin("ops")];
       await renderScreen(fake, profile(OWNER_PERMISSIONS, "ops"));
-      fireEvent.change(screen.getByLabelText("Role for owner@example.com"), { target: { value: "support" } });
+      pickOption(screen.getByLabelText("Role for owner@example.com"), "support");
 
       click("Assign role to owner@example.com");
 
@@ -412,6 +422,18 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       const api = createAdminsApi(refusing, refusing);
 
       await expect(api.createRole({ name: "x", permissions: ["bad"] })).rejects.toThrow("The request was refused (400).");
+    });
+  });
+
+  describe("invite dialog (RNX-291)", () => {
+    it("invites with the role picked in the select, not the default one", async () => {
+      const fake = createFakeApi();
+      await renderScreen(fake);
+      click("Invite admin");
+      fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+      pickOption(screen.getByRole("combobox", { name: "Role" }), "custom_ro");
+      fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+      await waitFor(() => expect(within(rowOf("new@example.com")).getAllByRole("cell")[2].textContent).toBe("custom_ro"));
     });
   });
 

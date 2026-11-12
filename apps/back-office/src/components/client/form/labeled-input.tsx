@@ -1,5 +1,7 @@
 "use client";
 
+import { Input } from "@performa-ai/ui/components/input";
+
 type LabeledInputProps = {
   readonly label: string;
   readonly name: string;
@@ -17,7 +19,7 @@ export function LabeledInput({ label, name, value, onChange, type = "text", step
   return (
     <label className="flex flex-col gap-1 text-sm">
       {label}
-      <input name={name} type={type} step={step} min={min} maxLength={maxLength} required={isRequired} value={value} onChange={(event) => onChange(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+      <Input name={name} type={type} step={step} min={min} maxLength={maxLength} required={isRequired} value={value} onChange={(event) => onChange(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
     </label>
   );
 }

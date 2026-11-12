@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import type { AuditLogFilters } from "@/lib/audit-log/audit-log-filters";
 import { EMPTY_AUDIT_LOG_FILTERS } from "@/lib/audit-log/empty-audit-log-filters";
 
@@ -24,17 +26,17 @@ export function AuditLogFiltersForm({ onApply }: { onApply: (filters: AuditLogFi
       {FIELDS.map(({ name, label, type }) => (
         <label key={name} className="flex flex-col gap-1 text-sm">
           {label}
-          <input
+          <Input
             type={type}
             value={filters[name]}
             onChange={(event) => setFilters({ ...filters, [name]: event.target.value })}
-            className="rounded-rx border border-rx-line px-2 py-1"
+            className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm"
           />
         </label>
       ))}
-      <button type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm">
+      <Button variant="outline" type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
         Apply filters
-      </button>
+      </Button>
     </form>
   );
 }

@@ -3,10 +3,15 @@ import type { ApiClient } from "@/lib/api/api-client";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
 import { createUsageApi } from "@/lib/usage/usage-api";
+import { pickOption } from "@/test/pick-option";
 import { TablePager } from "./table-pager";
 import { UsageAndCostScreen } from "./usage-and-cost-screen";
 
 // RNX-163: the usage and cost screen against a mocked back-office API client (shapes from apps/api admin-usage types).
+
+// The role and provider pickers are the shared Select (Radix, RNX-291): open the trigger, then click the option.
+// jsdom has no scrollIntoView, which the open list calls on its selected item.
+Element.prototype.scrollIntoView = jest.fn();
 
 const RANGE = { from: "2026-09-24", to: "2026-10-23" };
 const PERIOD = { ...RANGE, timeZone: "Asia/Jakarta" };
@@ -103,10 +108,10 @@ describe("UsageAndCostScreen (RNX-163)", () => {
       },
     });
     expect(await screen.findByText("No portal balance entered in this range.")).toBeTruthy();
-    await screen.findByRole("option", { name: "Griphub" });
     const form = screen.getByRole("form", { name: "Portal balance" });
+    const provider = await within(form).findByRole("combobox");
 
-    fireEvent.change(within(form).getByLabelText("Provider"), { target: { value: "prov-1" } });
+    pickOption(provider, "Griphub");
     fireEvent.change(within(form).getByLabelText("Day"), { target: { value: "2026-10-22" } });
     fireEvent.change(within(form).getByLabelText("Portal balance (USD)"), { target: { value: "90" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save balance" }));

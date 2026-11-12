@@ -2,6 +2,8 @@
 
 import { motion } from 'framer-motion';
 import { MessageSquare, ArrowRight, Bot, Sparkles } from 'lucide-react';
+import { Button } from '@performa-ai/ui/components/button';
+import { Badge } from '@performa-ai/ui/components/badge';
 import { CircuitBackground } from './circuit-background';
 
 export function HeroSection() {
@@ -15,10 +17,10 @@ export function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-4 py-1.5 text-sm text-indigo-300">
+          <Badge variant="outline" className="mb-6 inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-4 py-1.5 text-sm text-indigo-300 font-normal [&>svg]:size-4">
             <Sparkles className="h-4 w-4" />
             <span>Next-Generation AI Chat Platform</span>
-          </div>
+          </Badge>
         </motion.div>
 
         <motion.h1
@@ -52,20 +54,18 @@ export function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
-          <a
-            href={process.env.NEXT_PUBLIC_CHAT_URL}
-            className="group inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500"
-          >
-            Start Chatting Free
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-          </a>
-          <a
-            href="#agents"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-6 py-3 text-sm font-semibold text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
-          >
-            <Bot className="h-4 w-4" />
-            Explore AI Agents
-          </a>
+          <Button asChild className="group inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 h-auto whitespace-normal has-[>svg]:px-6">
+            <a href={process.env.NEXT_PUBLIC_CHAT_URL}>
+              Start Chatting Free
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </a>
+          </Button>
+          <Button asChild variant="outline" className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-6 py-3 text-sm font-semibold text-gray-300 transition-colors hover:border-gray-500 hover:text-white h-auto whitespace-normal bg-transparent hover:bg-transparent has-[>svg]:px-6">
+            <a href="#agents">
+              <Bot className="h-4 w-4" />
+              Explore AI Agents
+            </a>
+          </Button>
         </motion.div>
 
         {/* Chat UI Preview */}

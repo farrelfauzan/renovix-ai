@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import type { InvitationPreview } from "@/lib/invitation/invitation-preview";
 
 type AcceptInvitationFormProps = {
@@ -25,19 +27,19 @@ export function AcceptInvitationForm({ preview, isSubmitting, onSubmit }: Accept
       </p>
       <label className="flex flex-col gap-1 text-sm">
         Email
-        <input type="email" name="email" autoComplete="username" readOnly value={preview.email} className="rounded-rx border border-rx-line bg-rx-surface px-2 py-1" />
+        <Input type="email" name="email" autoComplete="username" readOnly value={preview.email} className="rounded-rx border border-rx-line bg-rx-surface px-2 py-1 h-auto text-sm" />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Name
-        <input type="text" name="name" autoComplete="name" required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+        <Input type="text" name="name" autoComplete="name" required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Password
-        <input type="password" name="password" autoComplete="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+        <Input type="password" name="password" autoComplete="new-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
       </label>
-      <button type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
+      <Button variant="outline" type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
         Create account
-      </button>
+      </Button>
     </form>
   );
 }

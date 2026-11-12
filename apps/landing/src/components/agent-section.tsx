@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { Badge } from '@performa-ai/ui/components/badge';
 import {
   Bot,
   Calendar,
@@ -79,10 +80,10 @@ export function AgentSection() {
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
         >
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-4 py-1.5 text-sm text-violet-300">
+          <Badge variant="outline" className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-4 py-1.5 text-sm text-violet-300 font-normal [&>svg]:size-4">
             <Bot className="h-4 w-4" />
             <span>AI Agents</span>
-          </div>
+          </Badge>
           <h2 className="mb-4 text-3xl font-bold text-white sm:text-4xl">
             Deploy AI Agents That Work for You
           </h2>

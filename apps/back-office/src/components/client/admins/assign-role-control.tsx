@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
 import type { AdminRole } from "@/lib/admins/admin-role";
 
 type AssignRoleControlProps = {
@@ -15,12 +17,17 @@ export function AssignRoleControl({ email, currentRole, roles, onAssign }: Assig
   const [role, setRole] = useState(currentRole);
   return (
     <span className="inline-flex gap-1">
-      <select aria-label={`Role for ${email}`} value={role} onChange={(event) => setRole(event.target.value)} className="rounded-rx border border-rx-line px-1 py-1 text-sm">
-        {roles.map((entry) => (
-          <option key={entry.name} value={entry.name}>{entry.name}</option>
-        ))}
-      </select>
-      <button type="button" aria-label={`Assign role to ${email}`} onClick={() => onAssign(role)} className="rounded-rx border border-rx-line px-2 py-1 text-sm">Assign</button>
+      <Select value={role} onValueChange={setRole}>
+        <SelectTrigger aria-label={`Role for ${email}`} className="rounded-rx border-rx-line px-1 py-1 data-[size=default]:h-auto">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {roles.map((entry) => (
+            <SelectItem key={entry.name} value={entry.name}>{entry.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button variant="outline" type="button" aria-label={`Assign role to ${email}`} onClick={() => onAssign(role)} className="rounded-rx border border-rx-line px-2 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Assign</Button>
     </span>
   );
 }

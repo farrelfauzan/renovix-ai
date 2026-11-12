@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
 import type { PlatformSetting } from "@/lib/settings/platform-setting";
 import type { SettingDescription } from "@/lib/settings/setting-description";
 import { LabeledInput } from "../form/labeled-input";
@@ -30,8 +31,8 @@ export function SettingForm({ setting, description, onSave, onClose }: SettingFo
       <LabeledInput label="Reason (required, audited)" name="reason" isRequired maxLength={500} value={reason} onChange={setReason} />
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       <div className="flex gap-2">
-        <button type="submit" className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent">Save setting</button>
-        <button type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Cancel</button>
+        <Button type="submit" className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent h-auto font-normal whitespace-normal">Save setting</Button>
+        <Button variant="outline" type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Cancel</Button>
       </div>
     </form>
   );

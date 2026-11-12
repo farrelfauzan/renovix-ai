@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import type { SecondFactor } from "@/lib/sign-in/second-factor";
 
 type SignInSecondFactorFormProps = {
@@ -29,23 +31,23 @@ export function SignInSecondFactorForm({ isSubmitting, onSubmit, onBack }: SignI
       <label className="flex flex-col gap-1 text-sm">
         {usesRecoveryCode ? "Recovery code" : "Authenticator code"}
         {usesRecoveryCode ? (
-          <input key="recovery-code" type="text" name="recoveryCode" autoComplete="one-time-code" required maxLength={64} value={code} onChange={(event) => setCode(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+          <Input key="recovery-code" type="text" name="recoveryCode" autoComplete="one-time-code" required maxLength={64} value={code} onChange={(event) => setCode(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
         ) : (
-          <input key="totp" type="text" name="totp" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required value={code} onChange={(event) => setCode(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+          <Input key="totp" type="text" name="totp" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required value={code} onChange={(event) => setCode(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
         )}
       </label>
-      <button type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
+      <Button variant="outline" type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
         Sign in
-      </button>
-      <button type="button" onClick={switchFactor} className="self-start text-sm underline">
+      </Button>
+      <Button variant="link" type="button" onClick={switchFactor} className="self-start text-sm underline h-auto p-0 font-normal whitespace-normal text-inherit underline-offset-auto">
         {usesRecoveryCode ? "Use the authenticator code instead" : "Use a recovery code instead"}
-      </button>
-      <button type="button" disabled={isSubmitting} onClick={() => onSubmit({})} className="self-start text-sm underline">
+      </Button>
+      <Button variant="link" type="button" disabled={isSubmitting} onClick={() => onSubmit({})} className="self-start text-sm underline h-auto p-0 font-normal whitespace-normal text-inherit underline-offset-auto">
         No authenticator set up yet: continue without a code
-      </button>
-      <button type="button" onClick={onBack} className="self-start text-sm underline">
+      </Button>
+      <Button variant="link" type="button" onClick={onBack} className="self-start text-sm underline h-auto p-0 font-normal whitespace-normal text-inherit underline-offset-auto">
         Back
-      </button>
+      </Button>
     </form>
   );
 }

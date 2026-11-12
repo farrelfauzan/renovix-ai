@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "@performa-ai/ui/components/button";
 import { defaultAdminsApi } from "@/lib/admins/default-admins-api";
 import type { ReauthCredentials } from "@/lib/admins/reauth-credentials";
 import { useReauthGate } from "@/lib/admins/use-reauth-gate";
@@ -75,7 +76,7 @@ export function CodesSection({ api = defaultCodesApi, sessionApi = defaultSessio
     <section aria-label="Invitation codes" className="mt-8">
       <h2 className="rx-type-card-heading">Invitation codes</h2>
       {!canWrite && <p className="mt-2 text-sm text-rx-muted">Your role cannot see invitation codes (packages:write).</p>}
-      {canWrite && !isCreating && <button type="button" onClick={() => setIsCreating(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm">Create code</button>}
+      {canWrite && !isCreating && <Button variant="outline" type="button" onClick={() => setIsCreating(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Create code</Button>}
       {error && <p role="alert" className="mt-2 text-sm text-rx-red-bar">{error}</p>}
       {prompt && <ReauthPrompt prompt={prompt} />}
       {isCreating && <CodeForm onSave={create} onClose={() => setIsCreating(false)} />}
@@ -103,9 +104,9 @@ export function CodesSection({ api = defaultCodesApi, sessionApi = defaultSessio
       )}
       {codes && codes.total > PAGE_SIZE && (
         <div className="mt-2 flex items-center gap-2 text-sm">
-          <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)} className="rounded-rx border border-rx-line px-3 py-1">Previous</button>
+          <Button variant="outline" type="button" disabled={page === 1} onClick={() => setPage(page - 1)} className="rounded-rx border border-rx-line px-3 py-1 h-auto bg-transparent font-normal whitespace-normal">Previous</Button>
           <span>Page {page} of {Math.ceil(codes.total / PAGE_SIZE)}</span>
-          <button type="button" disabled={page * PAGE_SIZE >= codes.total} onClick={() => setPage(page + 1)} className="rounded-rx border border-rx-line px-3 py-1">Next</button>
+          <Button variant="outline" type="button" disabled={page * PAGE_SIZE >= codes.total} onClick={() => setPage(page + 1)} className="rounded-rx border border-rx-line px-3 py-1 h-auto bg-transparent font-normal whitespace-normal">Next</Button>
         </div>
       )}
     </section>

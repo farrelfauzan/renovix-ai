@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@performa-ai/ui/components/button";
 import { describePrice, describeTerms } from "@/lib/packages/describe-terms";
 import { findCurrentVersion } from "@/lib/packages/current-version";
 import { formatRupiah } from "@/lib/packages/format-rupiah";
@@ -19,7 +20,7 @@ type CatalogRowProps = {
   readonly onEditFlags: () => void;
 };
 
-const BUTTON = "rounded-rx border border-rx-line px-3 py-1 text-sm";
+const BUTTON = "rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal";
 
 /** One offer: its current version, its flags, and (with `packages:write`) the actions that change it. */
 export function CatalogRow({ kind, offer, rupiahPrice, canWrite, isHistoryOpen, onToggleHistory, onNewVersion, onEditFlags }: CatalogRowProps) {
@@ -34,9 +35,9 @@ export function CatalogRow({ kind, offer, rupiahPrice, canWrite, isHistoryOpen, 
         <td className="py-2 pr-3">{offer.active ? "Active" : "Inactive"}{offer.visible === undefined ? "" : offer.visible ? " · visible" : " · hidden"}</td>
         <td className="py-2 pr-3">{current ? `v${current.versionNumber}` : "–"}</td>
         <td className="flex flex-wrap gap-2 py-2">
-          <button type="button" onClick={onToggleHistory} aria-expanded={isHistoryOpen} className={BUTTON}>History</button>
-          {canWrite && <button type="button" onClick={onNewVersion} className={BUTTON}>New version</button>}
-          {canWrite && <button type="button" onClick={onEditFlags} className={BUTTON}>Flags</button>}
+          <Button variant="outline" type="button" onClick={onToggleHistory} aria-expanded={isHistoryOpen} className={BUTTON}>History</Button>
+          {canWrite && <Button variant="outline" type="button" onClick={onNewVersion} className={BUTTON}>New version</Button>}
+          {canWrite && <Button variant="outline" type="button" onClick={onEditFlags} className={BUTTON}>Flags</Button>}
         </td>
       </tr>
       {isHistoryOpen && (

@@ -5,8 +5,11 @@ import type { CreditsApi } from "@/lib/credits/credits-api";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
 import { RefusedError } from "@/lib/sign-in/refused-error";
+import { pickOption } from "@/test/pick-option";
 import { CreditAdjustmentPanel } from "./credit-adjustment-panel";
 
+// jsdom has no scrollIntoView, which the open Select list calls on its selected item (RNX-291).
+Element.prototype.scrollIntoView = jest.fn();
 // RNX-99: the panel against a fake of CreditsApi. The ledger write, re-authentication window and permission are tested in apps/api (RNX-227).
 
 const entry: CreditAdjustmentEntry = {
@@ -85,5 +88,23 @@ describe("CreditAdjustmentPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Adjust credits" }));
     expect(await screen.findByText(/amount above 0/)).toBeTruthy();
     expect(adjust).not.toHaveBeenCalled();
+  });
+
+  it("sends the direction picked in the select (RNX-291)", async () => {
+    const adjust = jest.fn(async () => entry);
+    renderPanel(adjust, ADJUST);
+    pickOption(await screen.findByRole("combobox", { name: "Direction" }), "Remove");
+    await fillAndSubmit();
+    await waitFor(() => expect(adjust).toHaveBeenCalled());
+    expect(adjust.mock.calls[0]).toEqual([expect.objectContaining({ direction: "remove" }), expect.any(String)]);
+  });
+
+  it("sends the wallet kind picked in the select (RNX-291)", async () => {
+    const adjust = jest.fn(async () => entry);
+    renderPanel(adjust, ADJUST);
+    pickOption(await screen.findByRole("combobox", { name: "Wallet of" }), "A company");
+    await fillAndSubmit();
+    await waitFor(() => expect(adjust).toHaveBeenCalled());
+    expect(adjust.mock.calls[0]).toEqual([expect.objectContaining({ target: { companyId: "u_71ab" } }), expect.any(String)]);
   });
 });

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import type { UsageApi } from "@/lib/usage/usage-api";
 import type { UsageUser } from "@/lib/usage/usage-user";
 import { SectionMessage } from "./section-message";
@@ -32,19 +34,19 @@ export function UsageUserCell({ user, api, canReveal }: UsageUserCellProps) {
       <span className="font-mono text-xs">{user.id}</span>
       <span>{email ?? String(user.email)}</span>
       {canReveal && email === null && !isAsking && (
-        <button type="button" onClick={() => setIsAsking(true)} className="self-start text-xs underline">
+        <Button variant="link" type="button" onClick={() => setIsAsking(true)} className="self-start text-xs underline h-auto p-0 font-normal whitespace-normal text-inherit underline-offset-auto">
           Reveal email
-        </button>
+        </Button>
       )}
       {isAsking && email === null && (
         <form aria-label={`Reveal email of ${user.id}`} onSubmit={reveal} className="flex flex-col gap-1">
           <label className="flex flex-col gap-1 text-xs text-rx-muted">
             Reason
-            <input required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 text-rx-text" />
+            <Input required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 text-rx-text h-auto text-xs md:text-xs" />
           </label>
-          <button type="submit" className="self-start rounded-rx border border-rx-line px-2 py-1 text-xs">
+          <Button variant="outline" type="submit" className="self-start rounded-rx border border-rx-line px-2 py-1 text-xs h-auto bg-transparent font-normal whitespace-normal">
             Reveal
-          </button>
+          </Button>
         </form>
       )}
       {error && <SectionMessage text={error} isError />}

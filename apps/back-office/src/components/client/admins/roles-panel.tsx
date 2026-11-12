@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@performa-ai/ui/components/button";
 import type { ActionOutcome } from "@/lib/admins/action-outcome";
 import type { AdminRole } from "@/lib/admins/admin-role";
 import type { AdminsApi } from "@/lib/admins/admins-api";
@@ -30,7 +31,7 @@ export function RolesPanel({ roles, api, canWrite, run, onAct }: RolesPanelProps
   return (
     <section aria-label="Roles" className="mt-6">
       <h2 className="text-lg font-semibold">Roles</h2>
-      {canWrite && <button type="button" onClick={() => setForm({})} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm">Create role</button>}
+      {canWrite && <Button variant="outline" type="button" onClick={() => setForm({})} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Create role</Button>}
       {form && <RoleForm key={form.role?.name ?? "new"} role={form.role} onSave={save} onClose={() => setForm(null)} />}
       <table aria-label="Roles" className="mt-2 w-full border-collapse text-left text-sm">
         <thead>

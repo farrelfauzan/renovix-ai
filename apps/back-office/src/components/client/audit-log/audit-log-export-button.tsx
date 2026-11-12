@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@performa-ai/ui/components/button";
 import type { AuditLogApi } from "@/lib/audit-log/audit-log-api";
 import type { AuditLogFilters } from "@/lib/audit-log/audit-log-filters";
 
@@ -28,9 +29,9 @@ export function AuditLogExportButton({ api, filters }: { api: AuditLogApi; filte
   };
   return (
     <div className="flex items-center gap-2">
-      <button type="button" onClick={download} disabled={isExporting} className="rounded-rx border border-rx-line px-3 py-1 text-sm">
+      <Button variant="outline" type="button" onClick={download} disabled={isExporting} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
         Export CSV
-      </button>
+      </Button>
       {hasFailed && <span role="alert" className="text-sm text-rx-red-bar">The export failed.</span>}
     </div>
   );

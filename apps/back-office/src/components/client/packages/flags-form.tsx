@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Checkbox } from "@performa-ai/ui/components/checkbox";
 import type { CatalogOffer } from "@/lib/packages/catalog-offer";
 import type { FlagsInput } from "@/lib/packages/flags-input";
 import type { OfferKind } from "@/lib/packages/offer-kind";
@@ -31,18 +33,18 @@ export function FlagsForm({ kind, offer, onSave, onClose }: FlagsFormProps) {
   return (
     <form role="dialog" aria-label={`Flags of ${offer.name}`} onSubmit={submit} className="mt-4 flex max-w-md flex-col gap-3 rounded-rx border border-rx-line p-4">
       <p className="text-sm">Flags of {offer.name}. This does not create a new version.</p>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Active</label>
+      <label className="flex items-center gap-2 text-sm"><Checkbox checked={active} onCheckedChange={(checked) => setActive(checked === true)} /> Active</label>
       {kind === "package" && (
         <>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={visible} onChange={(event) => setVisible(event.target.checked)} /> Visible on public pricing</label>
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={visible} onCheckedChange={(checked) => setVisible(checked === true)} /> Visible on public pricing</label>
           <LabeledInput label="Display order" name="displayOrder" type="number" min={0} step="1" isRequired value={displayOrder} onChange={setDisplayOrder} />
         </>
       )}
       <LabeledInput label="Reason (required, audited)" name="reason" isRequired maxLength={500} value={reason} onChange={setReason} />
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       <div className="flex gap-2">
-        <button type="submit" className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent">Save flags</button>
-        <button type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Cancel</button>
+        <Button type="submit" className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent h-auto font-normal whitespace-normal">Save flags</Button>
+        <Button variant="outline" type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Cancel</Button>
       </div>
     </form>
   );
