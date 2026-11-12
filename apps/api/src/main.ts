@@ -7,7 +7,7 @@ import { resolveLlmProvider } from "./app/providers/llm-provider";
 import { resolvePaymentProviderName } from "./app/payments/utils/resolve-payment-provider-name";
 import { createAppLogger } from "./common/utils/create-app-logger";
 import { createFastifyAdapter } from "./common/utils/create-fastify-adapter";
-import { assertRequiredSecrets } from "./common/utils/assert-required-secrets";
+import { parseEnv } from "./common/utils/parse-env";
 import { handleFatalStart } from "./common/utils/handle-fatal-start";
 import { buildCorsOptions } from "./common/utils/build-cors-options";
 import { ConfigService } from "@nestjs/config";
@@ -17,8 +17,8 @@ async function bootstrap(): Promise<NestFastifyApplication> {
   resolveLlmProvider(process.env);
   // RNX-35: refuse a missing (production) or unknown PAYMENT_PROVIDER, and the fake in production unless payments are forced off.
   resolvePaymentProviderName(process.env);
-  // RX-110: refuse missing, placeholder or too-short auth and encryption secrets, before anything starts.
-  assertRequiredSecrets(process.env);
+  // RX-110, RNX-43: refuse missing, whitespace, placeholder or too-short secrets and malformed typed values, before anything starts.
+  parseEnv(process.env);
   // RNX-70: outside development and test, refuse a missing or invalid CORS_ORIGIN (never every origin with credentials).
   const corsOptions = buildCorsOptions(process.env);
   // RNX-233: AppModule is loaded only now, so a throw while its modules are evaluated (e.g. lib/auth reading a secret)

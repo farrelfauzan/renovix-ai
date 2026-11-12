@@ -24,7 +24,7 @@ const KNOWN_PLACEHOLDERS: ReadonlySet<string> = new Set([
 /**
  * The value of a required secret (RX-110). Missing or empty is refused in every mode: there is no
  * fallback, not even in development. Outside development and test a known placeholder or a value
- * shorter than `minLength` is refused too. Errors name the variable, never its value.
+ * shorter than `minLength` is refused too. Leading or trailing whitespace is refused in every mode, never trimmed (RNX-43). Errors name the variable, never its value.
  */
 export function readRequiredSecret(
   env: NodeJS.ProcessEnv,
@@ -33,6 +33,7 @@ export function readRequiredSecret(
 ): string {
   const value = env[name];
   if (!value?.trim()) throw new Error(`${name} is required and is not set`);
+  if (value !== value.trim()) throw new Error(`${name} must not have leading or trailing whitespace (a trailing newline too)`);
   if (isRelaxedMode(env)) return value;
   if (KNOWN_PLACEHOLDERS.has(value)) {
     throw new Error(`${name} is a placeholder value; set a real secret outside development and test`);
