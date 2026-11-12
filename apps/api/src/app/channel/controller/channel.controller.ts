@@ -25,6 +25,7 @@ import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 import { guardSseStream } from "../../../common/utils/guard-sse-stream";
+import type { SseStream } from "../../../common/utils/sse-stream";
 import { codedRefusalOf } from "../../../common/utils/coded-refusal-of";
 import {
   CreateChannelSchema,
@@ -262,34 +263,22 @@ export class ChannelController {
     return guardSseStream({
       response: res.raw,
       logger: this.logger,
-      stream: () => this.streamChat(id, agentId, parsed.data, req, res),
+      stream: (sse) => this.streamChat(id, agentId, parsed.data, req, res, sse),
     });
   }
 
-  private async streamChat(id: string, agentId: string, input: ChatMessageDto, req: any, res: FastifyReply) {
+  // RNX-42: `sse.signal` is aborted when the client leaves; the run does not read it yet (RNX-24/25 stop the model calls).
+  private async streamChat(id: string, agentId: string, input: ChatMessageDto, req: any, res: FastifyReply, sse: SseStream) {
     const userId = req.user.userId;
-    const origin = req.headers.origin || req.headers.Origin || "*";
 
     // RX-178 (review B1), RNX-200: the room access check, the fixed 400 for an unusable model and the run's 402s
     // (credits, per-run cap) are real HTTP answers, before the SSE headers and the classifier call.
     await this.chatService.assertRunCanStart(userId, id, agentId, input.message);
 
-    // Setup SSE streaming
-    res.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Credentials": "true",
-    });
+    // Setup SSE streaming. RNX-42: the helper sends the heartbeat and CORS from the app's allow-list, not the request's origin.
+    sse.open();
 
     req.raw.socket.setTimeout(180000);
-
-    const heartbeat = setInterval(() => {
-      if (!res.raw.destroyed) {
-        res.raw.write(`: heartbeat\n\n`);
-      }
-    }, 15000);
 
     try {
       // Classify document intent via LLM
@@ -299,13 +288,9 @@ export class ChannelController {
       this.logger.log(`[chat] detectedFormat=${detectedFormat}`);
 
       if (detectedFormat) {
-        res.raw.write(
-          `data: ${JSON.stringify({ status: "generating_document" })}\n\n`,
-        );
+        sse.writeJson({ status: "generating_document" });
       } else {
-        res.raw.write(
-          `data: ${JSON.stringify({ status: "understanding" })}\n\n`,
-        );
+        sse.writeJson({ status: "understanding" });
       }
 
       const result = await this.chatService.chat(
@@ -339,9 +324,9 @@ export class ChannelController {
         const chunk = JSON.stringify({
           choices: [{ delta: { content: summary } }],
         });
-        res.raw.write(`data: ${chunk}\n\n`);
+        sse.writeData(chunk);
         const { key: _key, ...document } = toolDocumentResult;
-        res.raw.write(`data: ${JSON.stringify({ document })}\n\n`);
+        sse.writeJson({ document });
       } else if (detectedFormat && result.content) {
         // Fallback: classifier detected format
         this.logger.log(
@@ -370,8 +355,8 @@ export class ChannelController {
           const chunk = JSON.stringify({
             choices: [{ delta: { content: summary } }],
           });
-          res.raw.write(`data: ${chunk}\n\n`);
-          res.raw.write(`data: ${JSON.stringify({ document })}\n\n`);
+          sse.writeData(chunk);
+          sse.writeJson({ document });
         } catch (err: any) {
           this.logger.error(
             `Document generation failed: ${err.message}`,
@@ -381,23 +366,21 @@ export class ChannelController {
           const chunk = JSON.stringify({
             choices: [{ delta: { content: result.content } }],
           });
-          res.raw.write(`data: ${chunk}\n\n`);
+          sse.writeData(chunk);
         }
       } else {
         // No document — send the full content as usual
         const chunk = JSON.stringify({
           choices: [{ delta: { content: result.content } }],
         });
-        res.raw.write(`data: ${chunk}\n\n`);
+        sse.writeData(chunk);
       }
 
-      res.raw.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      sse.writeJson({ done: true });
 
-      clearInterval(heartbeat);
-      res.raw.write("data: [DONE]\n\n");
-      res.raw.end();
+      sse.writeData("[DONE]");
+      sse.end();
     } catch (error: any) {
-      clearInterval(heartbeat);
       this.logger.error(`Channel chat error: ${error.message}`, error.stack);
 
       // RNX-200: a refusal with a code (402 CREDITS_EXHAUSTED, RUN_CAP_EXCEEDED) goes to the stream guard, which
@@ -406,10 +389,8 @@ export class ChannelController {
         throw error;
       }
 
-      res.raw.write(
-        `data: ${JSON.stringify({ error: { message: error.message } })}\n\n`,
-      );
-      res.raw.end();
+      sse.writeJson({ error: { message: error.message } });
+      sse.end();
     }
   }
 

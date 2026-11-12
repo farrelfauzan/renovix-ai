@@ -26,6 +26,7 @@ import {
 } from "../service/portal-tier.service";
 import { clientIp } from "../../../common/utils/client-ip";
 import { guardSseStream } from "../../../common/utils/guard-sse-stream";
+import type { SseStream } from "../../../common/utils/sse-stream";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { EntitlementService } from "../../offers/service/entitlement.service";
 import { CreditService } from "../../billing/service/credit.service";
@@ -106,21 +107,19 @@ export class PortalController {
 
     const ip = clientIp(req);
 
-    const origin = req.headers["origin"] || "*";
-
     // RNX-171: an error after the SSE headers ends that stream, not the process.
     if (identity.tier === "free") {
       return guardSseStream({
         response: res.raw,
         logger: this.logger,
-        stream: () => this.handleFreeRequest(identity, requestData, ip, res, origin),
+        stream: (sse) => this.handleFreeRequest(identity, requestData, ip, sse),
       });
     }
 
     return guardSseStream({
       response: res.raw,
       logger: this.logger,
-      stream: () => this.handlePaidRequest(identity, requestData, res, origin),
+      stream: (sse) => this.handlePaidRequest(identity, requestData, sse),
     });
   }
 
@@ -375,8 +374,7 @@ export class PortalController {
     identity: PortalIdentity,
     body: ChatCompletionRequest,
     ip: string,
-    res: FastifyReply,
-    origin: string,
+    sse: SseStream,
   ) {
     // Get or create session
     const session = await this.tierService.getOrCreateSession(
@@ -425,35 +423,23 @@ export class PortalController {
         identity.sessionId,
       );
       if (inputCheck.blocked) {
-        res.raw.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-          "Access-Control-Allow-Origin": origin,
-          "Access-Control-Allow-Credentials": "true",
-        });
+        sse.open();
         const chunk = JSON.stringify({
           choices: [{ delta: { content: inputCheck.userMessage } }],
         });
-        res.raw.write(`data: ${chunk}\n\n`);
-        res.raw.write("data: [DONE]\n\n");
-        res.raw.end();
+        sse.writeData(chunk);
+        sse.writeData("[DONE]");
+        sse.end();
         return;
       }
     }
 
-    // Stream response
-    res.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Credentials": "true",
-    });
+    // Stream response. RNX-42: CORS from the app's allow-list, not the request's origin.
+    sse.open();
 
     try {
       // Emit status: understanding
-      res.raw.write(`data: ${JSON.stringify({ status: "understanding" })}\n\n`);
+      sse.writeJson({ status: "understanding" });
 
       // Apply prompt tuning
       const { tunedMessages, matchedTemplate } =
@@ -464,19 +450,15 @@ export class PortalController {
         body.output_format || matchedTemplate?.outputFormat || null;
 
       if (outputFormat) {
-        res.raw.write(
-          `data: ${JSON.stringify({ status: "generating_document" })}\n\n`,
-        );
+        sse.writeJson({ status: "generating_document" });
       } else {
         // Emit status: generating
-        res.raw.write(`data: ${JSON.stringify({ status: "generating" })}\n\n`);
+        sse.writeJson({ status: "generating" });
       }
 
-      // RX-161: a client that disconnects aborts the upstream request.
-      const disconnected = new AbortController();
-      res.raw.on("close", () => disconnected.abort());
+      // RX-161: a client that disconnects aborts the upstream request (RNX-42: the helper's signal).
       const stream = this.providerRouter.chatStream({
-        signal: disconnected.signal,
+        signal: sse.signal,
         model: cheapest.slug,
         connection,
         messages: tunedMessages,
@@ -493,7 +475,7 @@ export class PortalController {
       let fullContent = "";
       for await (const chunk of stream) {
         if (!outputFormat) {
-          res.raw.write(`data: ${chunk}\n\n`);
+          sse.writeData(chunk);
         }
         // Accumulate content for conversation saving
         try {
@@ -524,10 +506,8 @@ export class PortalController {
           const chunk = JSON.stringify({
             choices: [{ delta: { content: summary } }],
           });
-          res.raw.write(`data: ${chunk}\n\n`);
-          res.raw.write(
-            `data: ${JSON.stringify({ document: { format: document.format, url: document.url, filename: document.filename, expiresAt: document.expiresAt } })}\n\n`,
-          );
+          sse.writeData(chunk);
+          sse.writeJson({ document: { format: document.format, url: document.url, filename: document.filename, expiresAt: document.expiresAt } });
 
           fullContent = summary;
         } catch (err: any) {
@@ -538,7 +518,7 @@ export class PortalController {
           const chunk = JSON.stringify({
             choices: [{ delta: { content: fullContent } }],
           });
-          res.raw.write(`data: ${chunk}\n\n`);
+          sse.writeData(chunk);
         }
       }
 
@@ -566,31 +546,26 @@ export class PortalController {
             this.logger.error("Failed to save free-tier conversation", err),
           );
 
-        res.raw.write(
-          `data: ${JSON.stringify({ conversation_id: conversationId })}\n\n`,
-        );
+        sse.writeJson({ conversation_id: conversationId });
       }
 
-      res.raw.write("data: [DONE]\n\n");
-      res.raw.end();
+      sse.writeData("[DONE]");
+      sse.end();
     } catch (error: any) {
       const providerError = extractProviderError(error);
       this.logger.error(
         `Stream error${providerError.status ? ` (status ${providerError.status})` : ""}: ${providerError.message}`,
         error.stack,
       );
-      res.raw.write(
-        `data: ${JSON.stringify({ error: { message: providerError.clientMessage } })}\n\n`,
-      );
-      res.raw.end();
+      sse.writeJson({ error: { message: providerError.clientMessage } });
+      sse.end();
     }
   }
 
   private async handlePaidRequest(
     identity: PortalIdentity,
     body: ChatCompletionRequest,
-    res: FastifyReply,
-    origin: string,
+    sse: SseStream,
   ) {
     const user = identity.user!;
     const startTime = Date.now();
@@ -605,19 +580,13 @@ export class PortalController {
         user.id,
       );
       if (inputCheck.blocked) {
-        res.raw.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-          "Access-Control-Allow-Origin": origin,
-          "Access-Control-Allow-Credentials": "true",
-        });
+        sse.open();
         const chunk = JSON.stringify({
           choices: [{ delta: { content: inputCheck.userMessage } }],
         });
-        res.raw.write(`data: ${chunk}\n\n`);
-        res.raw.write("data: [DONE]\n\n");
-        res.raw.end();
+        sse.writeData(chunk);
+        sse.writeData("[DONE]");
+        sse.end();
         return;
       }
     }
@@ -699,18 +668,10 @@ export class PortalController {
       rates,
     };
 
-    // Stream response + accumulate for billing
-    res.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Credentials": "true",
-    });
+    // Stream response + accumulate for billing. RNX-42: CORS from the app's allow-list, not the request's origin.
+    sse.open();
 
-    // RX-161: a client that disconnects aborts the upstream request.
-    const disconnected = new AbortController();
-    res.raw.on("close", () => disconnected.abort());
+    // RX-161: a client that disconnects aborts the upstream request (RNX-42: the helper's signal).
     let fullContent = "";
     let reportedUsage: ChatUsage | undefined;
     let isBilled = false;
@@ -721,27 +682,23 @@ export class PortalController {
 
     try {
       // Emit status: understanding
-      res.raw.write(`data: ${JSON.stringify({ status: "understanding" })}\n\n`);
+      sse.writeJson({ status: "understanding" });
 
       // Status indicator when the user has knowledge bases
       if (userKbs.length > 0) {
-        res.raw.write(
-          `data: ${JSON.stringify({ status: "searching_knowledge" })}\n\n`,
-        );
+        sse.writeJson({ status: "searching_knowledge" });
       }
 
       if (outputFormat) {
-        res.raw.write(
-          `data: ${JSON.stringify({ status: "generating_document" })}\n\n`,
-        );
+        sse.writeJson({ status: "generating_document" });
       } else {
         // Emit status: generating
-        res.raw.write(`data: ${JSON.stringify({ status: "generating" })}\n\n`);
+        sse.writeJson({ status: "generating" });
       }
 
       const stream = this.providerRouter.chatStream(
         {
-          signal: disconnected.signal,
+          signal: sse.signal,
           model: body.model,
           connection,
           messages: tunedMessages,
@@ -770,7 +727,7 @@ export class PortalController {
 
         // When generating a document, don't stream raw content to frontend
         if (!outputFormat) {
-          res.raw.write(`data: ${chunk}\n\n`);
+          sse.writeData(chunk);
         }
 
         // Accumulate content for conversation saving, and the usage chunk (before [DONE]) for billing
@@ -783,7 +740,7 @@ export class PortalController {
       // reported tokens; without a usage chunk (client gone, or none sent) the local chars/4 count (D202-5, D205).
       const entry = await this.finishStreamedCall(
         { ...call, modelId: attempt.slug, cost: { servedBy: attempt, usage: reportedUsage } },
-        streamedCallOutcome({ providerFailed: false, aborted: disconnected.signal.aborted, streamOpened }),
+        streamedCallOutcome({ providerFailed: false, aborted: sse.signal.aborted, streamOpened }),
         { reportedUsage, sentPrompt, fullContent },
       );
       isBilled = true;
@@ -808,10 +765,8 @@ export class PortalController {
           const chunk = JSON.stringify({
             choices: [{ delta: { content: summary } }],
           });
-          res.raw.write(`data: ${chunk}\n\n`);
-          res.raw.write(
-            `data: ${JSON.stringify({ document: { format: document.format, url: document.url, filename: document.filename, expiresAt: document.expiresAt } })}\n\n`,
-          );
+          sse.writeData(chunk);
+          sse.writeJson({ document: { format: document.format, url: document.url, filename: document.filename, expiresAt: document.expiresAt } });
 
           // Replace fullContent with summary for conversation saving
           fullContent = summary;
@@ -824,7 +779,7 @@ export class PortalController {
           const chunk = JSON.stringify({
             choices: [{ delta: { content: fullContent } }],
           });
-          res.raw.write(`data: ${chunk}\n\n`);
+          sse.writeData(chunk);
         }
       }
 
@@ -871,23 +826,21 @@ export class PortalController {
 
       // Emit conversation_id so frontend can continue the conversation
       if (conversationId) {
-        res.raw.write(
-          `data: ${JSON.stringify({ conversation_id: conversationId })}\n\n`,
-        );
+        sse.writeJson({ conversation_id: conversationId });
       }
 
-      res.raw.write("data: [DONE]\n\n");
-      res.raw.end();
+      sse.writeData("[DONE]");
+      sse.end();
     } catch (error: any) {
       // Not billed yet: a provider error is charged 0 and releases the hold (rule 6), also after the client went
       // away; a client that went away once the stream opened is charged what it received (rule 7). A failed write
       // stays for the expiry sweep.
       if (!isBilled) {
         const providerFailed =
-          error instanceof ProviderHttpError || error instanceof ProviderStreamError || !disconnected.signal.aborted;
+          error instanceof ProviderHttpError || error instanceof ProviderStreamError || !sse.signal.aborted;
         await this.finishStreamedCall(
           { ...call, modelId: attempt.slug, cost: { servedBy: attempt, usage: reportedUsage } },
-          streamedCallOutcome({ providerFailed, aborted: disconnected.signal.aborted, streamOpened }),
+          streamedCallOutcome({ providerFailed, aborted: sse.signal.aborted, streamOpened }),
           { reportedUsage, sentPrompt, fullContent },
         ).catch((err) => this.logger.error("Failed to record the failed call's usage", err));
       }
@@ -918,10 +871,8 @@ export class PortalController {
           );
       }
 
-      res.raw.write(
-        `data: ${JSON.stringify({ error: { message: isBilled ? providerError.clientMessage : `${providerError.clientMessage}. No credits were charged.` } })}\n\n`,
-      );
-      res.raw.end();
+      sse.writeJson({ error: { message: isBilled ? providerError.clientMessage : `${providerError.clientMessage}. No credits were charged.` } });
+      sse.end();
     }
   }
 

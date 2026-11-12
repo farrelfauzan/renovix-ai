@@ -47,7 +47,7 @@ export class ChatController {
     return guardSseStream({
       response: res.raw,
       logger: this.logger,
-      stream: () => this.chatService.streamCompletion(parsed.data, req.user, res.raw),
+      stream: (sse) => this.chatService.streamCompletion(parsed.data, req.user, sse),
     });
   }
 }

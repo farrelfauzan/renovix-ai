@@ -21,6 +21,7 @@ import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 import { guardSseStream } from "../../../common/utils/guard-sse-stream";
+import type { SseStream } from "../../../common/utils/sse-stream";
 import { codedRefusalOf } from "../../../common/utils/coded-refusal-of";
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
@@ -50,10 +51,11 @@ export class AgentRunController {
       throw createInvalidBodyException(parsed.error);
     }
     // RNX-171: an error after the SSE headers ends that stream, not the process.
-    return guardSseStream({ response: res.raw, logger: this.logger, stream: () => this.streamChat(id, parsed.data, req, res) });
+    return guardSseStream({ response: res.raw, logger: this.logger, stream: (sse) => this.streamChat(id, parsed.data, req, res, sse) });
   }
 
-  private async streamChat(id: string, input: AgentChatDto, req: any, res: FastifyReply) {
+  // RNX-42: `sse.signal` is aborted when the client leaves; the run does not read it yet (RNX-24/25 stop the model calls).
+  private async streamChat(id: string, input: AgentChatDto, req: any, res: FastifyReply, sse: SseStream) {
     const { message, sessionId, output_format } = input;
     const userId = req.user.userId;
 
@@ -65,13 +67,8 @@ export class AgentRunController {
     const detectedFormat =
       output_format || (await this.classifyDocumentIntent(message));
 
-    // Setup SSE headers (frontend expects this format)
-    res.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-    });
+    // Setup SSE headers (frontend expects this format). RNX-42: CORS from the app's allow-list, no longer `*`.
+    sse.open();
 
     // Increase timeout for long-running agent chats (3 minutes)
     req.raw.socket.setTimeout(180000);
@@ -79,13 +76,9 @@ export class AgentRunController {
     try {
       // Emit status
       if (detectedFormat) {
-        res.raw.write(
-          `data: ${JSON.stringify({ status: "generating_document" })}\n\n`,
-        );
+        sse.writeJson({ status: "generating_document" });
       } else {
-        res.raw.write(
-          `data: ${JSON.stringify({ status: "understanding" })}\n\n`,
-        );
+        sse.writeJson({ status: "understanding" });
       }
 
       // Use non-streaming chat (reliable, no stream issues)
@@ -113,9 +106,9 @@ export class AgentRunController {
         const chunk = JSON.stringify({
           choices: [{ delta: { content: summary } }],
         });
-        res.raw.write(`data: ${chunk}\n\n`);
+        sse.writeData(chunk);
         const { key: _key, ...document } = toolDocumentResult;
-        res.raw.write(`data: ${JSON.stringify({ document })}\n\n`);
+        sse.writeJson({ document });
       } else if (detectedFormat && result.message.content) {
         // Fallback: classifier detected format, generate from response content
         try {
@@ -128,8 +121,8 @@ export class AgentRunController {
           const chunk = JSON.stringify({
             choices: [{ delta: { content: summary } }],
           });
-          res.raw.write(`data: ${chunk}\n\n`);
-          res.raw.write(`data: ${JSON.stringify({ document })}\n\n`);
+          sse.writeData(chunk);
+          sse.writeJson({ document });
         } catch (err: any) {
           this.logger.error(
             `Document generation failed: ${err.message}`,
@@ -139,23 +132,21 @@ export class AgentRunController {
           const chunk = JSON.stringify({
             choices: [{ delta: { content: result.message.content } }],
           });
-          res.raw.write(`data: ${chunk}\n\n`);
+          sse.writeData(chunk);
         }
       } else {
         // No document — send full content as usual
         const chunk = JSON.stringify({
           choices: [{ delta: { content: result.message.content } }],
         });
-        res.raw.write(`data: ${chunk}\n\n`);
+        sse.writeData(chunk);
       }
 
       // Send session info
-      res.raw.write(
-        `data: ${JSON.stringify({ sessionId: result.sessionId, runId: result.runId })}\n\n`,
-      );
+      sse.writeJson({ sessionId: result.sessionId, runId: result.runId });
 
-      res.raw.write("data: [DONE]\n\n");
-      res.raw.end();
+      sse.writeData("[DONE]");
+      sse.end();
     } catch (error: any) {
       this.logger.error(`Agent chat error: ${error.message}`, error.stack);
 
@@ -165,11 +156,9 @@ export class AgentRunController {
         throw error;
       }
 
-      res.raw.write(
-        `data: ${JSON.stringify({ error: { message: error.message } })}\n\n`,
-      );
-      res.raw.write("data: [DONE]\n\n");
-      res.raw.end();
+      sse.writeJson({ error: { message: error.message } });
+      sse.writeData("[DONE]");
+      sse.end();
     }
   }
 
