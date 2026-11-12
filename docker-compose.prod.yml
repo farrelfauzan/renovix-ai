@@ -74,8 +74,8 @@ services:
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:?}
       PAYMENT_PROVIDER_API_KEY: ${PAYMENT_PROVIDER_API_KEY:-}
       PAYMENTS_FORCE_OFF: ${PAYMENTS_FORCE_OFF:-false}
-      # Must be set, may be empty (empty keeps signed download URLs as they are).
-      S3_CDN_DOMAIN: ${S3_CDN_DOMAIN?}
+      # Optional (RNX-43): unset or empty keeps signed download URLs as they are.
+      S3_CDN_DOMAIN: ${S3_CDN_DOMAIN:-}
       # Optional: passed only when set; unset, the API uses its default.
       CLIENT_IP_HEADER:
       COOKIE_DOMAIN:

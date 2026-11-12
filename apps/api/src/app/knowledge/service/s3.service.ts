@@ -14,13 +14,12 @@ export class S3Service {
   private readonly logger = new Logger(S3Service.name);
   private readonly client: S3Client;
   private readonly bucket: string;
+  /** Empty when S3_CDN_DOMAIN is unset or empty (RNX-43): the signed URL is kept as it is. */
   private readonly cdnDomain: string;
 
   constructor(private readonly configService: ConfigService) {
     this.bucket = this.configService.getOrThrow<string>("S3_BUCKET");
-    this.cdnDomain = normalizeDomain(
-      this.configService.getOrThrow<string>("S3_CDN_DOMAIN"),
-    );
+    this.cdnDomain = normalizeDomain(this.configService.get<string>("S3_CDN_DOMAIN") ?? "");
 
     const endpoint = this.configService.get<string>("S3_ENDPOINT") || undefined;
     const configuredRegion = this.configService.getOrThrow<string>("S3_REGION");
