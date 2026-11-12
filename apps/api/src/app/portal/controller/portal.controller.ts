@@ -29,6 +29,7 @@ import { guardSseStream } from "../../../common/utils/guard-sse-stream";
 import type { SseStream } from "../../../common/utils/sse-stream";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { EntitlementService } from "../../offers/service/entitlement.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { CreditService } from "../../billing/service/credit.service";
 import { callRatesOf } from "../../billing/utils/call-rates-of";
 import { countPromptTokens } from "../../billing/utils/count-prompt-tokens";
@@ -36,6 +37,7 @@ import { estimateCallCredits } from "../../billing/utils/estimate-call-credits";
 import { promptText } from "../../billing/utils/prompt-text";
 import { streamedCallTokens } from "../../billing/utils/streamed-call-tokens";
 import { ProviderRouter } from "../../providers/provider-router";
+import { toTimeBudgetMs } from "../../providers/utils/to-time-budget-ms";
 import type { ChatUsage } from "../../providers/provider.interface";
 import type { ServedBy } from "../../providers/types/served-by";
 import { failedAttemptRecord } from "../../billing/utils/failed-attempt-record";
@@ -85,6 +87,7 @@ export class PortalController {
     private readonly guardrail: GuardrailService,
     private readonly documentService: DocumentService,
     private readonly entitlements: EntitlementService,
+    private readonly settings: PlatformSettingsService,
   ) {}
 
   @Post("completions")
@@ -456,9 +459,12 @@ export class PortalController {
         sse.writeJson({ status: "generating" });
       }
 
+      // RNX-44: the call's time budget (until the first token), read once per request.
+      const timeBudgetMs = toTimeBudgetMs(await this.settings.getSetting("modelCallBudgetSeconds"));
       // RX-161: a client that disconnects aborts the upstream request (RNX-42: the helper's signal).
       const stream = this.providerRouter.chatStream({
         signal: sse.signal,
+        ...(timeBudgetMs && { timeBudgetMs }),
         model: cheapest.slug,
         connection,
         messages: tunedMessages,
@@ -640,6 +646,8 @@ export class PortalController {
       modelConfig.maxOutputTokens,
       outputFormat,
     );
+    // RNX-44: the call's time budget (until the first token), read once per request, before anything is reserved.
+    const timeBudgetMs = toTimeBudgetMs(await this.settings.getSetting("modelCallBudgetSeconds"));
 
     // Reserve the estimate on the paid wallet (docs/credits.md section 3.1): 402 CREDITS_EXHAUSTED when it cannot
     // cover it. M is the max_tokens the adapter will send.
@@ -699,6 +707,7 @@ export class PortalController {
       const stream = this.providerRouter.chatStream(
         {
           signal: sse.signal,
+          ...(timeBudgetMs && { timeBudgetMs }),
           model: body.model,
           connection,
           messages: tunedMessages,

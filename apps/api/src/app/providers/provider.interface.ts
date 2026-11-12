@@ -3,6 +3,7 @@ import type { ProviderTestResult } from "./types/provider-test-result";
 import type { ProviderTestTarget } from "./types/provider-test-target";
 import type { ModelConnection } from "./types/model-connection";
 import type { ServedBy } from "./types/served-by";
+import type { CallBudget } from "./types/call-budget";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -55,6 +56,14 @@ export interface ChatRequest {
    * Retry-After wait. Never sent.
    */
   singleAttemptTimeoutMs?: number;
+  /**
+   * RNX-44: the caller's time budget for this whole call (the platform setting `modelCallBudgetSeconds`), enforced by
+   * ProviderRouter across every try, back-off wait and fallback model; a stream until its first token. Running out
+   * ends the call in ProviderTimeBudgetExceededError. Ignored with `singleAttemptTimeoutMs`. Never sent.
+   */
+  timeBudgetMs?: number;
+  /** RNX-44: set by ProviderRouter from `timeBudgetMs` for the adapter: the budget's own signal and deadline. Never sent. */
+  budget?: CallBudget;
 }
 
 export interface ChatUsage {

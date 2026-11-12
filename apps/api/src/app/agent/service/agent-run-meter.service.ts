@@ -13,6 +13,7 @@ import { PlatformSettingsService } from "../../offers/service/platform-settings.
 import type { CallRates } from "../../billing/types/call-rates";
 import type { ChatRequest, ChatResponse } from "../../providers/provider.interface";
 import { ProviderRouter } from "../../providers/provider-router";
+import { toTimeBudgetMs } from "../../providers/utils/to-time-budget-ms";
 import { UsageService } from "../../usage/service/usage.service";
 import { RunBudgetStoppedError } from "../errors/run-budget-stopped.error";
 import { RunCapExceededException } from "../errors/run-cap-exceeded.exception";
@@ -102,7 +103,8 @@ export class AgentRunMeterService {
   /**
    * One model call of a run (docs/credits.md sections 3.1 and 13.4): RunBudgetStoppedError, without calling, when
    * spent + E_call would exceed the hold; otherwise calls the provider and writes the call's usage entry (and its
-   * usage row). A provider error is charged 0 (outcome provider_error) and rethrown.
+   * usage row). A provider error is charged 0 (outcome provider_error) and rethrown, a time budget that ran out too
+   * (RNX-44: the run's `timeBudgetMs` goes with the request).
    */
   async callModel(run: AgentRunBudget, call: MeteredCall): Promise<MeteredResponse> {
     const { tier, rates } = await this.ratesOf(call.request.connection.slug);
@@ -128,7 +130,8 @@ export class AgentRunMeterService {
       onAttempt: (attempt: ServedBy) => void (tried = attempt),
       onAttemptFailed: async (failed: ServedBy) => void (await this.credits.recordUsage(failedAttemptRecord(usage, failed))),
     };
-    const response = await this.providerRouter.chat(call.request, hooks).catch(async (err: unknown) => {
+    const request = run.timeBudgetMs === undefined ? call.request : { ...call.request, timeBudgetMs: run.timeBudgetMs };
+    const response = await this.providerRouter.chat(request, hooks).catch(async (err: unknown) => {
       const cost = { servedBy: tried, workspaceId: run.workspaceId };
       await this.credits.recordUsage({ ...usage, modelId: tried.slug, tokens: tokensFromUsage(0, 0, 0), outcome: "provider_error", cost });
       throw err;
@@ -161,10 +164,14 @@ export class AgentRunMeterService {
    * without credit rates, RunCapExceededException and 402 CREDITS_EXHAUSTED, each before anything is reserved.
    * RNX-282: public for a caller that cannot wrap its work in `meterRun` (a stream); it closes the run with `closeRun`.
    * RNX-284: a single-call run (`isSingleCall`) holds only its first call's estimate (at most the cap, checked above),
-   * and needs that much available.
+   * and needs that much available. RNX-44: reads the model call time budget once for the whole run.
    */
   async openRun(start: RunStart): Promise<AgentRunBudget> {
-    const [cap, agentCallSetting] = await Promise.all([this.readRunCap(), this.settings.getSetting("peerRunMaxAgentCalls")]);
+    const [cap, agentCallSetting, budgetSeconds] = await Promise.all([
+      this.readRunCap(),
+      this.settings.getSetting("peerRunMaxAgentCalls"),
+      this.settings.getSetting("modelCallBudgetSeconds"),
+    ]);
     const rootCall = this.estimateCall(start.firstCall, (await this.ratesOf(start.firstCall.connection.slug)).rates);
     if (rootCall.greaterThan(cap)) throw new RunCapExceededException(cap);
     const linkedCalls = await Promise.all(start.linkedAgents.map((agent) => this.estimateLinkedCall(agent)));
@@ -178,6 +185,7 @@ export class AgentRunMeterService {
       runnerUserId: start.runnerUserId,
       workspaceId: start.workspaceId,
       held: reservation.amountHeld,
+      timeBudgetMs: toTimeBudgetMs(budgetSeconds),
       spent: NO_CREDITS,
     };
   }
