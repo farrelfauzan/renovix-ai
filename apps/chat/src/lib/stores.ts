@@ -156,7 +156,7 @@ export const useChatStore = create<ChatState>()(
         }),
     }),
     {
-      name: "performa-chat",
+      name: "renovix-chat",
       partialize: (state) => ({ selectedModel: state.selectedModel }),
     },
   ),
@@ -197,7 +197,7 @@ export const useAuthStore = create<AuthState>()(
       },
       isLoggedIn: () => get().sessionAuth,
     }),
-    { name: "performa-auth" },
+    { name: "renovix-auth" },
   ),
 );
 

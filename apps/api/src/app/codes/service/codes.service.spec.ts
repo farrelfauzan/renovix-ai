@@ -17,7 +17,7 @@ function setup(code: unknown) {
     codeRedemption: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
   };
   const prisma = {
-    invitationCode: { findUnique: jest.fn().mockResolvedValue(code) },
+    invitationCode: { findUnique: jest.fn().mockResolvedValue(code), create: jest.fn().mockResolvedValue({}) },
     codeRedemption: { findUnique: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
@@ -31,7 +31,7 @@ function setup(code: unknown) {
     new TransactionService(prisma as never),
     { hasPackage: jest.fn().mockResolvedValue(true) } as unknown as PackageOwnershipService,
   );
-  return { service, tx, mockRecordCodeGrant };
+  return { service, tx, prisma, mockRecordCodeGrant };
 }
 
 describe("RNX-251: code redemption grants a package as a purchase snapshot", () => {
@@ -62,5 +62,16 @@ describe("RNX-251: code redemption grants a package as a purchase snapshot", () 
       NotFoundException,
     );
     expect(mockRecordCodeGrant).not.toHaveBeenCalled();
+  });
+});
+
+describe("RNX-46: generated invitation codes use the RNX- prefix", () => {
+  it("creates a code that matches RNX-XXXX-XXXX when none is given", async () => {
+    const { service, prisma } = setup(null);
+
+    await service.createCode({ type: "topup", creditAmount: 5 } as never);
+
+    const actualCode = (prisma.invitationCode.create as jest.Mock).mock.calls[0][0].data.code;
+    expect(actualCode).toMatch(/^RNX-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
   });
 });

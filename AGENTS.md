@@ -236,7 +236,7 @@ Required: compose refuses to start (`${NAME:?}`) when one is unset or empty.
 | `ADMIN_ORIGIN` | The back-office origin, e.g. `https://admin.renovix.id` (no path, no trailing slash) |
 | `API_PUBLIC_URL` | The API's public URL, e.g. `https://api.renovix.id` (the code's default is `http://localhost:3000`) |
 | `CHAT_APP_URL` | The chat app's URL: MCP OAuth redirects and a trusted auth origin (the code's default is `http://localhost:4201`) |
-| `APP_BASE_URL` | The base URL of the links in emails, and a trusted auth origin (the code's defaults are `https://chat.performa.ai` and `http://localhost:3000`) |
+| `APP_BASE_URL` | The base URL of the links in emails, and a trusted auth origin (the code's defaults are `https://chat.renovix.id` and `http://localhost:3000`) |
 | `PAYMENT_PROVIDER` | Required: `autogopay`, or `fake` only with `PAYMENTS_FORCE_OFF=true` |
 
 Required by the API when `PAYMENT_PROVIDER=autogopay`: `PAYMENT_PROVIDER_API_KEY` (also the webhook signing key). Compose permits it to be empty for the fake provider.

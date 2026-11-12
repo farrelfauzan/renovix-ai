@@ -249,7 +249,7 @@ describe("Admin catalog, codes and settings (RNX-226, Fastify, test database)", 
 
       expect(created.statusCode).toBe(201);
       expect(created.json()).toMatchObject({ type: "topup", maxRedemptions: 3, isActive: true, createdById: adminId });
-      expect(created.json().code).toMatch(/^PERF-[0-9A-F]{4}-[0-9A-F]{4}$/);
+      expect(created.json().code).toMatch(/^RNX-[0-9A-F]{4}-[0-9A-F]{4}$/);
       expect(listed.json()).toMatchObject({ total: 1, page: 1, limit: 50 });
       expect(listed.json().codes[0]).toMatchObject({ id: codeId, _count: { redemptions: 1 } });
       expect(redemptions.json()).toEqual([expect.objectContaining({ codeId, userId: user.id, creditsGranted: "15" })]);

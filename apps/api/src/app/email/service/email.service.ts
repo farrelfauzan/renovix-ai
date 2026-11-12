@@ -32,7 +32,7 @@ export class EmailService {
   async send(params: SendEmailParams): Promise<{ messageId: string }> {
     const from = this.config.get<string>(
       "EMAIL_FROM",
-      "no-reply@notify.performa.ai",
+      "no-reply@notify.renovix.id",
     );
 
     const result = await this.transporter.sendMail({

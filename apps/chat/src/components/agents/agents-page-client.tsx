@@ -1116,7 +1116,7 @@ function SubscriptionPricing() {
           <form onSubmit={handleRedeem} className="flex gap-2">
             <Input
               type="text"
-              placeholder="PERF-XXXX-XXXX"
+              placeholder="RNX-XXXX-XXXX"
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
               className="font-mono tracking-wider"

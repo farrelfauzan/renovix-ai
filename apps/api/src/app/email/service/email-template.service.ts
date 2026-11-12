@@ -15,7 +15,7 @@ export class EmailTemplateService {
   constructor(private readonly config: ConfigService) {}
 
   private getBaseUrl(): string {
-    return this.config.get<string>("APP_BASE_URL", "https://chat.performa.ai");
+    return this.config.get<string>("APP_BASE_URL", "https://chat.renovix.id");
   }
 
   buildInviteEmail(data: InviteTemplateData): {
