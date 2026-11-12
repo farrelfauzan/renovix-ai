@@ -15,11 +15,20 @@ function createCredentialStore() {
   const rows: Record<string, unknown>[] = [];
   return {
     rows,
-    upsertCredential: async (input: Record<string, unknown>) => rows.push({ id: "cred-1", status: "connected", ...input }),
+    upsertCredential: async (input: Record<string, unknown>) => {
+      const row = { id: "cred-1", status: "connected", ...input };
+      rows.push(row);
+      return row;
+    },
     findCredential: async () => rows[0] ?? null,
+    // RNX-292: the run-time lookup (switched on in the workspace); the stand-in has the one row switched on.
+    findSwitchedOnCredential: async () => rows[0] ?? null,
     findUserCredential: async () => rows[0] ?? null,
   };
 }
+
+/** RNX-292: stand-in for WorkspaceMcpConnectionRepository (connectWithToken with a workspace switches it on there). */
+const connections = { switchOn: async () => undefined };
 
 const withKey = <T>(key: string | undefined, build: () => T): T => {
   const saved = process.env.MCP_ENCRYPTION_KEY;
@@ -34,7 +43,7 @@ const withKey = <T>(key: string | undefined, build: () => T): T => {
 };
 
 const userService = (store: ReturnType<typeof createCredentialStore>, key: string | undefined) =>
-  withKey(key, () => new McpUserService(new ConfigService({}), store as never, {} as never, {} as never));
+  withKey(key, () => new McpUserService(new ConfigService({}), store as never, {} as never, {} as never, connections as never));
 
 describe("MCP credentials and MCP_ENCRYPTION_KEY (RX-110)", () => {
   let errorLog: jest.SpyInstance;

@@ -21,6 +21,8 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // rule (RX-113), 404 for a default workspace (RNX-117). A refused call reaches no service method, writes
 // nothing and returns nothing but the error. Real McpUserService, WorkspaceService and test database;
 // WebSearchService is a stub (its module loads ESM packages). Credentials here are fakes.
+// RNX-292 (D312): a credential is the account's; "in the workspace" means switched on there (a
+// workspace_mcp_connections row). The routes below are called with a workspaceId, so they still check membership.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
 jest.mock("../service/web-search.service", () => ({ WebSearchService: class {} }));
 
@@ -111,11 +113,18 @@ describe("RNX-206: workspace membership on the MCP credential and web search sta
     app.inject({ method: route.method, url: route.url(wsId), headers: auth(actor), payload: route.payload?.(wsId) });
 
   const credentialRows = () => prisma.userMcpCredential.findMany({ orderBy: { id: "asc" } });
+  const switchRows = () => prisma.workspaceMcpConnection.findMany({ orderBy: { id: "asc" } });
 
-  /** A credential the actor already holds in the workspace (stored while they still had access). */
+  /** A credential the actor already holds, switched on in the workspace (stored while they still had access). */
   const seedCredential = (actor: Actor, wsId: string) =>
     prisma.userMcpCredential.create({
-      data: { userId: actor.id, workspaceId: wsId, provider: PROVIDER, envEncrypted: "rnx206-fake-ciphertext", status: "connected" },
+      data: {
+        userId: actor.id,
+        provider: PROVIDER,
+        envEncrypted: "rnx206-fake-ciphertext",
+        status: "connected",
+        workspaceConnections: { create: { workspaceId: wsId } },
+      },
     });
 
   const serviceMock = (route: Route) =>
@@ -149,6 +158,7 @@ describe("RNX-206: workspace membership on the MCP credential and web search sta
       const { actor, wsId } = await arrange();
       if (route.hasCredential) await seedCredential(actor, wsId);
       const rowsBefore = await credentialRows();
+      const switchesBefore = await switchRows();
 
       const res = await call(route, actor, wsId);
       const policyRes = await app.inject({ method: "GET", url: `/integrations/web-search/policy?workspaceId=${wsId}`, headers: auth(actor) });
@@ -158,6 +168,7 @@ describe("RNX-206: workspace membership on the MCP credential and web search sta
       expect({ status: res.statusCode, body: res.json() }).toEqual({ status: policyRes.statusCode, body: policyRes.json() });
       expectNoServiceCalled();
       expect(await credentialRows()).toEqual(rowsBefore);
+      expect(await switchRows()).toEqual(switchesBefore);
     });
   });
 
@@ -190,9 +201,11 @@ describe("RNX-206: workspace membership on the MCP credential and web search sta
 
       expect(res.statusCode).toBe(route.method === "POST" ? 201 : 200);
       expect(serviceMock(route)).toHaveBeenCalledTimes(1);
-      const rows = (await credentialRows()).map((row) => ({ userId: row.userId, workspaceId: row.workspaceId, provider: row.provider }));
-      const expectedRows = route.method === "DELETE" ? [] : [{ userId: actor.id, workspaceId, provider: PROVIDER }];
-      expect(rows).toEqual(expectedRows);
+      const rows = (await credentialRows()).map((row) => ({ userId: row.userId, provider: row.provider }));
+      expect(rows).toEqual([{ userId: actor.id, provider: PROVIDER }]);
+      // RNX-292: DELETE with a workspaceId switches the connection off there and keeps the account credential.
+      const switches = (await switchRows()).map((row) => ({ credentialId: row.credentialId, workspaceId: row.workspaceId }));
+      expect(switches).toEqual(route.method === "DELETE" ? [] : [{ credentialId: (await credentialRows())[0].id, workspaceId }]);
       if (route.method === "GET" && "mcpUser" in route.calls) {
         expect(res.json().map((c: { provider: string }) => c.provider)).toEqual([PROVIDER]);
       }

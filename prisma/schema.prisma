@@ -750,7 +750,7 @@ model Workspace {
   memories    WorkspaceMemory[]
   knowledgeBases KnowledgeBase[]
   agents      Agent[]
-  userMcpCredentials UserMcpCredential[]
+  mcpConnections WorkspaceMcpConnection[]
   mcpOAuthStates McpOAuthState[]
   createdAt   DateTime          @default(now()) @db.Timestamptz()
   updatedAt   DateTime          @updatedAt @db.Timestamptz()
@@ -854,12 +854,11 @@ model EmailJob {
 
 // ─── User MCP Credentials ───────────────────────────────────────────────────────
 
+/// RNX-292 (D312): the account's credential, one per user and provider; WorkspaceMcpConnection switches it on per workspace.
 model UserMcpCredential {
   id              String    @id @default(uuid())
   userId          String    @map("user_id")
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId     String    @map("workspace_id")
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   provider        String    // "google-gmail" | "google-calendar" | "google-sheets" | "github" | "slack"
   envEncrypted    String    @map("env_encrypted") // AES-256-GCM encrypted JSON with tokens
   status          String    @default("connected") // "connected" | "expired" | "revoked"
@@ -867,24 +866,38 @@ model UserMcpCredential {
   expiresAt       DateTime? @map("expires_at") @db.Timestamptz()
   createdAt       DateTime  @default(now()) @db.Timestamptz()
   updatedAt       DateTime  @updatedAt @db.Timestamptz()
+  workspaceConnections WorkspaceMcpConnection[]
 
-  @@unique([userId, workspaceId, provider])
-  @@index([userId, workspaceId])
-  @@index([workspaceId, provider])
+  @@unique([userId, provider])
   @@map("user_mcp_credentials")
+}
+
+/// RNX-292 (D312): an account credential switched on in one workspace by its owner, an active member of it.
+model WorkspaceMcpConnection {
+  id           String            @id @default(uuid())
+  workspaceId  String            @map("workspace_id")
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  credentialId String            @map("credential_id")
+  credential   UserMcpCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  enabledAt    DateTime          @default(now()) @map("enabled_at") @db.Timestamptz()
+
+  @@unique([workspaceId, credentialId])
+  @@index([credentialId])
+  @@map("workspace_mcp_connections")
 }
 
 // One-time values of the MCP OAuth flows that were started and not yet finished (RX-151).
 // The callback deletes the row that matches its signed state; a second use finds none.
 model McpOAuthState {
-  nonce       String    @id
-  userId      String    @map("user_id")
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspaceId String    @map("workspace_id")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  nonce       String     @id
+  userId      String     @map("user_id")
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// RNX-292: the workspace to switch the connection on in after the callback, if the flow was started from one (server side only).
+  workspaceId String?    @map("workspace_id")
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   provider    String
-  expiresAt   DateTime  @map("expires_at") @db.Timestamptz()
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  expiresAt   DateTime   @map("expires_at") @db.Timestamptz()
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz()
 
   @@index([expiresAt])
   @@map("mcp_oauth_states")

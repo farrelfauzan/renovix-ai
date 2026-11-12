@@ -4,7 +4,8 @@ import { verifyOAuthState } from "./verify-oauth-state";
 
 const SECRET = "rx151-unit-secret";
 const NOW = 1_900_000_000;
-const PAYLOAD = { n: "A".repeat(43), u: "user-1", w: "workspace-1", p: "google-gmail", exp: NOW + 600 };
+// RNX-292: the signed payload carries no workspace (it stays on the stored flow row).
+const PAYLOAD = { n: "A".repeat(43), u: "user-1", p: "google-gmail", exp: NOW + 600 };
 
 const encode = (value: unknown): string => Buffer.from(JSON.stringify(value)).toString("base64url");
 const signRaw = (encodedPayload: string, secret: string = SECRET): string =>
@@ -21,7 +22,7 @@ describe("verifyOAuthState (RX-151)", () => {
 
   it.each([
     ["user id", { u: "user-2" }],
-    ["workspace id", { w: "workspace-2" }],
+    ["workspace id (RNX-292: added)", { w: "workspace-2" }],
     ["provider", { p: "github" }],
     ["one-time value", { n: "B".repeat(43) }],
     ["expiry", { exp: NOW + 6000 }],
@@ -50,7 +51,8 @@ describe("verifyOAuthState (RX-151)", () => {
   });
 
   it.each([
-    ["a missing field", { n: PAYLOAD.n, u: "user-1", w: "workspace-1", exp: PAYLOAD.exp }],
+    ["a missing field", { n: PAYLOAD.n, u: "user-1", exp: PAYLOAD.exp }],
+    ["a workspace id (RNX-292: never signed in)", { ...PAYLOAD, w: "workspace-1" }],
     ["an extra field", { ...PAYLOAD, userId: "user-2" }],
     ["a malformed one-time value", { ...PAYLOAD, n: "short" }],
     ["a non-integer expiry", { ...PAYLOAD, exp: "2000000000" }],

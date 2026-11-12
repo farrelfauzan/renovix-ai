@@ -5,7 +5,7 @@ const encode = (value: unknown): string => Buffer.from(JSON.stringify(value)).to
 
 describe("RX-152: readStateProvider (names the cookie; does not verify the state)", () => {
   it("reads the provider of a signed state", () => {
-    const state = signOAuthState({ n: "A".repeat(43), u: "user-1", w: "workspace-1", p: "github", exp: 1 }, "secret");
+    const state = signOAuthState({ n: "A".repeat(43), u: "user-1", p: "github", exp: 1 }, "secret");
 
     expect(readStateProvider(state)).toBe("github");
   });

@@ -114,7 +114,8 @@ const ROWS: readonly Row[] = [
   { route: "POST /billing/checkout", body: { amount: "10" }, details: ["amount"] },
   // ─── formerly `any`, inline-typed or unparsed ───
   { route: "PUT /integrations/web-search/brave/key", body: { workspaceId: WORKSPACE_ID }, details: ["apiKey"] },
-  { route: "PUT /integrations/web-search/providers/:provider/key", body: { apiKey: "k" }, details: ["workspaceId"] },
+  // RNX-292: workspaceId is optional now (account key); an empty one is still invalid.
+  { route: "PUT /integrations/web-search/providers/:provider/key", body: { workspaceId: "", apiKey: "k" }, details: ["workspaceId"] },
   { route: "PUT /integrations/web-search/policy", body: { workspaceId: WORKSPACE_ID, maxResults: "5" }, details: ["maxResults"] },
   { route: "POST /channels/:channelId/workspace/knowledge", body: { description: "d" }, details: ["name"] },
   { route: "POST /channels/:channelId/workspace/knowledge/:kbId/chunks", body: { chunks: "text" }, details: ["chunks"] },

@@ -20,6 +20,7 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // key is stored as the MCP credential `web-search-brave` (iv:tag:data, AES-256-GCM, hex), the policy and the daily
 // usage as app_configs rows; another user's key is never shown, used or deleted; no planted key reaches a log line
 // or a response.
+// RNX-292 (D312): the key is the account's (one credential row per user); a workspaceId switches it on or off there.
 const OWNER_KEY = "rnx140-marker-owner-brave-key-0001";
 const MEMBER_KEY = "rnx140-marker-member-brave-key-0002";
 const BRAVE_CREDENTIAL = "web-search-brave";
@@ -125,6 +126,8 @@ describe("RNX-140: web search routes and search (Fastify, test database, mocked 
   const putKey = (actor: Actor, apiKey: string) => send(actor, "PUT", "/integrations/web-search/brave/key", { workspaceId, apiKey });
 
   const credentials = () => prisma.userMcpCredential.findMany({ orderBy: { id: "asc" } });
+  const switches = async () =>
+    (await prisma.workspaceMcpConnection.findMany()).map((c) => ({ credentialId: c.credentialId, workspaceId: c.workspaceId }));
 
   const appConfig = () => prisma.appConfig.findMany({ orderBy: { key: "asc" } });
 
@@ -148,7 +151,8 @@ describe("RNX-140: web search routes and search (Fastify, test database, mocked 
       expect(fetchCalls).toEqual([{ url: "https://api.search.brave.com/res/v1/web/search?q=validation&count=1", token: OWNER_KEY }]);
       const [row, ...others] = await credentials();
       expect(others).toEqual([]);
-      expect(row).toMatchObject({ userId: owner.id, workspaceId, provider: BRAVE_CREDENTIAL, status: "connected" });
+      expect(row).toMatchObject({ userId: owner.id, provider: BRAVE_CREDENTIAL, status: "connected" });
+      expect(await switches()).toEqual([{ credentialId: row.id, workspaceId }]);
       expect(row.envEncrypted).toMatch(STORED_FORM);
       expect(decryptStored(row.envEncrypted)).toEqual({ BRAVE_API_KEY: OWNER_KEY });
     });
@@ -194,16 +198,21 @@ describe("RNX-140: web search routes and search (Fastify, test database, mocked 
   });
 
   describe("disconnect: DELETE /integrations/web-search/brave/key", () => {
-    it("removes the caller's key (answering the credential's provider); a second call answers as for no key", async () => {
+    it("RNX-292: with workspaceId it switches the key off there and keeps it; without, it removes the caller's key; a further call answers as for no key", async () => {
       await putKey(owner, OWNER_KEY);
+      const before = await credentials();
 
-      const first = await send(owner, "DELETE", `/integrations/web-search/brave/key?workspaceId=${workspaceId}`);
-      const second = await send(owner, "DELETE", `/integrations/web-search/brave/key?workspaceId=${workspaceId}`);
+      const inWorkspace = await send(owner, "DELETE", `/integrations/web-search/brave/key?workspaceId=${workspaceId}`);
+      const afterSwitchOff = { credentials: await credentials(), switches: await switches() };
+      const account = await send(owner, "DELETE", "/integrations/web-search/brave/key");
+      const again = await send(owner, "DELETE", "/integrations/web-search/brave/key");
 
-      expect([first, second].map((res) => ({ status: res.statusCode, body: res.json() }))).toEqual([
+      expect([inWorkspace, account, again].map((res) => ({ status: res.statusCode, body: res.json() }))).toEqual([
+        { status: 200, body: { disconnected: true, provider: BRAVE_CREDENTIAL } },
         { status: 200, body: { disconnected: true, provider: BRAVE_CREDENTIAL } },
         { status: 200, body: { disconnected: true, provider: "brave-search" } },
       ]);
+      expect(afterSwitchOff).toEqual({ credentials: before, switches: [] });
       expect(await credentials()).toEqual([]);
     });
 

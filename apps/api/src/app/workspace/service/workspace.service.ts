@@ -16,6 +16,7 @@ import { EntitlementService } from "../../offers/service/entitlement.service";
 import { TransactionService } from "../../prisma/transaction.service";
 import { ChannelRepository } from "../../channel/repository/channel.repository";
 import { CHANNEL_WORKSPACE_SLUG_LENGTH } from "../config/channel-workspace-slug-length";
+import { WorkspaceMcpConnectionRepository } from "../../mcp/repository/workspace-mcp-connection.repository";
 
 @Injectable()
 export class WorkspaceService {
@@ -27,6 +28,7 @@ export class WorkspaceService {
     private readonly entitlements: EntitlementService,
     private readonly transactions: TransactionService,
     private readonly channels: ChannelRepository,
+    private readonly mcpConnections: WorkspaceMcpConnectionRepository,
   ) {}
 
   private async generateUniqueSlug(
@@ -154,11 +156,16 @@ export class WorkspaceService {
   /**
    * RNX-125: the owner deletes the workspace (soft delete, by this user): it is gone for everyone, its children stay
    * hidden with it. 403 for anyone else (requireRole), 404 for a default or deleted workspace (requireMembership).
+   * RNX-292: its MCP switches go in the same transaction as the marker; the members' account credentials stay.
    */
   async softDelete(workspaceId: string, userId: string) {
     await this.requireRole(workspaceId, userId, ["owner"]);
 
-    return this.workspaces.softDeleteWorkspace(workspaceId, userId);
+    return this.transactions.run(async (tx) => {
+      const workspace = await this.workspaces.softDeleteWorkspace(workspaceId, userId, tx);
+      await this.mcpConnections.deleteWorkspaceConnections(workspaceId, tx);
+      return workspace;
+    });
   }
 
   /** RNX-126: the deleted workspaces this user owns, newest-deleted first, each with its purgeAt (a member sees none). */
