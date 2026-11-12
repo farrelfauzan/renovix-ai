@@ -183,12 +183,12 @@ export class AgentRunService {
   /**
    * The caller's own runs of the agent (RNX-119). RNX-260 (D259, 78): only "this run is mine", not current run access,
    * so an outsider or a former collaborator still lists their own runs; nobody sees another person's. RNX-124: 404 for
-   * a deleted agent (an unknown id still lists none).
+   * a deleted agent (an unknown id still lists none). RNX-302: top-level runs only, never a hop (a child run).
    */
   async listRuns(userId: string, agentId: string) {
     if (await this.agents.findDeletedAgent(agentId)) throw new NotFoundException("Agent not found");
     return this.prisma.agentRun.findMany({
-      where: { agentId, userId, agent: LIVE_AGENT },
+      where: { agentId, userId, parentRunId: null, agent: LIVE_AGENT },
       orderBy: { updatedAt: "desc" },
       take: 50,
       include: {
@@ -214,7 +214,10 @@ export class AgentRunService {
     return this.assertCallerRun(run, userId, agentId);
   }
 
-  /** Deletes one of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. RNX-124: 404 for a deleted agent's run. */
+  /**
+   * Deletes one of the caller's own runs, whatever their access now (RNX-260, D259 78); else as assertCallerRun. RNX-124:
+   * 404 for a deleted agent's run. RNX-302: its hops (child runs) go with it (ON DELETE CASCADE).
+   */
   async deleteRun(userId: string, agentId: string, runId: string) {
     const run = await this.prisma.agentRun.findFirst({
       where: { id: runId, agentId, agent: LIVE_AGENT },
@@ -738,10 +741,10 @@ export class AgentRunService {
     });
   }
 
-  /** RNX-119: the active run of this session that belongs to this runner (never another person's). */
+  /** RNX-119: the active run of this session that belongs to this runner (never another person's). RNX-302: never a hop. */
   private findActiveRun(agentId: string, userId: string, sessionId: string) {
     return this.prisma.agentRun.findFirst({
-      where: { agentId, userId, sessionId, status: "active" },
+      where: { agentId, userId, sessionId, status: "active", parentRunId: null },
     });
   }
 }

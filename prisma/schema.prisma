@@ -525,16 +525,26 @@ model AgentRun {
   sessionId      String          @map("session_id")
   channelType    String          @map("channel_type") // "web" | "whatsapp" | "api"
   externalUserId String?         @map("external_user_id")
-  status         String          @default("active") // "active" | "completed" | "error"
+  status         String          @default("active") // "active" | "completed" | "error"; a hop: ChildRunStatus (RNX-302)
   messages       AgentMessage[]
   metadata       Json?
   createdAt      DateTime        @default(now()) @db.Timestamptz()
   updatedAt      DateTime        @updatedAt @db.Timestamptz()
+  /// RNX-302: the run whose model call called this agent (a hop); null for a top-level run. Deleting a run deletes its hops.
+  parentRunId    String?         @map("parent_run_id")
+  parentRun      AgentRun?       @relation("AgentRunHops", fields: [parentRunId], references: [id], onDelete: Cascade)
+  childRuns      AgentRun[]      @relation("AgentRunHops")
+  /// RNX-302: 0 for a top-level run, the parent's depth + 1 for a hop.
+  depth          Int             @default(0)
+  /// RNX-302: the ledger call id of the parent run's model call that made this hop.
+  parentCallId   String?         @map("parent_call_id")
+  durationMs     Int?            @map("duration_ms")
 
   @@index([agentId])
   @@index([agentId, userId])
   @@index([sessionId])
   @@index([externalUserId])
+  @@index([parentRunId])
   @@map("agent_runs")
 }
 
