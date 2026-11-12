@@ -3,6 +3,7 @@ import type { ApiClient } from "@/lib/api/api-client";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
 import { createUsageApi } from "@/lib/usage/usage-api";
+import { pickOption } from "@/test/pick-option";
 import { TablePager } from "./table-pager";
 import { UsageAndCostScreen } from "./usage-and-cost-screen";
 
@@ -11,10 +12,6 @@ import { UsageAndCostScreen } from "./usage-and-cost-screen";
 // The role and provider pickers are the shared Select (Radix, RNX-291): open the trigger, then click the option.
 // jsdom has no scrollIntoView, which the open list calls on its selected item.
 Element.prototype.scrollIntoView = jest.fn();
-const pickOption = (trigger: HTMLElement, name: string) => {
-  fireEvent.click(trigger);
-  fireEvent.click(screen.getByRole("option", { name }));
-};
 
 const RANGE = { from: "2026-09-24", to: "2026-10-23" };
 const PERIOD = { ...RANGE, timeZone: "Asia/Jakarta" };

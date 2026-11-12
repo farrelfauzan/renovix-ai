@@ -6,10 +6,12 @@ import { RefusedError } from "@/lib/sign-in/refused-error";
 import { ReauthRequiredError } from "@/lib/admins/reauth-required-error";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
+import { pickOption } from "@/test/pick-option";
 import { CatalogSection } from "./catalog-section";
 
 // RNX-98: the packages section against a fake of PackagesApi. The API's own rules (versions, audit, permissions) are tested in apps/api.
 // jsdom has no ResizeObserver, which the shared Checkbox of the version form uses to size its hidden form input (RNX-291).
+Element.prototype.scrollIntoView = jest.fn();
 global.ResizeObserver = class {
   observe() {}
   unobserve() {}
@@ -101,5 +103,74 @@ describe("CatalogSection", () => {
     renderSection(createFakeApi(create), WRITE);
     await fillVersionForm();
     expect(await screen.findByText(/Your role does not allow this/)).toBeTruthy();
+  });
+
+  describe("version form controls (RNX-291)", () => {
+    const openAndSave = async (create: jest.Mock) => {
+      renderSection(createFakeApi(create), WRITE);
+      fireEvent.click(await screen.findByRole("button", { name: "New version" }));
+    };
+    const save = () => {
+      fireEvent.change(screen.getByLabelText("Reason (required, audited)"), { target: { value: "why" } });
+      fireEvent.click(screen.getByRole("button", { name: /Save as v2/ }));
+    };
+    const termsSent = async (create: jest.Mock) => {
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      return (create.mock.calls[0] as unknown as [string, string, { terms: Record<string, unknown> }])[2].terms;
+    };
+
+    it("sends the billing picked in the select", async () => {
+      const create = jest.fn(async () => undefined);
+      await openAndSave(create);
+      pickOption(screen.getByRole("combobox", { name: "Billing" }), "One time");
+      save();
+      expect(await termsSent(create)).toEqual(expect.objectContaining({ billing: "one_time" }));
+    });
+
+    it("sends API access when the checkbox is toggled", async () => {
+      const create = jest.fn(async () => undefined);
+      await openAndSave(create);
+      fireEvent.click(screen.getByRole("checkbox", { name: "API access" }));
+      save();
+      expect(await termsSent(create)).toEqual(expect.objectContaining({ apiAccess: false }));
+    });
+
+    it("sends the allowed tiers as toggled", async () => {
+      const create = jest.fn(async () => undefined);
+      await openAndSave(create);
+      fireEvent.click(screen.getByRole("checkbox", { name: "premium" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "standard" }));
+      save();
+      expect(await termsSent(create)).toEqual(expect.objectContaining({ allowedTiers: ["premium"] }));
+    });
+  });
+
+  describe("flags form controls (RNX-291)", () => {
+    const openFlags = async (updateOffer: jest.Mock) => {
+      renderSection({ ...createFakeApi(jest.fn()), updateOffer }, WRITE);
+      fireEvent.click(await screen.findByRole("button", { name: "Flags" }));
+    };
+    const saveFlags = () => {
+      fireEvent.change(screen.getByLabelText("Reason (required, audited)"), { target: { value: "why" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save flags" }));
+    };
+
+    it("sends Active as toggled", async () => {
+      const updateOffer = jest.fn(async () => undefined);
+      await openFlags(updateOffer);
+      fireEvent.click(screen.getByRole("checkbox", { name: "Active" }));
+      saveFlags();
+      await waitFor(() => expect(updateOffer).toHaveBeenCalled());
+      expect(JSON.stringify(updateOffer.mock.calls[0])).toContain('"active":false');
+    });
+
+    it("sends Visible as toggled", async () => {
+      const updateOffer = jest.fn(async () => undefined);
+      await openFlags(updateOffer);
+      fireEvent.click(screen.getByRole("checkbox", { name: "Visible on public pricing" }));
+      saveFlags();
+      await waitFor(() => expect(updateOffer).toHaveBeenCalled());
+      expect(JSON.stringify(updateOffer.mock.calls[0])).toContain('"visible":false');
+    });
   });
 });

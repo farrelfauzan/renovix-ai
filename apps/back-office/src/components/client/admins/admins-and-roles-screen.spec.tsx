@@ -7,6 +7,7 @@ import { createApiClient } from "@/lib/api/create-api-client";
 import { createPublicApiClient } from "@/lib/api/create-public-api-client";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
+import { pickOption } from "@/test/pick-option";
 import { AdminsAndRolesScreen } from "./admins-and-roles-screen";
 
 // RNX-189: the admins and roles screen against a stateful fake of the API at the ApiClient boundary. The API's
@@ -132,10 +133,6 @@ global.ResizeObserver = class {
   observe() {}
   unobserve() {}
   disconnect() {}
-};
-const pickOption = (trigger: HTMLElement, name: string) => {
-  fireEvent.click(trigger);
-  fireEvent.click(screen.getByRole("option", { name }));
 };
 const confirmIdentity = async (password = "pw", totp = "123456") => {
   const prompt = await screen.findByRole("dialog", { name: "Confirm it is you" });
@@ -425,6 +422,18 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       const api = createAdminsApi(refusing, refusing);
 
       await expect(api.createRole({ name: "x", permissions: ["bad"] })).rejects.toThrow("The request was refused (400).");
+    });
+  });
+
+  describe("invite dialog (RNX-291)", () => {
+    it("invites with the role picked in the select, not the default one", async () => {
+      const fake = createFakeApi();
+      await renderScreen(fake);
+      click("Invite admin");
+      fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+      pickOption(screen.getByRole("combobox", { name: "Role" }), "custom_ro");
+      fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+      await waitFor(() => expect(within(rowOf("new@example.com")).getAllByRole("cell")[2].textContent).toBe("custom_ro"));
     });
   });
 
