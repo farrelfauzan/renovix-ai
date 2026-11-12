@@ -1,13 +1,16 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
+import { Textarea } from "@performa-ai/ui/components/textarea";
 import { buildCreditAdjustmentInput } from "@/lib/credits/build-credit-adjustment-input";
 import type { CreditAdjustmentFields } from "@/lib/credits/credit-adjustment-fields";
 import type { CreditAdjustmentInput } from "@/lib/credits/credit-adjustment-input";
 import { EMPTY_ADJUSTMENT_FIELDS } from "@/lib/credits/empty-adjustment-fields";
 import { LabeledInput } from "../form/labeled-input";
 
-const INPUT = "rounded-rx border border-rx-line px-2 py-1";
+const TRIGGER = "w-full rounded-rx border-rx-line px-2 py-1 data-[size=default]:h-auto";
 
 type CreditAdjustmentFormProps = {
   /** Sends the adjustment (asks for re-authentication first); answers the refusal text, or null when it was recorded. */
@@ -47,29 +50,39 @@ export function CreditAdjustmentForm({ onSubmit }: CreditAdjustmentFormProps) {
       <p className="text-sm text-rx-muted">Writes a ledger entry; never edits a balance directly. Needs credits:adjust and your password again.</p>
       <label className="flex flex-col gap-1 text-sm">
         Wallet of
-        <select name="targetKind" value={fields.targetKind} onChange={(event) => set("targetKind", event.target.value as CreditAdjustmentFields["targetKind"])} className={INPUT}>
-          <option value="user">A user</option>
-          <option value="company">A company</option>
-        </select>
+        <Select name="targetKind" value={fields.targetKind} onValueChange={(value) => set("targetKind", value as CreditAdjustmentFields["targetKind"])}>
+          <SelectTrigger className={TRIGGER}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="user">A user</SelectItem>
+            <SelectItem value="company">A company</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
       <LabeledInput label="User or company id (exact)" name="targetId" isRequired maxLength={64} value={fields.targetId} onChange={(value) => set("targetId", value)} />
       <label className="flex flex-col gap-1 text-sm">
         Direction
-        <select name="direction" value={fields.direction} onChange={(event) => set("direction", event.target.value as CreditAdjustmentFields["direction"])} className={INPUT}>
-          <option value="add">Add</option>
-          <option value="remove">Remove</option>
-        </select>
+        <Select name="direction" value={fields.direction} onValueChange={(value) => set("direction", value as CreditAdjustmentFields["direction"])}>
+          <SelectTrigger className={TRIGGER}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="add">Add</SelectItem>
+            <SelectItem value="remove">Remove</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
       <LabeledInput label="Credits" name="amount" isRequired value={fields.amount} onChange={(value) => set("amount", value)} />
       <LabeledInput label="Ticket reference (optional)" name="ticketReference" maxLength={200} value={fields.ticketReference} onChange={(value) => set("ticketReference", value)} />
       <LabeledInput label="Payment reference (optional)" name="paymentReference" maxLength={200} value={fields.paymentReference} onChange={(value) => set("paymentReference", value)} />
       <label className="flex flex-col gap-1 text-sm">
         Reason (required, audited)
-        <textarea name="reason" required maxLength={500} value={fields.reason} onChange={(event) => set("reason", event.target.value)} className={INPUT} />
+        <Textarea name="reason" required maxLength={500} value={fields.reason} onChange={(event) => set("reason", event.target.value)} className="min-h-0 rounded-rx border-rx-line px-2 py-1 text-sm field-sizing-fixed" />
       </label>
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       <div>
-        <button type="submit" disabled={isSending} className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent">Adjust credits</button>
+        <Button type="submit" disabled={isSending} className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent h-auto font-normal whitespace-normal">Adjust credits</Button>
       </div>
     </form>
   );

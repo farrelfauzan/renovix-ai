@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "@performa-ai/ui/tokens.css";
+/* The shared primitives live in libs/ui, outside this app: Tailwind must scan them for their classes. */
+@source "../../../../libs/ui/src";
 
 /* Back-office tokens that StyleGuide does not name (RNX-244): the ink sidebar's hover and active fills. */
 :root {
@@ -10,4 +12,60 @@
 @theme inline {
   --color-rx-ink-hover: var(--rx-ink-hover);
   --color-rx-ink-active: var(--rx-ink-active);
+}
+
+/* RNX-291: the shared primitives (libs/ui) are styled with the shadcn roles below; this app maps them onto the shared tokens. */
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: var(--rx-radius);
+  --background: var(--rx-ground);
+  --foreground: var(--rx-text);
+  --card: var(--rx-ground);
+  --card-foreground: var(--rx-text);
+  --popover: var(--rx-ground);
+  --popover-foreground: var(--rx-text);
+  --primary: var(--rx-accent);
+  --primary-foreground: var(--rx-on-accent);
+  --secondary: var(--rx-surface);
+  --secondary-foreground: var(--rx-text);
+  --muted: var(--rx-surface);
+  --muted-foreground: var(--rx-muted);
+  --accent: var(--rx-accent-tint);
+  --accent-foreground: var(--rx-accent);
+  --destructive: var(--rx-red-bar);
+  --border: var(--rx-line);
+  --input: var(--rx-line);
+  --ring: var(--rx-accent);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }

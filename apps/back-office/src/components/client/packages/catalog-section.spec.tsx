@@ -9,6 +9,12 @@ import type { SessionApi } from "@/lib/session/session-api";
 import { CatalogSection } from "./catalog-section";
 
 // RNX-98: the packages section against a fake of PackagesApi. The API's own rules (versions, audit, permissions) are tested in apps/api.
+// jsdom has no ResizeObserver, which the shared Checkbox of the version form uses to size its hidden form input (RNX-291).
+global.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 
 const version = (versionNumber: number, priceUsdCents: number): OfferVersion => ({
   id: `v${versionNumber}`, versionNumber, priceUsdCents, creditsGranted: "140.000000", billing: "monthly", maxAgents: 10, maxConnectedTools: 3,

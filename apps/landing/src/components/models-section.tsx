@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Cpu, Zap, Brain, Layers } from 'lucide-react';
+import { Badge } from '@performa-ai/ui/components/badge';
 
 const models = [
   {
@@ -64,10 +65,10 @@ export function ModelsSection() {
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
         >
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-4 py-1.5 text-sm text-cyan-300">
+          <Badge variant="outline" className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-4 py-1.5 text-sm text-cyan-300 font-normal [&>svg]:size-4">
             <Brain className="h-4 w-4" />
             <span>Powerful Models</span>
-          </div>
+          </Badge>
           <h2 className="mb-4 text-3xl font-bold text-white sm:text-4xl">
             Access the World&apos;s Best AI Models
           </h2>
@@ -95,9 +96,9 @@ export function ModelsSection() {
                   <h3 className="text-lg font-semibold text-white">{model.name}</h3>
                   <p className="text-sm text-gray-500">{model.provider}</p>
                 </div>
-                <span className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-300 border border-cyan-500/20">
+                <Badge variant="outline" className="rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-300 border border-cyan-500/20">
                   {model.tag}
-                </span>
+                </Badge>
               </div>
               <p className="text-sm text-gray-400 mb-4">{model.description}</p>
               <div className="space-y-2">

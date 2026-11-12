@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@performa-ai/ui/components/button";
 import type { AdminRole } from "@/lib/admins/admin-role";
 
 type RoleRowProps = {
@@ -20,8 +21,8 @@ export function RoleRow({ role, canWrite, onEdit, onDelete }: RoleRowProps) {
       <td className={CELL}>{role.builtIn ? "built-in" : "custom"}</td>
       <td className={CELL}>{role.permissions.join(", ")}</td>
       <td className={`${CELL} flex gap-1`}>
-        {canChange && <button type="button" aria-label={`Edit role ${role.name}`} onClick={onEdit} className="rounded-rx border border-rx-line px-2 py-1 text-sm">Edit</button>}
-        {canChange && <button type="button" aria-label={`Delete role ${role.name}`} onClick={onDelete} className="rounded-rx border border-rx-line px-2 py-1 text-sm">Delete</button>}
+        {canChange && <Button variant="outline" type="button" aria-label={`Edit role ${role.name}`} onClick={onEdit} className="rounded-rx border border-rx-line px-2 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Edit</Button>}
+        {canChange && <Button variant="outline" type="button" aria-label={`Delete role ${role.name}`} onClick={onDelete} className="rounded-rx border border-rx-line px-2 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Delete</Button>}
       </td>
     </tr>
   );

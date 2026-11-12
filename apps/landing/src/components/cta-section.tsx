@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { ArrowRight, MessageSquare, Bot, Sparkles } from 'lucide-react';
+import { Button } from '@performa-ai/ui/components/button';
 
 export function CtaSection() {
   return (
@@ -42,19 +43,17 @@ export function CtaSection() {
             </p>
 
             <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <a
-                href={process.env.NEXT_PUBLIC_CHAT_URL}
-                className="group inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-8 py-4 text-base font-semibold text-white transition-colors hover:bg-indigo-500"
-              >
-                Start Free — No Credit Card
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </a>
-              <a
-                href="#"
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-8 py-4 text-base font-semibold text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
-              >
-                Watch Demo
-              </a>
+              <Button asChild className="group inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-8 py-4 text-base font-semibold text-white transition-colors hover:bg-indigo-500 h-auto whitespace-normal has-[>svg]:px-8">
+                <a href={process.env.NEXT_PUBLIC_CHAT_URL}>
+                  Start Free — No Credit Card
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </a>
+              </Button>
+              <Button asChild variant="outline" className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-8 py-4 text-base font-semibold text-gray-300 transition-colors hover:border-gray-500 hover:text-white h-auto whitespace-normal bg-transparent hover:bg-transparent">
+                <a href="#">
+                  Watch Demo
+                </a>
+              </Button>
             </div>
 
             <p className="mt-6 text-sm text-gray-500">

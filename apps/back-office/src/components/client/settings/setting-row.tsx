@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@performa-ai/ui/components/button";
 import type { PlatformSetting } from "@/lib/settings/platform-setting";
 import type { SettingDescription } from "@/lib/settings/setting-description";
 
@@ -19,7 +20,7 @@ export function SettingRow({ setting, description, canWrite, onEdit }: SettingRo
         {description.isNotAppliedYet && <span className="ml-2 rounded-rx-pill bg-rx-amber-tint px-2 py-0.5 text-xs text-rx-amber-text">not applied yet</span>}
       </td>
       <td className="py-2 pr-3 font-mono">{setting.value === null ? "not set" : setting.value}</td>
-      <td className="py-2">{canWrite && <button type="button" onClick={onEdit} aria-label={`Edit ${description.label}`} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Edit</button>}</td>
+      <td className="py-2">{canWrite && <Button variant="outline" type="button" onClick={onEdit} aria-label={`Edit ${description.label}`} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Edit</Button>}</td>
     </tr>
   );
 }

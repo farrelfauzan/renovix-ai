@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@performa-ai/ui/components/button";
 import type { ActionOutcome } from "@/lib/admins/action-outcome";
 import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 import type { AdminRole } from "@/lib/admins/admin-role";
@@ -28,7 +29,7 @@ export function AdminsPanel({ admins, roles, api, currentAdminId, canWriteAdmins
   return (
     <section aria-label="Admins" className="mt-4">
       <h2 className="text-lg font-semibold">Admins</h2>
-      {canWriteAdmins && <button type="button" onClick={() => setIsInviting(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm">Invite admin</button>}
+      {canWriteAdmins && <Button variant="outline" type="button" onClick={() => setIsInviting(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Invite admin</Button>}
       {isInviting && <InviteDialog api={api} roles={roles} admins={admins} run={run} onIssued={onIssued} onClose={() => setIsInviting(false)} />}
       <AdminsTable admins={admins} api={api} roles={roles} currentAdminId={currentAdminId} canWriteAdmins={canWriteAdmins} canWriteRoles={canWriteRoles} onAct={onAct} onResend={onResend} />
     </section>

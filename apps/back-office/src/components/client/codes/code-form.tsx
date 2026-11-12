@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
 import type { CodeInput } from "@/lib/codes/code-input";
 import { LabeledInput } from "../form/labeled-input";
 
@@ -37,11 +39,16 @@ export function CodeForm({ onSave, onClose }: CodeFormProps) {
     <form role="dialog" aria-label="Create an invitation code" onSubmit={submit} className="mt-4 flex max-w-md flex-col gap-3 rounded-rx border border-rx-line p-4">
       <label className="flex flex-col gap-1 text-sm">
         Grants
-        <select name="type" value={type} onChange={(event) => setType(event.target.value as CodeInput["type"])} className="rounded-rx border border-rx-line px-2 py-1">
-          <option value="topup">Credits</option>
-          <option value="subscription">A plan</option>
-          <option value="both">Credits and a plan</option>
-        </select>
+        <Select name="type" value={type} onValueChange={(value) => setType(value as CodeInput["type"])}>
+          <SelectTrigger className="w-full rounded-rx border-rx-line px-2 py-1 data-[size=default]:h-auto">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="topup">Credits</SelectItem>
+            <SelectItem value="subscription">A plan</SelectItem>
+            <SelectItem value="both">Credits and a plan</SelectItem>
+          </SelectContent>
+        </Select>
       </label>
       <LabeledInput label="Code text (blank: generated)" name="code" maxLength={50} value={code} onChange={setCode} />
       {grantsCredits && <LabeledInput label="Credits" name="creditAmount" type="number" min={0} step="any" isRequired value={creditAmount} onChange={setCreditAmount} />}
@@ -49,8 +56,8 @@ export function CodeForm({ onSave, onClose }: CodeFormProps) {
       <LabeledInput label="Maximum redemptions" name="maxRedemptions" type="number" min={1} step="1" isRequired value={maxRedemptions} onChange={setMaxRedemptions} />
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       <div className="flex gap-2">
-        <button type="submit" className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent">Create code</button>
-        <button type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Cancel</button>
+        <Button type="submit" className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent h-auto font-normal whitespace-normal">Create code</Button>
+        <Button variant="outline" type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Cancel</Button>
       </div>
     </form>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@performa-ai/ui/components/button";
 import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 import type { AdminRole } from "@/lib/admins/admin-role";
 import type { AdminsApi } from "@/lib/admins/admins-api";
@@ -25,9 +26,9 @@ const CELL = "border-b border-rx-line px-2 py-1";
 export function AdminRow({ entry, api, roles, isOwnRow, canWriteAdmins, canWriteRoles, onAct, onResend }: AdminRowProps) {
   const isInvited = entry.status === "invited";
   const button = (label: string, action: () => Promise<unknown>) => (
-    <button key={label} type="button" aria-label={`${label} ${entry.email}`} onClick={() => onAct(action)} className="rounded-rx border border-rx-line px-2 py-1 text-sm">
+    <Button variant="outline" key={label} type="button" aria-label={`${label} ${entry.email}`} onClick={() => onAct(action)} className="rounded-rx border border-rx-line px-2 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
       {label}
-    </button>
+    </Button>
   );
   return (
     <tr className="align-top">
@@ -39,7 +40,7 @@ export function AdminRow({ entry, api, roles, isOwnRow, canWriteAdmins, canWrite
       <td className={CELL}>{describeAdminStatus(entry)}</td>
       <td className={`${CELL} flex flex-wrap gap-1`}>
         {canWriteAdmins && isInvited && (
-          <button type="button" aria-label={`Resend ${entry.email}`} onClick={() => onResend(entry.id)} className="rounded-rx border border-rx-line px-2 py-1 text-sm">Resend</button>
+          <Button variant="outline" type="button" aria-label={`Resend ${entry.email}`} onClick={() => onResend(entry.id)} className="rounded-rx border border-rx-line px-2 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Resend</Button>
         )}
         {canWriteAdmins && isInvited && button("Revoke", () => api.revokeInvitation(entry.id))}
         {canWriteAdmins && entry.status === "active" && button("Suspend", () => api.suspend(entry.id))}

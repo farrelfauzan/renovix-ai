@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@performa-ai/ui/components/button";
 import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 
 type InviteConflictProps = {
@@ -13,8 +14,8 @@ export function InviteConflict({ pending, onResend, onRevoke }: InviteConflictPr
   return (
     <div className="flex items-center gap-2 text-sm">
       <span>{pending.email} already has a pending invitation:</span>
-      <button type="button" onClick={onResend} className="rounded-rx border border-rx-line px-2 py-1">Resend invitation</button>
-      <button type="button" onClick={onRevoke} className="rounded-rx border border-rx-line px-2 py-1">Revoke invitation</button>
+      <Button variant="outline" type="button" onClick={onResend} className="rounded-rx border border-rx-line px-2 py-1 h-auto bg-transparent font-normal whitespace-normal">Resend invitation</Button>
+      <Button variant="outline" type="button" onClick={onRevoke} className="rounded-rx border border-rx-line px-2 py-1 h-auto bg-transparent font-normal whitespace-normal">Revoke invitation</Button>
     </div>
   );
 }

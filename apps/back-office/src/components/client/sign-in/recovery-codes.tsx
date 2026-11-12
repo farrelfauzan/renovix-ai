@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@performa-ai/ui/components/button";
+
 /** The recovery codes the API returns once at the end of the TOTP enrolment (RX-94). */
 export function RecoveryCodes({ codes, onContinue }: { codes: readonly string[]; onContinue: () => void }) {
   return (
@@ -10,9 +12,9 @@ export function RecoveryCodes({ codes, onContinue }: { codes: readonly string[];
           <li key={code}>{code}</li>
         ))}
       </ul>
-      <button type="button" onClick={onContinue} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
+      <Button variant="outline" type="button" onClick={onContinue} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
         Continue
-      </button>
+      </Button>
     </div>
   );
 }

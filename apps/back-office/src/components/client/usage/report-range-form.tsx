@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import { describeRangeProblem } from "@/lib/usage/describe-range-problem";
 import type { ReportRange } from "@/lib/usage/report-range";
 import { SectionMessage } from "./section-message";
@@ -20,17 +22,17 @@ export function ReportRangeForm({ initial, onApply }: { initial: ReportRange; on
       {(["from", "to"] as const).map((name) => (
         <label key={name} className="flex flex-col gap-1 text-sm text-rx-muted">
           {name === "from" ? "From" : "To"}
-          <input
+          <Input
             type="date"
             value={range[name]}
             onChange={(event) => setRange({ ...range, [name]: event.target.value })}
-            className="rounded-rx border border-rx-line px-2 py-1 text-rx-text"
+            className="rounded-rx border border-rx-line px-2 py-1 text-rx-text h-auto text-sm"
           />
         </label>
       ))}
-      <button type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm">
+      <Button variant="outline" type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
         Apply range
-      </button>
+      </Button>
       {problem && <SectionMessage text={problem} isError />}
     </form>
   );

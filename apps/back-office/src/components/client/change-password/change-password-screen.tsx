@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import { SignedOutError } from "@/lib/api/signed-out-error";
 import { defaultSessionApi } from "@/lib/session/default-session-api";
 import type { SessionApi } from "@/lib/session/session-api";
@@ -40,15 +42,15 @@ export function ChangePasswordScreen({ api = defaultSessionApi }: { api?: Sessio
       <form aria-label="Change password" onSubmit={submit} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-sm">
           New password
-          <input type="password" name="newPassword" autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+          <Input type="password" name="newPassword" autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
         </label>
-        <button type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
+        <Button variant="outline" type="submit" disabled={isSubmitting} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
           Change password
-        </button>
+        </Button>
       </form>
-      <button type="button" disabled={isSubmitting} onClick={() => run(api.signOut, "/sign-in")} className="self-start text-sm underline">
+      <Button variant="link" type="button" disabled={isSubmitting} onClick={() => run(api.signOut, "/sign-in")} className="self-start text-sm underline h-auto p-0 font-normal whitespace-normal text-inherit underline-offset-auto">
         Sign out
-      </button>
+      </Button>
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
     </div>
   );

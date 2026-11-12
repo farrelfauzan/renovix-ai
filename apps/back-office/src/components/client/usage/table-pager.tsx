@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { Button } from "@performa-ai/ui/components/button";
 import { TABLE_PAGE_SIZE } from "@/lib/usage/table-page-size";
 
 type TablePagerProps<Row> = {
@@ -21,12 +22,12 @@ export function TablePager<Row>({ rows, children }: TablePagerProps<Row>) {
       {children(rows.slice(first, last))}
       <div className="flex flex-wrap items-center gap-3 text-sm text-rx-muted">
         <span>{rows.length === 0 ? "Rows 0 of 0" : `Rows ${first + 1}–${last} of ${rows.length}`}</span>
-        <button type="button" disabled={page === 0} onClick={() => goTo(page - 1)} className="rounded-rx border border-rx-line px-3 py-1 text-rx-text disabled:opacity-50">
+        <Button variant="outline" type="button" disabled={page === 0} onClick={() => goTo(page - 1)} className="rounded-rx border border-rx-line px-3 py-1 text-rx-text disabled:opacity-50 h-auto bg-transparent font-normal whitespace-normal">
           Previous
-        </button>
-        <button type="button" disabled={last >= rows.length} onClick={() => goTo(page + 1)} className="rounded-rx border border-rx-line px-3 py-1 text-rx-text disabled:opacity-50">
+        </Button>
+        <Button variant="outline" type="button" disabled={last >= rows.length} onClick={() => goTo(page + 1)} className="rounded-rx border border-rx-line px-3 py-1 text-rx-text disabled:opacity-50 h-auto bg-transparent font-normal whitespace-normal">
           Next
-        </button>
+        </Button>
       </div>
     </div>
   );

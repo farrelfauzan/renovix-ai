@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
 import type { ReauthPromptState } from "@/lib/admins/reauth-prompt-state";
 
 /** Asks for the password and a fresh TOTP code before a sensitive action (the API requires both); shows its refusal. */
@@ -18,16 +20,16 @@ export function ReauthPrompt({ prompt }: { prompt: ReauthPromptState }) {
       <p className="text-sm">This action needs a fresh confirmation. Enter your password and the current code of your authenticator app.</p>
       <label className="flex flex-col gap-1 text-sm">
         Password
-        <input type="password" name="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+        <Input type="password" name="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Authenticator code
-        <input type="text" name="totp" autoComplete="one-time-code" inputMode="numeric" pattern="\d{6}" maxLength={6} required value={totp} onChange={(event) => setTotp(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+        <Input type="text" name="totp" autoComplete="one-time-code" inputMode="numeric" pattern="\d{6}" maxLength={6} required value={totp} onChange={(event) => setTotp(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
       </label>
       {prompt.error && <p role="alert" className="text-sm text-rx-red-bar">{prompt.error}</p>}
       <div className="flex gap-2">
-        <button type="submit" disabled={prompt.isSubmitting} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Confirm</button>
-        <button type="button" onClick={prompt.cancel} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Cancel</button>
+        <Button variant="outline" type="submit" disabled={prompt.isSubmitting} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Confirm</Button>
+        <Button variant="outline" type="button" onClick={prompt.cancel} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Cancel</Button>
       </div>
     </form>
   );

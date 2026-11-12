@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
 import type { ActionOutcome } from "@/lib/admins/action-outcome";
 import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 import type { AdminRole } from "@/lib/admins/admin-role";
@@ -49,21 +52,26 @@ export function InviteDialog({ api, roles, admins, run, onIssued, onClose }: Inv
     <form role="dialog" aria-label="Invite an admin" onSubmit={submit} className="mt-4 flex max-w-sm flex-col gap-3 rounded-rx border border-rx-line p-4">
       <label className="flex flex-col gap-1 text-sm">
         Email
-        <input type="email" name="email" autoComplete="off" required value={email} onChange={(event) => setEmail(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1" />
+        <Input type="email" name="email" autoComplete="off" required value={email} onChange={(event) => setEmail(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1 h-auto text-sm" />
       </label>
       <label className="flex flex-col gap-1 text-sm">
         Role
-        <select name="role" value={role} onChange={(event) => setRole(event.target.value)} className="rounded-rx border border-rx-line px-2 py-1">
-          {roles.map((entry) => (
-            <option key={entry.name} value={entry.name}>{entry.name}</option>
-          ))}
-        </select>
+        <Select name="role" value={role} onValueChange={setRole}>
+          <SelectTrigger className="w-full rounded-rx border-rx-line px-2 py-1 data-[size=default]:h-auto">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {roles.map((entry) => (
+              <SelectItem key={entry.name} value={entry.name}>{entry.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </label>
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       {pending && <InviteConflict pending={pending} onResend={() => finish(() => api.resendInvitation(pending.id), onIssued)} onRevoke={() => finish(() => api.revokeInvitation(pending.id), () => undefined)} />}
       <div className="flex gap-2">
-        <button type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm">Send invitation</button>
-        <button type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Cancel</button>
+        <Button variant="outline" type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Send invitation</Button>
+        <Button variant="outline" type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Cancel</Button>
       </div>
     </form>
   );

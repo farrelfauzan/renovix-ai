@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@performa-ai/ui/components/button";
 import { describeFailure } from "@/lib/sign-in/describe-failure";
 import type { SignInApi } from "@/lib/sign-in/sign-in-api";
 import type { TotpEnrolment } from "@/lib/sign-in/totp-enrolment";
@@ -50,9 +51,9 @@ export function TotpEnrolmentStep({ api, onDone }: { api: SignInApi; onDone: () 
       ) : (
         <>
           <p className="text-sm">Your account has no authenticator yet. Set one up to finish signing in.</p>
-          <button type="button" disabled={isSubmitting} onClick={start} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
+          <Button variant="outline" type="button" disabled={isSubmitting} onClick={start} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
             Set up authenticator
-          </button>
+          </Button>
         </>
       )}
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@performa-ai/ui/components/button";
 import type { InvitationCode } from "@/lib/codes/invitation-code";
 import type { CodeRedemption } from "@/lib/codes/code-redemption";
 import { RedemptionsList } from "./redemptions-list";
@@ -12,7 +13,7 @@ type CodeRowProps = {
   readonly onDeactivate: () => void;
 };
 
-const BUTTON = "rounded-rx border border-rx-line px-3 py-1 text-sm";
+const BUTTON = "rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal";
 
 /** What a code grants, as one line. */
 function describeGrant({ creditAmount, packageVersion }: InvitationCode): string {
@@ -30,8 +31,8 @@ export function CodeRow({ code, redemptions, onToggleRedemptions, onDeactivate }
         <td className="py-2 pr-3">{new Date(code.expiresAt).toLocaleDateString("en-GB")}</td>
         <td className="py-2 pr-3">{code.isActive ? "Active" : "Deactivated"}</td>
         <td className="flex flex-wrap gap-2 py-2">
-          <button type="button" onClick={onToggleRedemptions} aria-expanded={redemptions !== null} className={BUTTON}>Redemptions</button>
-          {code.isActive && <button type="button" onClick={onDeactivate} className={BUTTON}>Deactivate</button>}
+          <Button variant="outline" type="button" onClick={onToggleRedemptions} aria-expanded={redemptions !== null} className={BUTTON}>Redemptions</Button>
+          {code.isActive && <Button variant="outline" type="button" onClick={onDeactivate} className={BUTTON}>Deactivate</Button>}
         </td>
       </tr>
       {redemptions && (

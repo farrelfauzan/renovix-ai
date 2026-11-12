@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Checkbox } from "@performa-ai/ui/components/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
 import { buildVersionInput } from "@/lib/packages/build-version-input";
 import type { CatalogOffer } from "@/lib/packages/catalog-offer";
 import { findCurrentVersion } from "@/lib/packages/current-version";
@@ -12,7 +15,6 @@ import type { VersionInput } from "@/lib/packages/version-input";
 import { LabeledInput } from "../form/labeled-input";
 
 const TIERS = ["standard", "advanced", "premium", "frontier"];
-const INPUT = "rounded-rx border border-rx-line px-2 py-1";
 
 type VersionFormProps = {
   readonly kind: OfferKind;
@@ -50,19 +52,24 @@ export function VersionForm({ kind, offer, onSave, onClose }: VersionFormProps) 
         <>
           <label className="flex flex-col gap-1 text-sm">
             Billing
-            <select name="billing" value={fields.billing} onChange={(event) => set("billing", event.target.value as VersionFields["billing"])} className={INPUT}>
-              <option value="monthly">Monthly</option>
-              <option value="one_time">One time</option>
-            </select>
+            <Select name="billing" value={fields.billing} onValueChange={(value) => set("billing", value as VersionFields["billing"])}>
+              <SelectTrigger className="w-full rounded-rx border-rx-line px-2 py-1 data-[size=default]:h-auto">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly">Monthly</SelectItem>
+                <SelectItem value="one_time">One time</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <LabeledInput label="Agents" name="maxAgents" type="number" min={0} value={fields.maxAgents} onChange={(value) => set("maxAgents", value)} />
           <LabeledInput label="Connected tools" name="maxConnectedTools" type="number" min={0} value={fields.maxConnectedTools} onChange={(value) => set("maxConnectedTools", value)} />
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={fields.apiAccess} onChange={(event) => set("apiAccess", event.target.checked)} /> API access</label>
+          <label className="flex items-center gap-2 text-sm"><Checkbox checked={fields.apiAccess} onCheckedChange={(checked) => set("apiAccess", checked === true)} /> API access</label>
           <LabeledInput label="Allowed channels (comma separated)" name="allowedChannels" value={fields.allowedChannels} onChange={(value) => set("allowedChannels", value)} />
           <fieldset className="flex flex-wrap gap-3 text-sm">
             <legend className="mb-1">Allowed tiers</legend>
             {TIERS.map((tier) => (
-              <label key={tier} className="flex items-center gap-2"><input type="checkbox" checked={fields.allowedTiers.includes(tier)} onChange={() => toggleTier(tier)} /> {tier}</label>
+              <label key={tier} className="flex items-center gap-2"><Checkbox checked={fields.allowedTiers.includes(tier)} onCheckedChange={() => toggleTier(tier)} /> {tier}</label>
             ))}
           </fieldset>
         </>
@@ -71,8 +78,8 @@ export function VersionForm({ kind, offer, onSave, onClose }: VersionFormProps) 
       <LabeledInput label="Reason (required, audited)" name="reason" isRequired maxLength={500} value={fields.reason} onChange={(value) => set("reason", value)} />
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
       <div className="flex gap-2">
-        <button type="submit" className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent">Save as v{next}</button>
-        <button type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm">Cancel</button>
+        <Button type="submit" className="rounded-rx bg-rx-accent px-3 py-1 text-sm text-rx-on-accent h-auto font-normal whitespace-normal">Save as v{next}</Button>
+        <Button variant="outline" type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Cancel</Button>
       </div>
     </form>
   );

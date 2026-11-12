@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { Badge } from '@performa-ai/ui/components/badge';
 import {
   Briefcase,
   GraduationCap,
@@ -101,10 +102,10 @@ export function UseCasesSection() {
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
         >
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-sm text-emerald-300">
+          <Badge variant="outline" className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-sm text-emerald-300 font-normal [&>svg]:size-4">
             <Users className="h-4 w-4" />
             <span>Use Cases</span>
-          </div>
+          </Badge>
           <h2 className="mb-4 text-3xl font-bold text-white sm:text-4xl">
             Built for Everyone Who Wants to Do More
           </h2>

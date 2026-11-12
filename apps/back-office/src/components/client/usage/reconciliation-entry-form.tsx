@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Button } from "@performa-ai/ui/components/button";
+import { Input } from "@performa-ai/ui/components/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
 import type { ProviderOption } from "@/lib/usage/provider-option";
 import type { UsageApi } from "@/lib/usage/usage-api";
 import { SectionMessage } from "./section-message";
@@ -12,7 +15,7 @@ type ReconciliationEntryFormProps = {
   readonly onRecorded: () => void;
 };
 
-const FIELD = "rounded-rx border border-rx-line px-2 py-1 text-rx-text";
+const FIELD = "rounded-rx border border-rx-line px-2 py-1 text-rx-text h-auto text-sm";
 
 /** The provider's portal balance and top-up of a day, in USD (`reconciliation:write`; the API audits it). */
 export function ReconciliationEntryForm({ api, providers, onRecorded }: ReconciliationEntryFormProps) {
@@ -36,31 +39,35 @@ export function ReconciliationEntryForm({ api, providers, onRecorded }: Reconcil
       <label className="flex flex-col gap-1 text-sm text-rx-muted">
         Provider
         {providers ? (
-          <select required value={providerId} onChange={(event) => setProviderId(event.target.value)} className={FIELD}>
-            <option value="">Pick a provider</option>
-            {providers.map(({ id, name }) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
-          </select>
+          <Select required value={providerId} onValueChange={setProviderId}>
+            <SelectTrigger className="w-full rounded-rx border-rx-line px-2 py-1 text-rx-text data-[size=default]:h-auto data-[placeholder]:text-rx-text">
+              <SelectValue placeholder="Pick a provider" />
+            </SelectTrigger>
+            <SelectContent>
+              {providers.map(({ id, name }) => (
+                <SelectItem key={id} value={id}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : (
-          <input required value={providerId} onChange={(event) => setProviderId(event.target.value)} className={FIELD} />
+          <Input required value={providerId} onChange={(event) => setProviderId(event.target.value)} className={FIELD} />
         )}
       </label>
       <label className="flex flex-col gap-1 text-sm text-rx-muted">
         Day
-        <input required type="date" value={day} onChange={(event) => setDay(event.target.value)} className={FIELD} />
+        <Input required type="date" value={day} onChange={(event) => setDay(event.target.value)} className={FIELD} />
       </label>
       <label className="flex flex-col gap-1 text-sm text-rx-muted">
         Portal balance (USD)
-        <input required inputMode="decimal" value={portalBalanceUsd} onChange={(event) => setPortalBalanceUsd(event.target.value)} className={FIELD} />
+        <Input required inputMode="decimal" value={portalBalanceUsd} onChange={(event) => setPortalBalanceUsd(event.target.value)} className={FIELD} />
       </label>
       <label className="flex flex-col gap-1 text-sm text-rx-muted">
         Top-up that day (USD)
-        <input inputMode="decimal" placeholder="0" value={topUpUsd} onChange={(event) => setTopUpUsd(event.target.value)} className={FIELD} />
+        <Input inputMode="decimal" placeholder="0" value={topUpUsd} onChange={(event) => setTopUpUsd(event.target.value)} className={FIELD} />
       </label>
-      <button type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm">
+      <Button variant="outline" type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
         Save balance
-      </button>
+      </Button>
       {message && <SectionMessage text={message.text} isError={message.isError} />}
     </form>
   );

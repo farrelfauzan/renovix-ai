@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Check, Sparkles, Zap, Crown } from 'lucide-react';
+import { Button } from '@performa-ai/ui/components/button';
 
 const plans = [
   {
@@ -121,16 +122,17 @@ export function PricingSection() {
                 ))}
               </ul>
 
-              <a
-                href="#"
-                className={`block w-full rounded-lg px-4 py-3 text-center text-sm font-semibold transition-colors ${
+              <Button
+                asChild
+                variant={plan.highlighted ? 'default' : 'outline'}
+                className={`block h-auto w-full whitespace-normal rounded-lg px-4 py-3 text-center text-sm font-semibold transition-colors ${
                   plan.highlighted
                     ? 'bg-indigo-600 text-white hover:bg-indigo-500'
-                    : 'border border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white'
+                    : 'border border-gray-700 bg-transparent text-gray-300 hover:border-gray-500 hover:bg-transparent hover:text-white'
                 }`}
               >
-                {plan.cta}
-              </a>
+                <a href="#">{plan.cta}</a>
+              </Button>
             </motion.div>
           ))}
         </div>

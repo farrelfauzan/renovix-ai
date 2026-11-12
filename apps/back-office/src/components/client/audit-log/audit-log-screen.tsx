@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "@performa-ai/ui/components/button";
 import type { AuditLogApi } from "@/lib/audit-log/audit-log-api";
 import type { AuditLogFilters } from "@/lib/audit-log/audit-log-filters";
 import type { AuditLogPage } from "@/lib/audit-log/audit-log-page";
@@ -43,9 +44,9 @@ export function AuditLogScreen({ api = defaultAuditLogApi }: { api?: AuditLogApi
       {hasFailed && <p role="alert" className="text-sm text-rx-red-bar">The audit log could not be loaded.</p>}
       {page && <AuditLogTable rows={page.rows} />}
       {page?.nextCursor && (
-        <button type="button" onClick={() => load(filters, page.nextCursor)} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm">
+        <Button variant="outline" type="button" onClick={() => load(filters, page.nextCursor)} className="self-start rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
           Next page
-        </button>
+        </Button>
       )}
     </div>
   );
