@@ -5,7 +5,10 @@ import { S3Service } from "./s3.service";
 const configOf = (values: Record<string, string>): ConfigService =>
   ({
     get: (name: string) => values[name],
-    getOrThrow: (name: string) => values[name],
+    getOrThrow: (name: string) => {
+      if (values[name] === undefined) throw new TypeError(`Configuration key "${name}" does not exist`);
+      return values[name];
+    },
   }) as unknown as ConfigService;
 
 const baseValues = {
