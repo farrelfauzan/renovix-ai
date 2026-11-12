@@ -69,7 +69,7 @@ it('a package code redeemed: says the package is activated, never "for null days
   const mockPost = jest.spyOn(apiClient, 'post').mockResolvedValue({ success: true, creditsGranted: null, planGranted: 'Starter', daysGranted: null });
   render(<AgentsPageClient />);
 
-  fireEvent.change(screen.getByPlaceholderText('PERF-XXXX-XXXX'), { target: { value: 'PERF-AAAA-BBBB' } });
+  fireEvent.change(screen.getByPlaceholderText('RNX-XXXX-XXXX'), { target: { value: 'PERF-AAAA-BBBB' } });
   fireEvent.click(screen.getByRole('button', { name: 'Redeem' }));
 
   const actualMessage = await screen.findByText(/Code redeemed!/);

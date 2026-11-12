@@ -40,11 +40,11 @@ export class CodesService {
   ) {}
 
   /**
-   * Generate a unique invitation code in format PERF-XXXX-XXXX
+   * Generate a unique invitation code in format RNX-XXXX-XXXX
    */
   private generateCode(): string {
     const segment = () => crypto.randomBytes(2).toString("hex").toUpperCase();
-    return `PERF-${segment()}-${segment()}`;
+    return `RNX-${segment()}-${segment()}`;
   }
 
   /**

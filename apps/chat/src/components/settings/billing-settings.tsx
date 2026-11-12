@@ -122,7 +122,7 @@ export function BillingSettings() {
             <div className="flex gap-2">
               <Input
                 type="text"
-                placeholder="PERF-XXXX-XXXX"
+                placeholder="RNX-XXXX-XXXX"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 className="font-mono tracking-wider"
@@ -188,7 +188,7 @@ export function BillingSettings() {
           <ul className="space-y-2 text-xs text-muted-foreground">
             <li className="flex items-start gap-2">
               <span className="font-mono bg-secondary rounded px-1">1</span>
-              Enter your invitation code (format: PERF-XXXX-XXXX)
+              Enter your invitation code (format: RNX-XXXX-XXXX)
             </li>
             <li className="flex items-start gap-2">
               <span className="font-mono bg-secondary rounded px-1">2</span>
