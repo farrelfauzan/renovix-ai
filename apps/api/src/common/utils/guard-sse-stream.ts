@@ -2,6 +2,7 @@ import type { LoggerService } from "@nestjs/common";
 import type { ServerResponse } from "node:http";
 import { errorName } from "./error-name";
 import { codedRefusalOf } from "./coded-refusal-of";
+import { SseStream } from "./sse-stream";
 
 const STREAM_FAILED_EVENT = `data: ${JSON.stringify({ error: { message: "The response failed. Please try again." } })}\n\n`;
 
@@ -11,7 +12,9 @@ const STREAM_FAILED_EVENT = `data: ${JSON.stringify({ error: { message: "The res
  * stream: it is logged by its name only (never its message, which may carry provider text or a secret), the fixed
  * error event is written while the socket can still take it, and the response is ended. Nothing is handed back to
  * Fastify, which would write the headers a second time. RNX-200: a refusal of ours with a code (402
- * CREDITS_EXHAUSTED, RUN_CAP_EXCEEDED) is sent with its own message and code instead of the fixed text.
+ * CREDITS_EXHAUSTED, RUN_CAP_EXCEEDED) is sent with its own message and code instead of the fixed text. RNX-42: it
+ * creates the response's SseStream, hands it to the route (which opens it) and ends the stream through it, so the
+ * heartbeat stops and the response is ended once.
  */
 export async function guardSseStream({
   response,
@@ -20,16 +23,17 @@ export async function guardSseStream({
 }: {
   response: ServerResponse;
   logger: LoggerService;
-  stream: () => Promise<void>;
+  stream: (sse: SseStream) => Promise<void>;
 }): Promise<void> {
+  const sse = new SseStream(response);
   try {
-    await stream();
+    await stream(sse);
   } catch (error) {
     if (!response.headersSent) throw error;
     logger.error(`SSE stream ended by an error after its headers were sent (${errorName(error)})`);
     if (response.writableEnded) return;
     const refusal = codedRefusalOf(error);
-    if (!response.destroyed) response.write(refusal ? `data: ${JSON.stringify({ error: refusal })}\n\n` : STREAM_FAILED_EVENT);
-    response.end();
+    sse.write(refusal ? `data: ${JSON.stringify({ error: refusal })}\n\n` : STREAM_FAILED_EVENT);
+    sse.end();
   }
 }

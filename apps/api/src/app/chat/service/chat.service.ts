@@ -6,7 +6,6 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import type { ServerResponse } from "node:http";
 import type { CreditCallOutcome, CreditLedgerEntry } from "@generated/prisma/client.js";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { CreditService } from "../../billing/service/credit.service";
@@ -26,6 +25,7 @@ import { ProviderHttpError } from "../../providers/errors/provider-http-error";
 import { ProviderStreamError } from "../../providers/errors/provider-stream-error";
 import { ProviderTimeoutError } from "../../providers/errors/provider-timeout-error";
 import { toProviderErrorText } from "../../../common/utils/to-provider-error-text";
+import type { SseStream } from "../../../common/utils/sse-stream";
 import { streamedCallOutcome } from "../../portal/utils/streamed-call-outcome";
 import { UsageService } from "../../usage/service/usage.service";
 import { PromptTuningService } from "./prompt-tuning.service";
@@ -185,15 +185,14 @@ export class ChatService {
    * `stream_options.include_usage`, a last chunk carries the ledger entry's tokens). The one usage entry is written
    * when the stream ends: a client that goes away aborts the upstream request; a provider error is charged 0 and ends
    * the stream with its fixed text (D197, D208). The conversation (`store`) is saved only after a completed stream.
-   * RNX-232: the last chunk before `data: [DONE]` carries `credits_used`, the credits the call used.
+   * RNX-232: the last chunk before `data: [DONE]` carries `credits_used`, the credits the call used. RNX-42: the response
+   * is the SSE helper, opened after `openCall`; its signal is the client going away.
    */
-  async streamCompletion(body: ApiChatCompletionRequest, user: AuthenticatedUser, response: ServerResponse): Promise<void> {
+  async streamCompletion(body: ApiChatCompletionRequest, user: AuthenticatedUser, sse: SseStream): Promise<void> {
     const startTime = Date.now();
     const opened = await this.openCall(body, user);
     const sentPrompt = promptText(opened.request.messages);
-    response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
-    const disconnected = new AbortController();
-    response.on("close", () => disconnected.abort());
+    sse.open();
     const head = { id: `chatcmpl-${opened.call.requestId}`, created: Math.floor(startTime / 1000), model: body.model };
     const received: { content: string; finishReason: string; usage?: ChatUsage; isOpened: boolean } = {
       content: "",
@@ -205,12 +204,12 @@ export class ChatService {
     let attempt: ServedBy = opened.connection;
     const hooks = this.attemptHooks(opened.call, (tried) => (attempt = tried));
     try {
-      for await (const payload of this.providerRouter.chatStream({ ...opened.request, signal: disconnected.signal }, hooks)) {
+      for await (const payload of this.providerRouter.chatStream({ ...opened.request, signal: sse.signal }, hooks)) {
         received.isOpened = true;
         const delta = readCompletionDelta(payload);
         if (delta.content) {
           const role = received.content ? {} : { role: "assistant" };
-          response.write(completionChunk(head, { choices: [{ index: 0, delta: { ...role, content: delta.content }, finish_reason: null }] }));
+          sse.write(completionChunk(head, { choices: [{ index: 0, delta: { ...role, content: delta.content }, finish_reason: null }] }));
           received.content += delta.content;
         }
         received.finishReason = delta.finishReason ?? received.finishReason;
@@ -218,9 +217,9 @@ export class ChatService {
       }
     } catch (error) {
       const call = { ...opened.call, modelId: attempt.slug, cost: { servedBy: attempt, usage: received.usage } };
-      return this.endFailedStream(error, { call, sentPrompt, received, aborted: disconnected.signal.aborted, response });
+      return this.endFailedStream(error, { call, sentPrompt, received, aborted: sse.signal.aborted, sse });
     }
-    const outcome = streamedCallOutcome({ providerFailed: false, aborted: disconnected.signal.aborted, streamOpened: received.isOpened });
+    const outcome = streamedCallOutcome({ providerFailed: false, aborted: sse.signal.aborted, streamOpened: received.isOpened });
     const call = { ...opened.call, modelId: attempt.slug, cost: { servedBy: attempt, usage: received.usage } };
     const entry = await this.finishStreamedCall(call, outcome, { sentPrompt, ...received });
     this.usage
@@ -239,14 +238,14 @@ export class ChatService {
       const finish = { index: 0, delta: {}, finish_reason: received.finishReason };
       const credits = { credits_used: entry.amount.negated().toFixed(6) };
       if (body.stream_options?.include_usage) {
-        response.write(completionChunk(head, { choices: [finish] }));
-        response.write(completionChunk(head, { choices: [], usage: completionUsageOf(entry), ...credits }));
+        sse.write(completionChunk(head, { choices: [finish] }));
+        sse.write(completionChunk(head, { choices: [], usage: completionUsageOf(entry), ...credits }));
       } else {
-        response.write(completionChunk(head, { choices: [finish], ...credits }));
+        sse.write(completionChunk(head, { choices: [finish], ...credits }));
       }
-      response.write("data: [DONE]\n\n");
+      sse.writeData("[DONE]");
     }
-    response.end();
+    sse.end();
   }
 
   /**
@@ -338,7 +337,7 @@ export class ChatService {
       sentPrompt: string;
       received: { content: string; usage?: ChatUsage; isOpened: boolean };
       aborted: boolean;
-      response: ServerResponse;
+      sse: SseStream;
     },
   ): Promise<void> {
     const isProviderError =
@@ -357,8 +356,8 @@ export class ChatService {
         ? toProviderErrorText(undefined, error.kind)
         : toProviderErrorText(error.status, error instanceof ProviderHttpError ? error.kind : undefined);
     this.logger.error(`Stream error: ${text.logText}`);
-    failed.response.write(`data: ${JSON.stringify({ error: { message: `${text.clientMessage}. No credits were charged.` } })}\n\n`);
-    failed.response.end();
+    failed.sse.writeJson({ error: { message: `${text.clientMessage}. No credits were charged.` } });
+    failed.sse.end();
   }
 
   /**

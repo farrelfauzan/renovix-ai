@@ -10,6 +10,7 @@ import { ChatService } from "./chat.service";
 import { ApiChatCompletionRequestSchema } from "../dto/chat-completion.dto";
 import { OpenRouterAdapter } from "../../providers/openrouter.adapter";
 import { ProviderRouter } from "../../providers/provider-router";
+import { SseStream } from "../../../common/utils/sse-stream";
 import {
   blockOutbound,
   chatCompletion,
@@ -90,7 +91,7 @@ describe("RNX-199: response_format and reasoning_effort reach the provider", () 
   const stream = async (payload: Record<string, unknown>) => {
     const response = Object.assign(new EventEmitter(), { writeHead: jest.fn(), write: jest.fn(), end: jest.fn() });
     const body = ApiChatCompletionRequestSchema.parse({ model: PLAIN_SLUG, messages: [{ role: "user", content: "Hi" }], stream: true, ...payload });
-    await service.streamCompletion(body, user, response as unknown as ServerResponse);
+    await service.streamCompletion(body, user, new SseStream(response as unknown as ServerResponse));
   };
 
   it("AC1: response_format json_object → the upstream receives it", async () => {
