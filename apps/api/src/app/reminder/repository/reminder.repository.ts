@@ -14,6 +14,16 @@ const REMINDER_RELATIONS = {
   channel: { select: { id: true, name: true } },
 } satisfies Prisma.ReminderInclude;
 
+/** RNX-30-A: this user's reminders the scheduler would fire (as `findDueReminders` filters them) with nextRunAt in [from, to). */
+const activeUserRemindersBetween = (userId: string, from: Date, to: Date): Prisma.ReminderWhereInput => ({
+  userId,
+  status: "ACTIVE",
+  deletedAt: null,
+  agent: LIVE_AGENT,
+  channel: LIVE_CHANNEL,
+  nextRunAt: { gte: from, lt: to },
+});
+
 /**
  * The queries on `reminders` (RX-133, RNX-139). Every method takes the transaction as its optional last argument.
  * `updateReminder` takes no user: the service checks the owner with `findUserReminder` first, as before.
@@ -68,6 +78,26 @@ export class ReminderRepository {
     return (tx ?? this.prisma).reminder.update({
       where: { id: reminderId },
       data,
+    });
+  }
+
+  /**
+   * RNX-30-A: how many of this user's reminders the scheduler would fire with a next fire time in [from, to): active,
+   * not deleted, of a live agent and a live channel. One count; each reminder counts once (it has one nextRunAt).
+   */
+  countActiveUserRemindersBetween(userId: string, from: Date, to: Date, tx?: DbTransaction): Promise<number> {
+    return (tx ?? this.prisma).reminder.count({ where: activeUserRemindersBetween(userId, from, to) });
+  }
+
+  /**
+   * RNX-30-A: the same reminders as `countActiveUserRemindersBetween`, earliest first, with their id, label and next
+   * fire time only.
+   */
+  listActiveUserRemindersBetween(userId: string, from: Date, to: Date, tx?: DbTransaction) {
+    return (tx ?? this.prisma).reminder.findMany({
+      where: activeUserRemindersBetween(userId, from, to),
+      orderBy: { nextRunAt: "asc" },
+      select: { id: true, description: true, nextRunAt: true },
     });
   }
 

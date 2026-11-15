@@ -183,4 +183,20 @@ describe("RNX-91: bun run seed on an empty test database", () => {
     expect(allowed.code).toBe(0);
     expect(afterAllowed.tier_rates).toBe(4);
   });
+
+  it("RNX-30-A AC4 (D352 3): a fresh seed sets projectionMinSpendCredits to 1 credit and projectionMaxDays to 365 days", async () => {
+    const seed = await runSeed();
+
+    const actual = await prisma.platformSetting.findMany({
+      where: { name: { in: ["projectionMinSpendCredits", "projectionMaxDays"] } },
+      orderBy: { name: "asc" },
+      select: { name: true, value: true },
+    });
+
+    expect(seed.code).toBe(0);
+    expect(actual).toEqual([
+      { name: "projectionMaxDays", value: 365 },
+      { name: "projectionMinSpendCredits", value: 1 },
+    ]);
+  });
 });

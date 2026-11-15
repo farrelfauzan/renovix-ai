@@ -3,6 +3,7 @@ import { Prisma } from "@generated/prisma/client.js";
 import type { CreditLedgerEntry } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import type { PaidUsageSummary } from "../types/paid-usage-summary";
 
 /**
  * The queries on `credit_ledger_entries` (RX-20). Entries are only ever inserted: the database refuses UPDATE and
@@ -43,6 +44,21 @@ export class CreditLedgerEntryRepository {
       _sum: { amount: true },
     });
     return new Map(rows.flatMap((row) => (row.apiKeyId && row._sum.amount ? [[row.apiKeyId, row._sum.amount.negated()] as const] : [])));
+  }
+
+  /**
+   * RNX-30-A: this account's usage since `since`, in one aggregate through the partial index
+   * credit_ledger_entries_usage_account_id_created_at_idx (account_id, created_at) WHERE type = 'usage': the credits
+   * charged (the amounts are negative; returned as a positive amount, 0 without entries) and the number of distinct
+   * days, in `timeZone` (an IANA name, sent as a parameter), that have a charged entry (amount below 0).
+   */
+  async summarizeUsageSince(accountId: string, since: Date, timeZone: string, tx?: DbTransaction): Promise<PaidUsageSummary> {
+    const [row] = await (tx ?? this.prisma).$queryRaw<Array<{ spent: string; usageDays: number }>>`
+      SELECT (-COALESCE(SUM("amount"), 0))::text AS "spent",
+             (COUNT(DISTINCT ("created_at" AT TIME ZONE ${timeZone})::date) FILTER (WHERE "amount" < 0))::int AS "usageDays"
+      FROM "credit_ledger_entries"
+      WHERE "account_id" = ${accountId} AND "type" = 'usage' AND "created_at" >= ${since}`;
+    return { spent: new Prisma.Decimal(row.spent), usageDays: row.usageDays };
   }
 
   /**
