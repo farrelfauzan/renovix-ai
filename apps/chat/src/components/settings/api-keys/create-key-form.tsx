@@ -35,12 +35,12 @@ export function CreateKeyForm({ offeredTiers, hasApiAccess, nextPackage, onCreat
     setTiers((current) => (current.includes(tier) ? current.filter((item) => item !== tier) : [...current, tier]));
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const monthlyCreditCap = Number(cap);
     const created = await createKey({
       name: name.trim(),
       expiresIn,
       allowedTiers: offeredTiers.filter((tier) => tiers.includes(tier)),
-      ...(cap.trim() !== "" && monthlyCreditCap > 0 ? { monthlyCreditCap } : {}),
+      // An entered cap is always sent, so the API refuses an invalid one (such as 0) instead of the key being created uncapped.
+      ...(cap.trim() !== "" ? { monthlyCreditCap: Number(cap) } : {}),
     });
     if (!created) return;
     setName("");

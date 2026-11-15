@@ -11,6 +11,8 @@ import { BetterAuthController } from "./controller/better-auth.controller";
   // RNX-76 B2: key creation reads the package entitlement.
   imports: [OffersModule],
   controllers: [AuthController, ApiKeyController, BetterAuthController],
+  // RNX-82: this ApiKeyRateLimitService instance only reads the limit for GET /auth/keys/rate-limit; its request
+  // windows stay empty. AccessModule's instance is the one the guard counts requests on.
   providers: [AuthService, ApiKeyService, ApiKeyRateLimitService],
   exports: [AuthService],
 })

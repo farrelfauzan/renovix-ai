@@ -20,10 +20,10 @@ jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }))
 import { toast } from 'sonner';
 
 const key = (id: string, name: string, revokedAt: string | null = null) => ({
-  id, name, prefix: id.slice(0, 12), createdAt: '2026-11-01T00:00:00Z', lastUsedAt: null, revokedAt,
+  id, name, prefix: `pfx${id.slice(-4)}`, createdAt: '2026-11-01T00:00:00Z', lastUsedAt: null, revokedAt,
   expiresAt: null, allowedTiers: ['standard'], monthlyCreditCap: null, creditsLast30Days: '4.2',
 });
-const created = { ...key('key-new-0001', 'Inventory sync'), apiKey: SECRET };
+const created = { ...key('key-new-0001-cccc', 'Inventory sync'), apiKey: SECRET };
 
 type Request = { method: string; url: string; data: unknown };
 let requests: Request[];
@@ -46,7 +46,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   requests = [];
-  keys = [key('key-one-0001', 'First'), key('key-two-0002', 'Second')];
+  keys = [key('key-one-0001-aaaa', 'First'), key('key-two-0002-bbbb', 'Second')];
   createRefusal = null;
   mockEntitlements = { data: { apiAccess: true, tiers: ['standard', 'advanced'], apiAccessNextPackage: null } };
   apiClient.defaults.adapter = (config: any) => {
@@ -107,6 +107,28 @@ describe('RNX-82 AC1: the full key is shown once', () => {
 
     expect(screen.queryByText(SECRET)).toBeNull();
   });
+
+  it('a refused clipboard write shows a message instead of failing silently', async () => {
+    Object.assign(navigator, { clipboard: { writeText: jest.fn().mockRejectedValue(new Error('denied')) } });
+    renderPage();
+    await fillAndCreate();
+    await screen.findByText(SECRET);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not copy. Select the key and copy it.'));
+    expect(screen.queryByText('Copied')).toBeNull();
+  });
+});
+
+describe('RNX-82: monthly credit cap', () => {
+  it('sends an entered cap of 0 for the API to refuse, instead of creating the key without a cap', async () => {
+    renderPage();
+    fireEvent.change(await screen.findByLabelText('Monthly credit cap (optional)'), { target: { value: '0' } });
+    await fillAndCreate();
+
+    await waitFor(() => expect(requests.find((r) => r.method === 'post')?.data).toMatchObject({ monthlyCreditCap: 0 }));
+  });
 });
 
 describe('RNX-82 AC2: the package refuses key creation', () => {
@@ -144,7 +166,7 @@ describe('RNX-82 AC3: Revoke', () => {
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Revoke' }));
 
     await waitFor(() => expect(within(screen.getAllByRole('row')[2]).getByText('revoked')).toBeTruthy());
-    expect(requests.filter((r) => r.method === 'delete')).toEqual([{ method: 'delete', url: '/auth/keys/key-two-0002', data: undefined }]);
+    expect(requests.filter((r) => r.method === 'delete')).toEqual([{ method: 'delete', url: '/auth/keys/key-two-0002-bbbb', data: undefined }]);
     expect(within(screen.getAllByRole('row')[1]).getByRole('button', { name: 'Revoke' })).toBeTruthy();
   });
 });

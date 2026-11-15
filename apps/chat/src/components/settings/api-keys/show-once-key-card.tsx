@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@performa-ai/ui/components/button";
 import { Check, Copy } from "lucide-react";
+import { toast } from "sonner";
 
 interface ShowOnceKeyCardProps {
   keyName: string;
@@ -15,8 +16,12 @@ interface ShowOnceKeyCardProps {
 export function ShowOnceKeyCard({ keyName, prefix, apiKey, onDoneAction }: ShowOnceKeyCardProps) {
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(apiKey);
-    setCopied(true);
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      setCopied(true);
+    } catch {
+      toast.error("Could not copy. Select the key and copy it.");
+    }
   };
   return (
     <section className="space-y-3 rounded-lg border border-border bg-secondary/20 p-4" aria-label="New API key">
