@@ -76,6 +76,14 @@ describe("RNX-225: email auth through Better Auth; the login JWT routes are gone
     expect(await started.prisma.apiKey.count({ where: { userId: user.id } })).toBe(0);
   });
 
+  it("RNX-58a: sign-up gives the account its weekly_free wallet, balance 0 and nothing held", async () => {
+    await signUp("weekly-free@renovix.test");
+
+    const user = await started.prisma.user.findUniqueOrThrow({ where: { email: "weekly-free@renovix.test" } });
+    const accounts = await started.prisma.creditAccount.findMany({ where: { userId: user.id } });
+    expect(accounts.map((a) => [a.wallet, a.balance.toFixed(6), a.held.toFixed(6)])).toEqual([["weekly_free", "0.000000", "0.000000"]]);
+  });
+
   it("sign-in sets an httpOnly session cookie that opens a session route", async () => {
     await signUp("sign-in@renovix.test");
 

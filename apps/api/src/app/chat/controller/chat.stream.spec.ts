@@ -23,6 +23,7 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import { createUser, createApiKey, testApiKey } from "../../../../test/factories";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { fundWeeklyFreeWallet } from "../../../../test/fund-weekly-free-wallet";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { realPromptTuning } from "../../../../test/real-prompt-tuning";
@@ -404,5 +405,21 @@ describe("RNX-196: the API-key chat route streams when stream is true (Fastify, 
       expect(conversation.saveMessages).not.toHaveBeenCalled();
       await assertCreditLedgerInvariants(prisma);
     });
+  });
+
+  it("RNX-58a AC4: an API-key chat by a user with weekly_free credit holds and charges paid only; weekly_free is untouched", async () => {
+    const user = await createApiUser(1);
+    await fundWeeklyFreeWallet(prisma, user.id, "2");
+    fake.enqueue({ content: "Hello there friend", usage: { prompt_tokens: 30, completion_tokens: 3 } });
+
+    const res = await complete({ stream: true });
+
+    expect(res.statusCode).toBe(200);
+    expect((await prisma.creditReservation.findMany()).map((r) => [r.wallet, r.status])).toEqual([["paid", "settled"]]);
+    const entries = await prisma.creditLedgerEntry.findMany({ where: { type: "usage" } });
+    expect(entries.map((e) => [e.wallet, e.amount.toFixed(6)])).toEqual([["paid", "-0.000033"]]);
+    const weeklyFree = await prisma.creditAccount.findUniqueOrThrow({ where: { userId_wallet: { userId: user.id, wallet: "weekly_free" } } });
+    expect([weeklyFree.balance.toFixed(6), weeklyFree.held.toFixed(6)]).toEqual(["2.000000", "0.000000"]);
+    await assertCreditLedgerInvariants(prisma);
   });
 });
