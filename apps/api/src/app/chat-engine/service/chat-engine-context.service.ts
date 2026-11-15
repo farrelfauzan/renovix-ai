@@ -31,11 +31,14 @@ export class ChatEngineContextService {
     return { scope: request.scope, memory, knowledge: chunks.join("\n\n---\n\n"), offeredTools: request.offeredTools };
   }
 
-  /** One base's chunk texts for this runner, or none when they may not search it or the search fails. */
+  /**
+   * One base's chunk texts for this runner, or none when they may not search it or its lookup, access check or search
+   * fails (RNX-324: a throwing check skips the base, never searched, as the legacy agent run did).
+   */
   private async searchBase(runnerUserId: string, knowledgeBaseId: string, query: string): Promise<string[]> {
-    const base = await this.knowledgeBases.findKnowledgeBaseById(knowledgeBaseId);
-    if (!base || !(await this.workspaceKnowledge.canSearchKnowledgeBase(runnerUserId, base))) return [];
     try {
+      const base = await this.knowledgeBases.findKnowledgeBaseById(knowledgeBaseId);
+      if (!base || !(await this.workspaceKnowledge.canSearchKnowledgeBase(runnerUserId, base))) return [];
       const results = base.workspaceId
         ? await this.workspaceKnowledge.searchKnowledgeBase(base.id, query, CHAT_ENGINE_KNOWLEDGE_TOP_K_PER_BASE)
         : await this.knowledge.searchChunks(runnerUserId, query, { knowledgeBaseId: base.id, topK: CHAT_ENGINE_KNOWLEDGE_TOP_K_PER_BASE });
