@@ -32,7 +32,9 @@ import { ChatEngineMeterService } from "./chat-engine-meter.service";
  * and the raw rejected input never leave this class. No production entrypoint uses it yet. RNX-282: the execution runs
  * inside ChatEngineMeterService, its only way to the model a call metered on the run's one reservation, closed once
  * however the run ends; a budget stop's message is the raw answer and goes through the output approval. An aborted
- * `signal` (ChatEngineRunOptions) stops the run, in-flight model work included, and nothing of it is persisted.
+ * `signal` (ChatEngineRunOptions) stops the run, in-flight model work included, and nothing of it is persisted. RNX-25:
+ * the agent run (AgentRunService.chat) is its first production caller; its other run options (the caller's MCP session,
+ * the linked agents, the reservation hook) go to the execution and the meter.
  */
 @Injectable()
 export class ChatEngineService {
@@ -71,7 +73,7 @@ export class ChatEngineService {
       offeredTools: request.options.offeredTools,
     });
     yield { type: "context", context };
-    yield* this.executeApproved(request, approval.input, context, authorization.agent, options.signal);
+    yield* this.executeApproved(request, approval.input, context, authorization.agent, options);
   }
 
   /** Runs the request to the end and returns the folded result of the same events `run` yields. */
@@ -98,13 +100,15 @@ export class ChatEngineService {
   }
 
   /** Runs the injected execution, metered, on the approved input; only approved tool results and the approved answer come out, and nothing is persisted once the signal is aborted. */
-  private async *executeApproved(request: ChatEngineRequest, approvedInput: string, context: ChatEngineContext, agent: ChatEngineAgent, signal?: AbortSignal): AsyncGenerator<ChatEngineEvent> {
-    const { principal, source, conversation } = request;
+  private async *executeApproved(request: ChatEngineRequest, approvedInput: string, context: ChatEngineContext, agent: ChatEngineAgent, runOptions: ChatEngineRunOptions): AsyncGenerator<ChatEngineEvent> {
+    const { principal, source, conversation, options } = request;
+    const { signal, mcpSession, linkedAgents, onReserved } = runOptions;
     const offered = new Set(context.offeredTools.map((tool) => tool.name));
     let rawOutput = "";
-    const chunks = this.meter.meterExecution(toMeteredExecutionTarget(request, agent), (callModel) =>
-      this.execution.execute({ principal, source, conversation, agent, approvedInput, context, callModel, signal }),
+    const chunks = this.meter.meterExecution(toMeteredExecutionTarget(request, agent, linkedAgents), (callModel) =>
+      this.execution.execute({ principal, source, conversation, agent, approvedInput, context, callModel, signal, options, mcpSession }),
       signal,
+      onReserved,
     );
     for await (const chunk of chunks) {
       if (chunk.type === "text") rawOutput += chunk.text;

@@ -4,8 +4,6 @@
 // database calls into a repository. The list may only shrink: the check fails on an entry that no longer has
 // such an import and on an entry the base branch's list does not have. Never add a file here.
 export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
-  // RX-134 moved its agent and sub-agent lookups to AgentRepository; the run, message and metering calls stay for RX-23 and RX-25.
-  "apps/api/src/app/agent/service/agent-run.service.ts",
   // The channel chat run path; RX-136 left its 3 calls (sub-agents, history, delegation) for RX-24, which rewrites it.
   "apps/api/src/app/channel/service/channel-chat.service.ts",
   "apps/api/src/app/config/model-registry.service.ts",

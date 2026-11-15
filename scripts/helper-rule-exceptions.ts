@@ -28,9 +28,6 @@ export const HELPER_RULE_EXCEPTIONS: Record<string, string> = {
   [`${SRC}/mcp/service/web-search.service.ts WebSearchService.usageKey`]: "test 2: clock (new Date)",
   [`${SRC}/email/service/email-template.service.ts EmailTemplateService.buildInviteEmail`]: "test 2: environment (toLocaleDateString formats the date in the server's time zone)",
 
-  // Owned by a named ticket
-  [`${SRC}/agent/service/agent-run.service.ts AgentRunService.buildMessages`]: "RX-23..25",
-
   // Functions outside a class
   [`${SRC}/admin-auth/service/admin-session.service.ts newRefreshToken`]: "test 2: randomness (crypto.randomBytes)",
   [`${SRC}/portal/service/portal-tier.service.ts jakartaDay`]: "test 2: clock (`now` defaults to new Date())",

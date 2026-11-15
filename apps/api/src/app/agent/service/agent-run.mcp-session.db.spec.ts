@@ -259,7 +259,10 @@ describe("RNX-217: MCP connections and the tool map belong to one run (test data
 
     expect(outcome).toEqual({ first: {}, second: {} });
     expect({ u1: callers("u1"), u2: callers("u2") }).toEqual({ u1: ["first"], u2: ["second"] });
-    expect(toolResults()).toEqual(["answered by u1", "answered by u2"]);
+    // RNX-25: order-insensitive here. The agent run (on the chat engine) sends a copy of its messages per call, while the
+    // channel run's legacy loop sends one array it keeps adding to, so the channel's first recorded request already holds
+    // its later tool result; which server answered which call is asserted above.
+    expect([...toolResults()].sort()).toEqual(["answered by u1", "answered by u2"]);
   });
 
   it("AC2 provider error: U1's run ends with a provider error; U2's connection stays open and its next tool call is answered", async () => {

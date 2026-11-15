@@ -76,7 +76,10 @@ describe("RNX-126: the owner lists and restores deleted agents (Fastify, test da
           { provide: AgentToolService, useValue: { buildToolSchemasWithMcp: async () => [], cleanupMcpConnections: async () => undefined } },
           { provide: AgentMemoryService, useValue: { getMemoryContext: async () => "", extractAndStore: async () => undefined } },
           { provide: KnowledgeService, useValue: {} },
-          { provide: WorkspaceKnowledgeService, useValue: {} },
+          // RNX-25: the agent run's context (ChatEngineContextService) checks the runner's access to each attached base
+          // before searching it; this runner may search none, so the run gets no knowledge (as before, when the check
+          // failing on this stub skipped the base).
+          { provide: WorkspaceKnowledgeService, useValue: { canSearchKnowledgeBase: async () => false } },
           { provide: DocumentService, useValue: {} },
           {
             provide: GuardrailService,

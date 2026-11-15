@@ -23,6 +23,10 @@ export const ChatEngineRequestSchema = z.object({
     .object({
       documentFormat: z.enum(["pdf", "docx", "xlsx"]).optional(),
       offeredTools: z.array(OfferedToolSchema).default([]),
+      /** RNX-25 (D341 D1): offer call_agent (the agent's callable agents); never offered without it. */
+      offersCallAgent: z.boolean().optional(),
+      /** RNX-25 (D341 D1): offer all of the agent's own tools, MCP tools included, not only those in `offeredTools`. */
+      offersAgentTools: z.boolean().optional(),
     })
     .default({ offeredTools: [] }),
 });

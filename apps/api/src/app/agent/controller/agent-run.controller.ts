@@ -54,7 +54,7 @@ export class AgentRunController {
     return guardSseStream({ response: res.raw, logger: this.logger, stream: (sse) => this.streamChat(id, parsed.data, req, res, sse) });
   }
 
-  // RNX-42: `sse.signal` is aborted when the client leaves; the run does not read it yet (RNX-24/25 stop the model calls).
+  // RNX-42: `sse.signal` is aborted when the client leaves; RNX-25 (D336): the run gets it, so no further model call starts and no answer is stored.
   private async streamChat(id: string, input: AgentChatDto, req: any, res: FastifyReply, sse: SseStream) {
     const { message, sessionId, output_format } = input;
     const userId = req.user.userId;
@@ -70,9 +70,6 @@ export class AgentRunController {
     // Setup SSE headers (frontend expects this format). RNX-42: CORS from the app's allow-list, no longer `*`.
     sse.open();
 
-    // Increase timeout for long-running agent chats (3 minutes)
-    req.raw.socket.setTimeout(180000);
-
     try {
       // Emit status
       if (detectedFormat) {
@@ -87,7 +84,7 @@ export class AgentRunController {
         id,
         message,
         sessionId,
-        detectedFormat ? { documentFormat: detectedFormat } : undefined,
+        { ...(detectedFormat && { documentFormat: detectedFormat }), signal: sse.signal },
       );
 
       this.logger.log(
