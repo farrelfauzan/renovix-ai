@@ -20,6 +20,7 @@ import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-pro
 import { createResolvableModel } from "../../../../test/provider-model";
 import { setRunCap } from "../../../../test/run-cap";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { fundWeeklyFreeWallet } from "../../../../test/fund-weekly-free-wallet";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { AgentLinkService } from "../../agent/service/agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
@@ -139,6 +140,21 @@ describe("RX-22b: channel chat on the credit ledger (test database, fake provide
     expect([reservation.status, reservation.consumed.toFixed(6)]).toEqual(["settled", "0.009910"]);
     const saved = await prisma.channelMessage.findMany({ where: { role: "assistant" } });
     expect(saved.map((m) => m.content)).toEqual([result.content]);
+    await assertCreditLedgerInvariants(prisma);
+  });
+
+  it("RNX-58a AC4: a channel chat by a user with weekly_free credit holds and charges paid only; weekly_free is untouched", async () => {
+    const { user, agent, channel } = await seed();
+    await fundWeeklyFreeWallet(prisma, user.id, "2");
+    fake.enqueue({ content: "Done", usage: { prompt_tokens: 60, completion_tokens: 8 } });
+
+    await service.chat(user.id, channel.id, agent.id, "Hi");
+
+    expect((await prisma.creditReservation.findMany()).map((r) => [r.wallet, r.status])).toEqual([["paid", "settled"]]);
+    const entries = await prisma.creditLedgerEntry.findMany({ where: { type: "usage" } });
+    expect(entries.map((e) => [e.wallet, e.amount.toFixed(6)])).toEqual([["paid", "-0.000068"]]);
+    const weeklyFree = await prisma.creditAccount.findUniqueOrThrow({ where: { userId_wallet: { userId: user.id, wallet: "weekly_free" } } });
+    expect([weeklyFree.balance.toFixed(6), weeklyFree.held.toFixed(6)]).toEqual(["2.000000", "0.000000"]);
     await assertCreditLedgerInvariants(prisma);
   });
 });

@@ -34,6 +34,7 @@ import { CreditService } from "../../billing/service/credit.service";
 import { callRatesOf } from "../../billing/utils/call-rates-of";
 import { countPromptTokens } from "../../billing/utils/count-prompt-tokens";
 import { estimateCallCredits } from "../../billing/utils/estimate-call-credits";
+import { isWeeklyFreeTier } from "../../billing/utils/is-weekly-free-tier";
 import { promptText } from "../../billing/utils/prompt-text";
 import { streamedCallTokens } from "../../billing/utils/streamed-call-tokens";
 import { ProviderRouter } from "../../providers/provider-router";
@@ -618,10 +619,12 @@ export class PortalController {
       );
     }
     const rates = callRatesOf(tierRates);
+    // RNX-58a (D5): a Standard-tier call spends the weekly_free wallet before paid credits; other tiers paid only.
+    const spendsWeeklyFree = isWeeklyFreeTier(modelConfig.tier);
 
     // RX-22 review B1: refuse with 402 before any paid work (tuning embeds the query for the knowledge searches)
-    // when the paid wallet cannot cover the estimate of the untuned prompt, a lower bound (tuning only adds content,
-    // and a document format only raises M).
+    // when the wallets the call may spend cannot cover the estimate of the untuned prompt, a lower bound (tuning only
+    // adds content, and a document format only raises M).
     await this.credits.assertAvailable(
       user.id,
       estimateCallCredits(
@@ -632,6 +635,7 @@ export class PortalController {
         }),
         rates,
       ),
+      spendsWeeklyFree,
     );
 
     // Prompt tuning (with user KB context) comes before the reservation (RX-22): the estimate counts the prompt
@@ -649,8 +653,8 @@ export class PortalController {
     // RNX-44: the call's time budget (until the first token), read once per request, before anything is reserved.
     const timeBudgetMs = toTimeBudgetMs(await this.settings.getSetting("modelCallBudgetSeconds"));
 
-    // Reserve the estimate on the paid wallet (docs/credits.md section 3.1): 402 CREDITS_EXHAUSTED when it cannot
-    // cover it. M is the max_tokens the adapter will send.
+    // Reserve the estimate (docs/credits.md section 3.1), RNX-58a: weekly_free first on a Standard-tier model, then
+    // paid: 402 CREDITS_EXHAUSTED when they cannot cover it. M is the max_tokens the adapter will send.
     const promptTokens = countPromptTokens(tunedMessages);
     const sentPrompt = promptText(tunedMessages);
     const requestId = randomUUID();
@@ -665,6 +669,7 @@ export class PortalController {
         }),
         rates,
       ),
+      spendsWeeklyFree,
     });
     const call = {
       reservationId: reservation.id,

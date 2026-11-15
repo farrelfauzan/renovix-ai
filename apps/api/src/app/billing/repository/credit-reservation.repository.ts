@@ -17,9 +17,17 @@ export class CreditReservationRepository {
     return tx.creditReservation.create({ data });
   }
 
-  /** The reservation with this id; throws when there is none. */
-  findReservation(id: string, tx?: DbTransaction): Promise<CreditReservation> {
-    return (tx ?? this.prisma).creditReservation.findUniqueOrThrow({ where: { id } });
+  /**
+   * RNX-58a: the parts of the hold with this id, in the order they are charged and locked: the reservation itself (the
+   * weekly_free part of a two-wallet hold), then its paid part when it has one (through the partOfId index). Throws
+   * when there is no reservation with this id.
+   */
+  async findParts(id: string, tx?: DbTransaction): Promise<CreditReservation[]> {
+    const { parts, ...reservation } = await (tx ?? this.prisma).creditReservation.findUniqueOrThrow({
+      where: { id },
+      include: { parts: true },
+    });
+    return [reservation, ...parts];
   }
 
   /**

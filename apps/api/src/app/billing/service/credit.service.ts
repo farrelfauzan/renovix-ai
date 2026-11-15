@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/client";
-import type { CreditLedgerEntry, CreditReservation, CreditReservationStatus } from "@generated/prisma/client.js";
+import type { CreditAccount, CreditLedgerEntry, CreditReservation, CreditReservationStatus, CreditWallet } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
 import { ModelCallCostService } from "../../model-call-costs/service/model-call-cost.service";
@@ -9,6 +9,7 @@ import { CreditsExhaustedException } from "../errors/credits-exhausted.exception
 import { CreditAccountRepository } from "../repository/credit-account.repository";
 import { CreditLedgerEntryRepository } from "../repository/credit-ledger-entry.repository";
 import { CreditReservationRepository } from "../repository/credit-reservation.repository";
+import type { ChargedPart } from "../types/charged-part";
 import type { ReserveRequest } from "../types/reserve-request";
 import type { RunReserveRequest } from "../types/run-reserve-request";
 import type { UsageRecord } from "../types/usage-record";
@@ -25,6 +26,10 @@ const RESERVATION_TTL_MS = 10 * 60_000;
 
 /** Expired reservations the sweep reads per batch. */
 const SWEEP_BATCH_SIZE = 100;
+
+/** RNX-58a: the wallets a hold with `spendsWeeklyFree` draws from, in order, and the wallet of every other hold. */
+const WEEKLY_FREE_THEN_PAID: readonly CreditWallet[] = ["weekly_free", "paid"];
+const PAID_ONLY: readonly CreditWallet[] = ["paid"];
 
 /**
  * Reserve, usage, settle and release on the credit ledger (RX-22, docs/credits.md sections 2.2 and 3). Every write is
@@ -45,25 +50,32 @@ export class CreditService {
    * Holds `amount` on the user's paid wallet for one request: one conditional update (available covers it, wallet not
    * frozen) and the open reservation row, in one transaction. CreditsExhaustedException (402), writing nothing, when the
    * wallet cannot cover it or does not exist. RNX-232: a request made with an API key first passes the key's monthly
-   * cap (`assertUnderKeyCap`, same transaction) and its reservation records the key.
+   * cap (`assertUnderKeyCap`, same transaction) and its reservation records the key. RNX-58a: with `spendsWeeklyFree`
+   * the weekly_free wallet's available credits are held first (`reserveWeeklyFree`) and only the rest on the paid
+   * wallet; the returned reservation is then the weekly_free part, and the paid part (when there is one) names it.
    */
   async reserve(request: ReserveRequest): Promise<CreditReservation> {
     assertCreditAmount(request.amount);
     return this.transactions.run(async (tx) => {
       if (request.apiKeyId) await this.assertUnderKeyCap(request.apiKeyId, tx);
-      const accountId = await this.accounts.addHold({ userId: request.userId }, "paid", request.amount, tx);
+      const weeklyFree = request.spendsWeeklyFree ? await this.reserveWeeklyFree(request, tx) : null;
+      const amount = request.amount.minus(weeklyFree?.amountHeld ?? 0);
+      if (weeklyFree && amount.isZero()) return weeklyFree;
+      const accountId = await this.accounts.addHold({ userId: request.userId }, "paid", amount, tx);
       if (!accountId) throw new CreditsExhaustedException();
-      return this.reservations.createReservation(
+      const paid = await this.reservations.createReservation(
         {
           accountId,
           wallet: "paid",
+          partOfId: weeklyFree?.id,
           requestId: request.requestId,
           apiKeyId: request.apiKeyId,
-          amountHeld: request.amount,
+          amountHeld: amount,
           expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
         },
         tx,
       );
+      return weeklyFree ?? paid;
     });
   }
 
@@ -103,26 +115,30 @@ export class CreditService {
   /**
    * Refuses with CreditsExhaustedException (402), writing nothing, when the user's paid wallet has fewer available
    * credits (balance - held, one account row read) than `amount`. A pre-check before any paid work (RX-22 review B1):
-   * callers pass a lower bound of the estimate, then `reserve` the real one.
+   * callers pass a lower bound of the estimate, then `reserve` the real one. RNX-58a: with `spendsWeeklyFree` (as the
+   * reservation will have) the weekly_free wallet's available credits count too.
    */
-  async assertAvailable(userId: string, amount: Decimal): Promise<void> {
-    const account = await this.accounts.findAccount({ userId }, "paid");
-    const available = account ? account.balance.minus(account.held) : new Decimal(0);
+  async assertAvailable(userId: string, amount: Decimal, spendsWeeklyFree = false): Promise<void> {
+    const wallets = spendsWeeklyFree ? WEEKLY_FREE_THEN_PAID : PAID_ONLY;
+    const accounts = await Promise.all(wallets.map((wallet) => this.accounts.findAccount({ userId }, wallet)));
+    const available = accounts.reduce((sum, account) => (account ? sum.plus(account.balance.minus(account.held)) : sum), new Decimal(0));
     if (available.lessThan(amount)) throw new CreditsExhaustedException();
   }
 
   /**
-   * Writes the one usage entry of a model call (docs/credits.md section 3.1 rules 4, 6 and 7) in one transaction on
-   * the locked account row: the call's credits, rounded once, come from the reservation's remaining hold, an overrun
+   * Writes the usage entry of a model call (docs/credits.md section 3.1 rules 4, 6 and 7) in one transaction on the
+   * locked account rows: the call's credits, rounded once, come from the reservation's remaining hold, an overrun
    * from the available balance, and the rest is `uncharged` (the balance never goes below 0, I5). A provider error is
    * charged 0 with its credits in `uncharged`. The callId is the idempotency key: a replay of the same call returns
    * the first entry; another call under that callId (other tokens, rates, model or outcome) is a 409, nothing written.
+   * RNX-58a: on a two-wallet hold each wallet part that the call charges gets its own entry on its own wallet
+   * (decision 5a), weekly_free first (`appendUsageToLockedAccounts`); the last entry is returned.
    * RNX-162: once the entry has committed, the call's model_call_costs row (`record.cost`), outside the entry's
    * transaction: its failure is logged and never fails the call (ModelCallCostService.record does not throw).
    */
   async recordUsage(record: UsageRecord): Promise<CreditLedgerEntry> {
-    const { accountId } = await this.reservations.findReservation(record.reservationId);
-    const entry = await this.transactions.run((tx) => this.appendUsageToLockedAccount(accountId, record, tx));
+    const parts = await this.reservations.findParts(record.reservationId);
+    const entry = await this.transactions.run((tx) => this.appendUsageToLockedAccounts(parts, record, tx));
     await this.callCosts.record({ entry, record });
     return entry;
   }
@@ -184,22 +200,80 @@ export class CreditService {
     if (used.plus(held).greaterThanOrEqualTo(cap)) throw new CreditsExhaustedException();
   }
 
-  /** The body of `recordUsage`, inside its transaction. */
-  private async appendUsageToLockedAccount(accountId: string, record: UsageRecord, tx: DbTransaction): Promise<CreditLedgerEntry> {
-    const account = await this.accounts.lockAccount(accountId, tx);
-    const replayed = await this.entries.findEntryByIdempotencyKey(accountId, record.callId, tx);
-    if (replayed && !isSameUsage(replayed, record)) {
+  /**
+   * RNX-58a: the weekly_free part of a hold, inside `reserve`'s transaction. Locks the user's weekly_free account row
+   * and holds min(amount, available) on it. Null, holding nothing, when the user has no weekly_free wallet (it is
+   * created at sign-up, ensureWeeklyFreeWallet), or it has nothing available or is frozen.
+   */
+  private async reserveWeeklyFree(request: ReserveRequest, tx: DbTransaction): Promise<CreditReservation | null> {
+    const owner = { userId: request.userId };
+    const found = await this.accounts.findAccount(owner, "weekly_free", tx);
+    if (!found) return null;
+    const account = await this.accounts.lockAccount(found.id, tx);
+    const amount = Decimal.min(request.amount, account.balance.minus(account.held));
+    // addHold's conditional update also refuses a frozen wallet.
+    if (!amount.greaterThan(0) || !(await this.accounts.addHold(owner, "weekly_free", amount, tx))) return null;
+    return this.reservations.createReservation(
+      {
+        accountId: account.id,
+        wallet: "weekly_free",
+        requestId: request.requestId,
+        apiKeyId: request.apiKeyId,
+        amountHeld: amount,
+        expiresAt: new Date(Date.now() + RESERVATION_TTL_MS),
+      },
+      tx,
+    );
+  }
+
+  /**
+   * The body of `recordUsage`, inside its transaction: locks the parts' account rows in the parts' order (weekly_free
+   * before paid, as `reserve` does), returns the last of a replay's entries, else charges the call (`chargeCall`) and
+   * appends one entry per charged part. I3 keeps one usage entry per callId: the last entry has the call's callId (the
+   * one its model_call_costs row and the RNX-228 rollup read); an earlier one (the weekly_free part of a call that also
+   * reached paid) has `<callId>:weekly_free`. Every entry's idempotency key is the call's callId.
+   */
+  private async appendUsageToLockedAccounts(
+    found: readonly CreditReservation[],
+    record: UsageRecord,
+    tx: DbTransaction,
+  ): Promise<CreditLedgerEntry> {
+    const accounts: CreditAccount[] = [];
+    for (const { accountId } of found) accounts.push(await this.accounts.lockAccount(accountId, tx));
+    const replayed = await this.findReplayedEntries(accounts, record.callId, tx);
+    if (replayed.length > 0 && !isSameUsage(replayed, record)) {
       throw new ConflictException("This call already has another usage entry");
     }
-    if (replayed) return replayed;
-    const reservation = await this.reservations.findReservation(record.reservationId, tx);
-    const charge = chargeCall(record, reservation, account);
+    if (replayed.length > 0) return replayed[replayed.length - 1];
+    const reservations = await this.reservations.findParts(record.reservationId, tx);
+    const charged = chargeCall(record, reservations.map((reservation, i) => ({ reservation, account: accounts[i] })));
+    const entries: CreditLedgerEntry[] = [];
+    for (const [i, part] of charged.entries()) {
+      const callId = i === charged.length - 1 ? record.callId : `${record.callId}:${part.account.wallet}`;
+      entries.push(await this.appendPartUsage(part, record, callId, tx));
+    }
+    return entries[entries.length - 1];
+  }
+
+  /** The entries already written under this call's idempotency key on these locked accounts, in their order. */
+  private async findReplayedEntries(accounts: readonly CreditAccount[], callId: string, tx: DbTransaction): Promise<CreditLedgerEntry[]> {
+    const replayed: CreditLedgerEntry[] = [];
+    for (const account of accounts) {
+      const entry = await this.entries.findEntryByIdempotencyKey(account.id, callId, tx);
+      if (entry) replayed.push(entry);
+    }
+    return replayed;
+  }
+
+  /** Appends one part's usage entry under `callId` and moves its charge off the locked account's balance and hold. */
+  private async appendPartUsage(part: ChargedPart, record: UsageRecord, callId: string, tx: DbTransaction): Promise<CreditLedgerEntry> {
+    const { account, reservation, charge } = part;
     const charged = charge.fromHold.plus(charge.fromAvailable);
     const balanceAfter = account.balance.minus(charged);
     const seq = account.lastSeq + 1;
     const entry = await this.entries.createEntry(
       {
-        accountId,
+        accountId: account.id,
         wallet: account.wallet,
         seq,
         type: "usage",
@@ -208,7 +282,7 @@ export class CreditService {
         uncharged: charge.uncharged,
         memberUserId: record.memberUserId,
         requestId: record.requestId,
-        callId: record.callId,
+        callId,
         runId: record.runId,
         agentId: record.agentId,
         parentCallId: record.parentCallId,
@@ -222,15 +296,20 @@ export class CreditService {
       },
       tx,
     );
-    await this.accounts.updateBalanceAndHeld(accountId, balanceAfter, account.held.minus(charge.fromHold), seq, tx);
+    await this.accounts.updateBalanceAndHeld(account.id, balanceAfter, account.held.minus(charge.fromHold), seq, tx);
     if (charge.fromHold.greaterThan(0)) await this.reservations.addConsumed(reservation.id, charge.fromHold, tx);
     return entry;
   }
 
-  /** Closes a reservation with `status` in one transaction on its locked account row; a closed one is left as it is. */
+  /**
+   * Closes a reservation with `status` in one transaction on its locked account rows (RNX-58a: every part, in the
+   * parts' order); a closed part is left as it is.
+   */
   private async closeReservation(reservationId: string, status: CreditReservationStatus): Promise<void> {
-    const { accountId } = await this.reservations.findReservation(reservationId);
-    await this.transactions.run((tx) => this.closeOnLockedAccount(accountId, reservationId, status, tx));
+    const parts = await this.reservations.findParts(reservationId);
+    await this.transactions.run(async (tx) => {
+      for (const part of parts) await this.closeOnLockedAccount(part.accountId, part.id, status, tx);
+    });
   }
 
   /**

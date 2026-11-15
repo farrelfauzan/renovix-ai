@@ -33,7 +33,7 @@ const entry = {
 // RX-22 review NIT 5: a replay is the same call only when every recorded field matches.
 describe("isSameUsage", () => {
   it("the same call (charged + uncharged = its credits)", () => {
-    expect(isSameUsage(entry, record)).toBe(true);
+    expect(isSameUsage([entry], record)).toBe(true);
   });
 
   it.each([
@@ -43,10 +43,27 @@ describe("isSameUsage", () => {
     ["another model", { modelId: "other" }],
     ["another tier", { tier: "premium" }],
   ])("%s: not the same call", (_case, override) => {
-    expect(isSameUsage(entry, { ...record, ...override })).toBe(false);
+    expect(isSameUsage([entry], { ...record, ...override })).toBe(false);
   });
 
   it("an entry whose amounts do not add up to the call's credits is not the same call", () => {
-    expect(isSameUsage({ ...entry, uncharged: new Decimal(0) } as CreditLedgerEntry, record)).toBe(false);
+    expect(isSameUsage([{ ...entry, uncharged: new Decimal(0) } as CreditLedgerEntry], record)).toBe(false);
+  });
+
+  // RNX-58a: a call charged to two wallets has one entry per wallet; together they are the call.
+  it("two wallet parts whose amounts add up to the call's credits: the same call; one part alone or none: not", () => {
+    const weeklyFreePart = { ...entry, amount: new Decimal("-0.1"), uncharged: new Decimal(0) } as CreditLedgerEntry;
+    const paidPart = { ...entry, amount: new Decimal("-0.2"), uncharged: new Decimal("0.1") } as CreditLedgerEntry;
+
+    expect(isSameUsage([weeklyFreePart, paidPart], record)).toBe(true);
+    expect(isSameUsage([paidPart], record)).toBe(false);
+    expect(isSameUsage([], record)).toBe(false);
+  });
+
+  it("two wallet parts where one records another call: not the same call", () => {
+    const weeklyFreePart = { ...entry, amount: new Decimal("-0.1"), uncharged: new Decimal(0), modelId: "other" } as CreditLedgerEntry;
+    const paidPart = { ...entry, amount: new Decimal("-0.2"), uncharged: new Decimal("0.1") } as CreditLedgerEntry;
+
+    expect(isSameUsage([weeklyFreePart, paidPart], record)).toBe(false);
   });
 });
