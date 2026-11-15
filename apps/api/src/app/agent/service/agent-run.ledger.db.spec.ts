@@ -22,6 +22,7 @@ import { createResolvableModel } from "../../../../test/provider-model";
 import { setRunCap } from "../../../../test/run-cap";
 import { MODEL_UNAVAILABLE_MESSAGE } from "../../config/errors/model-unavailable.exception";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { fundWeeklyFreeWallet } from "../../../../test/fund-weekly-free-wallet";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
 import { AgentLinkService } from "./agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
@@ -376,6 +377,23 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
       expect(runIds).not.toContain(first.runId);
       const entries = await usageEntriesOf(bob.id);
       expect(entries.map((e) => e.runId)).toEqual(runIds);
+      await assertCreditLedgerInvariants(prisma);
+    });
+  });
+
+  describe("RNX-58a AC4: an agent run never spends weekly_free credits", () => {
+    it("a runner with weekly_free and paid credit on a Standard model: the run's hold and usage are paid only, weekly_free is untouched", async () => {
+      const { bob, parent } = await seed("1");
+      await fundWeeklyFreeWallet(prisma, bob.id, "2");
+      fake.enqueue({ content: "Parent final", usage: { prompt_tokens: 200, completion_tokens: 30 } });
+
+      await service.chat(bob.id, parent.id, "Hi");
+
+      const reservations = await prisma.creditReservation.findMany();
+      expect(reservations.map((r) => [r.wallet, r.status])).toEqual([["paid", "settled"]]);
+      expect((await usageEntriesOf(bob.id)).map((e) => [e.wallet, e.amount.toFixed(6)])).toEqual([["paid", "-0.000230"]]);
+      const weeklyFree = await prisma.creditAccount.findUniqueOrThrow({ where: { userId_wallet: { userId: bob.id, wallet: "weekly_free" } } });
+      expect([weeklyFree.balance.toFixed(6), weeklyFree.held.toFixed(6)]).toEqual(["2.000000", "0.000000"]);
       await assertCreditLedgerInvariants(prisma);
     });
   });

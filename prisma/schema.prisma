@@ -1462,11 +1462,16 @@ model CreditLedgerEntry {
 /// A hold on an account for one request or run (docs/credits.md section 3; not a ledger entry). The sweep reads
 /// expired open reservations through the (status, expiresAt) index. 0 <= consumed <= amountHeld (CHECK, I4).
 /// Table only: reserve, settle, release and the sweep are RX-22.
+/// RNX-58a: a hold taken from two wallets (weekly_free first, then paid) is two rows, one per wallet: the paid part
+/// names the weekly_free part in partOfId, read through its index.
 model CreditReservation {
   id         String                  @id @default(uuid())
   accountId  String                  @map("account_id")
   account    CreditAccount           @relation(fields: [accountId, wallet], references: [id, wallet], onDelete: Restrict)
   wallet     CreditWallet
+  partOfId   String?                 @map("part_of_id")
+  partOf     CreditReservation?      @relation("CreditReservationParts", fields: [partOfId], references: [id], onDelete: Restrict)
+  parts      CreditReservation[]     @relation("CreditReservationParts")
   requestId  String                  @map("request_id")
   runId      String?                 @map("run_id")
   /// RNX-232: the API key of the request (its open holds count against the key's monthly cap); null otherwise.
@@ -1480,6 +1485,7 @@ model CreditReservation {
 
   @@index([status, expiresAt])
   @@index([apiKeyId, status])
+  @@index([partOfId])
   @@map("credit_reservations")
 }
 
