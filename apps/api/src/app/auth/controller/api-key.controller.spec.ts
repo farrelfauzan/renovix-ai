@@ -10,6 +10,7 @@ import { createFastifyApp, createTestModule } from "../../../../test/test-module
 import { resetDatabase } from "../../../../test/test-database";
 import { createApiKey, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { asSessionUser } from "../../../../test/as-session-user";
+import { randomUUID } from "node:crypto";
 
 // better-auth is ESM-only; BetterAuthController and the guards import it.
 jest.mock("../../../lib/auth", () => ({ auth: { api: { getSession: async () => null } } }));
@@ -63,6 +64,20 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     app.inject({ method: "DELETE", url: `/auth/keys/${id}`, headers: signedIn(user) });
   const regenerate = (user: { id: string; email: string }) =>
     app.inject({ method: "POST", url: "/auth/keys/regenerate", headers: signedIn(user) });
+  /** RNX-82 AC5: one usage entry charged through `apiKeyId`, `daysAgo` days back, on the user's paid account. */
+  const seedKeyUsage = async (userId: string, apiKeyId: string | null, credits: string, daysAgo: number) => {
+    const account =
+      (await prisma.creditAccount.findFirst({ where: { userId, wallet: "paid" } })) ??
+      (await prisma.creditAccount.create({ data: { userId, wallet: "paid", balance: 1000 } }));
+    const callId = `call-${randomUUID()}`;
+    await prisma.$executeRaw`
+      INSERT INTO credit_ledger_entries (id, account_id, wallet, seq, type, amount, balance_after, member_user_id, request_id, call_id,
+        api_key_id, model_id, tier, rate_new, rate_cached, rate_out, tokens_new, tokens_cached, tokens_out, outcome, idempotency_key, created_at)
+      VALUES (${randomUUID()}, ${account.id}, 'paid'::"CreditWallet",
+        (SELECT COALESCE(max(seq), 0) + 1 FROM credit_ledger_entries WHERE account_id = ${account.id}), 'usage',
+        -(${credits}::numeric), 0, ${userId}, ${`req-${callId}`}, ${callId}, ${apiKeyId}, 'm', 'standard', 1, 1, 1, 1, 0, 1,
+        'completed', ${callId}, now() - make_interval(days => ${daysAgo}))`;
+  };
 
   describe("AC1: no plaintext key is stored", () => {
     it("after the migrations, users has no apiKey column", async () => {
@@ -164,11 +179,59 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
       expect(res.statusCode).toBe(200);
       expect(keys.map((k: { name: string }) => k.name)).toEqual(["newer", "older"]);
       expect(Object.keys(keys[0]).sort()).toEqual([
-        "allowedTiers", "createdAt", "expiresAt", "id", "lastUsedAt", "monthlyCreditCap", "name", "prefix", "revokedAt",
+        "allowedTiers", "createdAt", "creditsLast30Days", "expiresAt", "id", "lastUsedAt", "monthlyCreditCap", "name", "prefix", "revokedAt",
       ]);
       expect(keys[0].lastUsedAt).not.toBeNull();
+      expect(keys.map((k: { creditsLast30Days: unknown }) => Number(k.creditsLast30Days))).toEqual([0, 0]);
       expect(keys[1]).toMatchObject({ id: older.json().id, lastUsedAt: null, revokedAt: null });
       expect(JSON.stringify(keys)).not.toContain(newer.json().apiKey);
+    });
+  });
+
+  describe("RNX-82 AC5: credits in the last 30 days per key", () => {
+    it("sums each key's usage inside the 30-day window only, and never lists or counts another user's keys", async () => {
+      const user = await createApiUser();
+      const other = await createApiUser();
+      const keyA = (await createKey(user, { name: "a", expiresIn: "never" })).json().id;
+      const keyB = (await createKey(user, { name: "b", expiresIn: "never" })).json().id;
+      const keyOther = (await createKey(other, { name: "other", expiresIn: "never" })).json().id;
+      await seedKeyUsage(user.id, keyA, "2", 1);
+      await seedKeyUsage(user.id, keyA, "0.5", 29);
+      await seedKeyUsage(user.id, keyA, "3", 31);
+      await seedKeyUsage(user.id, keyB, "1.25", 40);
+      await seedKeyUsage(user.id, null, "9", 1);
+      await seedKeyUsage(other.id, keyOther, "7", 1);
+
+      const res = await listKeys(user);
+
+      const byId = new Map(res.json().map((k: { id: string; creditsLast30Days: string }) => [k.id, Number(k.creditsLast30Days)]));
+      expect(res.statusCode).toBe(200);
+      expect(Object.fromEntries(byId)).toEqual({ [keyA]: 2.5, [keyB]: 0 });
+    });
+  });
+
+  describe("GET /auth/keys/rate-limit", () => {
+    it("answers the per-key requests per minute (the default while the setting has no value)", async () => {
+      const user = await createApiUser();
+
+      const res = await app.inject({ method: "GET", url: "/auth/keys/rate-limit", headers: signedIn(user) });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ requestsPerMinute: 60 });
+    });
+
+    it("RNX-82 AC6: answers the platform setting's value when it is set (a non-default value)", async () => {
+      const user = await createApiUser();
+      await prisma.platformSetting.upsert({
+        where: { name: "apiKeyRequestsPerMinute" },
+        create: { name: "apiKeyRequestsPerMinute", value: 17 as never },
+        update: { value: 17 as never },
+      });
+
+      const res = await app.inject({ method: "GET", url: "/auth/keys/rate-limit", headers: signedIn(user) });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ requestsPerMinute: 17 });
     });
   });
 

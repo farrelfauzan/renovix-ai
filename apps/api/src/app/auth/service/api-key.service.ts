@@ -3,13 +3,14 @@ import { randomBytes } from "crypto";
 import { readRequiredSecret } from "../../../common/utils/read-required-secret";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { TransactionService } from "../../prisma/transaction.service";
+import { CreditLedgerEntryRepository } from "../../billing/repository/credit-ledger-entry.repository";
 import { EntitlementService } from "../../offers/service/entitlement.service";
 import { API_KEY_FORMAT } from "../config/api-key-format";
 import type { CreateApiKeyDto } from "../dto/create-api-key.dto";
 import { ApiKeyRepository } from "../repository/api-key.repository";
 import type { ApiKeyOwner } from "../types/api-key-owner";
-import type { ApiKeyView } from "../types/api-key-view";
 import type { CreatedApiKey } from "../types/created-api-key";
+import type { ListedApiKey } from "../types/listed-api-key";
 import type { RegeneratedApiKey } from "../types/regenerated-api-key";
 import { hashApiKey } from "../utils/hash-api-key";
 import { matchesApiKeyHash } from "../utils/matches-api-key-hash";
@@ -18,6 +19,7 @@ import { toApiKeyExpiry } from "../utils/to-api-key-expiry";
 
 const HASH_SECRET_NAME = "API_KEY_HASH_SECRET";
 const REGENERATED_KEY_NAME = "Regenerated key";
+const USAGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const KEY_WARNING = "Store this key securely. It will not be shown again in full.";
 
 /**
@@ -30,6 +32,7 @@ export class ApiKeyService {
     private readonly keys: ApiKeyRepository,
     private readonly transactions: TransactionService,
     private readonly entitlements: EntitlementService,
+    private readonly ledger: CreditLedgerEntryRepository,
   ) {}
 
   /**
@@ -58,9 +61,14 @@ export class ApiKeyService {
     return { ...view, apiKey };
   }
 
-  /** This user's keys, newest first, without hash or plaintext. */
-  list(userId: string): Promise<ApiKeyView[]> {
-    return this.keys.listKeys(userId);
+  /**
+   * This user's keys, newest first, without hash or plaintext, each with the credits its calls charged in the last 30
+   * days (RNX-82: one grouped query for all the user's keys, only their ids are counted).
+   */
+  async list(userId: string): Promise<ListedApiKey[]> {
+    const keys = await this.keys.listKeys(userId);
+    const spent = await this.ledger.sumKeysUsageSince(keys.map((key) => key.id), new Date(Date.now() - USAGE_WINDOW_MS));
+    return keys.map((key) => ({ ...key, creditsLast30Days: spent.get(key.id)?.toString() ?? "0" }));
   }
 
   /** Revokes this user's key; a key that is already revoked stays as it is; another user's key or none is a 404. */

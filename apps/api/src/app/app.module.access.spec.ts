@@ -366,6 +366,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /agents/subscription (AgentController.getSubscription)",
     "GET /agents/tools/available (AgentController.getAvailableTools)",
     "GET /auth/keys (ApiKeyController.list)",
+    "GET /auth/keys/rate-limit (ApiKeyController.getRateLimit)",
     "GET /auth/me (AuthController.getProfile)",
     "GET /channels (ChannelController.list)",
     "GET /channels/:channelId/workspace (WorkspaceChannelController.getWorkspace)",
@@ -535,6 +536,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
   const API_KEY_MANAGEMENT_ROUTES = [
     "DELETE /auth/keys/:id (ApiKeyController.revoke)",
     "GET /auth/keys (ApiKeyController.list)",
+    "GET /auth/keys/rate-limit (ApiKeyController.getRateLimit)",
     "POST /auth/keys (ApiKeyController.create)",
     "POST /auth/keys/regenerate (ApiKeyController.regenerate)",
   ];

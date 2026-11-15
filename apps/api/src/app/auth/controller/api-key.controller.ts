@@ -1,8 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { CreateApiKeyDto } from "../dto/create-api-key.dto";
+import { ApiKeyRateLimitService } from "../service/api-key-rate-limit.service";
 import { ApiKeyService } from "../service/api-key.service";
-import type { ApiKeyView } from "../types/api-key-view";
+import type { ApiKeyRateLimitView } from "../types/api-key-rate-limit-view";
+import type { ListedApiKey } from "../types/listed-api-key";
 import type { CreatedApiKey } from "../types/created-api-key";
 import type { RegeneratedApiKey } from "../types/regenerated-api-key";
 import type { SignedInUserRequest } from "../types/signed-in-user-request";
@@ -14,7 +16,10 @@ import { createInvalidBodyException } from "../../../common/utils/create-invalid
  */
 @Controller("auth/keys")
 export class ApiKeyController {
-  constructor(private readonly apiKeys: ApiKeyService) {}
+  constructor(
+    private readonly apiKeys: ApiKeyService,
+    private readonly rateLimit: ApiKeyRateLimitService,
+  ) {}
 
   /**
    * Creates a key: `{ name, expiresIn: "30d" | "90d" | "1y" | "never", allowedTiers?, monthlyCreditCap? }` (RNX-76 B2:
@@ -31,12 +36,19 @@ export class ApiKeyController {
 
   /**
    * The user's keys, newest first: id, name, prefix, createdAt, lastUsedAt, revokedAt, expiresAt, allowedTiers,
-   * monthlyCreditCap.
+   * monthlyCreditCap, creditsLast30Days (RNX-82: credits its calls charged in the last 30 days).
    */
   @Get()
   @Access({ auth: ["session"] })
-  list(@Req() req: SignedInUserRequest): Promise<ApiKeyView[]> {
+  list(@Req() req: SignedInUserRequest): Promise<ListedApiKey[]> {
     return this.apiKeys.list(req.user.userId);
+  }
+
+  /** The per-key rate limit for the quick start (RNX-82): `{ requestsPerMinute }`, the value the limiter enforces. */
+  @Get("rate-limit")
+  @Access({ auth: ["session"] })
+  async getRateLimit(): Promise<ApiKeyRateLimitView> {
+    return { requestsPerMinute: await this.rateLimit.getRequestsPerMinute() };
   }
 
   /** Revokes one of the user's keys (204); another user's key or an unknown id is a 404. */
