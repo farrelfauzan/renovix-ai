@@ -2,6 +2,7 @@
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { config as appConfig } from '@/lib/config';
 import { ApiKeysSection } from './api-keys-section';
 
 // jsdom has no ResizeObserver, which the Checkbox primitive needs.
@@ -59,7 +60,7 @@ beforeEach(() => {
     }
     if (config.url === '/auth/keys') return reply(config, keys);
     if (config.url === '/models') return reply(config, { data: [{ id: 'claude-sonnet', tier: 'standard' }, { id: 'gpt-big', tier: 'advanced' }] });
-    if (config.url === '/auth/keys/rate-limit') return reply(config, { requestsPerMinute: 60 });
+    if (config.url === '/auth/keys/rate-limit') return reply(config, { requestsPerMinute: 17 });
     return refuse(404, {});
   };
 });
@@ -148,14 +149,17 @@ describe('RNX-82 AC3: Revoke', () => {
   });
 });
 
-describe('RNX-82: quick start', () => {
-  it('shows models by tier, a curl example with a placeholder key, the 402 code and the rate limit', async () => {
+describe('RNX-82 AC6: the quick start shows the API\'s real values', () => {
+  it('shows the configured base URL, model slugs by tier, a placeholder key, the 402 code and the served (non-default) rate limit', async () => {
     renderPage();
 
-    expect(await screen.findByText('claude-sonnet')).toBeTruthy();
-    expect(screen.getByText('gpt-big')).toBeTruthy();
-    expect(await screen.findByText('60 requests per minute per key')).toBeTruthy();
-    expect(screen.getByText(/CREDITS_EXHAUSTED/)).toBeTruthy();
-    expect(screen.getByText(/Bearer \$RENOVIX_API_KEY/)).toBeTruthy();
+    const quickStart = await screen.findByRole('region', { name: 'Quick start' });
+    expect(await within(quickStart).findByText('17 requests per minute per key')).toBeTruthy();
+    expect(within(quickStart).getByText(appConfig.apiUrl)).toBeTruthy();
+    expect(within(quickStart).getByText('claude-sonnet').parentElement?.textContent).toMatch(/^standard/i);
+    expect(within(quickStart).getByText('gpt-big').parentElement?.textContent).toMatch(/^advanced/i);
+    expect(within(quickStart).getByText(/CREDITS_EXHAUSTED/)).toBeTruthy();
+    expect(within(quickStart).getByText(/Bearer \$RENOVIX_API_KEY/)).toBeTruthy();
+    expect(requests.some((r) => r.url === '/auth/keys/rate-limit')).toBe(true);
   });
 });
