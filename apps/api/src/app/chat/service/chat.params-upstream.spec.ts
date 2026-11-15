@@ -67,7 +67,7 @@ describe("RNX-199: response_format and reasoning_effort reach the provider", () 
     const tuning = { applyTuning: async (messages: unknown) => ({ tunedMessages: messages, matchedTemplate: null }) };
     const usage = { logUsage: async () => undefined };
     const router = new ProviderRouter(new OpenRouterAdapter(new ConfigService()));
-    service = new ChatService(credits as never, router, usage as never, registry as never, tuning as never, {} as never, {} as never);
+    service = new ChatService(credits as never, router, usage as never, registry as never, tuning as never, {} as never, {} as never, { getSetting: async () => null } as never);
     controller = new ChatController(service);
   });
 

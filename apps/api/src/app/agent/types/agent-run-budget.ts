@@ -4,7 +4,8 @@ import type { Decimal } from "@prisma/client/runtime/client";
  * One agent run on the ledger (docs/credits.md section 13): a new runId per agent message (D202 item 6; not the
  * AgentRun session id), its one reservation, the runner who pays (memberUserId on every usage entry), the hold H and
  * the credits its usage entries charged so far (the budget stop compares spent + E_call with H). RNX-162: the run's
- * workspace, on each call's model_call_costs row.
+ * workspace, on each call's model_call_costs row. RNX-44: each model call's time budget (the platform setting
+ * modelCallBudgetSeconds, read once per run), absent when it is not set.
  */
 export type AgentRunBudget = {
   readonly runId: string;
@@ -12,5 +13,6 @@ export type AgentRunBudget = {
   readonly runnerUserId: string;
   readonly workspaceId?: string;
   readonly held: Decimal;
+  readonly timeBudgetMs?: number;
   spent: Decimal;
 };

@@ -9,6 +9,7 @@ const SERVER_ERROR_STATUS = 500;
  * 5xx answer, no answer in time, or no connection: fetch's TypeError). A 4xx (a bad request, a key or a model the
  * provider refused) means the provider is up, and the caller's abort is not the provider's failure.
  * RNX-284: neither is a single attempt's own deadline that the caller chose (ProviderAttemptDeadlineError).
+ * RNX-44: nor a call's time budget running out (ProviderTimeBudgetExceededError, the platform's own limit).
  */
 export const isProviderFailure = (err: unknown): boolean =>
   (err instanceof ProviderHttpError && err.status >= SERVER_ERROR_STATUS) || err instanceof ProviderTimeoutError || err instanceof TypeError;

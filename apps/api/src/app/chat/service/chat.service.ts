@@ -17,6 +17,8 @@ import { promptText } from "../../billing/utils/prompt-text";
 import { streamedCallTokens } from "../../billing/utils/streamed-call-tokens";
 import type { UsageRecord } from "../../billing/types/usage-record";
 import { ProviderRouter } from "../../providers/provider-router";
+import { toTimeBudgetMs } from "../../providers/utils/to-time-budget-ms";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import type { ChatRequest, ChatUsage } from "../../providers/provider.interface";
 import type { ServedBy } from "../../providers/types/served-by";
 import type { CallHooks } from "../../providers/types/call-hooks";
@@ -57,6 +59,7 @@ export class ChatService {
     private readonly promptTuning: PromptTuningService,
     private readonly conversation: ConversationService,
     private readonly documentService: DocumentService,
+    private readonly settings: PlatformSettingsService,
   ) {}
 
   /** The JSON answer of POST /chat/completions and, for the X-Credits-Used header (RNX-232), the credits it used. */
@@ -251,7 +254,8 @@ export class ChatService {
   /**
    * Steps 1 to 4 of a completion, shared by the JSON and the streamed answer: resolves the model (400), reads its tier
    * rates (400), refuses an unaffordable untuned prompt (402) before tuning, tunes the prompt and reserves its estimate
-   * (402). Returns the provider request of the call's one model call and the call's ledger fields.
+   * (402). Returns the provider request of the call's one model call and the call's ledger fields. RNX-44: the request
+   * carries the call's time budget (the platform setting modelCallBudgetSeconds, read once per request).
    */
   private async openCall(body: ChatCompletionRequest, user: AuthenticatedUser) {
     // 1. Resolve the slug to its provider record (RX-178): an unresolvable model is a 400, nothing reserved.
@@ -294,6 +298,7 @@ export class ChatService {
     // (docs/credits.md section 3.1): 402 CREDITS_EXHAUSTED when the paid wallet cannot cover it.
     const { tunedMessages, matchedTemplate } =
       await this.promptTuning.applyTuning(body.messages, user.id);
+    const timeBudgetMs = toTimeBudgetMs(await this.settings.getSetting("modelCallBudgetSeconds"));
     const requestId = randomUUID();
     const reservation = await this.credits.reserve({
       userId: user.id,
@@ -319,6 +324,7 @@ export class ChatService {
       max_tokens: body.max_tokens,
       response_format: body.response_format,
       reasoning_effort: body.reasoning_effort,
+      ...(timeBudgetMs && { timeBudgetMs }),
     };
     return { connection, request, matchedTemplate, call };
   }
