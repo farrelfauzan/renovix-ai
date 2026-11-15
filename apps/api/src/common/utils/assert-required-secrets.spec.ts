@@ -14,9 +14,11 @@ const productionEnv = (): NodeJS.ProcessEnv => ({
   MCP_OAUTH_STATE_SECRET: randomBytes(48).toString("base64"),
   LLM_KEY_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
   API_KEY_HASH_SECRET: randomBytes(48).toString("base64"),
+  ADMIN_JWT_SECRET: randomBytes(48).toString("base64"),
+  ADMIN_TOTP_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
 });
 
-const SECRETS = ["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_ENCRYPTION_KEY", "MCP_OAUTH_STATE_SECRET", "LLM_KEY_ENCRYPTION_KEY", "API_KEY_HASH_SECRET"];
+const SECRETS = ["JWT_SECRET", "BETTER_AUTH_SECRET", "IP_HASH_SECRET", "MCP_ENCRYPTION_KEY", "MCP_OAUTH_STATE_SECRET", "LLM_KEY_ENCRYPTION_KEY", "API_KEY_HASH_SECRET", "ADMIN_JWT_SECRET", "ADMIN_TOTP_ENCRYPTION_KEY"];
 
 describe("assertRequiredSecrets", () => {
   it("control: starts in production with real values", () => {
@@ -63,7 +65,9 @@ describe("assertRequiredSecrets", () => {
   });
 
   describe("the explicit dev values of .env.example", () => {
-    const example = parse(readFileSync(join(__dirname, "../../../../../.env.example")));
+    // RNX-43: .env.example leaves the two admin secrets empty (generated per machine); fake values stand in for them here.
+    const adminValues = { ADMIN_JWT_SECRET: "test-admin-jwt-secret-not-a-real-secret", ADMIN_TOTP_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
+    const example: Record<string, string> = { ...parse(readFileSync(join(__dirname, "../../../../../.env.example"))), ...adminValues };
 
     it.each(["development", "test"])("start the API in %s", (mode) => {
       expect(() => assertRequiredSecrets({ ...example, NODE_ENV: mode })).not.toThrow();

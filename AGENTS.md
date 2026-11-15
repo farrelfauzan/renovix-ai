@@ -167,13 +167,13 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 ## Environment
 
-Copy `.env.example` to `.env` and keep all six `S3_*` keys in it: the API stops at boot with "Configuration key S3_BUCKET does not exist" when one is missing. Empty values boot, except `S3_REGION`, which must not be empty ('Region is missing'); uploads fail with empty values. `.env.example` points them at the local MinIO of `docker-compose.yml` (development only, never put real keys there):
+Copy `.env.example` to `.env` and keep the `S3_*` keys in it: the API stops at boot with "Configuration key S3_BUCKET does not exist" when `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY` is missing; `S3_ENDPOINT` and `S3_CDN_DOMAIN` are optional (RNX-43). Empty values boot, except `S3_REGION`, which must not be empty ('Region is missing'); uploads fail with empty values. `.env.example` points them at the local MinIO of `docker-compose.yml` (development only, never put real keys there):
 
 - `S3_BUCKET`: the bucket that stores uploaded files (`performa-ai`, created by `minio-init`).
 - `S3_REGION`: the bucket's region (`ap-southeast-1`).
 - `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`: the credentials (MinIO root user `minioadmin`/`minioadmin`).
 - `S3_ENDPOINT`: the S3 API URL (`http://localhost:9000`); optional, leave it out for AWS S3.
-- `S3_CDN_DOMAIN`: the host that replaces the storage host in signed download URLs; empty (as locally) keeps the signed URL as it is.
+- `S3_CDN_DOMAIN`: the host that replaces the storage host in signed download URLs; optional: unset or empty (as locally) keeps the signed URL as it is.
 
 Local uploads do not work until RNX-65 replaces the MinIO images, which no longer pull anonymously (Tech Lead, 2026-10-20).
 
@@ -181,7 +181,7 @@ Local uploads do not work until RNX-65 replaces the MinIO images, which no longe
 
 Key variables:
 
-`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY`, `MCP_OAUTH_STATE_SECRET`, `LLM_KEY_ENCRYPTION_KEY` and `API_KEY_HASH_SECRET` are required in every mode (RX-110, RX-151, RX-177, RNX-18, `apps/api/src/common/utils/assert-required-secrets.ts`). With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` or `LLM_KEY_ENCRYPTION_KEY` that is not 32 bytes.
+`JWT_SECRET`, `BETTER_AUTH_SECRET`, `IP_HASH_SECRET`, `MCP_ENCRYPTION_KEY`, `MCP_OAUTH_STATE_SECRET`, `LLM_KEY_ENCRYPTION_KEY` and `API_KEY_HASH_SECRET` (and `ADMIN_JWT_SECRET`, `ADMIN_TOTP_ENCRYPTION_KEY`, below) are required in every mode (RX-110, RX-151, RX-177, RNX-18, RNX-43; `parseEnv` in `apps/api/src/common/utils/parse-env.ts` runs first in `main.ts`: the nine secrets through `assert-required-secrets.ts` and the typed values through the Zod schema in `common/config/env.schema.ts`). A secret with leading or trailing whitespace, a trailing newline included, is refused in every mode (never trimmed), as is a `PORT`, `SMTP_PORT`, `SMTP_SECURE`, `ANON_DAILY_*`, `LLM_KEY_VERSION`, `LLM_DEFAULT_MAX_TOKENS`, `EMBEDDING_DIMENSIONS`, `MCP_OAUTH_STATE_TTL_SECONDS` or `*_URL`/`S3_ENDPOINT` value that is not a positive integer, `true`/`false` or a URL; the error names the variable, never its value. With `NODE_ENV` development or test the dev-only values of `.env.example` are accepted; any other `NODE_ENV`, unset included, is production: the API refuses to start on a missing, placeholder or shorter-than-32-character value, or an `MCP_ENCRYPTION_KEY` or `LLM_KEY_ENCRYPTION_KEY` that is not 32 bytes.
 
 | Variable | Required | Notes |
 |----------|----------|-------|
@@ -199,7 +199,7 @@ Key variables:
 | `LLM_BASE_URL` / `LLM_API_KEY` | -- | Only `GET /models` for the daily price refresh (RX-21); defaults `https://openrouter.ai/api/v1` / `OPENROUTER_API_KEY`; with no key the refresh is skipped (one log line), not a boot failure (RNX-192). Chat calls go to the model's provider record (RX-178), never here. `HTTP-Referer` and `X-Title` are sent only to OpenRouter's base URL |
 | `LLM_DEFAULT_MAX_TOKENS` | -- | `max_tokens` when a caller sets none (default 4096) |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | -- | Embedding provider (RX-160); defaults OpenRouter's URL, `OPENROUTER_API_KEY`, `intfloat/multilingual-e5-large-instruct`, 1024 (sent as `dimensions`). A vector that is not 1024 long (`knowledge_chunks.embedding vector(1024)`) is refused before anything is written. After changing `EMBEDDING_MODEL` in a local database, clear `knowledge_chunks`; the re-embed job is RX-27 |
-| `S3_*` | Yes | S3/MinIO config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_CDN_DOMAIN` required; `S3_ENDPOINT` optional (MinIO) |
+| `S3_*` | Yes | S3/MinIO config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` required; `S3_ENDPOINT` (MinIO) and `S3_CDN_DOMAIN` optional (RNX-43) |
 | `MCP_ENCRYPTION_KEY` | Yes | AES-256-GCM key for stored MCP credentials: exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback, no padding (RX-110) |
 | `LLM_KEY_ENCRYPTION_KEY` | Yes | AES-256-GCM key for the provider keys stored through `/admin/providers` (RX-177): exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback. Changing it makes every stored provider key unreadable (enter them again) |
 | `LLM_KEY_VERSION` | -- | Version stamped on each sealed provider key (`credential_key_version`), a positive integer; default 1 |
@@ -241,12 +241,11 @@ Required: compose refuses to start (`${NAME:?}`) when one is unset or empty.
 
 Required by the API when `PAYMENT_PROVIDER=autogopay`: `PAYMENT_PROVIDER_API_KEY` (also the webhook signing key). Compose permits it to be empty for the fake provider.
 
-Must be set, may be empty (`${S3_CDN_DOMAIN?}`): `S3_CDN_DOMAIN`; empty keeps signed download URLs as they are.
-
 Optional: passed to the container only when set; unset (or empty), the API uses its default.
 
 | Variable | Default when unset |
 |----------|--------------------|
+| `S3_CDN_DOMAIN` | None: signed download URLs are kept as they are (RNX-43) |
 | `CLIENT_IP_HEADER` | None: the client IP is the socket address |
 | `PAYMENTS_FORCE_OFF` | `false` |
 | `COOKIE_DOMAIN` | Derived from `API_PUBLIC_URL` (`api.renovix.id` gives `.renovix.id`) |
