@@ -23,6 +23,8 @@ import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { toTimeBudgetMs } from "../../providers/utils/to-time-budget-ms";
 import { buildDocumentSummary } from "../../../common/utils/build-document-summary";
 import { guardSseStream } from "../../../common/utils/guard-sse-stream";
 import type { SseStream } from "../../../common/utils/sse-stream";
@@ -48,6 +50,7 @@ export class ChannelController {
     private readonly documentService: DocumentService,
     private readonly providerRouter: ProviderRouter,
     private readonly registry: ModelRegistryService,
+    private readonly settings: PlatformSettingsService,
   ) {}
 
   @Post()
@@ -400,6 +403,8 @@ export class ChannelController {
     try {
       // RX-178: the cheapest resolvable Standard model, never a hard-coded vendor id.
       const connection = await this.registry.resolveCheapestConnection("standard");
+      // RNX-325: the call carries the model-call time budget (RNX-44), so a hanging provider cannot hold the answer.
+      const timeBudgetMs = toTimeBudgetMs(await this.settings.getSetting("modelCallBudgetSeconds"));
       const response = await this.providerRouter.chat({
         model: connection.slug,
         connection,
@@ -413,6 +418,7 @@ export class ChannelController {
         ],
         max_tokens: 200,
         temperature: 0,
+        ...(timeBudgetMs && { timeBudgetMs }),
       });
       const raw = response.choices[0]?.message?.content ?? "";
       this.logger.log(

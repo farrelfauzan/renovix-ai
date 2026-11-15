@@ -8,6 +8,7 @@ import { DocumentService } from "../../document/service/document.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -44,6 +45,7 @@ describe("RX-136: channel routes (Fastify, test database)", () => {
         { provide: S3Service, useValue: {} },
         { provide: DocumentService, useValue: {} },
         { provide: AgentToolService, useValue: {} },
+        { provide: PlatformSettingsService, useValue: { getSetting: async () => null } },
         { provide: ProviderRouter, useValue: {} }, { provide: ModelRegistryService, useValue: {} },
       ],
     }));

@@ -7,6 +7,7 @@ import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { SseStream } from "../../../common/utils/sse-stream";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "../../../common/config/sse-heartbeat-interval-ms";
@@ -48,6 +49,7 @@ describe("RNX-42: the channel chat on the SSE helper (Fastify, test database)", 
         { provide: S3Service, useValue: {} },
         { provide: DocumentService, useValue: {} },
         { provide: ProviderRouter, useValue: { chat: async () => ({ choices: [{ message: { content: "none" } }] }) } },
+        { provide: PlatformSettingsService, useValue: { getSetting: async () => null } },
         { provide: ModelRegistryService, useValue: { resolveCheapestConnection: async () => ({ slug: "standard-cheap" }) } },
       ],
     }));

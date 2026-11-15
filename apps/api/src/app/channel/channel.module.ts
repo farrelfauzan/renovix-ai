@@ -7,6 +7,7 @@ import { ConfigRegistryModule } from "../config/config-registry.module";
 import { KnowledgeModule } from "../knowledge/knowledge.module";
 import { DocumentModule } from "../document/document.module";
 import { UsageModule } from "../usage/usage.module";
+import { OffersModule } from "../offers/offers.module";
 import { ChannelController } from "./controller/channel.controller";
 import { ChannelService } from "./service/channel.service";
 import { ChannelChatService } from "./service/channel-chat.service";
@@ -19,6 +20,7 @@ import { ChannelChatService } from "./service/channel-chat.service";
     KnowledgeModule,
     DocumentModule,
     UsageModule,
+    OffersModule,
   ],
   controllers: [GowaWebhookController, ChannelController],
   providers: [GowaService, ChannelService, ChannelChatService],

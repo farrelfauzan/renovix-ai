@@ -5,6 +5,7 @@ import { AgentRunService } from "../service/agent-run.service";
 import { DocumentService } from "../../document/service/document.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { HealthController } from "../../health/controller/health.controller";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
@@ -40,6 +41,7 @@ describe("RNX-171: the agent run stream guard (Fastify, real socket)", () => {
         { provide: AgentRunService, useValue: { assertRunCanStart: async () => undefined, chat: async () => ({}) } },
         { provide: DocumentService, useValue: {} },
         { provide: ProviderRouter, useValue: { chat: async () => ({ choices: [{ message: { content: "none" } }] }) } },
+        { provide: PlatformSettingsService, useValue: { getSetting: async () => null } },
         { provide: ModelRegistryService, useValue: { resolveCheapestConnection: async () => ({ slug: "standard-cheap", apiKey: MARKER_KEY }) } },
       ],
     }));
