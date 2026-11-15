@@ -164,11 +164,23 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
       expect(res.statusCode).toBe(200);
       expect(keys.map((k: { name: string }) => k.name)).toEqual(["newer", "older"]);
       expect(Object.keys(keys[0]).sort()).toEqual([
-        "allowedTiers", "createdAt", "expiresAt", "id", "lastUsedAt", "monthlyCreditCap", "name", "prefix", "revokedAt",
+        "allowedTiers", "createdAt", "creditsLast30Days", "expiresAt", "id", "lastUsedAt", "monthlyCreditCap", "name", "prefix", "revokedAt",
       ]);
       expect(keys[0].lastUsedAt).not.toBeNull();
+      expect(keys.map((k: { creditsLast30Days: unknown }) => Number(k.creditsLast30Days))).toEqual([0, 0]);
       expect(keys[1]).toMatchObject({ id: older.json().id, lastUsedAt: null, revokedAt: null });
       expect(JSON.stringify(keys)).not.toContain(newer.json().apiKey);
+    });
+  });
+
+  describe("GET /auth/keys/rate-limit", () => {
+    it("answers the per-key requests per minute (the default while the setting has no value)", async () => {
+      const user = await createApiUser();
+
+      const res = await app.inject({ method: "GET", url: "/auth/keys/rate-limit", headers: signedIn(user) });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ requestsPerMinute: 60 });
     });
   });
 

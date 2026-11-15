@@ -5,17 +5,7 @@ import { Button } from "@performa-ai/ui/components/button";
 import { Input } from "@performa-ai/ui/components/input";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import { apiClient } from "@/lib/api-client";
-import { isPackageLimitError } from "@/lib/is-package-limit-error";
-import { PackageLimitPill } from "@/components/package-limit-pill";
-import {
-  ArrowLeft,
-  Save,
-  Copy,
-  Check,
-  RefreshCw,
-  Eye,
-  EyeOff,
-} from "lucide-react";
+import { ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -33,7 +23,6 @@ interface UserProfile {
   timezone: string | null;
   locale: string | null;
   status: string;
-  apiKey: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,10 +33,6 @@ export function GeneralSettings() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [showKey, setShowKey] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
-  const [fullApiKey, setFullApiKey] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -94,36 +79,6 @@ export function GeneralSettings() {
       toast.error("Failed to update profile");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleCopyKey = () => {
-    const key = fullApiKey || profile?.apiKey || "";
-    navigator.clipboard.writeText(key);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleRegenerateKey = async () => {
-    if (
-      !confirm(
-        "Are you sure? Your existing API key will stop working immediately."
-      )
-    )
-      return;
-
-    setRegenerating(true);
-    try {
-      const res = await apiClient.post<{ apiKey: string }>(
-        "/auth/keys/regenerate"
-      );
-      setFullApiKey(res.apiKey);
-      setShowKey(true);
-      toast.success("API key regenerated. Copy it now — it won't be shown again.");
-    } catch (err) {
-      if (!isPackageLimitError(err)) toast.error("Failed to regenerate API key");
-    } finally {
-      setRegenerating(false);
     }
   };
 
@@ -325,65 +280,17 @@ export function GeneralSettings() {
           </Button>
         </form>
 
-        {/* API Key Section */}
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              API Token
-            </h2>
-            <PackageLimitPill kind="apiAccess" />
-          </div>
-          <div className="rounded-lg border border-border/50 bg-secondary/20 p-4 space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Use this token to authenticate API requests. Keep it secret.
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 rounded bg-background px-3 py-2 text-xs font-mono border border-border/50 overflow-hidden text-ellipsis whitespace-nowrap">
-                {showKey && fullApiKey
-                  ? fullApiKey
-                  : profile?.apiKey || "••••••••"}
-              </code>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => setShowKey(!showKey)}
-                type="button"
-              >
-                {showKey ? (
-                  <EyeOff className="h-3.5 w-3.5" />
-                ) : (
-                  <Eye className="h-3.5 w-3.5" />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={handleCopyKey}
-                type="button"
-              >
-                {copied ? (
-                  <Check className="h-3.5 w-3.5 text-rx-green" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRegenerateKey}
-              disabled={regenerating}
-              className="text-xs"
-              type="button"
-            >
-              <RefreshCw
-                className={`mr-1.5 h-3 w-3 ${regenerating ? "animate-spin" : ""}`}
-              />
-              {regenerating ? "Regenerating..." : "Regenerate Key"}
-            </Button>
-          </div>
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            API keys
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Create and revoke keys for your own software on the{" "}
+            <Link href="/settings/api-keys" className="underline">
+              API keys page
+            </Link>
+            .
+          </p>
         </section>
       </div>
     </div>

@@ -18,6 +18,7 @@ export class ModelsController {
       id: config.slug,
       name: config.modelName,
       provider: config.provider,
+      tier: config.tier,
       pricing: {
         input: config.inputPrice.mul(markup).toNumber(),
         output: config.outputPrice.mul(markup).toNumber(),

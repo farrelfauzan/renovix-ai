@@ -19,9 +19,14 @@ export class ApiKeyRateLimitService {
 
   constructor(private readonly settings: PlatformSettingsService) {}
 
+  /** The requests one key may make per minute: the `apiKeyRequestsPerMinute` setting, or the default while it has no value. */
+  async getRequestsPerMinute(): Promise<number> {
+    return (await this.settings.getSetting("apiKeyRequestsPerMinute")) ?? DEFAULT_REQUESTS_PER_MINUTE;
+  }
+
   /** Counts one request of this key; 429 when the key already made the limit's number of requests in this window. */
   async consume(apiKeyId: string): Promise<void> {
-    const limit = (await this.settings.getSetting("apiKeyRequestsPerMinute")) ?? DEFAULT_REQUESTS_PER_MINUTE;
+    const limit = await this.getRequestsPerMinute();
     const now = Date.now();
     this.dropEndedWindows(now);
     const window = this.windows.get(apiKeyId);

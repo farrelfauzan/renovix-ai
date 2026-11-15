@@ -1,5 +1,5 @@
-import { GeneralSettings } from "@/components/settings/general-settings";
+import { ApiKeysSection } from "@/components/settings/api-keys/api-keys-section";
 
 export default function ApiKeysPage() {
-  return <GeneralSettings />;
+  return <ApiKeysSection />;
 }

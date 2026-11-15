@@ -35,7 +35,7 @@ const faqs = [
     icon: Key,
     question: "Where can I find my API key?",
     answer:
-      'Your API key is available in your Profile Settings page. Navigate to Profile from the user menu and scroll to the "API Token" section. You can copy or regenerate your key there.',
+      'Open Settings and choose "API keys". You can create a key there, copy it once when it is shown, and revoke it later. Only the prefix is visible afterwards.',
   },
   {
     icon: BookOpen,
