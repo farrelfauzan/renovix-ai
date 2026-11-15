@@ -60,4 +60,33 @@ describe("ChatEngineContextService", () => {
     const context = await t.service.buildContext(contextRequest({ knowledgeBaseIds: [failing.id, working.id] }));
     expect(context.knowledge).toBe(`personal-chunk-${working.id}`);
   });
+
+  // RNX-324 AC1: an access check that throws skips that base without a search; the next base still counts.
+  it("skips a base whose access check throws, never searching it; the others still count", async () => {
+    const throwing = { id: randomUUID(), userId: randomUUID(), workspaceId: randomUUID() };
+    const working = { id: randomUUID(), userId: randomUUID(), workspaceId: randomUUID() };
+    const t = setup({ bases: { [throwing.id]: throwing, [working.id]: working }, searchable: { [working.id]: true } });
+    t.workspaceKnowledge.canSearchKnowledgeBase.mockImplementationOnce(async () => {
+      throw new Error("database unavailable");
+    });
+    const context = await t.service.buildContext(contextRequest({ knowledgeBaseIds: [throwing.id, working.id] }));
+    expect(context.knowledge).toBe(`workspace-chunk-${working.id}`);
+    expect(t.workspaceKnowledge.searchKnowledgeBase).toHaveBeenCalledTimes(1);
+    expect(t.workspaceKnowledge.searchKnowledgeBase).not.toHaveBeenCalledWith(throwing.id, expect.anything(), expect.anything());
+    expect(t.knowledge.searchChunks).not.toHaveBeenCalled();
+  });
+
+  // RNX-324 AC2: a base lookup that throws skips that base the same way.
+  it("skips a base whose lookup throws; the others still count", async () => {
+    const throwingId = randomUUID();
+    const working = { id: randomUUID(), userId: randomUUID(), workspaceId: null };
+    const t = setup({ bases: { [working.id]: working }, searchable: { [working.id]: true } });
+    t.knowledgeBases.findKnowledgeBaseById.mockImplementationOnce(async () => {
+      throw new Error("database unavailable");
+    });
+    const context = await t.service.buildContext(contextRequest({ knowledgeBaseIds: [throwingId, working.id] }));
+    expect(context.knowledge).toBe(`personal-chunk-${working.id}`);
+    expect(t.knowledge.searchChunks).toHaveBeenCalledTimes(1);
+    expect(t.workspaceKnowledge.canSearchKnowledgeBase).toHaveBeenCalledTimes(1);
+  });
 });
