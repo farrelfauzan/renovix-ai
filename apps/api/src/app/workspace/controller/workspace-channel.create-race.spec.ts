@@ -12,6 +12,7 @@ import { ChannelChatService } from "../../channel/service/channel-chat.service";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { ProviderRouter } from "../../providers/provider-router";
 import { ModelRegistryService } from "../../config/model-registry.service";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { DocumentService } from "../../document/service/document.service";
 import { EmailJobService } from "../../email/service/email-job.service";
 import { EmbeddingService } from "../../knowledge/service/embedding.service";
@@ -59,6 +60,7 @@ describe("RNX-295: a channel's workspace create and the channel's delete (Fastif
         AgentRunPolicyService,
         { provide: ChannelChatService, useValue: {} },
         { provide: ProviderRouter, useValue: {} },
+        { provide: PlatformSettingsService, useValue: { getSetting: async () => null } },
         { provide: ModelRegistryService, useValue: {} },
         { provide: DocumentService, useValue: {} },
         { provide: EmailJobService, useValue: {} },
