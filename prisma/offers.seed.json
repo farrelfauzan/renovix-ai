@@ -31,7 +31,8 @@
     "anonymousRequestsPerSession": 20,
     "anonymousSessionsPerIp": 3,
     "invitationGrantCredits": 5,
-    "memoryExtractionTimeoutSeconds": 15
+    "memoryExtractionTimeoutSeconds": 15,
+    "modelCallBudgetSeconds": 120
   },
   "packages": [
     { "name": "Starter", "displayOrder": 1, "active": false, "visible": false, "version": null },
