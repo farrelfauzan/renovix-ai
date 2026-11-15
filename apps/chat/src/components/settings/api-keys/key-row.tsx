@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@performa-ai/ui/components/badge";
 import { Button } from "@performa-ai/ui/components/button";
+import { formatKeyPrefix } from "@/lib/format-key-prefix";
 import type { ApiKeyListItem } from "@/lib/api-key-types";
 import { RevokeKeyDialog } from "./revoke-key-dialog";
 
@@ -19,7 +20,7 @@ export function KeyRow({ apiKey, onRevokeAction }: KeyRowProps) {
   return (
     <tr className="border-t border-border/50">
       <td className="px-3 py-2">{apiKey.name}</td>
-      <td className="px-3 py-2 font-mono">{apiKey.prefix}…</td>
+      <td className="px-3 py-2 font-mono">{formatKeyPrefix(apiKey.prefix)}</td>
       <td className="px-3 py-2 capitalize">{apiKey.allowedTiers.join(", ")}</td>
       <td className="px-3 py-2">{new Date(apiKey.createdAt).toLocaleDateString()}</td>
       <td className="px-3 py-2 text-muted-foreground">{formatDate(apiKey.lastUsedAt)}</td>

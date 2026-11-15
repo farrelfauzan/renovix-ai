@@ -169,6 +169,14 @@ describe('RNX-82 AC3: Revoke', () => {
     expect(requests.filter((r) => r.method === 'delete')).toEqual([{ method: 'delete', url: '/auth/keys/key-two-0002-bbbb', data: undefined }]);
     expect(within(screen.getAllByRole('row')[1]).getByRole('button', { name: 'Revoke' })).toBeTruthy();
   });
+
+  it('each row shows the key as the rnx_live_ marker plus its stored prefix, never the id', async () => {
+    renderPage();
+    const rows = await screen.findAllByRole('row');
+
+    expect(within(rows[1]).getByText('rnx_live_pfxaaaa…')).toBeTruthy();
+    expect(within(rows[2]).getByText('rnx_live_pfxbbbb…')).toBeTruthy();
+  });
 });
 
 describe('RNX-82 AC6: the quick start shows the API\'s real values', () => {

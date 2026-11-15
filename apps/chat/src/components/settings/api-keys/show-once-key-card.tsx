@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@performa-ai/ui/components/button";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { formatKeyPrefix } from "@/lib/format-key-prefix";
 
 interface ShowOnceKeyCardProps {
   keyName: string;
@@ -40,7 +41,7 @@ export function ShowOnceKeyCard({ keyName, prefix, apiKey, onDoneAction }: ShowO
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Store it in your app&apos;s secret manager. Once you close this, only the prefix <span className="font-mono">{prefix}…</span> stays visible.
+        Store it in your app&apos;s secret manager. Once you close this, only the prefix <span className="font-mono">{formatKeyPrefix(prefix)}</span> stays visible.
       </p>
     </section>
   );
