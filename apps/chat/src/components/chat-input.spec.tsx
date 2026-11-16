@@ -140,6 +140,18 @@ describe('RNX-77a AC6: a new chat starts on the saved default tier', () => {
     expect(mockSetSelectedModel).not.toHaveBeenCalled();
   });
 
+  it('applies the default once per new chat: a refetch with new entitlements does not override a model picked meanwhile', () => {
+    mockEntitlements = advancedPackage;
+    mockSelectedModel = 'standard-model';
+    mockCurrentUser = { data: { defaultModelTier: 'advanced' } };
+    const { rerender } = render(<ChatInput />);
+    mockSelectedModel = 'standard-model';
+    mockEntitlements = { data: { ...advancedPackage.data } };
+    rerender(<ChatInput />);
+    expect(mockSetSelectedModel).toHaveBeenCalledTimes(1);
+    expect(mockSetSelectedModel).toHaveBeenCalledWith('advanced-model');
+  });
+
   it('control: without a saved default tier a new chat keeps the browser saved model', () => {
     mockEntitlements = advancedPackage;
     mockSelectedModel = 'advanced-model';
