@@ -4007,6 +4007,26 @@
         ]
       }
     },
+    "/api/v1/chat/portal/credit-meter": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "chat"
+        ]
+      }
+    },
     "/api/v1/chat/portal/knowledge": {
       "get": {
         "responses": {

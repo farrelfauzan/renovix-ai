@@ -1456,6 +1456,9 @@ model CreditLedgerEntry {
   /// the predicate, so `migrate diff` sees no drift.
   @@index([createdAt], map: "credit_ledger_entries_purchase_created_at_idx", where: raw("type = ANY (ARRAY['top_up'::\"CreditEntryType\", 'plan_grant'::\"CreditEntryType\"])"))
   @@index([apiKeyId, createdAt])
+  /// RNX-30-A: the credit meter's 7-day usage aggregate of one account reads its usage entries by time. Written as
+  /// Postgres prints the predicate, so `migrate diff` sees no drift.
+  @@index([accountId, createdAt], map: "credit_ledger_entries_usage_account_id_created_at_idx", where: raw("type = 'usage'::\"CreditEntryType\""))
   @@map("credit_ledger_entries")
 }
 

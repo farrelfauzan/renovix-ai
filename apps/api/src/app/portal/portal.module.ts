@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { PortalController } from "./controller/portal.controller";
+import { CreditMeterController } from "./controller/credit-meter.controller";
+import { CreditMeterService } from "./service/credit-meter.service";
 import { PortalTierService } from "./service/portal-tier.service";
 import { BillingModule } from "../billing/billing.module";
 import { ProvidersModule } from "../providers/providers.module";
@@ -21,7 +23,7 @@ import { OffersModule } from "../offers/offers.module";
     MemoryModule,
     OffersModule,
   ],
-  controllers: [PortalController],
-  providers: [PortalTierService],
+  controllers: [PortalController, CreditMeterController],
+  providers: [PortalTierService, CreditMeterService],
 })
 export class PortalModule {}
