@@ -30,7 +30,7 @@ export function ProfileStepForm({ user }: { user: CurrentUser }) {
   const queryClient = useQueryClient();
   const { email } = useAuthStore();
   const [name, setName] = useState(user.name ?? "");
-  const [role, setRole] = useState<string>(ROLE_OPTIONS.find((option) => option === user.jobTitle) ?? "");
+  const [role, setRole] = useState<string>(ROLE_OPTIONS.find((option) => option === user.role) ?? "");
   const [country, setCountry] = useState(user.country ?? detectCountry());
   const [timezone, setTimezone] = useState(() => resolveDefaultTimeZone({ detected: detectTimeZone(), country }));
   const [language, setLanguage] = useState<string>(detectLanguage());

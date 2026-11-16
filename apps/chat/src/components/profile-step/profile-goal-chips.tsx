@@ -15,13 +15,21 @@ const GOAL_ICONS: Record<(typeof GOAL_OPTIONS)[number], typeof FileText> = {
 interface ProfileGoalChipsProps {
   selected: readonly string[];
   onToggle: (goal: string) => void;
+  /** RNX-77a: Settings > General words the question and its hint as its artboard does. */
+  legend?: string;
+  hint?: string;
 }
 
 /** "What do you want to do?": toggle buttons, one or more. */
-export function ProfileGoalChips({ selected, onToggle }: ProfileGoalChipsProps) {
+export function ProfileGoalChips({
+  selected,
+  onToggle,
+  legend = "What do you want to do? Pick one or more.",
+  hint = "Chooses the starter agent and the first tool we suggest.",
+}: ProfileGoalChipsProps) {
   return (
     <fieldset className="flex flex-col gap-2.5">
-      <legend className="mb-1.5 text-sm font-medium">What do you want to do? Pick one or more.</legend>
+      <legend className="mb-1.5 text-sm font-medium">{legend}</legend>
       <div className="flex flex-wrap gap-2.5">
         {GOAL_OPTIONS.map((goal) => {
           const isSelected = selected.includes(goal);
@@ -41,7 +49,7 @@ export function ProfileGoalChips({ selected, onToggle }: ProfileGoalChipsProps) 
           );
         })}
       </div>
-      <span className="text-xs text-muted-foreground">Chooses the starter agent and the first tool we suggest.</span>
+      <span className="text-xs text-muted-foreground">{hint}</span>
     </fieldset>
   );
 }

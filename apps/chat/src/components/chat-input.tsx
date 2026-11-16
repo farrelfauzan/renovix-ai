@@ -13,7 +13,9 @@ import { ArrowUp, Square, Sparkles, LogIn } from "lucide-react";
 import { useAuthStore, useChatStore, useHydrated } from "@/lib/stores";
 import { usePortalUsage, usePortalModels } from "@/hooks/use-portal";
 import { useMyEntitlements } from "@/hooks/use-my-entitlements";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { isModelLocked } from "@/lib/model-lock";
+import { pickDefaultTierModel } from "@/lib/pick-default-tier-model";
 import { ModelSelectItem } from "@/components/model-select-item";
 import {
   FREE_LIMIT_CODES,
@@ -66,6 +68,8 @@ export function ChatInput() {
   const { data: usage } = usePortalUsage();
   const { data: models } = usePortalModels();
   const { data: entitlements } = useMyEntitlements();
+  const { data: currentUser } = useCurrentUser();
+  const newChatDefaultAppliedRef = useRef(false);
   const queryClient = useQueryClient();
   const hydrated = useHydrated();
 
@@ -88,6 +92,19 @@ export function ChatInput() {
       setSelectedModel(defaultModel);
     }
   }, [hasModels, selectedModel, defaultModel, models, entitlements, setSelectedModel]);
+
+  // RNX-77a: a new chat starts on the saved default tier, over the model the browser saved; once per new chat, so a
+  // model picked within the chat (and in an opened conversation) stays the browser's choice.
+  const defaultTier = currentUser?.defaultModelTier ?? null;
+  useEffect(() => {
+    if (conversationId) {
+      newChatDefaultAppliedRef.current = false;
+      return;
+    }
+    if (newChatDefaultAppliedRef.current || !hasModels || !entitlements || !defaultTier) return;
+    newChatDefaultAppliedRef.current = true;
+    setSelectedModel(pickDefaultTierModel({ models, entitlements, defaultTier }));
+  }, [conversationId, hasModels, models, entitlements, defaultTier, setSelectedModel]);
 
   // Auto-resize textarea
   useEffect(() => {

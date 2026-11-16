@@ -16,7 +16,11 @@ const user: CurrentUser = {
   email: 'dewi@example.test',
   name: 'Dewi Anggraini',
   avatar: null,
-  jobTitle: 'Operations',
+  jobTitle: null,
+  phone: null,
+  // RNX-77a: the saved role is read from `role` (jobTitle is free text)
+  role: 'Operations',
+  defaultModelTier: null,
   timezone: 'UTC',
   locale: 'en',
   country: null,

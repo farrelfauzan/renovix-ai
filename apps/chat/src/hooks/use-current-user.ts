@@ -12,6 +12,11 @@ export interface CurrentUser {
   name: string | null;
   avatar: string | null;
   jobTitle: string | null;
+  phone: string | null;
+  /** RNX-77a: the role from the profile step or Settings > General. */
+  role: string | null;
+  /** RNX-77a: the model tier a new chat starts on, if the user chose one. */
+  defaultModelTier: string | null;
   timezone: string | null;
   locale: string | null;
   country: string | null;

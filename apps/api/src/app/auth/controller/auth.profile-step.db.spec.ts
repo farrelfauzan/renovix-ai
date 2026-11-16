@@ -2,6 +2,7 @@ import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "../service/auth.service";
+import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -18,7 +19,7 @@ describe("RNX-33: PUT /auth/me/profile and GET /auth/me (Fastify, test database)
   let app: NestFastifyApplication;
 
   beforeAll(async () => {
-    ({ moduleRef, prisma } = await createTestModule({ controllers: [AuthController], providers: [AuthService] }));
+    ({ moduleRef, prisma } = await createTestModule({ controllers: [AuthController], providers: [AuthService, EntitlementService] }));
     app = await createFastifyApp(moduleRef);
   });
 
@@ -41,7 +42,7 @@ describe("RNX-33: PUT /auth/me/profile and GET /auth/me (Fastify, test database)
   const getMe = (user: { id: string; email: string }) =>
     app.inject({ method: "GET", url: "/auth/me", headers: asSessionUser(user) });
 
-  it("a valid profile: 200, every field stored on the session user, profile_completed_at set", async () => {
+  it("a valid profile: 200, every field stored on the session user (RNX-77a AC5: the role in `role`, jobTitle left empty), profile_completed_at set", async () => {
     const user = await createUser(prisma, { name: "From Google" });
     const before = Date.now();
 
@@ -51,7 +52,8 @@ describe("RNX-33: PUT /auth/me/profile and GET /auth/me (Fastify, test database)
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(stored).toMatchObject({
       name: "Dewi Anggraini",
-      jobTitle: "Operations",
+      role: "Operations",
+      jobTitle: null,
       country: "ID",
       timezone: "Asia/Jakarta",
       locale: "id",
@@ -59,6 +61,15 @@ describe("RNX-33: PUT /auth/me/profile and GET /auth/me (Fastify, test database)
     });
     expect(stored.profileCompletedAt?.getTime()).toBeGreaterThanOrEqual(before - 1000);
     expect(res.json()).toMatchObject({ id: user.id, profileCompleted: true, country: "ID", signupGoal: validProfile.goal });
+  });
+
+  it("RNX-77a AC5: a job title the user typed earlier is kept; the step writes the role into `role` only", async () => {
+    const user = await createUser(prisma, { jobTitle: "Head of Finance Operations" });
+
+    const res = await saveProfile(user, validProfile);
+
+    expect(res.statusCode).toBe(200);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({ role: "Operations", jobTitle: "Head of Finance Operations" });
   });
 
   it("a second save stores the new answers and keeps the first completion time", async () => {
@@ -138,7 +149,8 @@ describe("RNX-33: PUT /auth/me/profile and GET /auth/me (Fastify, test database)
       id: user.id,
       profileCompleted: true,
       name: "Dewi Anggraini",
-      jobTitle: "Operations",
+      role: "Operations",
+      jobTitle: null,
       country: "ID",
       timezone: "Asia/Jakarta",
       locale: "id",

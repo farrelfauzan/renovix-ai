@@ -8,7 +8,8 @@ interface ProfileStepSelectProps {
   hint: string;
   value: string;
   placeholder: string;
-  options: readonly { value: string; label: string }[];
+  /** RNX-77a: a `disabled` option is shown but cannot be chosen (a locked model tier). */
+  options: readonly { value: string; label: string; disabled?: boolean }[];
   onChange: (value: string) => void;
 }
 
@@ -25,7 +26,7 @@ export function ProfileStepSelect({ id, label, hint, value, placeholder, options
         </SelectTrigger>
         <SelectContent className="max-h-72">
           {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
+            <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
               {option.label}
             </SelectItem>
           ))}

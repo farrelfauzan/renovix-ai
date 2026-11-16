@@ -5,6 +5,8 @@ import { ChatInput } from './chat-input';
 const mockSetSelectedModel = jest.fn();
 let mockSelectedModel: string | null = null;
 let mockEntitlements: { data?: unknown } = {};
+let mockConversationId: string | null = null;
+let mockCurrentUser: { data?: unknown } = {};
 const models = [
   { slug: 'premium-model', name: 'Premium Model', tier: 'premium' },
   { slug: 'standard-model', name: 'Standard Model', tier: 'standard' },
@@ -24,7 +26,7 @@ jest.mock('@/lib/stores', () => ({
   useAuthStore: () => ({ isLoggedIn: () => true }),
   useChatStore: Object.assign(
     () => ({
-      messages: [], isStreaming: false, conversationId: null, streamingConversationId: null,
+      messages: [], isStreaming: false, conversationId: mockConversationId, streamingConversationId: null,
       addMessage: jest.fn(), setStreaming: jest.fn(), setStreamStatus: jest.fn(), appendStreamContent: jest.fn(),
       finalizeStream: jest.fn(), selectedModel: mockSelectedModel, setSelectedModel: mockSetSelectedModel,
       setConversationId: jest.fn(), setPendingDocument: jest.fn(),
@@ -37,6 +39,7 @@ jest.mock('@/hooks/use-portal', () => ({
   usePortalModels: () => ({ data: models }),
 }));
 jest.mock('@/hooks/use-my-entitlements', () => ({ useMyEntitlements: () => mockEntitlements }));
+jest.mock('@/hooks/use-current-user', () => ({ useCurrentUser: () => mockCurrentUser }));
 jest.mock('@/lib/api', () => ({ FREE_LIMIT_CODES: [], PortalError: class extends Error {}, streamCompletion: jest.fn() }));
 jest.mock('@performa-ai/ui/components/select', () => {
   const React = require('react');
@@ -59,6 +62,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSelectedModel = null;
   mockEntitlements = standardOnly;
+  mockConversationId = null;
+  mockCurrentUser = { data: { defaultModelTier: null } };
 });
 afterEach(cleanup);
 
@@ -105,4 +110,40 @@ it('locks nothing without entitlements (anonymous, loading or error)', () => {
   render(<ChatInput />);
   expect(screen.getByTestId('option-premium-model').getAttribute('data-disabled')).toBe('false');
   expect(mockSetSelectedModel).toHaveBeenCalledWith('premium-model');
+});
+
+describe('RNX-77a AC6: a new chat starts on the saved default tier', () => {
+  const advancedPackage = { data: { tiers: ['standard', 'advanced'], nextPackage: 'Enterprise', lockedTiers: lockedTiers.slice(1) } };
+
+  it('selects the default tier model in a new chat even though the browser saved another model', () => {
+    mockEntitlements = advancedPackage;
+    mockSelectedModel = 'standard-model';
+    mockCurrentUser = { data: { defaultModelTier: 'advanced' } };
+    render(<ChatInput />);
+    expect(mockSetSelectedModel).toHaveBeenLastCalledWith('advanced-model');
+  });
+
+  it('selects the first unlocked model when the default tier is locked (after a downgrade)', () => {
+    mockSelectedModel = 'standard-model';
+    mockCurrentUser = { data: { defaultModelTier: 'premium' } };
+    render(<ChatInput />);
+    expect(mockSetSelectedModel).toHaveBeenLastCalledWith('standard-model');
+    expect(mockSetSelectedModel).not.toHaveBeenCalledWith('premium-model');
+  });
+
+  it('negative: within an existing chat the browser saved model stays', () => {
+    mockEntitlements = advancedPackage;
+    mockSelectedModel = 'standard-model';
+    mockConversationId = 'conversation-1';
+    mockCurrentUser = { data: { defaultModelTier: 'advanced' } };
+    render(<ChatInput />);
+    expect(mockSetSelectedModel).not.toHaveBeenCalled();
+  });
+
+  it('control: without a saved default tier a new chat keeps the browser saved model', () => {
+    mockEntitlements = advancedPackage;
+    mockSelectedModel = 'advanced-model';
+    render(<ChatInput />);
+    expect(mockSetSelectedModel).not.toHaveBeenCalled();
+  });
 });
