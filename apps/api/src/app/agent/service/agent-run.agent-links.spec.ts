@@ -23,6 +23,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { AgentRunPolicyService } from "./agent-run-policy.service";
 
@@ -104,6 +105,8 @@ describe("RNX-118: agent runs call only linked agents (test database)", () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // RNX-121b-1: the agent-call limits (the seed's values); without them every agent call is unavailable.
+    await setPeerRunLimits(prisma, { maxDepth: 2, maxAgentCalls: 5, callTimeoutSeconds: 60 });
     fake.requests.length = 0;
     toolOptions.length = 0;
     await createResolvableModel(prisma, {

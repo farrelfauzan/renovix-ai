@@ -30,6 +30,7 @@ import { createAgent, createPackageSnapshot, createUser, createWorkspace } from 
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 
 // RNX-119 (D257) AC6: in a collaborator's run of a workspace agent, the MCP tools resolve from the collaborator's own
 // account only; the workspace owner's MCP credential is never read. Real AgentRunService, run policy, AgentToolService,
@@ -198,5 +199,34 @@ describe("RNX-119 AC6: a collaborator's run uses the collaborator's MCP credenti
 
     expect(getUserConnectedProviders.mock.calls).toEqual([[owner.id, workspace.id]]);
     expect(records("owner").map((r) => r.event)).toEqual(["started", "call"]);
+  });
+
+  it("RNX-121b-1 AC8: the collaborator runs A, A calls B and B uses an MCP tool: B's tool runs on the collaborator's own server, never the owner's", async () => {
+    const { owner, workspace, agent, collaborator } = await seed();
+    await setPeerRunLimits(prisma, { maxDepth: 1, maxAgentCalls: 3, callTimeoutSeconds: 30 });
+    const callee = await createAgent(prisma, { userId: owner.id, workspaceId: workspace.id, name: "MCP helper", systemPrompt: "CALLEE PROMPT", status: "active" });
+    await prisma.agentLink.create({ data: { callerAgentId: agent.id, calleeAgentId: callee.id } });
+    connectGithub(collaborator.id, "collaborator");
+    fake.enqueue(
+      { toolCalls: [{ name: "call_agent", arguments: { agent: "MCP helper", task: "who answers" } }] },
+      { toolCalls: [{ name: "whoami", arguments: { caller: "hop" } }] },
+      { content: "Helper done" },
+      { content: "Done" },
+    );
+
+    const result = await service.chat(collaborator.id, agent.id, "Who answers?");
+
+    expect(result.message.content).toBe("Done");
+    expect(getUserConnectedProviders.mock.calls).toEqual([
+      [collaborator.id, workspace.id],
+      [collaborator.id, workspace.id],
+    ]);
+    const calleeRequests = fake.requests.filter((r) => String(r.messages[0].content).startsWith("CALLEE PROMPT"));
+    expect(calleeRequests).toHaveLength(2);
+    expect((calleeRequests[0].tools ?? []).map((t: any) => t.function.name)).toContain("whoami");
+    const calleeToolResults = (calleeRequests[1].messages as { role: string; content: unknown }[]).filter((m) => m.role === "tool");
+    expect(calleeToolResults.map((m) => m.content)).toEqual(["answered by collaborator"]);
+    expect(records("collaborator").map((r) => r.event)).toEqual(["started", "started", "call"]);
+    expect(records("owner")).toEqual([]);
   });
 });

@@ -19,6 +19,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { setRunCap } from "../../../../test/run-cap";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
@@ -84,6 +85,8 @@ describe("RNX-200 AC4: an agent run closes its MCP connections on every path (te
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // RNX-121b-1: the agent-call limits (the seed's values); without them every agent call is unavailable.
+    await setPeerRunLimits(prisma, { maxDepth: 2, maxAgentCalls: 5, callTimeoutSeconds: 60 });
     fake.requests.length = 0;
     buildToolSchemasWithMcp.mockClear();
     cleanupMcpConnections.mockClear();
@@ -175,8 +178,10 @@ describe("RNX-200 AC4: an agent run closes its MCP connections on every path (te
     const result = await service.chat(bob.id, parent.id, "Hi");
 
     expect(result.message.content).toBe(budgetStopMessage(new Decimal("0.01")));
-    expectMcpOpenedThenClosedOnce();
-    const messages = await prisma.agentMessage.findMany({ orderBy: { createdAt: "asc" } });
+    // RNX-121b-1: the called agent runs as a full agent with its own MCP session, also opened and closed once.
+    expect([buildToolSchemasWithMcp.mock.calls.length, cleanupMcpConnections.mock.calls.length]).toEqual([2, 2]);
+    // RNX-121b-1: the hop's own child run holds its task and answer; the run's messages are these two.
+    const messages = await prisma.agentMessage.findMany({ where: { runId: result.runId }, orderBy: { createdAt: "asc" } });
     expect(messages.map((m) => [m.role, m.runId])).toEqual([
       ["user", result.runId],
       ["assistant", result.runId],

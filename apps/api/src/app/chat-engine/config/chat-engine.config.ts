@@ -9,3 +9,6 @@ export const CHAT_ENGINE_DEFAULT_MAX_TOKENS = 4096;
 
 /** The tool result of a call_agent attempt while the peer port is empty (RNX-283; delegation is RNX-121). */
 export const CHAT_ENGINE_PEER_UNAVAILABLE = "Error: Calling another agent is unavailable.";
+
+/** RNX-121b-1: the tool result of a call_agent attempt the run did not offer (D329) or naming no agent it may call (the agent run's text). */
+export const CHAT_ENGINE_AGENT_NOT_CALLABLE = "Error: Agent not found or not linked.";

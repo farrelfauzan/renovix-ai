@@ -19,6 +19,7 @@ import type { McpRunSession } from "../types/mcp-run-session";
 import type { RunScope } from "../types/run-scope";
 import type { ToolSchema } from "../types/tool-schema";
 import { rememberOfferedTools } from "../utils/remember-offered-tools";
+import { CALLED_AGENT_DOCUMENT_NOTE } from "../config/called-agent-document-note";
 
 @Injectable()
 export class AgentToolService {
@@ -532,7 +533,10 @@ export class AgentToolService {
     }
   }
 
-  /** RNX-222: the generated document is kept on the calling run's own session, never on this shared service. */
+  /**
+   * RNX-222: the generated document is kept on the calling run's own session, never on this shared service.
+   * RNX-121b-1 (D351 8): in a called agent's run (`returnsDocumentsAsText`) no file is made: the document comes back as text.
+   */
   private async executeCreateDocument(
     args: {
       content: string;
@@ -547,6 +551,9 @@ export class AgentToolService {
     const validFormats = ["pdf", "docx", "xlsx"];
     if (!validFormats.includes(args.format)) {
       return `Error: Invalid format "${args.format}". Must be one of: pdf, docx, xlsx.`;
+    }
+    if (mcpSession.returnsDocumentsAsText) {
+      return `${CALLED_AGENT_DOCUMENT_NOTE}\n\n${args.content}`;
     }
     try {
       const result = await this.documentService.generateWithStorage(

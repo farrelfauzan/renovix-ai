@@ -28,6 +28,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { setRunCap } from "../../../../test/run-cap";
 import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-invariants";
@@ -95,6 +96,8 @@ describe("RNX-25: the agent run on the chat engine (test database, fake provider
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // RNX-121b-1: the agent-call limits (the seed's values); without them every agent call is unavailable.
+    await setPeerRunLimits(prisma, { maxDepth: 2, maxAgentCalls: 5, callTimeoutSeconds: 60 });
     fake.requests.length = 0;
     (fake as unknown as { turns: unknown[] }).turns.length = 0;
     jest.clearAllMocks();
@@ -119,8 +122,8 @@ describe("RNX-25: the agent run on the chat engine (test database, fake provider
     return { bob, agent, helper };
   };
 
-  const storedMessages = async () =>
-    (await prisma.agentMessage.findMany({ orderBy: { createdAt: "asc" } })).map((m) => [m.role, m.content, m.tokens, m.cost?.toFixed(6) ?? null]);
+  const storedMessages = async (runId?: string) =>
+    (await prisma.agentMessage.findMany({ where: { runId }, orderBy: { createdAt: "asc" } })).map((m) => [m.role, m.content, m.tokens, m.cost?.toFixed(6) ?? null]);
 
   const chargedTotal = async () =>
     (await prisma.creditLedgerEntry.findMany({ where: { type: "usage" } })).reduce((sum, entry) => sum.plus(entry.amount.negated()), new Decimal(0));
@@ -222,7 +225,8 @@ describe("RNX-25: the agent run on the chat engine (test database, fake provider
       expect(actual.message.content).toBe(budgetStopMessage(new Decimal("0.01")));
       expect(actual.usage).toEqual({ totalTokens: 0, cost: "0.00803" });
       expect((await chargedTotal()).toFixed(6)).toBe("0.008030");
-      expect(await storedMessages()).toEqual([
+      // RNX-121b-1: the stopped hop's child run holds its own two messages; the run's are these.
+      expect(await storedMessages(actual.runId)).toEqual([
         ["user", "Hi", null, null],
         ["assistant", budgetStopMessage(new Decimal("0.01")), 0, "0.008030"],
       ]);
