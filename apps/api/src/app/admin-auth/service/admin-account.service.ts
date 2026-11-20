@@ -16,10 +16,11 @@ export class AdminAccountService {
     private readonly sessions: AdminSessionService,
   ) {}
 
-  /** The admin, their role's permissions and whether a password change is forced. */
+  /** The admin, their role's permissions, whether a password change is forced, and when the request's own session ends (RNX-312a). */
   async profile(identity: AdminIdentity): Promise<AdminProfile> {
     const admin = await this.admins.findWithPermissions(identity.adminId);
     if (!admin) throw new UnauthorizedException("Authentication required");
+    const expiry = await this.sessions.readExpiry(identity.sessionId);
     return {
       id: admin.id,
       name: admin.name,
@@ -29,6 +30,8 @@ export class AdminAccountService {
       scope: identity.scope,
       mfaEnrolled: admin.totpEnrolledAt !== null,
       mustChangePassword: admin.mustChangePassword,
+      idleExpiresAt: expiry.idleExpiresAt,
+      absoluteExpiresAt: expiry.absoluteExpiresAt,
     };
   }
 

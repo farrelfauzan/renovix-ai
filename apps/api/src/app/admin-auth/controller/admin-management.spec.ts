@@ -15,6 +15,7 @@ import {
   advance,
   ADMIN_PASSWORD,
   adminHttp,
+  BACK_OFFICE_ORIGIN,
   BackOfficeProbeController,
   createAdmin,
   MINUTE,
@@ -575,6 +576,86 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       expect(res.statusCode).toBe(200);
       expect(res.json()).toMatchObject({ id: ops.id, email: ops.email, role: "operations", scope: "full", mfaEnrolled: true, mustChangePassword: false });
       expect(res.json().permissions).toContain("users:read");
+    });
+
+    /** The session row of this access cookie (its id is the token's `sid`). */
+    const sessionOf = (cookie: string) => {
+      const payload = JSON.parse(Buffer.from(cookie.split("=")[1].split(".")[1], "base64url").toString("utf8"));
+      return prisma.adminSession.findUniqueOrThrow({ where: { id: payload.sid } });
+    };
+    const IDLE_MINUTES = 30;
+
+    it("RNX-312a AC3: idleExpiresAt is the caller's session's last activity (this request) plus 30 minutes; absoluteExpiresAt is its absolute limit", async () => {
+      const ops = await enrolledAdmin("ops@example.com");
+      const cookie = await signIn(ops);
+      advance(5 * MINUTE);
+
+      const res = await http.call("GET", "/admin/auth/me", { cookie });
+
+      const session = await sessionOf(cookie);
+      expect(res.statusCode).toBe(200);
+      expect(session.lastSeenAt.getTime()).toBe(Date.now());
+      expect(res.json().idleExpiresAt).toBe(new Date(Date.now() + IDLE_MINUTES * MINUTE).toISOString());
+      expect(res.json().absoluteExpiresAt).toBe(session.absoluteExpiresAt.toISOString());
+    });
+
+    it("RNX-312a AC3: two admins signed in at different times each get only their own session's times", async () => {
+      const a = await enrolledAdmin("a@example.com");
+      const b = await enrolledAdmin("b@example.com");
+      const cookieA = await signIn(a);
+      advance(10 * MINUTE);
+      const cookieB = await signIn(b);
+      advance(3 * MINUTE);
+
+      const meA = await http.call("GET", "/admin/auth/me", { cookie: cookieA });
+      const nowA = Date.now();
+      advance(7 * MINUTE);
+      const meB = await http.call("GET", "/admin/auth/me", { cookie: cookieB });
+
+      const [sessionA, sessionB] = [await sessionOf(cookieA), await sessionOf(cookieB)];
+      expect(sessionA.absoluteExpiresAt.getTime()).not.toBe(sessionB.absoluteExpiresAt.getTime());
+      expect(meA.json()).toMatchObject({ id: a.id, idleExpiresAt: new Date(nowA + IDLE_MINUTES * MINUTE).toISOString(), absoluteExpiresAt: sessionA.absoluteExpiresAt.toISOString() });
+      expect(meB.json()).toMatchObject({ id: b.id, idleExpiresAt: new Date(Date.now() + IDLE_MINUTES * MINUTE).toISOString(), absoluteExpiresAt: sessionB.absoluteExpiresAt.toISOString() });
+    });
+
+    it("RNX-312a AC3: the same admin signed in twice: each session gets its own times, not the latest session's", async () => {
+      const ops = await enrolledAdmin("ops@example.com");
+      const first = await signIn(ops);
+      advance(5 * MINUTE);
+      const second = await signIn(ops);
+      advance(MINUTE);
+
+      const res = await http.call("GET", "/admin/auth/me", { cookie: first });
+
+      const [firstSession, secondSession] = [await sessionOf(first), await sessionOf(second)];
+      expect(firstSession.absoluteExpiresAt.getTime()).not.toBe(secondSession.absoluteExpiresAt.getTime());
+      expect(res.json().absoluteExpiresAt).toBe(firstSession.absoluteExpiresAt.toISOString());
+      expect(res.json().idleExpiresAt).toBe(new Date(Date.now() + IDLE_MINUTES * MINUTE).toISOString());
+    });
+
+    it("RNX-312a AC4: the /me body holds no password, password hash, TOTP secret, raw IP or session token", async () => {
+      const ops = await enrolledAdmin("ops@example.com");
+      const clientIp = "203.0.113.77";
+      const forwardedIp = "198.51.100.23";
+      nextStep();
+      const signedIn = await app.inject({
+        method: "POST",
+        url: "/admin/auth/sign-in",
+        remoteAddress: clientIp,
+        headers: { ...BACK_OFFICE_ORIGIN, "x-forwarded-for": forwardedIp },
+        payload: { email: ops.email, password: ADMIN_PASSWORD, totp: totpCode(ops.secret) },
+      });
+      const [access, refresh] = [accessCookie(signedIn), refreshCookie(signedIn)];
+
+      const res = await app.inject({ method: "GET", url: "/admin/auth/me", remoteAddress: clientIp, headers: { ...BACK_OFFICE_ORIGIN, "x-forwarded-for": forwardedIp, cookie: access } });
+
+      const admin = await prisma.adminUser.findUniqueOrThrow({ where: { id: ops.id } });
+      const session = await sessionOf(access);
+      const secrets = [ADMIN_PASSWORD, admin.passwordHash, ops.secret, admin.totpSecretEncrypted, clientIp, forwardedIp, access.split("=")[1], refresh.split("=")[1], session.refreshTokenHash, session.id];
+      expect(res.statusCode).toBe(200);
+      expect(secrets.every((value) => typeof value === "string" && value.length > 0)).toBe(true);
+      expect(secrets.filter((value) => res.body.includes(value as string))).toEqual([]);
+      expect(Object.keys(res.json()).sort()).toEqual(["absoluteExpiresAt", "email", "id", "idleExpiresAt", "mfaEnrolled", "mustChangePassword", "name", "permissions", "role", "scope"]);
     });
   });
 

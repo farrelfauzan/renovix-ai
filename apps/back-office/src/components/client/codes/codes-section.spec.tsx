@@ -9,7 +9,7 @@ import { CodesSection } from "./codes-section";
 // jsdom has no scrollIntoView, which the open Select list calls on its selected item.
 Element.prototype.scrollIntoView = jest.fn();
 
-const profile: AdminProfile = { id: "a", email: "a@example.com", name: "a", role: "r", permissions: ["packages:write"], scope: "full", mustChangePassword: false, mfaEnrolled: true };
+const profile: AdminProfile = { id: "a", email: "a@example.com", name: "a", role: "r", permissions: ["packages:write"], scope: "full", mustChangePassword: false, mfaEnrolled: true, idleExpiresAt: "2026-10-14T08:30:00.000Z", absoluteExpiresAt: "2026-10-14T20:00:00.000Z" };
 const sessionApi: SessionApi = { me: async () => profile, changePassword: async () => undefined, signOut: async () => undefined };
 
 describe("CodesSection create form", () => {

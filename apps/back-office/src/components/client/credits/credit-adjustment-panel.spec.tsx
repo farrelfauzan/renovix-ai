@@ -15,7 +15,7 @@ Element.prototype.scrollIntoView = jest.fn();
 const entry: CreditAdjustmentEntry = {
   entryId: "entry-1", accountId: "acct-1", wallet: "paid", amount: "20.5", balanceAfter: "32.9", adminId: "admin-1", actionId: "req-1", createdAt: "2026-10-22T05:00:00.000Z",
 };
-const profile = (permissions: string[]): AdminProfile => ({ id: "a", email: "a@example.com", name: "a", role: "r", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true });
+const profile = (permissions: string[]): AdminProfile => ({ id: "a", email: "a@example.com", name: "a", role: "r", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true, idleExpiresAt: "2026-10-14T08:30:00.000Z", absoluteExpiresAt: "2026-10-14T20:00:00.000Z" });
 const sessionOf = (permissions: string[]): SessionApi => ({ me: async () => profile(permissions), changePassword: async () => undefined, signOut: async () => undefined });
 const ADJUST = ["credits:adjust"];
 

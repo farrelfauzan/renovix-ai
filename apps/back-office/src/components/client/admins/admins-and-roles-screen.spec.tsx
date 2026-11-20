@@ -24,7 +24,7 @@ const admin = (id: string, overrides: Partial<AdminListEntry> = {}): AdminListEn
 });
 const role = (name: string, builtIn: boolean, permissions: string[] = ["users:read"]): AdminRole => ({ name, permissions, builtIn });
 const profile = (permissions: string[], id = "owner"): AdminProfile => ({
-  id, email: `${id}@example.com`, name: id, role: "owner", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true,
+  id, email: `${id}@example.com`, name: id, role: "owner", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true, idleExpiresAt: "2026-10-14T08:30:00.000Z", absoluteExpiresAt: "2026-10-14T20:00:00.000Z",
 });
 
 type FakeState = { admins: AdminListEntry[]; roles: AdminRole[]; isReauthed: boolean; counter: number };
