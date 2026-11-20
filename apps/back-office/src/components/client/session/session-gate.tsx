@@ -30,6 +30,8 @@ type SessionGateProps = {
  * refresh failed, as for a suspended admin) goes to sign-in; what else a session reaches is `decideGate`'s.
  * Nothing of a gated route renders until its own answer is in; if the API cannot be asked, nothing renders.
  * The shell around a route reads that answer's profile from SignedInAdminContext (RNX-312a): no other /me call.
+ * The gate lives in the root layout, so its last answer outlives a client navigation. A public route drops it
+ * (RNX-286): the answer from before a sign-in ("no session: go to sign-in") must not decide the route after it.
  */
 export function SessionGate({ sideNavigation, publicHeader, children, api = defaultSessionApi }: SessionGateProps) {
   const pathname = usePathname();
@@ -37,7 +39,10 @@ export function SessionGate({ sideNavigation, publicHeader, children, api = defa
   const isPublic = isPublicPath(pathname);
   const [checked, setChecked] = useState<CheckedRoute | null>(null);
   useEffect(() => {
-    if (isPublic) return;
+    if (isPublic) {
+      setChecked(null);
+      return;
+    }
     let isCurrent = true;
     api.me().then(
       (profile) => isCurrent && setChecked({ pathname, decision: decideGate(profile, pathname), profile }),
