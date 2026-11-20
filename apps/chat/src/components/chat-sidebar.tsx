@@ -32,6 +32,7 @@ import { fetchConversation } from "@/lib/api";
 import { toast } from "sonner";
 import type { ConversationSummary } from "@/lib/api";
 import { WorkspaceSwitcher } from "@/components/workspace/workspace-switcher";
+import { SidebarCreditMeter } from "@/components/credits/sidebar-credit-meter";
 
 export function AppSidebar() {
   const hydrated = useHydrated();
@@ -113,10 +114,7 @@ export function AppSidebar() {
           <ChatsContent />
         )}
       </SidebarContent>
-      <div className="border-t border-sidebar-border p-3 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:group-data-[state=collapsed]:hidden">
-        <div className="mb-1 flex items-center justify-between"><span>Credits</span><span>SLOT</span></div>
-        <div className="h-1.5 rounded-full bg-sidebar-accent" aria-label="Credit balance unavailable" />
-      </div>
+      <SidebarCreditMeter />
     </Sidebar>
   );
 }
