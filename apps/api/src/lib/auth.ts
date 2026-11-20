@@ -46,6 +46,14 @@ export const auth = betterAuth({
   // RNX-78: /send-verification-email would let anyone queue a verification mail to an unverified account's address,
   // and /list-sessions answers with every session's raw token; the chat lists sessions through GET /auth/sessions.
   disabledPaths: ["/send-verification-email", "/list-sessions"],
+  // RNX-78 (Tech Lead, 2026-11-20): /change-email sends our mail to any address the caller types, so it gets 3 per
+  // hour per client IP instead of Better Auth's default 3 per 10 seconds. Like every Better Auth limit it applies in
+  // production with CLIENT_IP_HEADER set, and is counted per API container (in-memory storage).
+  rateLimit: {
+    customRules: {
+      "/change-email": { window: 60 * 60, max: 3 },
+    },
+  },
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || "",

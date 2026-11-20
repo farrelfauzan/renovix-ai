@@ -21,7 +21,7 @@ jest.mock("better-auth/adapters/prisma", () =>
 jest.mock("../../../lib/auth", () => {
   process.env.GOOGLE_OAUTH_CLIENT_ID = "rnx78-made-up-google-client-id";
   process.env.GOOGLE_OAUTH_CLIENT_SECRET = "rnx78-made-up-google-client-secret";
-  return require("../../../../test/real-better-auth").loadLibAuth();
+  return require("../../../../test/real-better-auth").loadLibAuth("x-rnx78-client-ip");
 });
 
 const PASSWORD = "rnx78-made-up-password";
@@ -251,6 +251,36 @@ describe("RNX-78: Settings > Sign-in and security (Fastify, real Better Auth, te
     expect((await me(cookie)).json().email).toBe(newEmail);
     expect(await signInStatus(oldEmail)).toBe(401);
     expect(await signInStatus(newEmail)).toBe(200);
+  });
+
+  it("Rate limit: a fourth email change within the hour from one client IP is refused with 429 and queues no mail (control: another IP is served)", async () => {
+    await signUp("rnx78-limit@renovix.test");
+    const cookie = await signIn("rnx78-limit@renovix.test");
+    const context = (await auth.$context) as unknown as { rateLimit: { enabled: boolean } };
+    const changeEmail = (index: number, clientIp: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/auth/better/change-email",
+        payload: { newEmail: `rnx78-limit-new-${index}@renovix.test`, callbackURL: SETTINGS_URL },
+        headers: { cookie, origin: CHAT_ORIGIN, "x-rnx78-client-ip": clientIp },
+      });
+    context.rateLimit.enabled = true; // Better Auth's limiter is off outside production
+    try {
+      const allowed = [await changeEmail(1, "203.0.113.7"), await changeEmail(2, "203.0.113.7"), await changeEmail(3, "203.0.113.7")];
+
+      const refused = await changeEmail(4, "203.0.113.7");
+      const otherIp = await changeEmail(5, "203.0.113.8");
+
+      expect(allowed.map((res) => res.statusCode)).toEqual([200, 200, 200]);
+      expect(refused.statusCode).toBe(429);
+      // Better Auth's default for this path is 3 per 10 seconds; a wait near one hour proves the custom rule.
+      expect(Number(refused.headers["x-retry-after"])).toBeGreaterThan(3500);
+      expect(otherIp.statusCode).toBe(200);
+      const recipients = (await started.prisma.emailJob.findMany()).map((job) => job.recipientEmail).sort();
+      expect(recipients).toEqual([1, 2, 3, 5].map((index) => `rnx78-limit-new-${index}@renovix.test`));
+    } finally {
+      context.rateLimit.enabled = false;
+    }
   });
 
   it("AC6: a Google-only user sets a password through POST /auth/password, then signs in with email and password; a second one is refused", async () => {
