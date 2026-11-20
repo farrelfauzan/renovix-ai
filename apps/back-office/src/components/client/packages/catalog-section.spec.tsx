@@ -23,7 +23,7 @@ const version = (versionNumber: number, priceUsdCents: number): OfferVersion => 
   apiAccess: true, allowedChannels: ["web"], allowedTiers: ["standard"], effectiveFrom: "2020-01-01T00:00:00.000Z", createdBy: "admin", reason: "seed",
 });
 const pro = (versions = [version(1, 2500)]): CatalogOffer => ({ id: "pro", name: "Pro", active: true, visible: true, displayOrder: 2, versions });
-const profile = (permissions: string[]): AdminProfile => ({ id: "a", email: "a@example.com", name: "a", role: "r", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true });
+const profile = (permissions: string[]): AdminProfile => ({ id: "a", email: "a@example.com", name: "a", role: "r", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true, idleExpiresAt: "2026-10-14T08:30:00.000Z", absoluteExpiresAt: "2026-10-14T20:00:00.000Z" });
 const sessionOf = (permissions: string[]): SessionApi => ({ me: async () => profile(permissions), changePassword: async () => undefined, signOut: async () => undefined });
 const READ = ["packages:read"];
 const WRITE = ["packages:read", "packages:write"];

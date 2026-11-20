@@ -3,16 +3,22 @@
 /* The shared primitives live in libs/ui, outside this app: Tailwind must scan them for their classes. */
 @source "../../../../libs/ui/src";
 
-/* Back-office tokens that StyleGuide does not name (RNX-244): the ink sidebar's hover and active fills. */
+/* Back-office tokens that StyleGuide does not name (RNX-244): the ink sidebar's hover and active fills; its group heading (RNX-312a). */
 :root {
   --rx-ink-hover: #262D36;
   --rx-ink-active: #2A313A;
+  --rx-ink-group: #6B7684;
 }
 
 @theme inline {
   --color-rx-ink-hover: var(--rx-ink-hover);
   --color-rx-ink-active: var(--rx-ink-active);
+  --color-rx-ink-group: var(--rx-ink-group);
 }
+
+/* RNX-312a: the shell collapses to a top row at 760 px or less, as the design canvas does (its max-width:760px). */
+@custom-variant narrow (@media (width <= 760px));
+@custom-variant wide (@media (width > 760px));
 
 /* RNX-291: the shared primitives (libs/ui) are styled with the shadcn roles below; this app maps them onto the shared tokens. */
 @custom-variant dark (&:is(.dark *));

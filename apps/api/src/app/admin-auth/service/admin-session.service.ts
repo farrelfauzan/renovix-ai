@@ -9,6 +9,7 @@ import { AdminSessionRepository } from "../repository/admin-session.repository";
 import type { AdminAccessClaims } from "../types/admin-access-claims";
 import type { AdminAuthConfig } from "../types/admin-auth-config";
 import type { AdminIdentity } from "../types/admin-identity";
+import type { AdminSessionExpiry } from "../types/admin-session-expiry";
 import type { IssuedAdminSession } from "../types/issued-admin-session";
 import type { StaffRequirement } from "../types/staff-requirement";
 import { assertStaffRequirement } from "../utils/assert-staff-requirement";
@@ -126,6 +127,16 @@ export class AdminSessionService {
     const session = await this.sessions.findForAccessCheck(sessionId, tx);
     if (!session) throw new UnauthorizedException(UNAUTHENTICATED);
     assertStaffRequirement(session, { scope: "any", reauth: true, permissions: [] }, new Date());
+  }
+
+  /** When this session ends (RNX-312a): its last activity plus the idle limit, and its absolute limit. 401 for an unknown session. */
+  async readExpiry(sessionId: string): Promise<AdminSessionExpiry> {
+    const session = await this.sessions.findForAccessCheck(sessionId);
+    if (!session) throw new UnauthorizedException(UNAUTHENTICATED);
+    return {
+      idleExpiresAt: new Date(session.lastSeenAt.getTime() + this.settings.idleMinutes * MS_PER_MINUTE).toISOString(),
+      absoluteExpiresAt: session.absoluteExpiresAt.toISOString(),
+    };
   }
 
   /** The admin's live sessions, without token hashes; `current` marks the one making the request. */

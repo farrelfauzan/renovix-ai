@@ -7,7 +7,7 @@ import { SettingsScreen } from "./settings-screen";
 
 // RNX-98: the settings screen against a fake of SettingsApi; the API's schema and permissions are tested in apps/api.
 
-const profile = (permissions: string[]): AdminProfile => ({ id: "a", email: "a@example.com", name: "a", role: "r", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true });
+const profile = (permissions: string[]): AdminProfile => ({ id: "a", email: "a@example.com", name: "a", role: "r", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true, idleExpiresAt: "2026-10-14T08:30:00.000Z", absoluteExpiresAt: "2026-10-14T20:00:00.000Z" });
 const sessionOf = (permissions: string[]): SessionApi => ({ me: async () => profile(permissions), changePassword: async () => undefined, signOut: async () => undefined });
 const apiOf = (saveSetting: SettingsApi["saveSetting"]): SettingsApi => ({
   listSettings: async () => [{ name: "seatCeiling", value: 100 }, { name: "graceDays", value: null }],

@@ -17,7 +17,7 @@ const RANGE = { from: "2026-09-24", to: "2026-10-23" };
 const PERIOD = { ...RANGE, timeZone: "Asia/Jakarta" };
 
 const profile = (permissions: string[]): AdminProfile => ({
-  id: "admin-1", name: "Ops", email: "ops@example.com", role: "custom", permissions, scope: "full", mfaEnrolled: true, mustChangePassword: false,
+  id: "admin-1", name: "Ops", email: "ops@example.com", role: "custom", permissions, scope: "full", mfaEnrolled: true, mustChangePassword: false, idleExpiresAt: "2026-10-14T08:30:00.000Z", absoluteExpiresAt: "2026-10-14T20:00:00.000Z",
 });
 const VIEWER = ["usage:read", "providers:read"];
 const FINANCE = ["usage:read", "providers:read", "profit:read", "reconciliation:write", "users:read_pii"];

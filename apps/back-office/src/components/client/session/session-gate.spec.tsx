@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { createApiClient } from "@/lib/api/create-api-client";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import { createSessionApi } from "@/lib/session/session-api";
+import { SideNavigation } from "../side-navigation";
 import { SessionGate } from "./session-gate";
 
 // RNX-207: the route gate against the real session client (shared refresh) over a mocked fetch.
@@ -23,6 +24,8 @@ const profile = (overrides: Partial<AdminProfile> = {}): AdminProfile => ({
   scope: "full",
   mfaEnrolled: true,
   mustChangePassword: false,
+  idleExpiresAt: "2026-10-14T08:30:00.000Z",
+  absoluteExpiresAt: "2026-10-14T20:00:00.000Z",
   ...overrides,
 });
 
@@ -69,6 +72,24 @@ describe("SessionGate (RNX-207)", () => {
 
     expect(await screen.findByText("Gated content")).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Back-office" })).toBeTruthy();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["/models-and-providers", "Models and providers"],
+    ["/packages-and-credits", "Packages and credits"],
+  ])("RNX-312a AC2: a direct URL to %s without its permission still renders the route as today (the gate does not hide it; its screen and the API decide); only the menu item is hidden", async (route, label) => {
+    pathname = route;
+    const session = createSession({ [ME]: { status: 200, body: profile({ permissions: ["audit:read"] }) } });
+    render(
+      <SessionGate api={session.api} sideNavigation={<SideNavigation />} publicHeader={null}>
+        <p>Gated content</p>
+      </SessionGate>,
+    );
+
+    expect(await screen.findByText("Gated content")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: label })).toBeNull();
+    expect(screen.getByRole("link", { name: "Overview" })).toBeTruthy();
     expect(replace).not.toHaveBeenCalled();
   });
 

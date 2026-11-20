@@ -3,14 +3,16 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { SignedOutError } from "@/lib/api/signed-out-error";
+import type { AdminProfile } from "@/lib/session/admin-profile";
 import { decideGate } from "@/lib/session/decide-gate";
 import { defaultSessionApi } from "@/lib/session/default-session-api";
 import type { GateDecision } from "@/lib/session/gate-decision";
 import { isPublicPath } from "@/lib/session/is-public-path";
 import type { SessionApi } from "@/lib/session/session-api";
+import { SignedInAdminContext } from "@/lib/session/signed-in-admin-context";
 
 /** The answer for one route; no decision: the session could not be checked. */
-type CheckedRoute = { readonly pathname: string; readonly decision?: GateDecision };
+type CheckedRoute = { readonly pathname: string; readonly decision?: GateDecision; readonly profile?: AdminProfile };
 
 type SessionGateProps = {
   readonly sideNavigation: ReactNode;
@@ -27,6 +29,7 @@ type SessionGateProps = {
  * route change, in the browser. /sign-in and /accept-invitation are never gated. No session (the client's
  * refresh failed, as for a suspended admin) goes to sign-in; what else a session reaches is `decideGate`'s.
  * Nothing of a gated route renders until its own answer is in; if the API cannot be asked, nothing renders.
+ * The shell around a route reads that answer's profile from SignedInAdminContext (RNX-312a): no other /me call.
  */
 export function SessionGate({ sideNavigation, publicHeader, children, api = defaultSessionApi }: SessionGateProps) {
   const pathname = usePathname();
@@ -37,7 +40,7 @@ export function SessionGate({ sideNavigation, publicHeader, children, api = defa
     if (isPublic) return;
     let isCurrent = true;
     api.me().then(
-      (profile) => isCurrent && setChecked({ pathname, decision: decideGate(profile, pathname) }),
+      (profile) => isCurrent && setChecked({ pathname, decision: decideGate(profile, pathname), profile }),
       (err: unknown) => isCurrent && setChecked({ pathname, decision: err instanceof SignedOutError ? { redirectTo: "/sign-in" } : undefined }),
     );
     return () => {
@@ -62,9 +65,11 @@ export function SessionGate({ sideNavigation, publicHeader, children, api = defa
   if ("redirectTo" in current.decision) return null;
   if (!current.decision.showsNavigation) return <main className="min-h-screen p-6">{children}</main>;
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
-      {sideNavigation}
-      <main className="flex-1 p-6">{children}</main>
-    </div>
+    <SignedInAdminContext value={current.profile ?? null}>
+      <div className="flex min-h-screen flex-row narrow:flex-col">
+        {sideNavigation}
+        <main className="flex-1 p-6">{children}</main>
+      </div>
+    </SignedInAdminContext>
   );
 }
