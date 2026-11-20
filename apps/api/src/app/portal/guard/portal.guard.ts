@@ -75,7 +75,9 @@ export class PortalGuard implements CanActivate {
           );
         }
       }
-      const session = await auth.api.getSession({ headers });
+      // RNX-342: read the session row on every request instead of trusting the 5-minute cookie cache
+      // (lib/auth.ts session.cookieCache), so a revoked session is anonymous at once (as RNX-336's guard).
+      const session = await auth.api.getSession({ headers, query: { disableCookieCache: true } });
       if (!session?.user) {
         this.logger.debug(
           `Better Auth getSession returned no user (session expired or invalid)`,
