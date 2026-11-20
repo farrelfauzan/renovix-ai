@@ -9,6 +9,8 @@ import { useAuthStore, useHydrated } from "@/lib/stores";
 export interface CurrentUser {
   id: string;
   email: string;
+  /** RNX-78: whether the sign-in email has been confirmed (shown on Settings > Sign-in and security). */
+  emailVerified: boolean;
   name: string | null;
   avatar: string | null;
   jobTitle: string | null;

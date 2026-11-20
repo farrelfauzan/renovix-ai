@@ -27,6 +27,7 @@ import { AgentController } from "./agent/controller/agent.controller";
 import { AgentService } from "./agent/service/agent.service";
 import { ApiKeyController } from "./auth/controller/api-key.controller";
 import { AuthController } from "./auth/controller/auth.controller";
+import { SignInSecurityController } from "./auth/controller/sign-in-security.controller";
 import { BillingController } from "./billing/controller/billing.controller";
 import { ChannelController } from "./channel/controller/channel.controller";
 import { GowaWebhookController } from "./channel/controller/gowa.webhook.controller";
@@ -110,6 +111,8 @@ const ROWS: readonly Row[] = [
   { route: "PATCH /auth/me", body: NOT_AN_OBJECT },
   { route: "PUT /auth/me/profile", body: NOT_AN_OBJECT },
   { route: "POST /auth/keys", body: NOT_AN_OBJECT },
+  // RNX-78: a first password for a Google- or GitHub-only account.
+  { route: "POST /auth/password", body: { newPassword: "short" }, details: ["newPassword"] },
   // ─── billing ───
   { route: "POST /billing/checkout", body: { amount: "10" }, details: ["amount"] },
   // ─── formerly `any`, inline-typed or unparsed ───
@@ -231,7 +234,7 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
         AgentLinkController, AgentRunController, AgentController, ApiKeyController, AuthController, BillingController,
         ChannelController, GowaWebhookController, ChatController, CodesController, DocumentController,
         KnowledgeController, McpUserController, WebSearchController, PortalController, ReminderController,
-        WorkspaceChannelController, WorkspaceInviteController, WorkspaceController,
+        WorkspaceChannelController, WorkspaceInviteController, WorkspaceController, SignInSecurityController,
         AdminPaymentsController, PaymentsController,
       ],
       providers: [

@@ -16,7 +16,7 @@ it.each([
 ] as const)('hides specialized entries for a %s', (capability, _label) => {
   mockCapability = capability;
   render(<SettingsNavigation />);
-  expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual(['General', 'Workspace', 'Billing and credits', 'Connected tools', 'API keys']);
+  expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual(['General', 'Sign-in and security', 'Workspace', 'Billing and credits', 'Connected tools', 'API keys']);
   expect(screen.queryByText('Workspace and members')).toBeNull();
   expect(screen.queryByText('Company and credits')).toBeNull();
   expect(screen.getByRole('link', { name: 'General' }).getAttribute('aria-current')).toBe('page');
