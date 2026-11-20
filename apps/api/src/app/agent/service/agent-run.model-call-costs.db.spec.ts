@@ -19,6 +19,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { AgentRunPolicyService } from "./agent-run-policy.service";
 
@@ -80,6 +81,8 @@ describe("RNX-162: model call costs on the agent meter (test database, fake prov
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // RNX-121b-1: the agent-call limits (the seed's values); without them every agent call is unavailable.
+    await setPeerRunLimits(prisma, { maxDepth: 2, maxAgentCalls: 5, callTimeoutSeconds: 60 });
     fake.requests.length = 0;
     await prisma.tierRate.create({ data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 } });
   });

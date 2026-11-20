@@ -24,7 +24,6 @@ import { ChatEngineMeterService } from "../../chat-engine/service/chat-engine-me
 import { ChatEngineToolLoop } from "../../chat-engine/service/chat-engine-tool-loop.service";
 import { AgentRunExecution } from "../adapters/agent-run-execution.adapter";
 import { AgentRunOutputApproval } from "../adapters/agent-run-output-approval.adapter";
-import { AgentRunPeerCall } from "../adapters/agent-run-peer-call.adapter";
 import { AgentRunPersistence } from "../adapters/agent-run-persistence.adapter";
 import type { AgentChatOptions } from "../types/agent-chat-options";
 import type { AgentRunEngineParts } from "../types/agent-run-engine-parts";
@@ -32,12 +31,16 @@ import type { AgentRunReply } from "../types/agent-run-reply";
 import type { AgentRunTurn } from "../types/agent-run-turn";
 import type { CallableAgent } from "../types/callable-agent";
 import { ONE_MICRO_CREDIT } from "../config/one-micro-credit";
+import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { AgentPeerRunService } from "./agent-peer-run.service";
 
 @Injectable()
 export class AgentRunService {
   /** RNX-25: the chat engine's context and meter, shared by every agent message (they hold no run's state). */
   private readonly contexts: ChatEngineContextService;
   private readonly engineMeter: ChatEngineMeterService;
+  /** RNX-121b-1: the agent calls (call_agent) of every agent message; each message's calls keep their state in that message. */
+  private readonly peerRuns: AgentPeerRunService;
 
   constructor(
     private readonly registry: ModelRegistryService,
@@ -53,9 +56,11 @@ export class AgentRunService {
     private readonly links: AgentLinkService,
     private readonly policy: AgentRunPolicyService,
     private readonly runs: AgentRunRepository,
+    settings: PlatformSettingsService,
   ) {
     this.contexts = new ChatEngineContextService(memoryService, knowledgeBases, workspaceKnowledge, knowledge);
     this.engineMeter = new ChatEngineMeterService(meter, registry);
+    this.peerRuns = new AgentPeerRunService(registry, toolService, guardrail, agents, policy, this.contexts, meter, links, runs, settings);
   }
 
   /**
@@ -77,7 +82,7 @@ export class AgentRunService {
     const callableAgents = await this.links.listCallableAgents(agent, scope);
     const turn = createAgentRunTurn({ agentId, userId, sessionId: sessionId || randomUUID(), message, scope });
     const persistence = new AgentRunPersistence(this.runs, this.memoryService, turn);
-    const engine = this.createEngine({ turn, agent, callableAgents, persistence, documentFormat: options.documentFormat });
+    const engine = this.createEngine({ turn, agent, callableAgents, persistence, documentFormat: options.documentFormat, signal: options.signal });
     const mcpSession = createMcpRunSession();
     const request = await this.toEngineRequest(turn, callableAgents, sessionId, options.documentFormat);
     const runOptions = { signal: options.signal, mcpSession, linkedAgents: callableAgents, onReserved: () => persistence.saveUserMessage() };
@@ -170,11 +175,12 @@ export class AgentRunService {
 
   /**
    * This message's own chat engine on the shared services, with its own ports: the AR execution around the engine's
-   * tool loop (with the one-hop agent call as its peer port, D323), the output guardrail and the session's persistence.
+   * tool loop (with the message's agent calls as its peer port, D323, RNX-121b-1), the output guardrail and the
+   * session's persistence.
    */
   private createEngine(parts: AgentRunEngineParts): ChatEngineService {
-    const { turn, agent, callableAgents, persistence, documentFormat } = parts;
-    const loop = new ChatEngineToolLoop(this.toolService, new AgentRunPeerCall(this.registry, agent, callableAgents));
+    const { turn, agent, callableAgents, persistence, documentFormat, signal } = parts;
+    const loop = new ChatEngineToolLoop(this.toolService, this.peerRuns.createRootPeerCall({ turn, agent, callableAgents, signal }));
     const execution = new AgentRunExecution(loop, turn, { systemPrompt: agent.systemPrompt, callableAgents, documentFormat });
     return new ChatEngineService(this.agents, this.policy, this.guardrail, this.contexts, this.engineMeter, execution, new AgentRunOutputApproval(this.guardrail), persistence);
   }

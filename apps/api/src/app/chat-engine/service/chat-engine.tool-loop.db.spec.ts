@@ -216,7 +216,8 @@ describe("RNX-283: the chat engine's tool loop on the credit ledger (test databa
     fake.enqueue({ toolCalls: [{ name: "call_agent", arguments: { agent: "B", task: "t" } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }, { content: "never" });
     peers.callPeer.mockRejectedValueOnce(new RunBudgetStoppedError(new Decimal(1)));
     const closeRun = closings();
-    const result = await runIn(mode, request);
+    // RNX-121b-1 (D329): only an offered call_agent reaches the peer port.
+    const result = await runIn(mode, { ...request, options: { ...request.options, offersCallAgent: true } });
     expect(result.content).toBe(budgetStopMessage(new Decimal(1)));
     expect(fake.requests).toHaveLength(1);
     expect(closeRun.mock.calls.map(([, ending]) => ending)).toEqual(["budget_stopped"]);

@@ -6,7 +6,7 @@ import { ChatEngineMeterService } from "./chat-engine-meter.service";
 import { ChatEngineToolLoop } from "./chat-engine-tool-loop.service";
 import { CHAT_ENGINE_LOOP_PROFILES } from "../config/chat-engine-loop-profiles";
 import { CHANNEL_CHAT_CONTINUE_PROMPT } from "../../channel/config/channel-chat-continue-prompt";
-import { CHAT_ENGINE_PEER_UNAVAILABLE } from "../config/chat-engine.config";
+import { CHAT_ENGINE_AGENT_NOT_CALLABLE, CHAT_ENGINE_PEER_UNAVAILABLE } from "../config/chat-engine.config";
 import { EMPTY_CHAT_ENGINE_RESULT } from "../config/empty-chat-engine-result";
 import { UNAVAILABLE_PEER_CALL } from "../config/unavailable-peer-call";
 import { applyChatEngineEvent } from "../utils/apply-chat-engine-event";
@@ -334,7 +334,9 @@ describe("RNX-283: the chat engine's tool loop (fake provider, no database)", ()
     it.each(MODES)("%s: a budget stop raised inside a tool call (the peer port) is not swallowed into a tool result: the run stops at its budget", async (mode) => {
       const t = setup({ turns: [toolTurn({ name: "call_agent", arguments: { agent: "B", task: "t" } }), { content: "never" }] });
       t.peers.callPeer.mockRejectedValueOnce(new RunBudgetStoppedError(t.held));
-      const { result } = await t.runIn(mode);
+      // RNX-121b-1 (D329): only an offered call_agent reaches the peer port.
+      const body = t.request();
+      const { result } = await t.runIn(mode, {}, { ...body, options: { ...body.options, offersCallAgent: true } });
       expect(result.content).toBe(budgetStopMessage(t.held));
       expect(t.fake.requests).toHaveLength(1);
       expect(t.runMeter.closeRun.mock.calls).toEqual([[t.budget, "budget_stopped"]]);
@@ -384,12 +386,26 @@ describe("RNX-283: the chat engine's tool loop (fake provider, no database)", ()
     });
   });
 
-  describe("AC5: the empty peer port", () => {
-    it.each(SOURCES_IN_MODES)("%s, %s: a call_agent attempt calls no agent and no model; the model gets the 'unavailable' result; call_agent is never offered", async (source, mode) => {
-      const t = setup({ source, toolTypes: ["calculator"], offered: ["calculator", "call_agent"], turns: [toolTurn({ id: "p", name: "call_agent", arguments: { agent: "B", task: "t" } }), { content: "Alone" }] });
+  describe("AC5: the peer port; RNX-121b-1 AC12 (D329): a call_agent the run did not offer never reaches it", () => {
+    const callTurn = () => toolTurn({ id: "p", name: "call_agent", arguments: { agent: "B", task: "t" } });
+
+    it.each(SOURCES_IN_MODES)("%s, %s: RNX-121b-1 AC12: call_agent not offered: the model's call is refused before the peer port (no agent, no model call for it), the model gets the not-callable result and the run continues", async (source, mode) => {
+      const t = setup({ source, toolTypes: ["calculator"], offered: ["calculator", "call_agent"], turns: [callTurn(), { content: "Alone" }] });
       const { result } = await t.runIn(mode);
       expect(result.content).toBe("Alone");
       expect(t.toolNamesSent(0)).toEqual(["calculator"]);
+      expect(t.peers.callPeer).not.toHaveBeenCalled();
+      expect(t.lastMessage(1)).toEqual({ role: "tool", tool_call_id: "p", content: CHAT_ENGINE_AGENT_NOT_CALLABLE });
+      expect(t.executeTool).not.toHaveBeenCalled();
+      expect(t.fake.requests).toHaveLength(2);
+    });
+
+    it.each(SOURCES_IN_MODES)("%s, %s: RNX-121b-1 AC12 (control): an offered call_agent reaches the peer port, and its result goes back to the model", async (source, mode) => {
+      const t = setup({ source, toolTypes: ["calculator"], offered: ["calculator"], turns: [callTurn(), { content: "Alone" }] });
+      const body = t.request();
+      const { result } = await t.runIn(mode, {}, { ...body, options: { ...body.options, offersCallAgent: true } });
+      expect(result.content).toBe("Alone");
+      expect(t.toolNamesSent(0)).toEqual(["calculator", "call_agent"]);
       // RNX-25 (D341 D1): the peer request also carries the run's scope, the calling call (its parent) and the metered call.
       const [firstCall] = t.runMeter.callModel.mock.results;
       const parentCallId = (await firstCall.value).callId;

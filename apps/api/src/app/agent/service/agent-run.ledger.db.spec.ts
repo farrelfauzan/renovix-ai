@@ -19,6 +19,7 @@ import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createUser } from "../../../../test/factories";
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { setRunCap } from "../../../../test/run-cap";
 import { MODEL_UNAVAILABLE_MESSAGE } from "../../config/errors/model-unavailable.exception";
 import { fundPaidWallet } from "../../../../test/credit-funding";
@@ -96,6 +97,8 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // RNX-121b-1: the agent-call limits (the seed's values); without them every agent call is unavailable.
+    await setPeerRunLimits(prisma, { maxDepth: 2, maxAgentCalls: 5, callTimeoutSeconds: 60 });
     fake.requests.length = 0;
     await createResolvableModel(prisma, { slug: "test-model", modelName: "test-model", maxTokens: 8192 });
     // Standard 1 / 1 / 1: a call costs its token count in micro-credits.
@@ -147,7 +150,8 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
 
       expect(result.message.content).toBe("Parent final");
       // RNX-25: the run's tokens are the root agent's calls only (110 + 230); the hop's 70 stay out, as on main.
-      const answer = await prisma.agentMessage.findFirstOrThrow({ where: { role: "assistant" } });
+      // RNX-121b-1: the hop's child run has its own assistant message; this is the run's.
+      const answer = await prisma.agentMessage.findFirstOrThrow({ where: { role: "assistant", runId: result.runId } });
       expect([answer.tokens, result.usage.totalTokens]).toEqual([340, 340]);
       const entries = await usageEntriesOf(bob.id);
       const reservations = await prisma.creditReservation.findMany();

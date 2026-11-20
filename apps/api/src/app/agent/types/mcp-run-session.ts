@@ -17,4 +17,6 @@ export type McpRunSession = {
    */
   readonly offeredToolNames: Set<string>;
   document: StoredDocumentResult | null;
+  /** RNX-121b-1 (D351 8): a called agent's run: its `create_document` makes no file and returns the document as text. */
+  readonly returnsDocumentsAsText?: boolean;
 };

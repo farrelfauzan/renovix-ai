@@ -5,6 +5,7 @@ import type { ToolSchema } from "../../agent/types/tool-schema";
 import { createMcpRunSession } from "../../agent/utils/create-mcp-run-session";
 import { rememberOfferedTools } from "../../agent/utils/remember-offered-tools";
 import { CHANNEL_CHAT_CONTINUE_PROMPT } from "../../channel/config/channel-chat-continue-prompt";
+import { CHAT_ENGINE_AGENT_NOT_CALLABLE } from "../config/chat-engine.config";
 import { ChatEngineExecution } from "../ports/chat-engine-execution.port";
 import { ChatEnginePeerCall } from "../ports/chat-engine-peer-call.port";
 import type { ChatExecutionChunk } from "../types/chat-execution-chunk";
@@ -105,7 +106,10 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
     loop.iterations++;
   }
 
-  /** One tool call's result: call_agent goes to the peer port, any other name to the tool service; a failure is the "Error: …" result, the budget stop ends the run. */
+  /**
+   * One tool call's result: call_agent goes to the peer port, any other name to the tool service; a failure is the "Error: …" result, the budget stop ends the run.
+   * RNX-121b-1 (D329): a call_agent the run did not offer is refused here, before the peer port (RNX-276's offer check).
+   */
   private async runToolCall(loop: ChatToolLoopRun, toolCall: ChatToolCall, parentCallId: string): Promise<string> {
     const { input, mcpSession } = loop;
     try {
@@ -114,7 +118,8 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
         return await this.tools.executeTool(toolCall.function.name, args, input.agent, mcpSession, input.context.scope, input.principal.runnerUserId);
       }
       const { principal, agent, context, callModel } = input;
-      const result = await this.peers.callPeer({ runnerUserId: principal.runnerUserId, agentId: agent.id, args, scope: context.scope, parentCallId, callModel });
+      const isOffered = mcpSession.offeredToolNames.has("call_agent");
+      const result = isOffered ? await this.peers.callPeer({ runnerUserId: principal.runnerUserId, agentId: agent.id, args, scope: context.scope, parentCallId, callModel }) : CHAT_ENGINE_AGENT_NOT_CALLABLE;
       loop.iterations += loop.profile.agentCallExtraIterations;
       return result;
     } catch (err) {
