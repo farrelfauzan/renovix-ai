@@ -14,6 +14,10 @@ export interface CurrentUserProfile {
   readonly locale: string | null;
   readonly country: string | null;
   readonly signupGoal: string | null;
+  /** RNX-77a: the role from the profile step or Settings; jobTitle is optional free text. */
+  readonly role: string | null;
+  /** RNX-77a: the model tier a new chat starts on, if the user chose one. */
+  readonly defaultModelTier: string | null;
   readonly profileCompletedAt: Date | null;
   readonly profileCompleted: boolean;
   readonly status: string;
