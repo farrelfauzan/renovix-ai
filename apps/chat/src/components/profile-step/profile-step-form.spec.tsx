@@ -14,6 +14,7 @@ jest.mock('@/lib/api-client', () => ({ __esModule: true, default: { put: jest.fn
 const user: CurrentUser = {
   id: 'u1',
   email: 'dewi@example.test',
+  emailVerified: false,
   name: 'Dewi Anggraini',
   avatar: null,
   jobTitle: null,

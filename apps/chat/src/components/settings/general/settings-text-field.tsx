@@ -8,7 +8,7 @@ interface SettingsTextFieldProps {
   hint: string;
   value: string;
   maxLength: number;
-  type?: "text" | "tel";
+  type?: "text" | "tel" | "email" | "password";
   onChange: (value: string) => void;
 }
 

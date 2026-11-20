@@ -55,6 +55,7 @@ import { SearchWorkspaceKnowledgeSchema } from "../../app/workspace/dto/search-w
 import { UpdateProfileDto } from "../../app/auth/dto/create-auth.dto";
 import { CompleteProfileDto } from "../../app/auth/dto/complete-profile.dto";
 import { CreateApiKeyDto } from "../../app/auth/dto/create-api-key.dto";
+import { SetPasswordDto } from "../../app/auth/dto/set-password.dto";
 import { ApiChatCompletionRequestSchema } from "../../app/chat/dto/chat-completion.dto";
 import { CreateCodeDto, RedeemCodeDto } from "../../app/codes/dto/redeem-code.dto";
 import { ExportRequestSchema } from "../../app/document/dto/export-request.dto";
@@ -142,6 +143,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /auth/keys", CreateApiKeyDto],
   ["PATCH /auth/me", UpdateProfileDto],
   ["PUT /auth/me/profile", CompleteProfileDto],
+  ["POST /auth/password", SetPasswordDto],
   ["POST /codes/redeem", RedeemCodeDto],
   ["POST /export", ExportRequestSchema],
   ["POST /v1/knowledge/bases", CreateKnowledgeBaseSchema],

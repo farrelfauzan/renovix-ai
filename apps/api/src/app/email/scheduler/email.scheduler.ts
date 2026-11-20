@@ -4,6 +4,8 @@ import { EmailJobService } from "../service/email-job.service";
 import { EmailService } from "../service/email.service";
 import { EmailTemplateService } from "../service/email-template.service";
 import { isRetryableError } from "../utils/is-retryable-error";
+import { buildEmailChangeVerificationEmail } from "../utils/build-email-change-verification-email";
+import { EMAIL_CHANGE_VERIFICATION } from "../repository/enqueue-email-change-verification";
 
 @Injectable()
 export class EmailScheduler {
@@ -66,6 +68,11 @@ export class EmailScheduler {
           recipientEmail: (payload.recipientEmail as string) || "",
         });
       }
+      case EMAIL_CHANGE_VERIFICATION:
+        return buildEmailChangeVerificationEmail({
+          verifyUrl: payload.verifyUrl as string,
+          recipientEmail: payload.recipientEmail as string,
+        });
       default:
         throw new Error(`Unknown email type: ${type}`);
     }

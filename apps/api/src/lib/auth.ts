@@ -9,6 +9,7 @@ import { readClientIpHeader } from "../common/utils/client-ip-header";
 import { resolveTrustedOrigins } from "../common/utils/resolve-trusted-origins";
 import { ensureWeeklyFreeWallet } from "../app/billing/repository/ensure-weekly-free-wallet";
 import { ensureDefaultWorkspace } from "../app/workspace/repository/ensure-default-workspace";
+import { enqueueEmailChangeVerification } from "../app/email/repository/enqueue-email-change-verification";
 
 const isProduction = process.env.NODE_ENV === "production";
 const clientIpHeader = readClientIpHeader();
@@ -34,6 +35,17 @@ export const auth = betterAuth({
     minPasswordLength: 8,
     maxPasswordLength: 128,
   },
+  // RNX-78: the only verification mail is the email change's, sent to the NEW address (user.email is the new
+  // address here). It is queued as an EmailJob row and sent by EmailScheduler outside the request; the link (it
+  // carries the token) is never logged. No mail on sign-up or sign-in (sendOnSignUp and requireEmailVerification off).
+  emailVerification: {
+    sendVerificationEmail: async ({ user, url }) => {
+      await enqueueEmailChangeVerification(getPrisma(), { recipientEmail: user.email, verifyUrl: url });
+    },
+  },
+  // RNX-78: /send-verification-email would let anyone queue a verification mail to an unverified account's address,
+  // and /list-sessions answers with every session's raw token; the chat lists sessions through GET /auth/sessions.
+  disabledPaths: ["/send-verification-email", "/list-sessions"],
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
@@ -103,6 +115,9 @@ export const auth = betterAuth({
   },
   user: {
     modelName: "User",
+    // RNX-78: an email change takes effect only through the link sent to the new address (verify-email); the old
+    // address stays the sign-in email until then. updateEmailWithoutVerification stays off.
+    changeEmail: { enabled: true },
     fields: {
       image: "avatar",
     },

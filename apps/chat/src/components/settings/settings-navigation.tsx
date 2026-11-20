@@ -17,6 +17,7 @@ export function SettingsNavigation() {
     <nav ref={navRef} aria-label="Settings" className="flex min-w-0 shrink-0 flex-nowrap gap-2 overflow-x-auto border-b p-3">
       {[
         { href: "/settings/general", label: "General" },
+        { href: "/settings/sign-in-security", label: "Sign-in and security" },
         { href: "/settings/workspace", label: companyOwner ? "Workspace and members" : "Workspace" },
         { href: "/settings/billing", label: companyOwner ? "Company and credits" : "Billing and credits" },
         { href: "/settings/tools", label: "Connected tools" },
