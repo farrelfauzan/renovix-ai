@@ -37,7 +37,12 @@ export class CombinedAuthGuard implements CanActivate {
           }
         }
 
-        const session = await auth.api.getSession({ headers });
+        // RNX-336: read the session row on every request instead of trusting the 5-minute cookie cache
+        // (lib/auth.ts session.cookieCache), so a revoked session is refused at once.
+        const session = await auth.api.getSession({
+          headers,
+          query: { disableCookieCache: true },
+        });
         if (session?.user) {
           request.user = {
             userId: session.user.id,

@@ -81,6 +81,15 @@ describe("CombinedAuthGuard (RX-15 characterization)", () => {
       expect((headers as Headers).get("cookie")).toBe("better-auth.session_token=abc");
     });
 
+    it("RNX-336: asks Better Auth to skip the cookie cache, so the session row is read on every request", async () => {
+      mockGetSession.mockResolvedValue(session());
+      const { result } = run({ cookie: "better-auth.session_token=abc" });
+
+      await expect(result).resolves.toBe(true);
+      const [{ query }] = mockGetSession.mock.calls[0];
+      expect(query).toEqual({ disableCookieCache: true });
+    });
+
     it.each([
       ["getSession returns null (expired or unknown session)", null],
       ["getSession returns a session without user", { session: { id: "s" } }],
