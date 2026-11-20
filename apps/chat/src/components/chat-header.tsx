@@ -1,6 +1,5 @@
 "use client";
 
-import { usePortalUsage } from "@/hooks/use-portal";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@performa-ai/ui/components/button";
@@ -13,21 +12,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@performa-ai/ui/components/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@performa-ai/ui/components/tooltip";
 import { LogIn, LogOut, User, HelpCircle, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "@/lib/auth-client";
 
 export function ChatHeader() {
-  const { data: usage } = usePortalUsage();
   const { email, name, avatar, logout, isLoggedIn } = useAuthStore();
   const queryClient = useQueryClient();
   const hydrated = useHydrated();
-  const isPaid = usage?.tier === "paid";
 
   const handleLogout = async () => {
     await signOut().catch(() => {});
@@ -53,41 +45,6 @@ export function ChatHeader() {
         <div className="flex items-center gap-3" />
 
         <div className="flex items-center gap-2">
-          {/* Usage pill - free tier */}
-          {usage && !isPaid && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1.5 rounded-full bg-secondary/50 px-3 py-1 text-[11px] text-muted-foreground cursor-default">
-                  <div className="h-1.5 w-1.5 rounded-full bg-rx-green" />
-                  <span>{usage.remaining ?? 0} left</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">
-                  Free tier daily requests remaining. Sign in and top up for
-                  unlimited access.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-
-          {/* Usage pill - paid tier */}
-          {usage && isPaid && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1.5 rounded-full bg-secondary/50 px-3 py-1 text-[11px] text-muted-foreground cursor-default">
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  <span>${Number(usage.balance ?? 0).toFixed(2)}</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">
-                  Your credit balance. Used for pay-per-request AI model access.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-
           {hydrated && isLoggedIn() ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

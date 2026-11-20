@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { AppSidebar } from "@/components/chat-sidebar";
+import { CreditBanner } from "@/components/credits/credit-banner";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@performa-ai/ui/components/sidebar";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-sm font-medium">Renovix AI</span>
           </div>
         )}
+        {authenticated && <CreditBanner />}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">{children}</div>
       </SidebarInset>
     </SidebarProvider>

@@ -161,6 +161,7 @@ export function ChatInput() {
           setConversationId(returnedConversationId);
         }
         queryClient.invalidateQueries({ queryKey: ["portal-usage"] });
+        queryClient.invalidateQueries({ queryKey: ["credit-meter"] });
         queryClient.invalidateQueries({ queryKey: ["conversations"] });
       },
       (err) => {
