@@ -31,7 +31,7 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: https://cdn.renovix.id https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://www.gstatic.com https://github.com https://a.slack-edge.com https://www.notion.so https://linear.app https://brave.com https://d3s3b8zw1epdnj.cloudfront.net",
+              "img-src 'self' data: https://cdn.renovix.id http://localhost:9000 https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://www.gstatic.com https://github.com https://a.slack-edge.com https://www.notion.so https://linear.app https://brave.com https://d3s3b8zw1epdnj.cloudfront.net",
               "font-src 'self'",
               "connect-src 'self' https://api.renovix.id wss://api.renovix.id http://localhost:3000 ws://localhost:3000",
               "frame-ancestors 'none'",

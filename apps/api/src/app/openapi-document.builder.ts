@@ -125,6 +125,7 @@ function scanControllerRoutes(controller: Type<unknown>, scanner: MetadataScanne
 
 /** The routes that take a multipart file (read via `req.file()`), by `METHOD /route`. */
 const FILE_ROUTES: ReadonlySet<string> = new Set<string>([
+  "PUT /auth/me/photo",
   "POST /channels/upload-icon",
   "POST /channels/:id/icon",
   "POST /v1/knowledge/bases/:id/upload",
