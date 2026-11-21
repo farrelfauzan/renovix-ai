@@ -6,7 +6,8 @@ import type { RunScope } from "./run-scope";
  * RNX-25: one agent message on the chat engine, local to that message (never shared between runs): the agent, the
  * runner, the session id and the raw message (the adapter's own copy, D341 D3), the run's scope, the session row once
  * stored, and what the run's model calls added up to: the root agent's tokens, the charge of every call (root and hop,
- * D341 D5) and whether it stopped at its budget.
+ * D341 D5) and whether it stopped at its budget (RNX-326: or at a run limit; its answer is the budget-stop text either
+ * way).
  */
 export type AgentRunTurn = {
   readonly agentId: string;

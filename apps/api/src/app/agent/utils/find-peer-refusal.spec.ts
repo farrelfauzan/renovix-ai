@@ -4,7 +4,7 @@ import { findPeerRefusal } from "./find-peer-refusal";
 
 // RNX-121b-1: why an agent call may not run: a cycle, the depth limit or the run's agent-call limit (in that order).
 describe("findPeerRefusal", () => {
-  const limits = { maxDepth: 2, maxAgentCalls: 3, callTimeoutMs: 1_000 };
+  const limits = { maxDepth: 2, maxAgentCalls: 3, callTimeoutMs: 1_000, maxModelCalls: 30, maxRunMs: 300_000 };
   const inputCall = ({ stack = ["a"], depth = 0, agentCalls = 0, calleeId = "b" } = {}) =>
     ({ frame: { state: { stack, agentCalls }, depth }, callee: { id: calleeId } }) as unknown as PeerCall;
 

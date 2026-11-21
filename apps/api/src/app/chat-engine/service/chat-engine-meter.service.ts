@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { RunBudgetStoppedError } from "../../agent/errors/run-budget-stopped.error";
+import { RunLimitStoppedError } from "../../agent/errors/run-limit-stopped.error";
 import { AgentRunMeterService } from "../../agent/service/agent-run-meter.service";
 import type { AgentRunBudget } from "../../agent/types/agent-run-budget";
 import type { RunEnding } from "../../agent/types/run-ending";
@@ -37,6 +38,9 @@ import type { MeteredRunState } from "../types/metered-run-state";
  * (as AgentRunMeterService.meterRun does); `onReserved` runs once, after the reservation holds and before the first
  * call; a hop's call (ChatHopTarget) is metered on the same reservation against the called agent's connection with its
  * parent call; and every call returns its charge (what the run's spent grew by), the run's cost being their sum.
+ * RNX-326: a call's own `signal` (the run's stop of a run with agent calls) goes on the provider request with the
+ * caller's; a run-limit stop (RunLimitStoppedError) ends the run like a budget stop, with the budget-stop message, as
+ * `limit_stopped` (settled).
  */
 @Injectable()
 export class ChatEngineMeterService {
@@ -62,9 +66,12 @@ export class ChatEngineMeterService {
       signal?.throwIfAborted();
       ending = "completed";
     } catch (err) {
-      if (!(err instanceof RunBudgetStoppedError)) throw err;
-      ending = "budget_stopped";
-      yield { type: "budget_stopped", message: budgetStopMessage(err.held) };
+      if (!(err instanceof RunBudgetStoppedError) && !(err instanceof RunLimitStoppedError)) throw err;
+      const type = err instanceof RunLimitStoppedError ? "limit_stopped" : "budget_stopped";
+      // RNX-326: a run limit starts at an agent call, after the run's first call opened its reservation, so its hold is known.
+      const held = err instanceof RunLimitStoppedError ? (await (run.opened as Promise<AgentRunBudget>)).held : err.held;
+      ending = type;
+      yield { type, message: budgetStopMessage(held) };
     } finally {
       await run.queue;
       await this.closeOpenedRun(run.opened, ending);
@@ -87,7 +94,8 @@ export class ChatEngineMeterService {
   private async callOnRun(run: MeteredRunState, request: ChatModelRequest, hop?: ChatHopTarget): Promise<ChargedResponse> {
     run.signal?.throwIfAborted();
     const connection = hop?.connection ?? run.connection;
-    const call: ChatRequest = { ...request, model: connection.slug, connection, ...(run.signal && { signal: run.signal }) };
+    const signal = run.signal && request.signal ? AbortSignal.any([run.signal, request.signal]) : (run.signal ?? request.signal);
+    const call: ChatRequest = { ...request, model: connection.slug, connection, ...(signal && { signal }) };
     const budget = await this.openOnce(run, call);
     const spentBefore = budget.spent;
     const metered = await this.meter.callModel(budget, { agentId: hop?.agentId ?? run.target.agentId, parentCallId: hop?.parentCallId ?? null, request: call });
