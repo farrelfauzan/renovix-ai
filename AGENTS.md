@@ -33,6 +33,7 @@ docker compose up -d
 bun run dev:api          # API on localhost:3000
 bun run dev:chat         # Chat on localhost:4300
 bun run dev:back-office  # Back-office on localhost:4400
+# Back-office first run and local pitfalls: apps/back-office/README.md, "Run it locally"
 bun run dev:landing      # Landing page
 bun run dev:all          # All apps in parallel
 
