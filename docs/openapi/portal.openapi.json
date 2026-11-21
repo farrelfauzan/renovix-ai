@@ -1635,26 +1635,6 @@
         ]
       }
     },
-    "/api/v1/auth/keys/regenerate": {
-      "post": {
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Not authenticated (missing or invalid credentials)"
-          }
-        },
-        "security": [
-          {
-            "SessionCookie": []
-          }
-        ],
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/v1/auth/me": {
       "get": {
         "responses": {

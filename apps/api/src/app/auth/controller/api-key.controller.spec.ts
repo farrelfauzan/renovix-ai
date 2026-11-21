@@ -1,10 +1,9 @@
-import { Controller, Get, Logger } from "@nestjs/common";
+import { Controller, Get } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AuthModule } from "../auth.module";
-import { ApiKeyRepository } from "../repository/api-key.repository";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createFastifyApp, createTestModule } from "../../../../test/test-module";
 import { resetDatabase } from "../../../../test/test-database";
@@ -62,8 +61,6 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     app.inject({ method: "GET", url: "/auth/keys", headers: signedIn(user) });
   const revokeKey = (user: { id: string; email: string }, id: string) =>
     app.inject({ method: "DELETE", url: `/auth/keys/${id}`, headers: signedIn(user) });
-  const regenerate = (user: { id: string; email: string }) =>
-    app.inject({ method: "POST", url: "/auth/keys/regenerate", headers: signedIn(user) });
   /** RNX-82 AC5: one usage entry charged through `apiKeyId`, `daysAgo` days back, on the user's paid account. */
   const seedKeyUsage = async (userId: string, apiKeyId: string | null, credits: string, daysAgo: number) => {
     const account =
@@ -299,48 +296,11 @@ describe("API keys (RNX-18, Fastify, test database)", () => {
     });
   });
 
-  describe("POST /auth/keys/regenerate (compatibility route until RX-82)", () => {
-    it("AC6: answers a new key once in the shape the profile page reads; the old keys answer 401, the new one 200", async () => {
-      const user = await createApiUser();
-      const oldA = await createApiKey(prisma, user.id);
-      const oldB = await createApiKey(prisma, user.id);
+  it("RNX-337: POST /auth/keys/regenerate is gone: a signed-in call is a 404", async () => {
+    const user = await createApiUser();
 
-      const res = await regenerate(user);
+    const res = await app.inject({ method: "POST", url: "/auth/keys/regenerate", headers: signedIn(user) });
 
-      const body = res.json();
-      expect(res.statusCode).toBe(200);
-      expect(Object.keys(body).sort()).toEqual(["apiKey", "apiKeyWarning"]);
-      expect(body.apiKey).toMatch(KEY_SHAPE);
-      expect([(await probe(oldA)).statusCode, (await probe(oldB)).statusCode]).toEqual([401, 401]);
-      expect((await probe(body.apiKey)).statusCode).toBe(200);
-      const keys = (await listKeys(user)).json();
-      expect(keys.filter((k: { revokedAt: string | null }) => k.revokedAt === null)).toEqual([
-        expect.objectContaining({ prefix: body.apiKey.slice(9, 21), expiresAt: null }),
-      ]);
-    });
-
-    it("does not touch another user's keys", async () => {
-      const user = await createApiUser();
-      const other = await createApiUser();
-      const othersKey = await createApiKey(prisma, other.id);
-
-      await regenerate(user);
-
-      expect((await probe(othersKey)).statusCode).toBe(200);
-    });
-
-    it("AC8: create and revoke are one transaction: a failed revoke leaves no new key and the old key working", async () => {
-      const user = await createApiUser();
-      const oldKey = await createApiKey(prisma, user.id);
-      jest.spyOn(moduleRef.get(ApiKeyRepository), "revokeOtherKeys").mockRejectedValueOnce(new Error("planted revoke failure"));
-      jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
-
-      const res = await regenerate(user);
-
-      expect(res.statusCode).toBe(500);
-      expect(res.body).not.toContain("rnx_live_");
-      expect(await prisma.apiKey.count()).toBe(1);
-      expect((await probe(oldKey)).statusCode).toBe(200);
-    });
+    expect(res.statusCode).toBe(404);
   });
 });
