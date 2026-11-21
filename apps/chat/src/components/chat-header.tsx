@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuthStore, useHydrated } from "@/lib/stores";
+import { useProfilePhoto } from "@/hooks/use-profile-photo";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@performa-ai/ui/components/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@performa-ai/ui/components/avatar";
@@ -17,7 +18,8 @@ import Link from "next/link";
 import { signOut } from "@/lib/auth-client";
 
 export function ChatHeader() {
-  const { email, name, avatar, logout, isLoggedIn } = useAuthStore();
+  const { email, name, logout, isLoggedIn } = useAuthStore();
+  const { data: photo } = useProfilePhoto();
   const queryClient = useQueryClient();
   const hydrated = useHydrated();
 
@@ -52,8 +54,8 @@ export function ChatHeader() {
                   variant="ghost"
                   className="h-8 w-8 rounded-full p-0"
                 >
-                  <Avatar className="h-8 w-8">
-                    {avatar && <AvatarImage src={avatar} alt={name || email || ""} />}
+                  <Avatar key={photo?.url ?? "none"} className="h-8 w-8">
+                    {photo?.url && <AvatarImage src={photo.url} alt={name || email || ""} />}
                     <AvatarFallback className="text-xs">
                       {initials}
                     </AvatarFallback>

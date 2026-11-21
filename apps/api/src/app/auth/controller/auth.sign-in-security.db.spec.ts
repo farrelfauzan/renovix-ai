@@ -38,6 +38,8 @@ interface GoogleUser {
   readonly id: string;
   readonly email: string;
   readonly name: string;
+  /** The profile picture the provider reports (Better Auth stores it as the user's avatar on sign-up). */
+  readonly image?: string;
 }
 /** The two network steps of a social provider, replaced for the test. */
 interface StubbableProvider {
@@ -324,5 +326,20 @@ describe("RNX-78: Settings > Sign-in and security (Fastify, real Better Auth, te
     const linked = await linkGoogle(cookie, { id: "google-ac7-same", email: "rnx78-ac7@renovix.test", name: "AC7" });
     expect([linked.statusCode, linked.headers.location]).toEqual([302, SETTINGS_URL]);
     expect(await googleAccounts()).toBe(1);
+  });
+
+  it("RNX-334: a later Google sign-in does not overwrite an uploaded profile photo (control: sign-up stored the Google picture)", async () => {
+    const email = "rnx334-google@renovix.test";
+    const googlePicture = "https://lh3.googleusercontent.example.test/a/first-picture";
+    await signUpWithGoogle({ id: "google-rnx334", email, name: "RNX-334", image: googlePicture });
+    const readAvatar = async () => (await started.prisma.user.findUniqueOrThrow({ where: { email }, select: { avatar: true } })).avatar;
+    expect(await readAvatar()).toBe(googlePicture);
+    const user = await started.prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } });
+    const uploadedKey = `users/${user.id}/profile-photo/rnx334-uploaded.png`;
+    await started.prisma.user.update({ where: { id: user.id }, data: { avatar: uploadedKey } });
+
+    await signUpWithGoogle({ id: "google-rnx334", email, name: "RNX-334", image: "https://lh3.googleusercontent.example.test/a/changed-picture" });
+
+    expect(await readAvatar()).toBe(uploadedKey);
   });
 });
