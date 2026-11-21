@@ -56,6 +56,11 @@ export class UserRepository {
     return (tx ?? this.prisma).user.findUnique({ where: { id: userId }, select: { timezone: true } });
   }
 
+  /** RNX-335: this user's saved language (an agent run's reply language), if there is such a user. */
+  findLocale(userId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findUnique({ where: { id: userId }, select: { locale: true } });
+  }
+
   /** Updates this user's profile fields (PATCH /auth/me); the caller reads the profile again to answer. */
   updateProfile(userId: string, data: Prisma.UserUpdateInput, tx?: DbTransaction) {
     return (tx ?? this.prisma).user.update({ where: { id: userId }, data, select: { id: true } });

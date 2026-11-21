@@ -96,6 +96,7 @@ export class GowaWebhookController {
         agent.id,
         messageText,
         sessionId,
+        { isExternalAudience: true },
       );
 
       // Send response via GOWA
