@@ -420,7 +420,6 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /agents/clone/:templateId (AgentController.cloneFromTemplate)",
     "POST /agents/generate-prompt (AgentController.generatePrompt)",
     "POST /auth/keys (ApiKeyController.create)",
-    "POST /auth/keys/regenerate (ApiKeyController.regenerate)",
     "POST /auth/password (SignInSecurityController.setPassword)",
     "POST /billing/checkout (BillingController.createCheckout)",
     "POST /channels (ChannelController.create)",
@@ -541,7 +540,6 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /auth/keys (ApiKeyController.list)",
     "GET /auth/keys/rate-limit (ApiKeyController.getRateLimit)",
     "POST /auth/keys (ApiKeyController.create)",
-    "POST /auth/keys/regenerate (ApiKeyController.regenerate)",
   ];
 
   it("RNX-18: the API key routes exist and declare session", () => {
@@ -549,6 +547,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     expect(
       labels(routes.filter((route) => API_KEY_MANAGEMENT_ROUTES.includes(route.label) && declares(route, ["session"]))),
     ).toEqual(API_KEY_MANAGEMENT_ROUTES);
+  });
+
+  it("RNX-337: POST /auth/keys/regenerate is not a route (a call to it is a 404)", () => {
+    expect(labels(routes.filter((route) => route.method === "POST" && route.path === "/auth/keys/regenerate"))).toEqual([]);
   });
 
   // RX-96 criterion 4: the back office is /admin, and /admin is the back office.

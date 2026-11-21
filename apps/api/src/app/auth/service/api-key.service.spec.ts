@@ -24,7 +24,6 @@ describe("ApiKeyService.list (RNX-82: credits in the last 30 days)", () => {
   const service = new ApiKeyService(
     { listKeys } as unknown as ApiKeyRepository,
     {} as never,
-    {} as never,
     { sumKeysUsageSince } as unknown as CreditLedgerEntryRepository,
   );
 

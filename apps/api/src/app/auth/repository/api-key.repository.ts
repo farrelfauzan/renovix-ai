@@ -65,15 +65,6 @@ export class ApiKeyRepository {
     return count;
   }
 
-  /** Revokes every key of this user that is not revoked yet, except `keptKeyId`; returns how many changed. */
-  async revokeOtherKeys(userId: string, keptKeyId: string, now: Date, tx?: DbTransaction): Promise<number> {
-    const { count } = await (tx ?? this.prisma).apiKey.updateMany({
-      where: { userId, revokedAt: null, id: { not: keptKeyId } },
-      data: { revokedAt: now },
-    });
-    return count;
-  }
-
   /** Sets the key's last use to `now`. */
   async touchLastUsed(keyId: string, now: Date, tx?: DbTransaction): Promise<void> {
     await (tx ?? this.prisma).apiKey.update({ where: { id: keyId }, data: { lastUsedAt: now } });
