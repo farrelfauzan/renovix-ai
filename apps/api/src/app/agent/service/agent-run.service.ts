@@ -30,6 +30,7 @@ import type { AgentRunEngineParts } from "../types/agent-run-engine-parts";
 import type { AgentRunReply } from "../types/agent-run-reply";
 import type { AgentRunTurn } from "../types/agent-run-turn";
 import type { CallableAgent } from "../types/callable-agent";
+import type { PeerRunState } from "../types/peer-run-state";
 import { ONE_MICRO_CREDIT } from "../config/one-micro-credit";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { AgentPeerRunService } from "./agent-peer-run.service";
@@ -72,6 +73,7 @@ export class AgentRunService {
    * port, RNX-118) and the output guardrail (RNX-275); this adapter keeps the session row, the history, the AR prompt,
    * the stored messages and the run's cost (Bug B: the sum of its charged model calls). `options.signal` aborts the run
    * (D336: no further model call, no answer stored). RNX-222: the result carries the document its `create_document` made.
+   * RNX-326: `options.socketTimeoutMs`, the route's socket timeout, cuts the run time limit of a run with agent calls.
    */
   async chat(userId: string, agentId: string, message: string, sessionId?: string, options: AgentChatOptions = {}): Promise<AgentRunReply> {
     const agent = await this.agents.findAgentForRun(agentId);
@@ -82,7 +84,7 @@ export class AgentRunService {
     const callableAgents = await this.links.listCallableAgents(agent, scope);
     const turn = createAgentRunTurn({ agentId, userId, sessionId: sessionId || randomUUID(), message, scope });
     const persistence = new AgentRunPersistence(this.runs, this.memoryService, turn);
-    const engine = this.createEngine({ turn, agent, callableAgents, persistence, documentFormat: options.documentFormat, signal: options.signal });
+    const engine = this.createEngine({ turn, agent, callableAgents, persistence, documentFormat: options.documentFormat, signal: options.signal, socketTimeoutMs: options.socketTimeoutMs });
     const mcpSession = createMcpRunSession();
     const request = await this.toEngineRequest(turn, callableAgents, sessionId, options.documentFormat);
     const runOptions = { signal: options.signal, mcpSession, linkedAgents: callableAgents, onReserved: () => persistence.saveUserMessage() };
@@ -176,12 +178,14 @@ export class AgentRunService {
   /**
    * This message's own chat engine on the shared services, with its own ports: the AR execution around the engine's
    * tool loop (with the message's agent calls as its peer port, D323, RNX-121b-1), the output guardrail and the
-   * session's persistence.
+   * session's persistence. RNX-326: the run's peer-run state, shared by its agent calls and its execution, starts the
+   * run clock here, once the run's gates have passed and before its input guardrail, context and reservation.
    */
   private createEngine(parts: AgentRunEngineParts): ChatEngineService {
-    const { turn, agent, callableAgents, persistence, documentFormat, signal } = parts;
-    const loop = new ChatEngineToolLoop(this.toolService, this.peerRuns.createRootPeerCall({ turn, agent, callableAgents, signal }));
-    const execution = new AgentRunExecution(loop, turn, { systemPrompt: agent.systemPrompt, callableAgents, documentFormat });
+    const { turn, agent, callableAgents, persistence, documentFormat, signal, socketTimeoutMs } = parts;
+    const state: PeerRunState = { runnerUserId: turn.userId, scope: turn.scope, signal, stack: [agent.id], agentCalls: 0, startedAt: Date.now(), socketTimeoutMs, modelCalls: 0, stop: new AbortController() };
+    const loop = new ChatEngineToolLoop(this.toolService, this.peerRuns.createRootPeerCall({ turn, agent, callableAgents, state }));
+    const execution = new AgentRunExecution(loop, turn, { systemPrompt: agent.systemPrompt, callableAgents, documentFormat }, state);
     return new ChatEngineService(this.agents, this.policy, this.guardrail, this.contexts, this.engineMeter, execution, new AgentRunOutputApproval(this.guardrail), persistence);
   }
 

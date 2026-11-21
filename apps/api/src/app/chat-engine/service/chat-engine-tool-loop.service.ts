@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { RunBudgetStoppedError } from "../../agent/errors/run-budget-stopped.error";
+import { RunLimitStoppedError } from "../../agent/errors/run-limit-stopped.error";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import type { ToolSchema } from "../../agent/types/tool-schema";
 import { createMcpRunSession } from "../../agent/utils/create-mcp-run-session";
@@ -109,6 +110,7 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
   /**
    * One tool call's result: call_agent goes to the peer port, any other name to the tool service; a failure is the "Error: …" result, the budget stop ends the run.
    * RNX-121b-1 (D329): a call_agent the run did not offer is refused here, before the peer port (RNX-276's offer check).
+   * RNX-326: a run-limit stop ends the run too.
    */
   private async runToolCall(loop: ChatToolLoopRun, toolCall: ChatToolCall, parentCallId: string): Promise<string> {
     const { input, mcpSession } = loop;
@@ -123,7 +125,7 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
       loop.iterations += loop.profile.agentCallExtraIterations;
       return result;
     } catch (err) {
-      if (err instanceof RunBudgetStoppedError) throw err;
+      if (err instanceof RunBudgetStoppedError || err instanceof RunLimitStoppedError) throw err;
       return `Error: ${(err as Error).message}`;
     }
   }

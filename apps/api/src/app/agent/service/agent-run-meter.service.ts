@@ -77,7 +77,7 @@ export class AgentRunMeterService {
 
   /**
    * RNX-282: closes a run's reservation by how its work ended (the policy of `meterRun`): settled when it completed or
-   * stopped at its budget; when it failed (an error, an abort or a disconnect), settled when calls were charged
+   * stopped at its budget (RNX-326: or at a run limit); when it failed (an error, an abort or a disconnect), settled when calls were charged
    * (docs/credits.md section 2, I6: released means nothing charged), else released. A reservation already closed
    * (by an earlier close or the expiry sweep) is left as it is, so a repeated close changes nothing.
    */

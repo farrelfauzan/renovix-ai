@@ -17,6 +17,7 @@ import { AgentPeerCall } from "../adapters/agent-peer-call.adapter";
 import { AgentRunOutputApproval } from "../adapters/agent-run-output-approval.adapter";
 import { PEER_RUN_LIMIT_SETTINGS } from "../config/peer-run-limit-settings";
 import { RunBudgetStoppedError } from "../errors/run-budget-stopped.error";
+import { RunLimitStoppedError } from "../errors/run-limit-stopped.error";
 import { AgentRepository } from "../repository/agent.repository";
 import { AgentRunRepository } from "../repository/agent-run.repository";
 import type { AgentRunSessionRow } from "../types/agent-run-session-row";
@@ -32,6 +33,7 @@ import { findPeerRefusal } from "../utils/find-peer-refusal";
 import { toHopRequest } from "../utils/to-hop-request";
 import { toHopStatus } from "../utils/to-hop-status";
 import { toPeerHop } from "../utils/to-peer-hop";
+import { toRunTimeLimitMs } from "../utils/to-run-time-limit-ms";
 import { AgentLinkService } from "./agent-link.service";
 import { AgentRunMeterService } from "./agent-run-meter.service";
 import { AgentRunPolicyService } from "./agent-run-policy.service";
@@ -39,6 +41,8 @@ import { AgentToolService } from "./agent-tool.service";
 
 /** Milliseconds per second of the `peerRunCallTimeoutSeconds` setting. */
 const MS_PER_SECOND = 1000;
+/** RNX-326: milliseconds per minute of the `peerRunMaxMinutes` setting. */
+const MS_PER_MINUTE = 60_000;
 
 /**
  * RNX-121b-1: the agent calls of an agent run (call_agent behind the chat engine's peer port, D323). A called agent
@@ -51,7 +55,9 @@ const MS_PER_SECOND = 1000;
  * row; a failed or timed-out call gives the caller an error result and the run goes on; a budget stop ends the run.
  * Every hop gets one child row (RNX-302); a hop's own hops end before its row exists, so they are kept in its record
  * and written after it, in order. The run's state lives in its own request and is passed by reference: nothing is
- * shared between requests or API instances.
+ * shared between requests or API instances. RNX-326: from the run's first agent call, its model-call cap
+ * (peerRunMaxModelCalls) and run time limit (peerRunMaxMinutes, cut at the route's socket timeout) apply: at either one
+ * the run stops (RunLimitStoppedError) with the budget-stop answer, and a hop stopped by the time limit is `timeout`.
  */
 @Injectable()
 export class AgentPeerRunService {
@@ -70,18 +76,21 @@ export class AgentPeerRunService {
     private readonly settings: PlatformSettingsService,
   ) {}
 
-  /** The peer port of an agent message's own agent (depth 0): each of its hops is written once it ends, under the message's session row. */
+  /** The peer port of an agent message's own agent (depth 0) on the run's state: each of its hops is written once it ends, under the message's session row. */
   createRootPeerCall(input: RootPeerCallInput): ChatEnginePeerCall {
-    const { turn, agent, callableAgents, signal } = input;
-    const state: PeerRunState = { runnerUserId: turn.userId, scope: turn.scope, signal, stack: [agent.id], agentCalls: 0 };
+    const { turn, agent, callableAgents, state } = input;
     const record = (hop: PeerHop) => this.writeHop(hop, (turn.run as AgentRunSessionRow).id, turn.userId);
     return new AgentPeerCall(this, { state, agent, depth: 0, callableAgents, record });
   }
 
-  /** One agent call: refused (with its `refused` row) when a limit setting is missing or a limit is reached, otherwise run. */
+  /**
+   * One agent call: refused (with its `refused` row) when a limit setting is missing or a limit is reached, otherwise
+   * run. RNX-326: the run's limits start at its first agent call whose settings are all set.
+   */
   async callAgent(call: PeerCall): Promise<string> {
     const limits = await this.readLimits();
     if (!limits) return this.refuse(call, CHAT_ENGINE_PEER_UNAVAILABLE);
+    this.startRunLimits(call.frame.state, limits);
     const refusal = findPeerRefusal(call, limits);
     if (refusal) return this.refuse(call, refusal);
     call.frame.state.agentCalls++;
@@ -91,13 +100,29 @@ export class AgentPeerRunService {
   /** The limits from the platform settings, or null (logged with the missing names) when a row is missing. */
   private async readLimits(): Promise<PeerRunLimits | null> {
     const values = await Promise.all(PEER_RUN_LIMIT_SETTINGS.map((name) => this.settings.getSetting(name)));
-    const [maxDepth, maxAgentCalls, callTimeoutSeconds] = values;
-    if (maxDepth !== null && maxAgentCalls !== null && callTimeoutSeconds !== null) {
-      return { maxDepth, maxAgentCalls, callTimeoutMs: callTimeoutSeconds * MS_PER_SECOND };
+    const [maxDepth, maxAgentCalls, callTimeoutSeconds, maxModelCalls, maxMinutes] = values;
+    if (maxDepth !== null && maxAgentCalls !== null && callTimeoutSeconds !== null && maxModelCalls !== null && maxMinutes !== null) {
+      return { maxDepth, maxAgentCalls, callTimeoutMs: callTimeoutSeconds * MS_PER_SECOND, maxModelCalls, maxRunMs: maxMinutes * MS_PER_MINUTE };
     }
     const missing = PEER_RUN_LIMIT_SETTINGS.filter((_name, i) => values[i] === null);
     this.logger.warn(`Agent call unavailable: the platform setting ${missing.join(", ")} is not set`);
     return null;
+  }
+
+  /**
+   * RNX-326: once per run, at its first agent call: the model-call cap (counted from the run's start, root and hops;
+   * the run's execution enforces it) and the stop timer at the run time limit, counted from the run's start. When it
+   * fires, the model call running is aborted with RunLimitStoppedError and no further call starts; the run's
+   * execution clears it when the run ends, however it ends.
+   */
+  private startRunLimits(state: PeerRunState, limits: PeerRunLimits): void {
+    if (state.maxModelCalls !== undefined) return;
+    const delayMs = state.startedAt + toRunTimeLimitMs({ maxRunMs: limits.maxRunMs, socketTimeoutMs: state.socketTimeoutMs }) - Date.now();
+    state.maxModelCalls = limits.maxModelCalls;
+    state.stopTimer = setTimeout(() => {
+      this.logger.warn(`Agent run stopped at its time limit (${state.stack[0]})`);
+      state.stop.abort(new RunLimitStoppedError("run_time"));
+    }, delayMs);
   }
 
   /** A refused call: nothing runs; its `refused` row is recorded and the caller gets the refusal. */
@@ -107,7 +132,7 @@ export class AgentPeerRunService {
     return message;
   }
 
-  /** Runs the called agent on the call stack and records how it ended; a budget stop is rethrown (it ends the whole run). */
+  /** Runs the called agent on the call stack and records how it ended; a budget stop or (RNX-326) a run-limit stop is rethrown (it ends the whole run). */
   private async runHop(call: PeerCall, limits: PeerRunLimits): Promise<string> {
     const startedAt = Date.now();
     const children: PeerHop[] = [];
@@ -117,11 +142,11 @@ export class AgentPeerRunService {
       .catch((err: unknown) => this.toFailedEnding(call, err))
       .finally(() => call.frame.state.stack.pop());
     await call.frame.record(toPeerHop(call, { status: ending.status, answer: ending.answer, durationMs: Date.now() - startedAt, children }));
-    if (ending.failure instanceof RunBudgetStoppedError) throw ending.failure;
+    if (ending.failure instanceof RunBudgetStoppedError || ending.failure instanceof RunLimitStoppedError) throw ending.failure;
     return ending.answer;
   }
 
-  /** A failed hop: its status (budget stop, timeout or error, an abort included) and the error result its caller gets. */
+  /** A failed hop: its status (budget stop, timeout (RNX-326: the run time limit too) or error, an abort included) and the error result its caller gets. */
   private toFailedEnding(call: PeerCall, err: unknown): HopEnding {
     const status = toHopStatus(err);
     this.logger.warn(`Agent call ${status}: ${call.frame.agent.id} -> ${call.callee.id} (${errorName(err)})`);
