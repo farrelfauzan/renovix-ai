@@ -10,6 +10,7 @@ import { CreditAccountRepository } from "../repository/credit-account.repository
 import { CreditLedgerEntryRepository } from "../repository/credit-ledger-entry.repository";
 import { CreditReservationRepository } from "../repository/credit-reservation.repository";
 import type { ChargedPart } from "../types/charged-part";
+import type { UsageEntry } from "../types/usage-entry";
 import type { ReserveRequest } from "../types/reserve-request";
 import type { RunReserveRequest } from "../types/run-reserve-request";
 import type { UsageRecord } from "../types/usage-record";
@@ -17,6 +18,7 @@ import { assertCreditAmount } from "../utils/assert-credit-amount";
 import { chargeCall } from "../utils/charge-call";
 import { isSameUsage } from "../utils/is-same-usage";
 import { startOfJakartaMonth } from "../utils/start-of-jakarta-month";
+import { sumChargedCredits } from "../utils/sum-charged-credits";
 
 /**
  * How long a request's hold lives before the sweep may release it (docs/credits.md section 3.1 rule 8): the adapter's
@@ -132,11 +134,12 @@ export class CreditService {
    * charged 0 with its credits in `uncharged`. The callId is the idempotency key: a replay of the same call returns
    * the first entry; another call under that callId (other tokens, rates, model or outcome) is a 409, nothing written.
    * RNX-58a: on a two-wallet hold each wallet part that the call charges gets its own entry on its own wallet
-   * (decision 5a), weekly_free first (`appendUsageToLockedAccounts`); the last entry is returned.
+   * (decision 5a), weekly_free first (`appendUsageToLockedAccounts`); the last entry is returned, with `totalCharged`
+   * (RNX-340): what all the call's entries charged, for the usage_logs cost.
    * RNX-162: once the entry has committed, the call's model_call_costs row (`record.cost`), outside the entry's
    * transaction: its failure is logged and never fails the call (ModelCallCostService.record does not throw).
    */
-  async recordUsage(record: UsageRecord): Promise<CreditLedgerEntry> {
+  async recordUsage(record: UsageRecord): Promise<UsageEntry> {
     const parts = await this.reservations.findParts(record.reservationId);
     const entry = await this.transactions.run((tx) => this.appendUsageToLockedAccounts(parts, record, tx));
     await this.callCosts.record({ entry, record });
@@ -148,7 +151,7 @@ export class CreditService {
    * hold and any other outcome settles it (decided by the entry written, so a replay closes it the same way).
    * Returns the usage entry.
    */
-  async finishCall(record: UsageRecord): Promise<CreditLedgerEntry> {
+  async finishCall(record: UsageRecord): Promise<UsageEntry> {
     const entry = await this.recordUsage(record);
     await this.closeReservation(record.reservationId, entry.outcome === "provider_error" ? "released" : "settled");
     return entry;
@@ -237,14 +240,14 @@ export class CreditService {
     found: readonly CreditReservation[],
     record: UsageRecord,
     tx: DbTransaction,
-  ): Promise<CreditLedgerEntry> {
+  ): Promise<UsageEntry> {
     const accounts: CreditAccount[] = [];
     for (const { accountId } of found) accounts.push(await this.accounts.lockAccount(accountId, tx));
     const replayed = await this.findReplayedEntries(accounts, record.callId, tx);
     if (replayed.length > 0 && !isSameUsage(replayed, record)) {
       throw new ConflictException("This call already has another usage entry");
     }
-    if (replayed.length > 0) return replayed[replayed.length - 1];
+    if (replayed.length > 0) return { ...replayed[replayed.length - 1], totalCharged: sumChargedCredits(replayed) };
     const reservations = await this.reservations.findParts(record.reservationId, tx);
     const charged = chargeCall(record, reservations.map((reservation, i) => ({ reservation, account: accounts[i] })));
     const entries: CreditLedgerEntry[] = [];
@@ -252,7 +255,7 @@ export class CreditService {
       const callId = i === charged.length - 1 ? record.callId : `${record.callId}:${part.account.wallet}`;
       entries.push(await this.appendPartUsage(part, record, callId, tx));
     }
-    return entries[entries.length - 1];
+    return { ...entries[entries.length - 1], totalCharged: sumChargedCredits(entries) };
   }
 
   /** The entries already written under this call's idempotency key on these locked accounts, in their order. */
