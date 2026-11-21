@@ -32,7 +32,7 @@ You need Bun, Docker (for Postgres) and a `.env` at the repo root.
    - `ADMIN_TOTP_ENCRYPTION_KEY`: `openssl rand -base64 32` (`.env.example:32-34`).
    - `ADMIN_ORIGIN="http://localhost:4400"` (`.env.example:38`). Keep it exactly like this.
 
-   The other secrets in `.env.example` are also required (`.env.example:7-12`, `:46-58`). Generate each one the same way.
+   Keep the other secrets as `.env.example` ships them: with `NODE_ENV=development` their dev-only values work (`.env.example:7-13`).
 
 3. Start the API, then the back-office, each in its own terminal:
 
@@ -80,7 +80,7 @@ Check the origin first. Open the app at exactly `http://localhost:4400` and keep
   Every request to the API gets 403 (Network tab). On `/` the page says "Your session could not be checked. Reload the page to try again." (`apps/back-office/src/components/client/session/session-gate.tsx:69`); on `/sign-in` the form shows a refusal instead of signing in. Cause: `AdminOriginGuard` returns 403 to any `Origin` that is not exactly `ADMIN_ORIGIN` (`apps/api/src/common/guards/admin-origin.guard.ts:28`, `apps/api/src/app/admin-auth/utils/is-allowed-admin-origin.ts:9`). The guard is registered globally (`apps/api/src/app/app.module.ts:99`). `http://127.0.0.1:4400` is a different origin from `http://localhost:4400`.
 
 - **The app is opened at a LAN IP or host name that matches `ADMIN_ORIGIN`.**
-  Here the Origin check passes, but the cookies are lost. The admin cookies are `Secure` (`apps/api/src/app/admin-auth/utils/build-cookie.ts:5`). Browsers keep `Secure` cookies over plain `http` only on `localhost`, so the cookie is never stored. The next page load gets 401 and goes back to the sign-in page (`apps/back-office/src/components/client/session/session-gate.tsx:49`).
+  Here the Origin check passes, but the cookies are lost. The admin cookies are `Secure` (`apps/api/src/app/admin-auth/utils/build-cookie.ts:5`). Chrome and Firefox keep `Secure` cookies over plain `http` only on `localhost` (Safari has not always kept them even there), so the cookie is never stored. The next page load gets 401 and goes back to the sign-in page (`apps/back-office/src/components/client/session/session-gate.tsx:49`).
   This is a browser rule, not code in this repo.
 
 - **The app runs over `https` locally, or the app and the API are on different sites.**
