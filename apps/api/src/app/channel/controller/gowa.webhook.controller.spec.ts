@@ -182,7 +182,7 @@ describe("RX-115: GOWA webhook refuses unsigned calls (Fastify, test database)",
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ ok: true, messageId: "wamid-1" });
     expect(runService.chat).toHaveBeenCalledTimes(1);
-    expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo & <b>", `wa:${FROM}:${TO}`);
+    expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo & <b>", `wa:${FROM}:${TO}`, { isExternalAudience: true });
     expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(sendMessage).toHaveBeenCalledWith(FROM, "Agent reply", expect.objectContaining({ phoneNumber: TO }));
   });
@@ -216,8 +216,8 @@ describe("RX-115: GOWA webhook refuses unsigned calls (Fastify, test database)",
 
     expect(victimCall.statusCode).toBe(200);
     expect(otherCall.statusCode).toBe(200);
-    expect(runService.chat).toHaveBeenNthCalledWith(1, victim.userId, victim.id, "Halo", `wa:${FROM}:${TO}`);
-    expect(runService.chat).toHaveBeenNthCalledWith(2, other.userId, other.id, "Halo", `wa:${FROM}:${TO}`);
+    expect(runService.chat).toHaveBeenNthCalledWith(1, victim.userId, victim.id, "Halo", `wa:${FROM}:${TO}`, { isExternalAudience: true });
+    expect(runService.chat).toHaveBeenNthCalledWith(2, other.userId, other.id, "Halo", `wa:${FROM}:${TO}`, { isExternalAudience: true });
   });
 
   it("RNX-124 AC3, D99: the whatsapp channel of a deleted agent is not found: a signed call is 401, the agent does not run, nothing stored; the channel row stays and runs again once the agent is live", async () => {
@@ -233,7 +233,7 @@ describe("RX-115: GOWA webhook refuses unsigned calls (Fastify, test database)",
     await prisma.agent.updateMany({ where: { id: agent.id }, data: { deletedAt: null, deletedById: null } });
     const processed = await post(raw, signed(SECRET, raw));
     expect(processed.statusCode).toBe(200);
-    expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo", `wa:${FROM}:${TO}`);
+    expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo", `wa:${FROM}:${TO}`, { isExternalAudience: true });
   });
 
   it("RNX-125 AC8: the whatsapp channel of an agent in a deleted workspace is not found: a signed call is 401, the agent does not run, nothing stored; the channel row stays and runs again once the marker is cleared", async () => {
@@ -251,7 +251,7 @@ describe("RX-115: GOWA webhook refuses unsigned calls (Fastify, test database)",
     await prisma.workspace.update({ where: { id: workspace.id }, data: { deletedAt: null, deletedById: null } });
     const processed = await post(raw, signed(SECRET, raw));
     expect(processed.statusCode).toBe(200);
-    expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo", `wa:${FROM}:${TO}`);
+    expect(runService.chat).toHaveBeenCalledWith(agent.userId, agent.id, "Halo", `wa:${FROM}:${TO}`, { isExternalAudience: true });
   });
 
   it("(g) no channel resolves for payload.to: 401, nothing processed", async () => {
