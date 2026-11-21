@@ -1,3 +1,4 @@
+"use client";
 import Link from "next/link";
 import type { NavigationItem } from "@/lib/navigation/navigation-item";
 

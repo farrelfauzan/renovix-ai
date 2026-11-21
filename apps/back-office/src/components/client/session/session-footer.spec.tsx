@@ -87,6 +87,15 @@ describe("SessionFooter (RNX-312a)", () => {
     expect(shell.calls()).toEqual([`GET ${ME}`, `POST ${SIGN_OUT}`]);
   });
 
+  it("a sign-out on a session that is already over goes to sign-in with no error text", async () => {
+    renderShell({ [ME]: { status: 200, body: profile() }, [SIGN_OUT]: { status: 401, body: { statusCode: 401, message: "Unauthorized" } } });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/sign-in"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("a sign-out the API refuses: its message, and no navigation", async () => {
     renderShell({ [ME]: { status: 200, body: profile() }, [SIGN_OUT]: { status: 500, body: { statusCode: 500, message: "Internal server error" } } });
 
