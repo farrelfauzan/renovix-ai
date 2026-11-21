@@ -25,27 +25,27 @@ export class EmailJobService {
     });
   }
 
+  /**
+   * Claims up to `limit` due pending jobs, oldest first, and marks them "sending". RNX-338: the claim is one statement
+   * that skips rows another API container is claiming (FOR UPDATE SKIP LOCKED), so a job goes to exactly one container.
+   */
   async claimPendingJobs(limit = 10) {
     const now = new Date();
 
-    const jobs = await this.prisma.emailJob.findMany({
-      where: {
-        status: "pending",
-        nextAttemptAt: { lte: now },
-      },
+    const claimed = await this.prisma.$queryRaw<{ id: string }[]>`
+      UPDATE "email_jobs" SET "status" = 'sending', "updatedAt" = ${now}
+      WHERE "id" IN (
+        SELECT "id" FROM "email_jobs"
+        WHERE "status" = 'pending' AND "next_attempt_at" <= ${now}
+        ORDER BY "createdAt" ASC LIMIT ${limit} FOR UPDATE SKIP LOCKED)
+      RETURNING "id"`;
+
+    if (claimed.length === 0) return [];
+
+    return this.prisma.emailJob.findMany({
+      where: { id: { in: claimed.map((job) => job.id) } },
       orderBy: { createdAt: "asc" },
-      take: limit,
     });
-
-    if (jobs.length === 0) return [];
-
-    // Mark as sending
-    await this.prisma.emailJob.updateMany({
-      where: { id: { in: jobs.map((j) => j.id) } },
-      data: { status: "sending" },
-    });
-
-    return jobs;
   }
 
   async markSent(jobId: string, providerMessageId?: string) {

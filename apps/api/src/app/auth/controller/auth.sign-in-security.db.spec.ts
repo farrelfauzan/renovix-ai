@@ -223,6 +223,32 @@ describe("RNX-78: Settings > Sign-in and security (Fastify, real Better Auth, te
       expect((await get("/api/auth/better/list-sessions", dewiMac)).statusCode).toBe(404);
       expect((await get("/api/auth/sessions")).statusCode).toBe(401);
     });
+
+    it("the session list leaves out the user's expired sessions", async () => {
+      await signUp("rnx78-ac4-dewi@renovix.test");
+      await started.prisma.session.deleteMany();
+      const dewiMac = await signIn("rnx78-ac4-dewi@renovix.test", MAC_CHROME);
+      await signIn("rnx78-ac4-dewi@renovix.test", IPHONE_SAFARI);
+      const expiredSession = await started.prisma.session.findFirstOrThrow({ where: { user: { email: "rnx78-ac4-dewi@renovix.test" }, userAgent: IPHONE_SAFARI } });
+      await started.prisma.session.update({ where: { id: expiredSession.id }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+
+      const listed = await get("/api/auth/sessions", dewiMac);
+
+      expect(listed.statusCode).toBe(200);
+      const rows = listed.json() as Record<string, unknown>[];
+      expect(rows.map((row) => row.id)).not.toContain(expiredSession.id);
+      expect(rows.map((row) => row.device)).toEqual(["Chrome on macOS"]);
+    });
+
+    it("send-verification-email is switched off: 404 with a session and without one, and no EmailJob is queued", async () => {
+      await signUp("rnx78-ac4-dewi@renovix.test");
+      const dewiMac = await signIn("rnx78-ac4-dewi@renovix.test");
+      const emailJobsBefore = await started.prisma.emailJob.count();
+
+      expect((await post("/api/auth/better/send-verification-email", { email: "rnx78-ac4-dewi@renovix.test", callbackURL: SETTINGS_URL }, dewiMac)).statusCode).toBe(404);
+      expect((await post("/api/auth/better/send-verification-email", { email: "rnx78-ac4-dewi@renovix.test", callbackURL: SETTINGS_URL })).statusCode).toBe(404);
+      expect(await started.prisma.emailJob.count()).toBe(emailJobsBefore);
+    });
   });
 
   it("AC5: the new email is stored only through the link sent to it (one EmailJob row); then shown, and the old email cannot sign in", async () => {

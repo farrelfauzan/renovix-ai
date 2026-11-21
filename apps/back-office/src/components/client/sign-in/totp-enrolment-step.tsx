@@ -7,10 +7,11 @@ import type { SignInApi } from "@/lib/sign-in/sign-in-api";
 import type { TotpEnrolment } from "@/lib/sign-in/totp-enrolment";
 import { RecoveryCodes } from "./recovery-codes";
 import { TotpConfirmForm } from "./totp-confirm-form";
+import { TotpQrCode } from "./totp-qr-code";
 
 /**
- * TOTP enrolment on an enrolment session (RX-94): a new secret shown as text and as its otpauth URI (no QR
- * code), the first code confirms it, then the recovery codes once. The secret is dropped once confirmed.
+ * TOTP enrolment on an enrolment session (RX-94): a new secret shown as a QR code (RNX-349), as text and as its otpauth
+ * URI, the first code confirms it, then the recovery codes once. The secret is dropped once confirmed.
  */
 export function TotpEnrolmentStep({ api, onDone }: { api: SignInApi; onDone: () => void }) {
   const [enrolment, setEnrolment] = useState<TotpEnrolment | null>(null);
@@ -39,7 +40,8 @@ export function TotpEnrolmentStep({ api, onDone }: { api: SignInApi; onDone: () 
     <div className="mt-4 flex max-w-xl flex-col gap-4">
       {enrolment ? (
         <>
-          <p className="text-sm">Add this account to your authenticator app with the secret or the otpauth URI, then enter the code the app shows.</p>
+          <p className="text-sm">Scan the QR code with your authenticator app, or add the account with the secret or the otpauth URI. Then enter the code the app shows.</p>
+          <TotpQrCode otpauthUri={enrolment.otpauthUri} />
           <dl className="text-sm">
             <dt className="font-medium">Secret</dt>
             <dd className="font-mono break-all">{enrolment.secret}</dd>

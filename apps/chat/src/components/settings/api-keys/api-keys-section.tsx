@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useApiKeys, useRevokeApiKey } from "@/hooks/use-api-keys";
 import { useMyEntitlements } from "@/hooks/use-my-entitlements";
 import type { CreatedApiKey } from "@/lib/api-key-types";
+import { ApiKeysError } from "./api-keys-error";
+import { ApiKeysLoading } from "./api-keys-loading";
 import { CreateKeyForm } from "./create-key-form";
 import { KeysTable } from "./keys-table";
 import { QuickStart } from "./quick-start";
@@ -15,7 +17,7 @@ import { ShowOnceKeyCard } from "./show-once-key-card";
  */
 export function ApiKeysSection() {
   const { data: entitlements } = useMyEntitlements();
-  const { data: keys = [] } = useApiKeys();
+  const { data: keys = [], isLoading, isError, refetch } = useApiKeys();
   const revoke = useRevokeApiKey();
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   return (
@@ -27,7 +29,9 @@ export function ApiKeysSection() {
       {created && (
         <ShowOnceKeyCard keyName={created.name} prefix={created.prefix} apiKey={created.apiKey} onDoneAction={() => setCreated(null)} />
       )}
-      <KeysTable keys={keys} onRevokeAction={(keyId) => revoke.mutate(keyId)} />
+      {isLoading && <ApiKeysLoading />}
+      {!isLoading && isError && <ApiKeysError onRetryAction={() => void refetch()} />}
+      {!isLoading && !isError && <KeysTable keys={keys} onRevokeAction={(keyId) => revoke.mutate(keyId)} />}
       {entitlements && (
         <CreateKeyForm
           offeredTiers={entitlements.tiers}
