@@ -6,6 +6,8 @@ import { resetDatabase } from "../../../../test/test-database";
 
 const MINUTE = 60 * 1000;
 const HOLD_TIMEOUT_MS = 500;
+/** How long the locked-row test waits for a claim before it counts as blocked by the lock. */
+const LOCK_HOLD_MS = 2000;
 
 describe("EmailJobService.claimPendingJobs (test database, RNX-338)", () => {
   let moduleRef: TestingModule;
@@ -63,6 +65,32 @@ describe("EmailJobService.claimPendingJobs (test database, RNX-338)", () => {
     expect(new Set(actualIds).size).toBe(actualIds.length);
     expect([...actualIds].sort()).toEqual([...expectedIds].sort());
     expect(await prisma.emailJob.count({ where: { status: "sending" } })).toBe(6);
+  });
+
+  it("AC1: a job another container holds locked is skipped without waiting, and the other jobs are claimed", async () => {
+    const locked = await createJob("locked", 9);
+    const free = await createJob("free", 5);
+    let releaseLock!: () => void;
+    const lockReleased = new Promise<void>((resolve) => (releaseLock = resolve));
+    let reportLocked!: () => void;
+    const lockTaken = new Promise<void>((resolve) => (reportLocked = resolve));
+    const otherContainer = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "email_jobs" WHERE "id" = ${locked.id} FOR UPDATE`;
+        reportLocked();
+        await lockReleased;
+      },
+      { timeout: LOCK_HOLD_MS * 5 },
+    );
+    await lockTaken;
+
+    const claim = service.claimPendingJobs();
+    const actual = await Promise.race([claim, new Promise<"waited">((resolve) => setTimeout(() => resolve("waited"), LOCK_HOLD_MS))]);
+    releaseLock();
+    await Promise.all([otherContainer, claim]);
+
+    expect(actual).not.toBe("waited");
+    expect((actual as Awaited<typeof claim>).map((job) => job.id)).toEqual([free.id]);
   });
 
   it("AC2: one claim takes the oldest due pending jobs, in creation order, up to its limit", async () => {
