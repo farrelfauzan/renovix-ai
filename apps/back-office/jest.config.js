@@ -4,6 +4,7 @@ module.exports = {
   displayName: 'back-office',
   preset: '../../jest.preset.js',
   testEnvironment: 'jsdom',
+  setupFiles: ['<rootDir>/jest.setup.js'],
   transform: {
     '^.+\\.[tj]sx?$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json', diagnostics: false }],
   },
