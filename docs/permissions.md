@@ -56,7 +56,7 @@ Same format as the staff set (`staff-permissions.ts`), separate list. A route de
 | `workspace.knowledge.documents:manage` | workspace | Owner (D237: D64 said owner and admins; admin is retired, so it narrows to the owner) | Add or remove documents and chunks inside a workspace knowledge base | D64, R14 |
 | `workspace.tools:manage` | workspace | Owner (D237) | The workspace web-search policy only (`PUT /integrations/web-search/policy`). Provider keys are not covered: each key is the caller's own `UserMcpCredential` row, under `account.tools:manage` | R14, R15, D237; RNX-218 |
 | `account.tools:manage` | self | Every signed-in user, for their own connections | Connect MCP servers, OAuth, store or delete own credentials; a credential stored for a workspace still requires current membership and Enterprise (RX-119) | D77 Q18, R15 |
-| `account.api_key:rotate` | self | Every signed-in user whose package includes API access | Regenerate the account's API key | Today `POST /auth/keys/regenerate`; RX-76 (apiAccess) |
+| `account.api_key:rotate` | self | Every signed-in user whose package includes API access | Rotate the account's API key | Create a new key and revoke the old one under `/auth/keys` (the single-key `POST /auth/keys/regenerate` route is removed, RNX-337); RX-76 (apiAccess) |
 | `account.profile:update` | self | Every signed-in user | Profile fields | today |
 | `account.usage:read` | self | Every signed-in user, own usage only | Own usage, own share bar on Enterprise | D78 Q17, R16 |
 | `account.billing:purchase` | self | Every signed-in user, within the credit rules | Buy a package; buy a top-up pack only with a package (D36); redeem a code; stays open when locked (D3) | D3, D36, D37, RX-35 |
@@ -190,7 +190,6 @@ Read from main `36d9e26`. "Today" is the check actually in the code; "Permission
 | Route | Today | Permission | Ticket |
 |---|---|---|---|
 | PATCH /auth/me | signed-in | `account.profile:update` | RX-41 |
-| POST /auth/keys/regenerate | signed-in | `account.api_key:rotate` | RX-41; RX-76 (apiAccess) |
 | POST /codes/redeem · GET /codes/history · GET /usage | signed-in | `account.billing:purchase · account.usage:read` | RX-41 |
 | POST /billing/checkout · POST /webhooks/stripe | signed-in; Stripe, disabled unless `STRIPE_ENABLED` | none: legacy, outside D22 (Xendit only) | RX-57 removes; RX-35 replaces with Xendit checkout under `account.billing:purchase` |
 | Company routes (new): totals, member share and cap, billing info, invoices, top-up, request credits, billing admins, transfer | not built; no company table | `company.usage:read_totals · company.members:manage · company.billing:read · company.billing:update_info · company.billing:top_up · company.credits:request · company.billing_admins:manage · company:transfer_ownership` | RX-38, RX-56, RX-60 (RX-31 for pool spending) |

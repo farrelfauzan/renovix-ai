@@ -344,6 +344,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "DELETE /agents/:id/runs/:runId (AgentRunController.deleteRun)",
     "DELETE /agents/:id/tools/:toolId (AgentController.removeTool)",
     "DELETE /auth/keys/:id (ApiKeyController.revoke)",
+    "DELETE /auth/me/photo (ProfilePhotoController.removePhoto)",
     "DELETE /channels/:channelId/workspace/knowledge/:kbId (WorkspaceChannelController.deleteKnowledgeBase)",
     "DELETE /channels/:channelId/workspace/knowledge/:kbId/chunks/:chunkId (WorkspaceChannelController.deleteChunk)",
     "DELETE /channels/:channelId/workspace/members/:memberId (WorkspaceChannelController.removeMember)",
@@ -368,6 +369,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /auth/keys (ApiKeyController.list)",
     "GET /auth/keys/rate-limit (ApiKeyController.getRateLimit)",
     "GET /auth/me (AuthController.getProfile)",
+    "GET /auth/me/photo (ProfilePhotoController.getPhoto)",
     "GET /auth/sessions (SignInSecurityController.listSessions)",
     "GET /channels (ChannelController.list)",
     "GET /channels/:channelId/workspace (WorkspaceChannelController.getWorkspace)",
@@ -420,7 +422,6 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /agents/clone/:templateId (AgentController.cloneFromTemplate)",
     "POST /agents/generate-prompt (AgentController.generatePrompt)",
     "POST /auth/keys (ApiKeyController.create)",
-    "POST /auth/keys/regenerate (ApiKeyController.regenerate)",
     "POST /auth/password (SignInSecurityController.setPassword)",
     "POST /billing/checkout (BillingController.createCheckout)",
     "POST /channels (ChannelController.create)",
@@ -448,6 +449,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /workspaces/:id/invites/:inviteId/resend (WorkspaceController.resendInvite)",
     "POST /workspaces/:id/invites/:inviteId/revoke (WorkspaceController.revokeInvite)",
     "POST /workspaces/:id/restore (WorkspaceController.restore)",
+    "PUT /auth/me/photo (ProfilePhotoController.uploadPhoto)",
     "PUT /auth/me/profile (AuthController.completeProfile)",
     "PUT /integrations/web-search/brave/key (WebSearchController.upsertBraveKey)",
     "PUT /integrations/web-search/policy (WebSearchController.updatePolicy)",
@@ -541,7 +543,6 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /auth/keys (ApiKeyController.list)",
     "GET /auth/keys/rate-limit (ApiKeyController.getRateLimit)",
     "POST /auth/keys (ApiKeyController.create)",
-    "POST /auth/keys/regenerate (ApiKeyController.regenerate)",
   ];
 
   it("RNX-18: the API key routes exist and declare session", () => {
@@ -549,6 +550,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     expect(
       labels(routes.filter((route) => API_KEY_MANAGEMENT_ROUTES.includes(route.label) && declares(route, ["session"]))),
     ).toEqual(API_KEY_MANAGEMENT_ROUTES);
+  });
+
+  it("RNX-337: POST /auth/keys/regenerate is not a route (a call to it is a 404)", () => {
+    expect(labels(routes.filter((route) => route.method === "POST" && route.path === "/auth/keys/regenerate"))).toEqual([]);
   });
 
   // RX-96 criterion 4: the back office is /admin, and /admin is the back office.

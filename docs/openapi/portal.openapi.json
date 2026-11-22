@@ -1635,26 +1635,6 @@
         ]
       }
     },
-    "/api/v1/auth/keys/regenerate": {
-      "post": {
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Not authenticated (missing or invalid credentials)"
-          }
-        },
-        "security": [
-          {
-            "SessionCookie": []
-          }
-        ],
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/v1/auth/me": {
       "get": {
         "responses": {
@@ -2002,6 +1982,87 @@
           },
           "400": {
             "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me/photo": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      },
+      "put": {
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The uploaded file"
+                  }
+                },
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          },
+          "429": {
+            "description": "Rate limit exceeded (route-specific throttle)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "auth"
+        ]
+      },
+      "delete": {
+        "responses": {
+          "204": {
+            "description": "Success (no content)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"

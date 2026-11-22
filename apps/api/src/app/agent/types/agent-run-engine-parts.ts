@@ -7,6 +7,7 @@ import type { CallableAgent } from "./callable-agent";
  * RNX-25: what one agent message's chat engine is built from: its turn, the authorized agent, its callable agents, its
  * persistence and the document format asked for. RNX-121b-1: the run's abort signal (its agent calls stop with it).
  * RNX-326: the route's socket timeout, when it sets one (the run time limit is cut at it).
+ * RNX-335: the runner's saved language (`users.locale`).
  */
 export type AgentRunEngineParts = {
   readonly turn: AgentRunTurn;
@@ -16,4 +17,5 @@ export type AgentRunEngineParts = {
   readonly documentFormat?: string;
   readonly signal?: AbortSignal;
   readonly socketTimeoutMs?: number;
+  readonly runnerLocale?: string | null;
 };

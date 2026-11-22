@@ -185,7 +185,9 @@ export const useAuthStore = create<AuthState>()(
       avatar: null,
       sessionAuth: false,
       setSessionAuth: (email, name = null, avatar = null) => {
-        set({ email, sessionAuth: true, name, avatar });
+        // RNX-334: the session's image is the raw avatar column, which is a storage key for an uploaded photo; only an
+        // http(s) URL is kept here, and the user's own photo is shown from useProfilePhoto.
+        set({ email, sessionAuth: true, name, avatar: avatar && /^https?:\/\//.test(avatar) ? avatar : null });
       },
       logout: () => {
         set({

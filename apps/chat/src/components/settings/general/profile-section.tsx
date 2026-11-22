@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@performa-ai/ui/components/button";
 import { ProfileGoalChips } from "@/components/profile-step/profile-goal-chips";
 import { ProfileStepSelect } from "@/components/profile-step/profile-step-select";
+import { ProfilePhotoField } from "@/components/settings/general/profile-photo-field";
 import { SettingsTextField } from "@/components/settings/general/settings-text-field";
 import type { CurrentUser } from "@/hooks/use-current-user";
 import { useUpdateProfile } from "@/hooks/use-update-profile";
@@ -16,7 +17,7 @@ const PHONE_MAX_LENGTH = 20;
 
 /**
  * RNX-77a: the Profile section of Settings > General (artboard UserSettings). Its Save sends only this section's
- * fields. The photo is RNX-334.
+ * fields; the photo (RNX-334) saves on its own, when it is chosen or removed.
  */
 export function ProfileSection({ user }: { user: CurrentUser }) {
   const updateProfile = useUpdateProfile();
@@ -50,6 +51,7 @@ export function ProfileSection({ user }: { user: CurrentUser }) {
         </h2>
         <span className="text-[13px] text-muted-foreground">What agents and teammates see. Each field says what it is used for.</span>
       </div>
+      <ProfilePhotoField user={user} />
       <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
         <SettingsTextField id="settings-name" label="Full name" hint="Greetings, member lists, receipts." value={name} maxLength={NAME_MAX_LENGTH} onChange={setName} />
         <ProfileStepSelect

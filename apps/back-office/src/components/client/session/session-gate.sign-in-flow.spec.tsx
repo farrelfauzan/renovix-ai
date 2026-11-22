@@ -126,19 +126,22 @@ describe("RNX-286: first sign-in that starts on a gated route", () => {
     expect(screen.getByLabelText("Code from your authenticator app")).toBeTruthy();
     expect(screen.queryByText("Overview")).toBeNull();
     expect(pathname).toBe("/sign-in");
-    expect(api.session()).toBe("enrolment");
+    // The proof that a wrong code creates no full session is the API test "confirm with a wrong code: 400, not enrolled, no recovery codes, the session stays an enrolment one"
+    // in apps/api/src/app/admin-auth/controller/admin-auth.controller.spec.ts.
   });
 
   it("AC3: a signed-out visitor is still sent to sign-in from a gated route, also after visiting sign-in and going back without signing in", async () => {
     const api = createFakeApi({ status: 400 });
     renderApp("/audit-log", api);
+    // The session check has not answered yet, and the router has not moved: the gated content must not show here.
+    expect(pathname).toBe("/audit-log");
+    expect(screen.queryByText("Overview")).toBeNull();
     await screen.findByLabelText("Email");
 
     replace("/audit-log");
 
     await waitFor(() => expect(replace.mock.calls.map(([route]) => route)).toEqual(["/sign-in", "/audit-log", "/sign-in"]));
     await waitFor(() => expect(pathname).toBe("/sign-in"));
-    expect(screen.queryByText("Overview")).toBeNull();
     expect(screen.queryByRole("navigation")).toBeNull();
   });
 });

@@ -2,7 +2,6 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { readRequiredSecret } from "../../../common/utils/read-required-secret";
 import type { DbTransaction } from "../../prisma/db-transaction";
-import { TransactionService } from "../../prisma/transaction.service";
 import { CreditLedgerEntryRepository } from "../../billing/repository/credit-ledger-entry.repository";
 import { EntitlementService } from "../../offers/service/entitlement.service";
 import { API_KEY_FORMAT } from "../config/api-key-format";
@@ -11,16 +10,13 @@ import { ApiKeyRepository } from "../repository/api-key.repository";
 import type { ApiKeyOwner } from "../types/api-key-owner";
 import type { CreatedApiKey } from "../types/created-api-key";
 import type { ListedApiKey } from "../types/listed-api-key";
-import type { RegeneratedApiKey } from "../types/regenerated-api-key";
 import { hashApiKey } from "../utils/hash-api-key";
 import { matchesApiKeyHash } from "../utils/matches-api-key-hash";
 import { parseApiKeyPrefix } from "../utils/parse-api-key-prefix";
 import { toApiKeyExpiry } from "../utils/to-api-key-expiry";
 
 const HASH_SECRET_NAME = "API_KEY_HASH_SECRET";
-const REGENERATED_KEY_NAME = "Regenerated key";
 const USAGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-const KEY_WARNING = "Store this key securely. It will not be shown again in full.";
 
 /**
  * A user's API keys (RNX-18, D49, D50): several per user, each shown once at creation and stored only as its prefix
@@ -30,7 +26,6 @@ const KEY_WARNING = "Store this key securely. It will not be shown again in full
 export class ApiKeyService {
   constructor(
     private readonly keys: ApiKeyRepository,
-    private readonly transactions: TransactionService,
     private readonly entitlements: EntitlementService,
     private readonly ledger: CreditLedgerEntryRepository,
   ) {}
@@ -75,20 +70,6 @@ export class ApiKeyService {
   async revoke(userId: string, keyId: string): Promise<void> {
     if ((await this.keys.revokeKey(userId, keyId, new Date())) > 0) return;
     if (!(await this.keys.findKey(userId, keyId))) throw new NotFoundException("API key not found");
-  }
-
-  /**
-   * The compatibility route (until RX-82): creates a key that never expires and revokes the user's other keys, in
-   * one transaction (a failed revoke leaves no new key and the old keys working). The new key is answered once.
-   * RNX-232: it gets the defaults, every tier the package allows and no cap.
-   */
-  async regenerate(userId: string): Promise<RegeneratedApiKey> {
-    const created = await this.transactions.run(async (tx) => {
-      const key = await this.create(userId, { name: REGENERATED_KEY_NAME, expiresIn: "never" }, tx);
-      await this.keys.revokeOtherKeys(userId, key.id, key.createdAt, tx);
-      return key;
-    });
-    return { apiKey: created.apiKey, apiKeyWarning: KEY_WARNING };
   }
 
   /**

@@ -34,6 +34,7 @@ import type { PeerRunState } from "../types/peer-run-state";
 import { ONE_MICRO_CREDIT } from "../config/one-micro-credit";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { AgentPeerRunService } from "./agent-peer-run.service";
+import { UserRepository } from "../../auth/repository/user.repository";
 
 @Injectable()
 export class AgentRunService {
@@ -58,6 +59,7 @@ export class AgentRunService {
     private readonly policy: AgentRunPolicyService,
     private readonly runs: AgentRunRepository,
     settings: PlatformSettingsService,
+    private readonly users: UserRepository,
   ) {
     this.contexts = new ChatEngineContextService(memoryService, knowledgeBases, workspaceKnowledge, knowledge);
     this.engineMeter = new ChatEngineMeterService(meter, registry);
@@ -74,6 +76,8 @@ export class AgentRunService {
    * the stored messages and the run's cost (Bug B: the sum of its charged model calls). `options.signal` aborts the run
    * (D336: no further model call, no answer stored). RNX-222: the result carries the document its `create_document` made.
    * RNX-326: `options.socketTimeoutMs`, the route's socket timeout, cuts the run time limit of a run with agent calls.
+   * RNX-335: the runner's saved language is read once per run for the AR prompt, unless the reader is not the runner
+   * (`options.isExternalAudience`).
    */
   async chat(userId: string, agentId: string, message: string, sessionId?: string, options: AgentChatOptions = {}): Promise<AgentRunReply> {
     const agent = await this.agents.findAgentForRun(agentId);
@@ -82,9 +86,10 @@ export class AgentRunService {
     await this.policy.assertActiveSubscription(userId);
     await this.credits.assertAvailable(userId, ONE_MICRO_CREDIT);
     const callableAgents = await this.links.listCallableAgents(agent, scope);
+    const runner = options.isExternalAudience ? null : await this.users.findLocale(userId);
     const turn = createAgentRunTurn({ agentId, userId, sessionId: sessionId || randomUUID(), message, scope });
     const persistence = new AgentRunPersistence(this.runs, this.memoryService, turn);
-    const engine = this.createEngine({ turn, agent, callableAgents, persistence, documentFormat: options.documentFormat, signal: options.signal, socketTimeoutMs: options.socketTimeoutMs });
+    const engine = this.createEngine({ turn, agent, callableAgents, persistence, documentFormat: options.documentFormat, signal: options.signal, socketTimeoutMs: options.socketTimeoutMs, runnerLocale: runner?.locale });
     const mcpSession = createMcpRunSession();
     const request = await this.toEngineRequest(turn, callableAgents, sessionId, options.documentFormat);
     const runOptions = { signal: options.signal, mcpSession, linkedAgents: callableAgents, onReserved: () => persistence.saveUserMessage() };
@@ -182,10 +187,10 @@ export class AgentRunService {
    * run clock here, once the run's gates have passed and before its input guardrail, context and reservation.
    */
   private createEngine(parts: AgentRunEngineParts): ChatEngineService {
-    const { turn, agent, callableAgents, persistence, documentFormat, signal, socketTimeoutMs } = parts;
+    const { turn, agent, callableAgents, persistence, documentFormat, signal, socketTimeoutMs, runnerLocale } = parts;
     const state: PeerRunState = { runnerUserId: turn.userId, scope: turn.scope, signal, stack: [agent.id], agentCalls: 0, startedAt: Date.now(), socketTimeoutMs, modelCalls: 0, stop: new AbortController() };
     const loop = new ChatEngineToolLoop(this.toolService, this.peerRuns.createRootPeerCall({ turn, agent, callableAgents, state }));
-    const execution = new AgentRunExecution(loop, turn, { systemPrompt: agent.systemPrompt, callableAgents, documentFormat }, state);
+    const execution = new AgentRunExecution(loop, turn, { systemPrompt: agent.systemPrompt, callableAgents, documentFormat, runnerLocale }, state);
     return new ChatEngineService(this.agents, this.policy, this.guardrail, this.contexts, this.engineMeter, execution, new AgentRunOutputApproval(this.guardrail), persistence);
   }
 

@@ -6,13 +6,12 @@ import { ApiKeyService } from "../service/api-key.service";
 import type { ApiKeyRateLimitView } from "../types/api-key-rate-limit-view";
 import type { ListedApiKey } from "../types/listed-api-key";
 import type { CreatedApiKey } from "../types/created-api-key";
-import type { RegeneratedApiKey } from "../types/regenerated-api-key";
 import type { SignedInUserRequest } from "../types/signed-in-user-request";
 import { createInvalidBodyException } from "../../../common/utils/create-invalid-body-exception";
 
 /**
  * The signed-in user's API keys (RNX-18), under /api/v1/auth/keys, for the login token or the session (an API key
- * cannot manage keys). The plaintext key is answered once, by create and regenerate; nothing answers the hash.
+ * cannot manage keys). The plaintext key is answered once, by create; nothing answers the hash.
  */
 @Controller("auth/keys")
 export class ApiKeyController {
@@ -57,13 +56,5 @@ export class ApiKeyController {
   @HttpCode(204)
   async revoke(@Req() req: SignedInUserRequest, @Param("id") id: string): Promise<void> {
     await this.apiKeys.revoke(req.user.userId, id);
-  }
-
-  /** Compatibility route until RX-82: a new key that never expires, the user's other keys revoked; `{ apiKey, apiKeyWarning }`. */
-  @Post("regenerate")
-  @Access({ auth: ["session"] })
-  @HttpCode(200)
-  regenerate(@Req() req: SignedInUserRequest): Promise<RegeneratedApiKey> {
-    return this.apiKeys.regenerate(req.user.userId);
   }
 }

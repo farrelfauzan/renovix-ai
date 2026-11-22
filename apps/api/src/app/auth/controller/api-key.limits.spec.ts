@@ -27,7 +27,7 @@ const SNAPSHOT_PRICE = { priceUsdCents: 1, exchangeRate: 1, exchangeRateDate: ne
 const RATE_LIMIT = 60;
 
 // RNX-232 (18b, D47, D111), RNX-76 B2a: a key needs a package with API access; its allowed tiers are set at creation
-// from all the user's packages plus the cheapest tier, its monthly cap is optional, the list shows both, regenerate gives the defaults, and each key has its own requests-per-minute limit.
+// from all the user's packages plus the cheapest tier, its monthly cap is optional, the list shows both, and each key has its own requests-per-minute limit.
 // Real AuthModule and AccessGuard on the test database, over Fastify.
 describe("RNX-232: per-key tiers, cap and rate limit on the key routes (Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -138,17 +138,6 @@ describe("RNX-232: per-key tiers, cap and rate limit on the key routes (Fastify,
 
       expect([actual.statusCode, actual.json().allowedTiers]).toEqual([201, ["premium"]]);
     });
-
-    it("negative: regenerate without API access is a 400, and the user's existing key keeps working", async () => {
-      const user = await createUser(prisma);
-      const oldKey = await createApiKey(prisma, user.id);
-
-      const actual = await app.inject({ method: "POST", url: "/auth/keys/regenerate", headers: signedIn(user) });
-
-      expect(refusal(actual)).toEqual([400, { type: "PACKAGE_LIMIT_REACHED", feature: "apiAccess", nextPackage: null }]);
-      expect(await prisma.apiKey.count()).toBe(1);
-      expect((await probe(oldKey)).statusCode).toBe(200);
-    });
   });
 
   describe("AC2: the tiers a key may call are tiers the user's packages allow", () => {
@@ -237,18 +226,6 @@ describe("RNX-232: per-key tiers, cap and rate limit on the key routes (Fastify,
     expect(list.json().map((k: { name: string; allowedTiers: string[]; monthlyCreditCap: string | null }) => [k.name, k.allowedTiers, k.monthlyCreditCap]))
       .toEqual(expect.arrayContaining([["capped", ["premium"], "12.5"], ["open", ["standard", "premium"], null]]));
     expect(list.json()).toHaveLength(2);
-  });
-
-  it("AC8: POST /auth/keys/regenerate still answers a working key; it gets the package's tiers and no cap", async () => {
-    const user = await createUser(prisma);
-    await buyPackage(user.id, ["standard", "advanced"]);
-
-    const actual = await app.inject({ method: "POST", url: "/auth/keys/regenerate", headers: signedIn(user) });
-
-    expect(actual.statusCode).toBe(200);
-    const key = await prisma.apiKey.findFirstOrThrow({ where: { userId: user.id, revokedAt: null } });
-    expect([key.allowedTiers, key.monthlyCreditCap]).toEqual([["standard", "advanced"], null]);
-    expect((await probe(actual.json().apiKey)).statusCode).toBe(200);
   });
 
   describe("AC6: the per-key rate limit (apiKeyRequestsPerMinute)", () => {
