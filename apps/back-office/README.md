@@ -56,11 +56,13 @@ You need Bun, Docker (for Postgres) and a `.env` at the repo root.
 
 5. Open http://localhost:4400 and sign in with the email and password.
 
-   The first sign-in asks you to set up an authenticator app (`apps/back-office/src/components/client/sign-in/sign-in-screen.tsx:38-39`):
+   On the first sign-in you have no authenticator yet, and the screen does not start the setup by itself. The files below are in `apps/back-office/src/components/client/sign-in/`:
 
-   - The screen shows the TOTP secret as text and as an `otpauth://` URI. There is no QR code (`totp-enrolment-step.tsx:12`, `:42-47`). Add the account by typing the secret or pasting the URI.
+   - After the password the screen asks for an "Authenticator code". Click the link "No authenticator set up yet: continue without a code" (`sign-in-second-factor-form.tsx:45-47`).
+   - The screen says "Your account has no authenticator yet". Click "Set up authenticator" (`totp-enrolment-step.tsx:55-58`).
+   - The screen shows a QR code, and below it the TOTP secret as text and as an `otpauth://` URI (`totp-enrolment-step.tsx:43-50`). Scan the QR code with your authenticator app, or add the account by typing the secret or pasting the URI.
    - Enter the code the app shows. This confirms the secret.
-   - The screen then shows your recovery codes once (`recovery-codes.tsx:9`). Save them. The secret is dropped after confirmation (`totp-enrolment-step.tsx:13`).
+   - The screen then shows your recovery codes once (`recovery-codes.tsx:9`). Save them, then click Continue. The secret is dropped after confirmation (`totp-enrolment-step.tsx:14`).
 
    Later sign-ins ask for the password, then an authenticator code or a recovery code (`sign-in-screen.tsx:53-56`).
 
@@ -77,7 +79,7 @@ Check the origin first. Open the app at exactly `http://localhost:4400` and keep
   Cause: the screens read the value (or fall back to `http://localhost:3000`) in `apps/back-office/src/lib/sign-in/default-sign-in-api.ts:7`, and the CSP at `next.config.js:29` blocks other hosts.
 
 - **The app is opened as `127.0.0.1`, a LAN IP or another host name.**
-  Every request to the API gets 403 (Network tab). On `/` the page says "Your session could not be checked. Reload the page to try again." (`apps/back-office/src/components/client/session/session-gate.tsx:69`); on `/sign-in` the form shows a refusal instead of signing in. Cause: `AdminOriginGuard` returns 403 to any `Origin` that is not exactly `ADMIN_ORIGIN` (`apps/api/src/common/guards/admin-origin.guard.ts:28`, `apps/api/src/app/admin-auth/utils/is-allowed-admin-origin.ts:9`). The guard is registered globally (`apps/api/src/app/app.module.ts:99`). `http://127.0.0.1:4400` is a different origin from `http://localhost:4400`.
+  Every request to the API gets 403 (Network tab). On `/` the page says "Your session could not be checked. Reload the page to try again." (`apps/back-office/src/components/client/session/session-gate.tsx:69`); on `/sign-in` the form shows a refusal instead of signing in. Cause: `AdminOriginGuard` returns 403 to any `Origin` that is not exactly `ADMIN_ORIGIN` (`apps/api/src/common/guards/admin-origin.guard.ts:28`, `apps/api/src/app/admin-auth/utils/is-allowed-admin-origin.ts:9`). The guard is registered globally (`apps/api/src/app/app.module.ts:101`). `http://127.0.0.1:4400` is a different origin from `http://localhost:4400`.
 
 - **The app is opened at a LAN IP or host name that matches `ADMIN_ORIGIN`.**
   Here the Origin check passes, but the cookies are lost. The admin cookies are `Secure` (`apps/api/src/app/admin-auth/utils/build-cookie.ts:5`). Chrome and Firefox keep `Secure` cookies over plain `http` only on `localhost` (Safari has not always kept them even there), so the cookie is never stored. The next page load gets 401 and goes back to the sign-in page (`apps/back-office/src/components/client/session/session-gate.tsx:49`).
