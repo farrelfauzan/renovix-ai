@@ -8,6 +8,7 @@ import { captureLogLines } from "../../../../test/capture-log-lines";
 import { createAgent, createUser } from "../../../../test/factories";
 import { seedAccount, seedCall } from "../../../../test/usage-seed";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
+import { RED_STATE_REMINDER_LIMIT } from "../config/red-state-reminder-limit";
 import { CreditMeterService } from "../service/credit-meter.service";
 import { formatRunOutLabel } from "../utils/format-run-out-label";
 import { CreditMeterController } from "./credit-meter.controller";
@@ -209,6 +210,22 @@ describe("GET /chat/portal/credit-meter (RNX-30-A, test database)", () => {
         { id: first.id, description: "first", nextRunAt: first.nextRunAt.toISOString() },
         { id: second.id, description: "second", nextRunAt: second.nextRunAt.toISOString() },
       ]);
+    });
+
+    it("RNX-329 AC7 (D360): more due reminders before the run-out than RED_STATE_REMINDER_LIMIT: exactly that many listed, soonest first", async () => {
+      const user = await createUser(prisma);
+      const paid = await addWallet(user.id, "paid", "2");
+      await spendOnDays(paid, "paid", user.id, "2.333333", [1, 2, 3]);
+      const room = await seedRoom(user.id);
+      // Created latest first, so a list in creation order would not be soonest first.
+      const inputCount = RED_STATE_REMINDER_LIMIT + 2;
+      for (let i = inputCount; i >= 1; i--) await addReminder(room, { description: `run ${i}`, inDays: i / (inputCount + 1) });
+
+      const actual = await getMeter(user);
+
+      expect(actual.json()).toMatchObject({ level: "red" });
+      const expectedDescriptions = Array.from({ length: RED_STATE_REMINDER_LIMIT }, (_unused, i) => `run ${i + 1}`);
+      expect(actual.json().dueReminders.map((reminder: { description: string }) => reminder.description)).toEqual(expectedDescriptions);
     });
 
     it("run-out in 8 days: amber at runOutAmberDays 10 (none with the seeded 7), no reminder list outside red", async () => {

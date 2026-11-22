@@ -1376,6 +1376,14 @@ enum CreditEntryType {
   adjustment
 }
 
+/// RNX-329: the run-out warning a credit account was sent (D47): amber or red by the projected run-out, floor by the
+/// floor flag (the credit meter's levels, RNX-30-A).
+enum CreditWarningLevel {
+  amber
+  red
+  floor
+}
+
 /// How a model call ended; on `usage` entries only.
 enum CreditCallOutcome {
   completed
@@ -1465,6 +1473,9 @@ model CreditLedgerEntry {
   /// RNX-30-A: the credit meter's 7-day usage aggregate of one account reads its usage entries by time. Written as
   /// Postgres prints the predicate, so `migrate diff` sees no drift.
   @@index([accountId, createdAt], map: "credit_ledger_entries_usage_account_id_created_at_idx", where: raw("type = 'usage'::\"CreditEntryType\""))
+  /// RNX-329: the run-out check reads each account's latest purchase entry (top_up, plan_grant), the start of its
+  /// purchase cycle. Written as Postgres prints the predicate, so `migrate diff` sees no drift.
+  @@index([accountId, createdAt], map: "credit_ledger_entries_purchase_account_id_created_at_idx", where: raw("type = ANY (ARRAY['top_up'::\"CreditEntryType\", 'plan_grant'::\"CreditEntryType\"])"))
   @@map("credit_ledger_entries")
 }
 
@@ -1496,6 +1507,24 @@ model CreditReservation {
   @@index([apiKeyId, status])
   @@index([partOfId])
   @@map("credit_reservations")
+}
+
+/// RNX-329: a run-out warning email already queued for this account in this purchase cycle. At most one row per account,
+/// level and cycle (unique): the hourly check inserts the row ON CONFLICT DO NOTHING and queues the email in the same
+/// transaction only when its insert created the row, so each warning is sent once per cycle whichever API container
+/// runs the check. cycleStartedAt is the createdAt of the account's latest top_up or plan_grant entry; a new purchase
+/// entry starts a new cycle, so the warnings can fire again with no write to this table. accountId has no foreign key
+/// (D332): its check would lock the credit account row (FOR KEY SHARE) until the check's transaction ends, and the
+/// chat's settle (SELECT ... FOR UPDATE on that row) would wait for it; credit accounts are never deleted.
+model CreditWarning {
+  id             String             @id @default(uuid())
+  accountId      String             @map("account_id")
+  level          CreditWarningLevel
+  cycleStartedAt DateTime           @map("cycle_started_at") @db.Timestamptz()
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@unique([accountId, level, cycleStartedAt])
+  @@map("credit_warnings")
 }
 
 /// One platform setting. name is a key of the registry in apps/api/src/app/offers/config/platform-settings.ts,
