@@ -226,6 +226,119 @@ describe("RNX-58a: two-wallet holds, weekly_free then paid (test database)", () 
     ]);
   });
 
+  // RNX-340: `totalCharged` is the cost the portal writes to usage_logs: what all the call's entries took from the
+  // wallets (the uncharged part excluded). Expected values are written out, not computed.
+  describe("RNX-340: totalCharged, the call's charge across wallets", () => {
+    it("AC1: a call settled on weekly_free (1) and paid (2): totalCharged is 3, the entries, balances and holds are unchanged", async () => {
+      await fundWeeklyFreeWallet(prisma, userId, "1");
+      await fundPaidWallet(prisma, userId, "5");
+      const reservation = await reserve("3");
+
+      const entry = await service.finishCall(usage(reservation.id, "call-1", "3"));
+
+      expect(entry.totalCharged.toFixed(6)).toBe("3.000000");
+      expect(entry.amount.toFixed(6)).toBe("-2.000000");
+      expect(await usageEntries()).toEqual([
+        ["weekly_free", "call-1:weekly_free", "-1.000000", "0.000000", "0.000000"],
+        ["paid", "call-1", "-2.000000", "3.000000", "0.000000"],
+      ]);
+      expect([await wallet("weekly_free"), await wallet("paid")]).toEqual([
+        { balance: "0.000000", held: "0.000000" },
+        { balance: "3.000000", held: "0.000000" },
+      ]);
+    });
+
+    it("AC1 (cheaper than the hold): 1 from weekly_free and 0.5 from paid: totalCharged is 1.5", async () => {
+      await fundWeeklyFreeWallet(prisma, userId, "1");
+      await fundPaidWallet(prisma, userId, "5");
+      const reservation = await reserve("3");
+
+      const entry = await service.finishCall(usage(reservation.id, "call-1", "1.5"));
+
+      expect(entry.totalCharged.toFixed(6)).toBe("1.500000");
+      expect(await usageEntries()).toEqual([
+        ["weekly_free", "call-1:weekly_free", "-1.000000", "0.000000", "0.000000"],
+        ["paid", "call-1", "-0.500000", "4.500000", "0.000000"],
+      ]);
+    });
+
+    it("AC2: a call settled fully on weekly_free (0.4 of a 2 balance): totalCharged is 0.4, paid is unchanged", async () => {
+      await fundWeeklyFreeWallet(prisma, userId, "2");
+      await fundPaidWallet(prisma, userId, "5");
+      const reservation = await reserve("1");
+
+      const entry = await service.finishCall(usage(reservation.id, "call-1", "0.4"));
+
+      expect(entry.totalCharged.toFixed(6)).toBe("0.400000");
+      expect(await usageEntries()).toEqual([["weekly_free", "call-1", "-0.400000", "1.600000", "0.000000"]]);
+      expect([await wallet("weekly_free"), await wallet("paid")]).toEqual([
+        { balance: "1.600000", held: "0.000000" },
+        { balance: "5.000000", held: "0.000000" },
+      ]);
+    });
+
+    it("AC3: a call settled fully on paid (no spendsWeeklyFree): totalCharged is 0.4, the same as the entry's amount negated", async () => {
+      await fundWeeklyFreeWallet(prisma, userId, "2");
+      await fundPaidWallet(prisma, userId, "5");
+      const reservation = await service.reserve({ userId, requestId: "req-1", amount: credits("1") });
+
+      const entry = await service.finishCall(usage(reservation.id, "call-1", "0.4"));
+
+      expect(entry.totalCharged.toFixed(6)).toBe("0.400000");
+      expect(entry.amount.negated().toFixed(6)).toBe("0.400000");
+      expect(await usageEntries()).toEqual([["paid", "call-1", "-0.400000", "4.600000", "0.000000"]]);
+      expect([await wallet("weekly_free"), await wallet("paid")]).toEqual([
+        { balance: "2.000000", held: "0.000000" },
+        { balance: "4.600000", held: "0.000000" },
+      ]);
+    });
+
+    it("an overrun the wallets cannot cover (4 on 1 weekly_free + 2.5 paid): totalCharged is 3.5, the uncharged 0.5 is not in it", async () => {
+      await fundWeeklyFreeWallet(prisma, userId, "1");
+      await fundPaidWallet(prisma, userId, "2.5");
+      const reservation = await reserve("3");
+
+      const entry = await service.finishCall(usage(reservation.id, "call-1", "4"));
+
+      expect(entry.totalCharged.toFixed(6)).toBe("3.500000");
+      expect(await usageEntries()).toEqual([
+        ["weekly_free", "call-1:weekly_free", "-1.000000", "0.000000", "0.000000"],
+        ["paid", "call-1", "-2.500000", "0.000000", "0.500000"],
+      ]);
+      expect([await wallet("weekly_free"), await wallet("paid")]).toEqual([
+        { balance: "0.000000", held: "0.000000" },
+        { balance: "0.000000", held: "0.000000" },
+      ]);
+    });
+
+    it("a provider error on a two-wallet hold: totalCharged is 0, balances unchanged", async () => {
+      await fundWeeklyFreeWallet(prisma, userId, "1");
+      await fundPaidWallet(prisma, userId, "5");
+      const reservation = await reserve("3");
+
+      const entry = await service.finishCall(usage(reservation.id, "call-1", "3", { outcome: "provider_error" }));
+
+      expect(entry.totalCharged.toFixed(6)).toBe("0.000000");
+      expect(await usageEntries()).toEqual([["paid", "call-1", "0.000000", "5.000000", "3.000000"]]);
+      expect([await wallet("weekly_free"), await wallet("paid")]).toEqual([
+        { balance: "1.000000", held: "0.000000" },
+        { balance: "5.000000", held: "0.000000" },
+      ]);
+    });
+
+    it("a replay of a two-wallet call returns the same totalCharged (3) and writes nothing", async () => {
+      await fundWeeklyFreeWallet(prisma, userId, "1");
+      await fundPaidWallet(prisma, userId, "5");
+      const reservation = await reserve("3");
+      await service.recordUsage(usage(reservation.id, "call-1", "3"));
+
+      const replay = await service.recordUsage(usage(reservation.id, "call-1", "3"));
+
+      expect(replay.totalCharged.toFixed(6)).toBe("3.000000");
+      expect(await prisma.creditLedgerEntry.count({ where: { type: "usage" } })).toBe(2);
+    });
+  });
+
   describe("negative cases", () => {
     it("a user without a weekly_free wallet (it is created at sign-up): the hold is paid only and no wallet is created here", async () => {
       await fundPaidWallet(prisma, userId, "5");

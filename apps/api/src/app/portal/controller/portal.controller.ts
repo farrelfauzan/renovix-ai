@@ -806,7 +806,7 @@ export class PortalController {
           model: attempt.slug,
           inputTokens: (entry.tokensNew ?? 0) + (entry.tokensCached ?? 0),
           outputTokens: entry.tokensOut ?? 0,
-          cost: entry.amount.negated(),
+          cost: entry.totalCharged,
           latencyMs,
           provider: attempt.providerName,
         })

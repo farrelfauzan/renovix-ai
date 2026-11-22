@@ -2,6 +2,7 @@ import { ConfigModule } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import type { CreditWallet } from "@generated/prisma/client.js";
+import type { Decimal } from "@prisma/client/runtime/client";
 import { PortalController } from "./portal.controller";
 import { EntitlementService } from "../../offers/service/entitlement.service";
 import { PortalTierService } from "../service/portal-tier.service";
@@ -48,6 +49,8 @@ describe("RNX-58a: the home chat spends weekly_free before paid on Standard mode
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let app: NestFastifyApplication;
+  // RNX-340: what the home chat writes to usage_logs; replaced before each test, called through a stable wrapper.
+  let logUsage: jest.Mock<Promise<void>, [{ cost: Decimal }]>;
 
   beforeAll(async () => {
     ({ moduleRef, prisma } = await createTestModule(
@@ -70,7 +73,7 @@ describe("RNX-58a: the home chat spends weekly_free before paid on Standard mode
           },
           { provide: KnowledgeService, useValue: { listKnowledgeBases: async () => [] } },
           { provide: DocumentService, useValue: {} },
-          { provide: UsageService, useValue: { logUsage: async () => undefined } },
+          { provide: UsageService, useValue: { logUsage: (params: { cost: Decimal }) => logUsage(params) } },
         ],
       },
       (b) => withFakeProvider(b, fake),
@@ -80,6 +83,7 @@ describe("RNX-58a: the home chat spends weekly_free before paid on Standard mode
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    logUsage = jest.fn(async (_params: { cost: Decimal }) => undefined);
     fake.requests.length = 0;
     for (const [tier, slug] of Object.entries(MODEL_OF_TIER)) {
       await prisma.tierRate.create({ data: { tier, inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 } });
@@ -140,6 +144,62 @@ describe("RNX-58a: the home chat spends weekly_free before paid on Standard mode
     expect(await ledgerOf()).toEqual({ usage: [["weekly_free", "-0.000015"]], reservations: [["weekly_free", "settled"]] });
     expect(await walletOf(user.id, "weekly_free")).toEqual({ balance: "1.999985", held: "0.000000" });
     expect(await walletOf(user.id, "paid")).toEqual({ balance: "5.000000", held: "0.000000" });
+  });
+
+  // RNX-340: the usage_logs cost of a home chat is the call's charge across both wallets. Rates are 1/1/1 and the fake
+  // provider reports 10 + 5 tokens, so the call costs 0.000015 credit. Expected values are written out.
+  describe("RNX-340: the usage_logs cost is the call's total charge", () => {
+    /** The usage entries as [wallet, amount, balanceAfter, uncharged], weekly_free first. */
+    const entriesOf = async () =>
+      (await prisma.creditLedgerEntry.findMany({ where: { type: "usage" }, orderBy: [{ wallet: "desc" }, { seq: "asc" }] })).map((e) => [
+        e.wallet,
+        e.amount.toFixed(6),
+        e.balanceAfter.toFixed(6),
+        e.uncharged.toFixed(6),
+      ]);
+
+    it("AC1: 0.00001 weekly_free and 5 paid, a Standard call of 0.000015: cost is 0.000015 (0.00001 free + 0.000005 paid)", async () => {
+      const user = await signedUpUser("0.00001", "5");
+      fake.enqueue({ content: "Hello", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+
+      const res = await chat(user, MODEL_OF_TIER.standard);
+
+      expect(res.statusCode).toBe(200);
+      expect(logUsage).toHaveBeenCalledTimes(1);
+      expect(logUsage.mock.calls[0][0].cost.toFixed(6)).toBe("0.000015");
+      expect(await entriesOf()).toEqual([
+        ["weekly_free", "-0.000010", "0.000000", "0.000000"],
+        ["paid", "-0.000005", "4.999995", "0.000000"],
+      ]);
+      expect(await walletOf(user.id, "weekly_free")).toEqual({ balance: "0.000000", held: "0.000000" });
+      expect(await walletOf(user.id, "paid")).toEqual({ balance: "4.999995", held: "0.000000" });
+    });
+
+    it("AC2: 2 weekly_free, a Standard call of 0.000015: cost is 0.000015, paid is unchanged", async () => {
+      const user = await signedUpUser("2", "5");
+      fake.enqueue({ content: "Hello", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+
+      const res = await chat(user, MODEL_OF_TIER.standard);
+
+      expect(res.statusCode).toBe(200);
+      expect(logUsage.mock.calls[0][0].cost.toFixed(6)).toBe("0.000015");
+      expect(await entriesOf()).toEqual([["weekly_free", "-0.000015", "1.999985", "0.000000"]]);
+      expect(await walletOf(user.id, "weekly_free")).toEqual({ balance: "1.999985", held: "0.000000" });
+      expect(await walletOf(user.id, "paid")).toEqual({ balance: "5.000000", held: "0.000000" });
+    });
+
+    it("AC3: a Premium call of 0.000015 (paid only): cost is 0.000015, weekly_free is unchanged", async () => {
+      const user = await signedUpUser("2", "5");
+      fake.enqueue({ content: "Hello", usage: { prompt_tokens: 10, completion_tokens: 5 } });
+
+      const res = await chat(user, MODEL_OF_TIER.premium);
+
+      expect(res.statusCode).toBe(200);
+      expect(logUsage.mock.calls[0][0].cost.toFixed(6)).toBe("0.000015");
+      expect(await entriesOf()).toEqual([["paid", "-0.000015", "4.999985", "0.000000"]]);
+      expect(await walletOf(user.id, "weekly_free")).toEqual({ balance: "2.000000", held: "0.000000" });
+      expect(await walletOf(user.id, "paid")).toEqual({ balance: "4.999985", held: "0.000000" });
+    });
   });
 
   it("the pre-check counts weekly_free too: paid alone cannot cover the estimate, weekly_free can: answered and charged to weekly_free", async () => {
