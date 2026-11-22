@@ -66,6 +66,16 @@ export class UserRepository {
     return (tx ?? this.prisma).user.update({ where: { id: userId }, data, select: { id: true } });
   }
 
+  /** RNX-334: this user's avatar column: an external https URL, an uploaded photo's storage key, or null. */
+  findAvatarOrThrow(userId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findUniqueOrThrow({ where: { id: userId }, select: { avatar: true } });
+  }
+
+  /** RNX-334: sets this user's avatar column (the session user's own row only); null removes it. */
+  setAvatar(userId: string, avatar: string | null, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.update({ where: { id: userId }, data: { avatar }, select: { id: true } });
+  }
+
   /** The id and email of each of these users that exists (RNX-228: the users of a usage report, emails masked there). */
   findEmails(userIds: readonly string[], tx?: DbTransaction) {
     return (tx ?? this.prisma).user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, email: true } });

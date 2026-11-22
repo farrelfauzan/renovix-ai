@@ -9,6 +9,7 @@ import { AppService } from "./app.service";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RepositoriesModule } from "./prisma/repositories.module";
 import { AuthModule } from "./auth/auth.module";
+import { ProfilePhotoModule } from "./auth/profile-photo.module";
 import { ChatModule } from "./chat/chat.module";
 import { BillingModule } from "./billing/billing.module";
 import { UsageModule } from "./usage/usage.module";
@@ -64,6 +65,7 @@ import { clientIp } from "../common/utils/client-ip";
     ProvidersModule,
     ConfigRegistryModule,
     AuthModule,
+    ProfilePhotoModule,
     ChatModule,
     BillingModule,
     UsageModule,
