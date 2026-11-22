@@ -22,6 +22,8 @@ import { CHANNEL_CHAT_MAX_TOOL_ITERATIONS } from "../config/channel-chat-max-too
 import { CHANNEL_CHAT_MAX_STEPS_MESSAGE } from "../config/channel-chat-max-steps-message";
 import { CHANNEL_CHAT_CONTINUE_PROMPT } from "../config/channel-chat-continue-prompt";
 import { TOOL_RESULT_MAX_CHARS } from "../../agent/config/tool-result-max-chars";
+import { replyLanguageSection } from "../../agent/utils/reply-language-section";
+import { UserRepository } from "../../auth/repository/user.repository";
 
 @Injectable()
 export class ChannelChatService {
@@ -37,6 +39,7 @@ export class ChannelChatService {
     private readonly meter: AgentRunMeterService,
     private readonly links: AgentLinkService,
     private readonly policy: AgentRunPolicyService,
+    private readonly users: UserRepository,
   ) {}
 
   /**
@@ -73,7 +76,8 @@ export class ChannelChatService {
   /**
    * One channel chat message as one run; RNX-222: the result carries the document its own `create_document` made.
    * RNX-119: the run policy and the subscription gate (D192) are checked on every message, not only when the agent was
-   * added; the caller runs and pays (their own paid wallet).
+   * added; the caller runs and pays (their own paid wallet). RNX-335: the caller's saved language is read once per
+   * message for the system prompt.
    */
   async chat(
     userId: string,
@@ -182,6 +186,10 @@ export class ChannelChatService {
         ] || options.documentFormat;
       systemContent += `\n\n## Document Generation Mode\nThe user wants a ${formatLabel} document. Follow these steps:\n1. If you have tools available (web_search, call_agent), USE THEM FIRST to research the topic thoroughly before writing.\n2. Write comprehensive, well-structured markdown content with proper headings, sections, and details.\n3. The markdown you produce will be automatically converted to ${formatLabel}. Focus on quality content.`;
     }
+
+    // RNX-335: last, the reply language saved by the runner (the room's user who sent this message)
+    const runner = await this.users.findLocale(userId);
+    systemContent += replyLanguageSection(runner?.locale);
 
     // Build messages
     const currentMessages: any[] = [
