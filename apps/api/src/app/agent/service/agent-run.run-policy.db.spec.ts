@@ -20,6 +20,7 @@ import { PlatformSettingsService } from "../../offers/service/platform-settings.
 import { ProvidersModule } from "../../providers/providers.module";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createTestModule } from "../../../../test/test-module";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { resetDatabase } from "../../../../test/test-database";
 import { createAgent, createPackageSnapshot, createUser, createWorkspace } from "../../../../test/factories";
 import { withdrawCollaboration } from "../../../../test/withdraw-collaboration";
@@ -104,6 +105,8 @@ describe("RNX-119: the run policy on agent chat, runs per person, the memory gat
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // RNX-327: the agent-call limits (the seed's values); without peerRunMaxAgentCalls a run lists no callable agent.
+    await setPeerRunLimits(prisma, { maxDepth: 2, maxAgentCalls: 5, callTimeoutSeconds: 60 });
     fake.requests.length = 0;
     await createResolvableModel(prisma, { slug: "test-model", modelName: "test-model", maxTokens: 8192 });
     await prisma.tierRate.create({

@@ -24,6 +24,7 @@ import {
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { AgentLinkService } from "./agent-link.service";
 import { WorkspaceQuotaService } from "../../workspace/service/workspace-quota.service";
 import { AgentRunPolicyService } from "./agent-run-policy.service";
@@ -103,6 +104,8 @@ describe("RX-134: the agent lookups of a run, one condition at a time (test data
 
   beforeEach(async () => {
     await resetDatabase(prisma);
+    // RNX-327: the agent-call limits (the seed's values); without peerRunMaxAgentCalls a run lists no callable agent.
+    await setPeerRunLimits(prisma, { maxDepth: 2, maxAgentCalls: 5, callTimeoutSeconds: 60 });
     fake.requests.length = 0;
     toolsOffered.length = 0;
     await createResolvableModel(prisma, {
