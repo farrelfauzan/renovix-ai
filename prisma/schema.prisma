@@ -857,6 +857,8 @@ model EmailJob {
   lastError         String?   @map("last_error")
   sentAt            DateTime? @map("sent_at") @db.Timestamptz()
   nextAttemptAt     DateTime? @map("next_attempt_at") @db.Timestamptz()
+  /// RNX-352: end of the lease of the claim that marked the job "sending"; once it is past, the job is claimed again.
+  claimedUntil      DateTime? @map("claimed_until") @db.Timestamptz()
   provider          String?
   providerMessageId String?   @map("provider_message_id")
   createdAt         DateTime  @default(now()) @db.Timestamptz()
