@@ -112,7 +112,7 @@ export class ChatEngineService {
     );
     for await (const chunk of chunks) {
       if (chunk.type === "text") rawOutput += chunk.text;
-      else if (chunk.type === "budget_stopped") rawOutput = chunk.message;
+      else if (chunk.type === "budget_stopped" || chunk.type === "limit_stopped") rawOutput = chunk.message;
       else yield* this.approveToolResult(request, offered, chunk.toolName, chunk.content);
     }
     const output = await this.outputApproval.approveOutput(rawOutput, principal.runnerUserId, conversation.agentId);
