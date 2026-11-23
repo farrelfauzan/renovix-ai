@@ -309,7 +309,11 @@ describe("RNX-326: the run limits of an agent run with agent calls (test databas
   });
 
   describe("AC4: a missing run-limit setting", () => {
-    it.each(["peerRunMaxModelCalls", "peerRunMaxMinutes"])("the %s row deleted: A's call to B returns the unavailable result, no model call is made for it, a refused child row is written, a log line names the setting, and A continues", async (setting) => {
+    // RNX-327: without peerRunMaxModelCalls the pre-run estimate counts no called agent and logs it too.
+    it.each([
+      ["peerRunMaxModelCalls", ["Pre-run estimate counts no called agent: the platform setting peerRunMaxModelCalls is not set"]],
+      ["peerRunMaxMinutes", []],
+    ])("the %s row deleted: A's call to B returns the unavailable result, no model call is made for it, a refused child row is written, a log line names the setting, and A continues", async (setting, estimateLines) => {
       await setPeerRunLimits(prisma, { maxDepth: 1, maxAgentCalls: 3, callTimeoutSeconds: 30, maxModelCalls: 4, maxMinutes: 2 });
       await prisma.platformSetting.deleteMany({ where: { name: setting } });
       const { owner, A, B } = await seed();
@@ -323,7 +327,7 @@ describe("RNX-326: the run limits of an agent run with agent calls (test databas
       expect(fake.requests.map(agentOf)).toEqual(["A", "A"]);
       expect(toolResults(fake.requests[1])).toEqual([CHAT_ENGINE_PEER_UNAVAILABLE]);
       expect((await hops()).map((h) => [h.agentId, h.parentRunId, h.depth, h.status])).toEqual([[B.id, result.runId, 1, "refused"]]);
-      expect(lines.filter((line) => line.includes(setting))).toEqual([expect.stringContaining(`Agent call unavailable: the platform setting ${setting} is not set`)]);
+      expect(lines.filter((line) => line.includes(setting))).toEqual([...estimateLines.map((line) => expect.stringContaining(line)), expect.stringContaining(`Agent call unavailable: the platform setting ${setting} is not set`)]);
     });
   });
 });

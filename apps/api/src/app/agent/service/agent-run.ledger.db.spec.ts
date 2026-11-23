@@ -322,6 +322,9 @@ describe("RX-22b: agent runs on the credit ledger (test database, fake provider)
 
     it("with less available than the cap, the hold is the whole available balance; the budget stop keeps the balance at or above 0", async () => {
       const { bob, parent, sub } = await seed("0.02");
+      // RNX-327: the estimate counts the helper's calls up to peerRunMaxModelCalls; 2 (the root call and the hop's
+      // first) keeps it under the 0.02 available, and the hop's call is stopped by the budget, not by this cap.
+      await prisma.platformSetting.update({ where: { name: "peerRunMaxModelCalls" }, data: { value: 2 } });
       fake.enqueue(delegateTurn(sub.id, { prompt_tokens: 18_000, completion_tokens: 10 }));
 
       const result = await service.chat(bob.id, parent.id, "Hi");
