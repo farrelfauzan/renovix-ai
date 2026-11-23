@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { ModelRegistryService } from "../../config/model-registry.service";
 import { ModelUnavailableException } from "../../config/errors/model-unavailable.exception";
@@ -31,6 +31,7 @@ import type { AgentRunReply } from "../types/agent-run-reply";
 import type { AgentRunTurn } from "../types/agent-run-turn";
 import type { CallableAgent } from "../types/callable-agent";
 import type { PeerRunState } from "../types/peer-run-state";
+import type { RunScope } from "../types/run-scope";
 import { ONE_MICRO_CREDIT } from "../config/one-micro-credit";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { AgentPeerRunService } from "./agent-peer-run.service";
@@ -38,6 +39,7 @@ import { UserRepository } from "../../auth/repository/user.repository";
 
 @Injectable()
 export class AgentRunService {
+  private readonly logger = new Logger(AgentRunService.name);
   /** RNX-25: the chat engine's context and meter, shared by every agent message (they hold no run's state). */
   private readonly contexts: ChatEngineContextService;
   private readonly engineMeter: ChatEngineMeterService;
@@ -58,7 +60,7 @@ export class AgentRunService {
     private readonly links: AgentLinkService,
     private readonly policy: AgentRunPolicyService,
     private readonly runs: AgentRunRepository,
-    settings: PlatformSettingsService,
+    private readonly settings: PlatformSettingsService,
     private readonly users: UserRepository,
   ) {
     this.contexts = new ChatEngineContextService(memoryService, knowledgeBases, workspaceKnowledge, knowledge);
@@ -77,7 +79,7 @@ export class AgentRunService {
    * (D336: no further model call, no answer stored). RNX-222: the result carries the document its `create_document` made.
    * RNX-326: `options.socketTimeoutMs`, the route's socket timeout, cuts the run time limit of a run with agent calls.
    * RNX-335: the runner's saved language is read once per run for the AR prompt, unless the reader is not the runner
-   * (`options.isExternalAudience`).
+   * (`options.isExternalAudience`). RNX-327: without the `peerRunMaxAgentCalls` setting the run may call no agent.
    */
   async chat(userId: string, agentId: string, message: string, sessionId?: string, options: AgentChatOptions = {}): Promise<AgentRunReply> {
     const agent = await this.agents.findAgentForRun(agentId);
@@ -85,7 +87,7 @@ export class AgentRunService {
     const scope = await this.policy.assertRunStart(agent, userId);
     await this.policy.assertActiveSubscription(userId);
     await this.credits.assertAvailable(userId, ONE_MICRO_CREDIT);
-    const callableAgents = await this.links.listCallableAgents(agent, scope);
+    const callableAgents = await this.listOfferedCallees(agent, scope);
     const runner = options.isExternalAudience ? null : await this.users.findLocale(userId);
     const turn = createAgentRunTurn({ agentId, userId, sessionId: sessionId || randomUUID(), message, scope });
     const persistence = new AgentRunPersistence(this.runs, this.memoryService, turn);
@@ -178,6 +180,18 @@ export class AgentRunService {
   private async isInsideAgentWorkspace(userId: string, agentId: string): Promise<boolean> {
     const agent = await this.agents.findAgentWorkspaceId(agentId);
     return agent !== null && (await this.policy.isInsideWorkspace(agent.workspaceId, userId));
+  }
+
+  /**
+   * RNX-327: the agents the run may call (call_agent, the callable-agents prompt and the reservation's linked agents):
+   * its callable agents, or none, with a log line naming the setting, when `peerRunMaxAgentCalls` is not set (no value
+   * in code).
+   */
+  private async listOfferedCallees(agent: { readonly id: string; readonly workspaceId: string }, scope: RunScope): Promise<readonly CallableAgent[]> {
+    const callableAgents = await this.links.listCallableAgents(agent, scope);
+    if (callableAgents.length === 0 || (await this.settings.getSetting("peerRunMaxAgentCalls")) !== null) return callableAgents;
+    this.logger.warn("Agent call unavailable: the platform setting peerRunMaxAgentCalls is not set");
+    return [];
   }
 
   /**
