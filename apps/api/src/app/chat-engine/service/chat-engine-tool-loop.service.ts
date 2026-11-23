@@ -31,7 +31,9 @@ import { truncateToolResult } from "../utils/truncate-tool-result";
  * on every path. RNX-25 (D341 D1), only when the request asks: call_agent is offered (`offersCallAgent`), all of the
  * agent's own tools are offered, MCP tools included (`offersAgentTools`), and the run uses the caller's MCP session
  * (`mcpSession`, so the caller can read the run's `create_document` output); the peer port gets the run's scope, the
- * calling model call as the hop's parent, and the run's metered model call.
+ * calling model call as the hop's parent, and the run's metered model call. RNX-24a: a request with a room (the
+ * channel chat) offers the MCP tools of the room's workspace (none without one), not the agent's, and its tool calls
+ * get the room's channel id.
  */
 @Injectable()
 export class ChatEngineToolLoop extends ChatEngineExecution {
@@ -59,9 +61,10 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
    * `offersCallAgent`); the run's session then allows exactly those names (RNX-276).
    */
   private async offerTools(input: ChatExecutionInput, mcpSession: ChatToolLoopRun["mcpSession"]): Promise<ToolSchema[]> {
-    const { agent, principal, context, options } = input;
+    const { agent, principal, context, options, conversation } = input;
     const injectCallAgent = options?.offersCallAgent === true;
-    const built = await this.tools.buildToolSchemasWithMcp(agent.tools, agent.id, principal.runnerUserId, agent.workspaceId, { mcpSession, injectCallAgent });
+    const workspaceId = conversation.room ? (conversation.room.workspaceId ?? undefined) : agent.workspaceId;
+    const built = await this.tools.buildToolSchemasWithMcp(agent.tools, agent.id, principal.runnerUserId, workspaceId, { mcpSession, injectCallAgent });
     const requested = new Set([...context.offeredTools.map((tool) => tool.name), ...(injectCallAgent ? ["call_agent"] : [])]);
     const offered = options?.offersAgentTools ? built : built.filter((schema) => requested.has(schema.function.name));
     mcpSession.offeredToolNames.clear();
@@ -117,7 +120,8 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
     try {
       const args: unknown = JSON.parse(toolCall.function.arguments);
       if (toolCall.function.name !== "call_agent") {
-        return await this.tools.executeTool(toolCall.function.name, args, input.agent, mcpSession, input.context.scope, input.principal.runnerUserId);
+        const channelArgs: [] | [string] = input.conversation.room ? [input.conversation.room.channelId] : [];
+        return await this.tools.executeTool(toolCall.function.name, args, input.agent, mcpSession, input.context.scope, input.principal.runnerUserId, ...channelArgs);
       }
       const { principal, agent, context, callModel } = input;
       const isOffered = mcpSession.offeredToolNames.has("call_agent");

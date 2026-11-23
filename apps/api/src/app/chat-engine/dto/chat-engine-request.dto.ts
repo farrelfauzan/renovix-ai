@@ -17,6 +17,11 @@ export const ChatEngineRequestSchema = z.object({
     agentId: z.string().min(1),
     sessionId: z.string().min(1).optional(),
     history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).default([]),
+    /**
+     * RNX-24a: the channel chat's room: its channel (the channel id of the run's tool calls) and the channel's workspace
+     * (none: null), whose MCP connections the run's tools use and on which its model calls are metered.
+     */
+    room: z.object({ channelId: z.string().min(1), workspaceId: z.string().min(1).nullable() }).optional(),
   }),
   input: z.string().min(1),
   options: z

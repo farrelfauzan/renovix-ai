@@ -1,6 +1,8 @@
 import { TestingModule } from "@nestjs/testing";
 import { Decimal } from "@prisma/client/runtime/client";
 import { ChannelChatService } from "./channel-chat.service";
+import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
@@ -29,6 +31,7 @@ import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.serv
 // closed exactly once, that session and no other, on every path: success, a refusal once the tools are built (the
 // per-run cap, the reservation refused), a provider error and the budget stop. Real ChannelChatService, ChannelService,
 // meter and CreditService on the test database; fake provider. These collaborators load ESM-only packages.
+jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
@@ -48,6 +51,9 @@ describe("RNX-217 AC3: a channel run closes its own MCP connections exactly once
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          // RNX-24a: the knowledge of a channel run's called agents (RNX-121), unused here.
+          { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,
