@@ -23,9 +23,10 @@ import { pickWarningsToSend } from "../utils/pick-warnings-to-send";
 import { resolveProfileTimeZone } from "../utils/resolve-profile-time-zone";
 
 /**
- * RNX-329: the run-out warning check. For each user-owned paid account with credits left and a purchase, it computes the
- * credit meter's level and floor flag (RNX-30-A, `evaluateCreditMeter`) and, for each warning (amber, red, floor) reached
- * and not yet sent in the account's purchase cycle, records it and queues one mail to the owner, in one transaction.
+ * RNX-329: the run-out warning check. For each user-owned paid account with a purchase, whatever its balance (D387), it
+ * computes the credit meter's level and floor flag (RNX-30-A, `evaluateCreditMeter`) from its balance, holds ignored
+ * (D387), and, for each warning (amber, red, floor) reached and not yet sent in the account's purchase cycle, records it
+ * and queues one mail to the owner, in one transaction.
  * Safe on several API containers at once: the record's unique key lets one insert win and only the winner queues the
  * mail. Bounded (D332): no model call, no credit hold, no provider; six setting reads, then three queries per page of
  * CREDIT_WARNING_CHECK.pageSize accounts, then per warning queued one transaction (and, for red, one reminder list).
@@ -95,7 +96,8 @@ export class CreditWarningService {
   private async checkAccount(check: CreditWarningAccountCheck): Promise<number> {
     const { candidate, now } = check;
     const timeZone = resolveProfileTimeZone(candidate.timeZone);
-    const paidAvailable = new Decimal(candidate.paidAvailable);
+    // D387: the level and the floor are judged on the balance, holds ignored (the banner keeps "available").
+    const paidAvailable = new Decimal(candidate.paidBalance);
     const evaluation = evaluateCreditMeter({ now, paidAvailable, usage: check.usage, timeZone, dueReminderCount: check.dueReminderCount, settings: check.settings });
     const levels = pickWarningsToSend({ level: evaluation.level, belowFloor: evaluation.belowFloor, recorded: candidate.recordedLevels });
     let queued = 0;
@@ -111,7 +113,7 @@ export class CreditWarningService {
     const { candidate, level, evaluation } = warning;
     const payload: CreditWarningEmailPayload = {
       level,
-      paidAvailable: candidate.paidAvailable,
+      paidBalance: candidate.paidBalance,
       runOutLabel: evaluation.projection.status === "date" ? evaluation.projection.runOutLabel : null,
       timeZone: warning.timeZone,
       reminders: level === "red" && evaluation.runOutAt ? await this.listRunsBefore(candidate.userId, warning.now, evaluation.runOutAt) : [],

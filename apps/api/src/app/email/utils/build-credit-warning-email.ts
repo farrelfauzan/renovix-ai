@@ -7,17 +7,17 @@ const COPY: Record<CreditWarningLevel, { subject: string; heading: string; lead:
   amber: {
     subject: "Your Renovix AI credits will run out soon",
     heading: "Your credits will run out soon",
-    lead: (payload) => `At your current pace, your paid credits will run out around ${payload.runOutLabel} (${payload.timeZone}). You have ${payload.paidAvailable} credits left.`,
+    lead: (payload) => `At your current pace, your paid credits will run out around ${payload.runOutLabel} (${payload.timeZone}). You have ${payload.paidBalance} credits left.`,
   },
   red: {
     subject: "Your Renovix AI credits are about to run out",
     heading: "Your credits are about to run out",
-    lead: (payload) => `At your current pace, your paid credits will run out around ${payload.runOutLabel} (${payload.timeZone}). You have ${payload.paidAvailable} credits left.`,
+    lead: (payload) => `At your current pace, your paid credits will run out around ${payload.runOutLabel} (${payload.timeZone}). You have ${payload.paidBalance} credits left.`,
   },
   floor: {
     subject: "Your Renovix AI credits are low",
     heading: "Your credits are low",
-    lead: (payload) => `You have ${payload.paidAvailable} paid credits left, which may not be enough for your next chats and scheduled runs.`,
+    lead: (payload) => `You have ${payload.paidBalance} paid credits left, which may not be enough for your next chats and scheduled runs.`,
   },
 };
 const ADVICE = "Top up your credits in Renovix AI to keep your chats and scheduled runs going.";

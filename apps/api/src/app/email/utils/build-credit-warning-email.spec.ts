@@ -2,7 +2,7 @@ import type { CreditWarningEmailPayload } from "../types/credit-warning-email-pa
 import { buildCreditWarningEmail } from "./build-credit-warning-email";
 
 // RNX-329: the three run-out warning mails. The red one lists the scheduled runs of its payload, in the owner's timezone.
-const BASE: CreditWarningEmailPayload = { level: "amber", paidAvailable: "16", runOutLabel: "30/11/2026 07:00", timeZone: "Asia/Jakarta", reminders: [] };
+const BASE: CreditWarningEmailPayload = { level: "amber", paidBalance: "16", runOutLabel: "30/11/2026 07:00", timeZone: "Asia/Jakarta", reminders: [] };
 
 describe("buildCreditWarningEmail (RNX-329)", () => {
   it.each<[CreditWarningEmailPayload["level"], string]>([

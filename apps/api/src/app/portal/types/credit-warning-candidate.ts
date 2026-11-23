@@ -8,8 +8,8 @@ export type CreditWarningCandidate = {
   readonly ownerEmail: string;
   /** The owner's stored profile timezone, as stored (see `resolveProfileTimeZone`). */
   readonly timeZone: string | null;
-  /** The paid wallet's available credits (balance - held), a decimal string above 0. */
-  readonly paidAvailable: string;
+  /** The paid wallet's balance, a decimal string, 0 included; open holds are not subtracted (D387). */
+  readonly paidBalance: string;
   /** The createdAt of the account's latest top_up or plan_grant entry, to the millisecond: the purchase cycle's key. */
   readonly cycleStartedAt: Date;
   /** The warnings already queued for the account in this cycle. */

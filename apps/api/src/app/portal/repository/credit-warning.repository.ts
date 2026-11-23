@@ -11,8 +11,9 @@ export class CreditWarningRepository {
 
   /**
    * One keyset page, by account id after `afterAccountId` (null: from the start), of at most `limit` accounts to check:
-   * user-owned `paid` wallets (never `weekly_free`, never a company pool) with available credits above 0 and at least one
-   * top_up or plan_grant entry, each with its owner's email and timezone, its purchase cycle's key (its latest such
+   * user-owned `paid` wallets (never `weekly_free`, never a company pool) with at least one top_up or plan_grant entry,
+   * whatever their balance (D387: a buyer at 0 still gets the floor warning), each with its balance (holds ignored, D387:
+   * a hold is credit not yet spent, and most are released), its owner's email and timezone, its purchase cycle's key (its latest such
    * entry's createdAt, to the millisecond, which a JavaScript Date keeps exactly) and the warnings already queued in
    * that cycle. One query: the page is a range of the primary key (the first page starts after "", which sorts before
    * every id, so every page is the same plain range scan), the latest purchase entry through
@@ -22,7 +23,7 @@ export class CreditWarningRepository {
   findAccountsToCheck(afterAccountId: string | null, limit: number): Promise<CreditWarningCandidate[]> {
     return this.prisma.$queryRaw<CreditWarningCandidate[]>`
       SELECT a."id" AS "accountId", a."user_id" AS "userId", u."email" AS "ownerEmail", u."timezone" AS "timeZone",
-             (a."balance" - a."held")::text AS "paidAvailable", p."cycleStartedAt",
+             a."balance"::text AS "paidBalance", p."cycleStartedAt",
              ARRAY(SELECT w."level"::text FROM "credit_warnings" w
                    WHERE w."account_id" = a."id" AND w."cycle_started_at" = p."cycleStartedAt") AS "recordedLevels"
       FROM "credit_accounts" a
@@ -33,7 +34,6 @@ export class CreditWarningRepository {
         WHERE e."account_id" = a."id" AND e."type" IN ('top_up', 'plan_grant')
       ) p
       WHERE a."wallet" = 'paid'
-        AND a."balance" - a."held" > 0
         AND p."cycleStartedAt" IS NOT NULL
         AND a."id" > ${afterAccountId ?? ""}
       ORDER BY a."id"

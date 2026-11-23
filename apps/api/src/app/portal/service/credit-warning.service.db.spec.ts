@@ -37,6 +37,8 @@ const USAGE_DAYS = [1, 2, 3, 4] as const;
 const USAGE_PER_DAY = "3.5";
 /** Available paid credits for each state at 2 credits a day: amber (8 days), red (3 days), red and below the floor 5. */
 const BALANCE = { amber: "16", red: "6", redBelowFloor: "4" } as const;
+/** A hold that leaves 4 of the amber balance available: by available credits the account would be red and below the floor. */
+const HELD_TO_RED_BELOW_FLOOR = "12";
 /** How long the race test holds each run after its read, waiting for the other run's read. */
 const RACE_HOLD_MS = 2000;
 
@@ -269,22 +271,42 @@ describe("CreditWarningService.runCheck (RNX-329, test database)", () => {
     });
   });
 
-  describe("AC3 and the free allowance: no warning without paid credit", () => {
-    it("a free user (weekly_free low, paid wallet spent to 0 after an earlier top_up): no warning row, no mail", async () => {
+  describe("AC8 (D387): a buyer at 0 paid credits is still checked", () => {
+    it("a paid wallet that drops from above the floor to 0 between two checks: the floor mail, once in the cycle", async () => {
       const owner = await createUser(prisma);
       const weeklyFree = await seedAccount(prisma, { userId: owner.id, wallet: "weekly_free" });
       await setBalance(weeklyFree, "0.5");
       await spendOnDays(weeklyFree, "weekly_free", owner.id, USAGE_PER_DAY, USAGE_DAYS);
       const paid = await seedAccount(prisma, { userId: owner.id, wallet: "paid" });
-      await setBalance(paid, "0");
+      await setBalance(paid, BALANCE.amber);
       await addEntry(paid, "paid", "top_up", owner.id, new Date(Date.now() - 10 * DAY_MS));
 
       await service.runCheck();
+      const actualAboveFloor = await queuedMails();
+      await setBalance(paid, "0");
+      await service.runCheck();
+      await service.runCheck();
 
-      expect(await prisma.creditWarning.count()).toBe(0);
-      expect(await queuedMails()).toEqual([]);
+      expect(actualAboveFloor).toEqual([]);
+      expect(await queuedMails()).toEqual([[owner.email, "floor"]]);
+      expect((await prisma.creditWarning.findMany()).map((warning) => warning.level)).toEqual(["floor"]);
     });
+  });
 
+  describe("AC9 (D387): the level and the mail use the balance, open holds ignored", () => {
+    it("balance at amber with a hold that would leave red and below the floor: amber only, and the mail states the balance", async () => {
+      const { owner, accountId } = await seedPaidUser(BALANCE.amber);
+      await prisma.creditAccount.update({ where: { id: accountId }, data: { held: HELD_TO_RED_BELOW_FLOOR } });
+
+      await service.runCheck();
+
+      expect(await queuedMails()).toEqual([[owner.email, "amber"]]);
+      const job = await prisma.emailJob.findFirstOrThrow();
+      expect(Number((job.payload as unknown as CreditWarningEmailPayload).paidBalance)).toBe(Number(BALANCE.amber));
+    });
+  });
+
+  describe("AC3 and the free allowance: no warning without paid credit", () => {
     it("a weekly_free wallet is never checked, even one that has a purchase-type entry", async () => {
       const owner = await createUser(prisma);
       const weeklyFree = await seedAccount(prisma, { userId: owner.id, wallet: "weekly_free" });

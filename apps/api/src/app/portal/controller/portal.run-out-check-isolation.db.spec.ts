@@ -146,7 +146,7 @@ describe("RNX-329 AC5 (D332): a home chat while the run-out check and the mail s
     });
     await enqueueCreditWarningEmail(prisma, {
       recipientEmail: user.email,
-      payload: { level: "floor", paidAvailable: "4", runOutLabel: null, timeZone: "UTC", reminders: [] },
+      payload: { level: "floor", paidBalance: "4", runOutLabel: null, timeZone: "UTC", reminders: [] },
     });
     let failSend!: (err: Error) => void;
     send.mockImplementation(() => new Promise((_resolve, reject) => (failSend = reject)));
