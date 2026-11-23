@@ -17,6 +17,7 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 import { isModelLocked } from "@/lib/model-lock";
 import { pickDefaultTierModel } from "@/lib/pick-default-tier-model";
 import { ModelSelectItem } from "@/components/model-select-item";
+import { CreditEstimateHint } from "@/components/credit-estimate-hint";
 import {
   FREE_LIMIT_CODES,
   PortalError,
@@ -323,7 +324,14 @@ export function ChatInput() {
                 </SelectContent>
               </Select>
             </div>
-            
+
+            <CreditEstimateHint
+              model={selectedModel}
+              tier={models.find((m) => m.slug === selectedModel)?.tier}
+              history={messages}
+              input={input}
+            />
+
             {/* Reasoning effort selector (only for supported models) */}
             {MODELS_WITH_REASONING_SUPPORT.includes(selectedModel || "") ? (
               <div className="flex items-center gap-2">
