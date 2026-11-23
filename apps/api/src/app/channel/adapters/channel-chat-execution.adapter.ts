@@ -21,9 +21,10 @@ import { buildChannelChatSystemPrompt } from "../utils/build-channel-chat-system
  * choice ends with the max-steps text). It keeps the CH parts the loop does not have: the CH system prompt (with the
  * room's workspace memory folded in), the document mode's max_tokens (at least 8,192), and the run's totals on the
  * turn: the root agent's tokens (a called agent's are not counted, as before), and whether the run stopped at its
- * budget or ended with the max-steps text. The run's agent calls are RNX-121's step, so RNX-326's run limits start at
- * the first of them as in any run (a limit stop ends the run like a budget stop); fitting them to the route's 180 s
- * socket is RNX-351 (D381). The stop timer they may start is cleared when the run ends, however it ends.
+ * budget or ended with the max-steps text. The run's agent calls are RNX-121's step, so its per-call
+ * rules apply (depth, the agent-call count, the call timeout, refused rows). RNX-326's run limits are NOT enforced
+ * here: the first agent call sets the model-call cap and the run timer, but this execution neither counts model calls
+ * nor reads the stop signal (D381: RNX-351 adds both). The timer is cleared when the run ends, however it ends.
  */
 export class ChannelChatExecution extends ChatEngineExecution {
   constructor(
