@@ -57,6 +57,7 @@ import { PaymentOrderRepository } from "../payments/repository/payment-order.rep
 import { PaymentUnmatchedPaymentRepository } from "../payments/repository/payment-unmatched-payment.repository";
 import { PaymentWebhookEventRepository } from "../payments/repository/payment-webhook-event.repository";
 import { AnonymousUsageCounterRepository } from "../portal/repository/anonymous-usage-counter.repository";
+import { CreditWarningRepository } from "../portal/repository/credit-warning.repository";
 import { PortalSessionRepository } from "../portal/repository/portal-session.repository";
 import { ReminderRepository } from "../reminder/repository/reminder.repository";
 import { WorkspaceMemberRepository } from "../workspace/repository/workspace-member.repository";
@@ -121,6 +122,7 @@ const REPOSITORIES = [
   PaymentUnmatchedPaymentRepository,
   PaymentWebhookEventRepository,
   AnonymousUsageCounterRepository,
+  CreditWarningRepository,
   PortalSessionRepository,
   ReminderRepository,
   WorkspaceMemberRepository,

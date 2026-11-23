@@ -3,6 +3,7 @@ import { Prisma } from "@generated/prisma/client.js";
 import type { CreditLedgerEntry } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import type { AccountTimeZone } from "../types/account-time-zone";
 import type { PaidUsageSummary } from "../types/paid-usage-summary";
 
 /**
@@ -47,18 +48,31 @@ export class CreditLedgerEntryRepository {
   }
 
   /**
-   * RNX-30-A: this account's usage since `since`, in one aggregate through the partial index
-   * credit_ledger_entries_usage_account_id_created_at_idx (account_id, created_at) WHERE type = 'usage': the credits
-   * charged (the amounts are negative; returned as a positive amount, 0 without entries) and the number of distinct
-   * days, in `timeZone` (an IANA name, sent as a parameter), that have a charged entry (amount below 0).
+   * RNX-30-A: this account's usage since `since` (see `summarizeUsageSinceByAccount`): the credits charged, as a
+   * positive amount, and the number of distinct days in `timeZone` that have a charged entry; 0 and 0 without entries.
    */
   async summarizeUsageSince(accountId: string, since: Date, timeZone: string, tx?: DbTransaction): Promise<PaidUsageSummary> {
-    const [row] = await (tx ?? this.prisma).$queryRaw<Array<{ spent: string; usageDays: number }>>`
-      SELECT (-COALESCE(SUM("amount"), 0))::text AS "spent",
-             (COUNT(DISTINCT ("created_at" AT TIME ZONE ${timeZone})::date) FILTER (WHERE "amount" < 0))::int AS "usageDays"
-      FROM "credit_ledger_entries"
-      WHERE "account_id" = ${accountId} AND "type" = 'usage' AND "created_at" >= ${since}`;
-    return { spent: new Prisma.Decimal(row.spent), usageDays: row.usageDays };
+    const summaries = await this.summarizeUsageSinceByAccount([{ accountId, timeZone }], since, tx);
+    return summaries.get(accountId) ?? { spent: new Prisma.Decimal(0), usageDays: 0 };
+  }
+
+  /**
+   * RNX-30-A, RNX-329: each of these accounts' usage since `since`, in one aggregate through the partial index
+   * credit_ledger_entries_usage_account_id_created_at_idx (account_id, created_at) WHERE type = 'usage': the credits
+   * charged (the amounts are negative; returned as a positive amount) and the number of distinct days, in the account's
+   * timeZone (an IANA name, sent as a parameter), that have a charged entry (amount below 0). An account without usage
+   * entries is not in the map.
+   */
+  async summarizeUsageSinceByAccount(accounts: readonly AccountTimeZone[], since: Date, tx?: DbTransaction): Promise<Map<string, PaidUsageSummary>> {
+    if (accounts.length === 0) return new Map();
+    const rows = await (tx ?? this.prisma).$queryRaw<Array<{ accountId: string; spent: string; usageDays: number }>>`
+      SELECT a."accountId", (-SUM(e."amount"))::text AS "spent",
+             (COUNT(DISTINCT (e."created_at" AT TIME ZONE a."timeZone")::date) FILTER (WHERE e."amount" < 0))::int AS "usageDays"
+      FROM unnest(${accounts.map((account) => account.accountId)}::text[], ${accounts.map((account) => account.timeZone)}::text[])
+        AS a("accountId", "timeZone")
+      JOIN "credit_ledger_entries" e ON e."account_id" = a."accountId" AND e."type" = 'usage' AND e."created_at" >= ${since}
+      GROUP BY a."accountId"`;
+    return new Map(rows.map((row) => [row.accountId, { spent: new Prisma.Decimal(row.spent), usageDays: row.usageDays }] as const));
   }
 
   /**

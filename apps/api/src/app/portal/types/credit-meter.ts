@@ -12,6 +12,6 @@ export type CreditMeter = {
   readonly level: CreditMeterLevel;
   /** Paid available below runOutFloorCredits, or below perRunCreditCap times the due reminders. */
   readonly belowFloor: boolean;
-  /** In the red state, the active reminders due before the run-out instant, earliest first; otherwise empty. */
+  /** In the red state, the active reminders due before the run-out instant, earliest first, at most RED_STATE_REMINDER_LIMIT (D360); otherwise empty. */
   readonly dueReminders: readonly CreditMeterReminder[];
 };

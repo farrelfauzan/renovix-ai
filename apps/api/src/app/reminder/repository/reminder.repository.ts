@@ -14,8 +14,11 @@ const REMINDER_RELATIONS = {
   channel: { select: { id: true, name: true } },
 } satisfies Prisma.ReminderInclude;
 
-/** RNX-30-A: this user's reminders the scheduler would fire (as `findDueReminders` filters them) with nextRunAt in [from, to). */
-const activeUserRemindersBetween = (userId: string, from: Date, to: Date): Prisma.ReminderWhereInput => ({
+/**
+ * RNX-30-A: these users' reminders the scheduler would fire (as `findDueReminders` filters them) with nextRunAt in
+ * [from, to). `userId` is one user's id or, RNX-329, a filter on several.
+ */
+const activeUserRemindersBetween = (userId: Prisma.ReminderWhereInput["userId"], from: Date, to: Date): Prisma.ReminderWhereInput => ({
   userId,
   status: "ACTIVE",
   deletedAt: null,
@@ -90,13 +93,28 @@ export class ReminderRepository {
   }
 
   /**
-   * RNX-30-A: the same reminders as `countActiveUserRemindersBetween`, earliest first, with their id, label and next
-   * fire time only.
+   * RNX-329: `countActiveUserRemindersBetween` for several users in one grouped query, as a map from user id to count. A
+   * user without such reminders is not in the map.
    */
-  listActiveUserRemindersBetween(userId: string, from: Date, to: Date, tx?: DbTransaction) {
+  async countActiveRemindersBetweenByUser(userIds: readonly string[], from: Date, to: Date, tx?: DbTransaction): Promise<Map<string, number>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await (tx ?? this.prisma).reminder.groupBy({
+      by: ["userId"],
+      where: activeUserRemindersBetween({ in: [...userIds] }, from, to),
+      _count: { _all: true },
+    });
+    return new Map(rows.map((row) => [row.userId, row._count._all] as const));
+  }
+
+  /**
+   * RNX-30-A: the same reminders as `countActiveUserRemindersBetween`, earliest first, with their id, label and next
+   * fire time only; D360 (RNX-329): at most `limit` of them, the soonest.
+   */
+  listActiveUserRemindersBetween(userId: string, from: Date, to: Date, limit: number, tx?: DbTransaction) {
     return (tx ?? this.prisma).reminder.findMany({
       where: activeUserRemindersBetween(userId, from, to),
       orderBy: { nextRunAt: "asc" },
+      take: limit,
       select: { id: true, description: true, nextRunAt: true },
     });
   }

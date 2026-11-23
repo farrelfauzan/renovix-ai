@@ -6,6 +6,9 @@ import { EmailTemplateService } from "../service/email-template.service";
 import { isRetryableError } from "../utils/is-retryable-error";
 import { buildEmailChangeVerificationEmail } from "../utils/build-email-change-verification-email";
 import { EMAIL_CHANGE_VERIFICATION } from "../repository/enqueue-email-change-verification";
+import { CREDIT_WARNING_EMAIL } from "../config/credit-warning-email";
+import { buildCreditWarningEmail } from "../utils/build-credit-warning-email";
+import type { CreditWarningEmailPayload } from "../types/credit-warning-email-payload";
 
 @Injectable()
 export class EmailScheduler {
@@ -73,6 +76,8 @@ export class EmailScheduler {
           verifyUrl: payload.verifyUrl as string,
           recipientEmail: payload.recipientEmail as string,
         });
+      case CREDIT_WARNING_EMAIL:
+        return buildCreditWarningEmail(payload as unknown as CreditWarningEmailPayload);
       default:
         throw new Error(`Unknown email type: ${type}`);
     }
