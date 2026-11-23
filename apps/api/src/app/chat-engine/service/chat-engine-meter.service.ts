@@ -105,13 +105,12 @@ export class ChatEngineMeterService {
 
   /**
    * The run's reservation, opened by its first call (from that call, with the target's linked agents); `onReserved` runs
-   * once it holds. RNX-327: each linked agent counts its own tool loop's model calls (`countsCalleeToolLoops`); RNX-24a:
-   * unless the target says otherwise (the channel chat, D381).
+   * once it holds. RNX-327: each linked agent counts its own tool loop's model calls (RNX-351: the channel chat's too).
    */
   private async openOnce(run: MeteredRunState, firstCall: ChatRequest): Promise<AgentRunBudget> {
     if (run.opened) return run.opened;
-    const { runnerUserId, workspaceId, linkedAgents = [], countsCalleeToolLoops } = run.target;
-    run.opened = this.meter.openRun({ runnerUserId, workspaceId, firstCall, linkedAgents, countsCalleeToolLoops });
+    const { runnerUserId, workspaceId, linkedAgents = [] } = run.target;
+    run.opened = this.meter.openRun({ runnerUserId, workspaceId, firstCall, linkedAgents });
     const budget = await run.opened;
     await run.onReserved?.();
     return budget;

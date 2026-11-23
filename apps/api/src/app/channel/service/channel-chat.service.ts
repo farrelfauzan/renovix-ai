@@ -29,6 +29,7 @@ import { ChannelMessageRepository } from "../repository/channel-message.reposito
 import { ChannelChatContext } from "../adapters/channel-chat-context.adapter";
 import { ChannelChatExecution } from "../adapters/channel-chat-execution.adapter";
 import { ChannelChatPersistence } from "../adapters/channel-chat-persistence.adapter";
+import { CHANNEL_RUN_TIME_LIMIT_MS } from "../config/channel-run-time-limit-ms";
 import type { ChannelChatEngineParts } from "../types/channel-chat-engine-parts";
 import type { ChannelChatOptions } from "../types/channel-chat-options";
 import type { ChannelChatResult } from "../types/channel-chat-result";
@@ -111,8 +112,8 @@ export class ChannelChatService {
   /**
    * One channel chat message as one run on the chat engine; RNX-222: the result carries the document its own
    * `create_document` made. RNX-119: the room access, the run policy and the subscription gate (D192) are checked on
-   * every message; the caller runs and pays (their own paid wallet), and the reservation is today's (D381: the linked
-   * agents count one call each). RNX-335: the caller's saved language is read once per message for the system prompt.
+   * every message; the caller runs and pays (their own paid wallet), and RNX-351: the reservation is RNX-327's estimate,
+   * as an agent run's. RNX-335: the caller's saved language is read once per message for the system prompt.
    * RNX-24a: `options.signal` aborts the run (D336: no further model call, no answer stored, what ran settled).
    */
   async chat(userId: string, channelId: string, agentId: string, message: string, options: ChannelChatOptions = {}): Promise<ChannelChatResult> {
@@ -134,11 +135,12 @@ export class ChannelChatService {
   /**
    * This message's own chat engine on the shared services, with its own ports: the room's context, the CH execution
    * around the engine's tool loop (with the message's agent calls as its peer port, RNX-121), the output guardrail and
-   * the room's persistence. The agent calls' state (RNX-121b-1) lives in this message only.
+   * the room's persistence. The agent calls' state (RNX-121b-1) lives in this message only. RNX-351: it carries the
+   * channel's own run time limit (CHANNEL_RUN_TIME_LIMIT_MS), never the route's socket timeout (D383).
    */
   private createEngine(parts: ChannelChatEngineParts): ChatEngineService {
     const { turn, agent, callableAgents, persistence, documentFormat, signal, runnerLocale } = parts;
-    const state: PeerRunState = { runnerUserId: turn.userId, scope: turn.scope, signal, stack: [agent.id], agentCalls: 0, startedAt: Date.now(), modelCalls: 0, stop: new AbortController() };
+    const state: PeerRunState = { runnerUserId: turn.userId, scope: turn.scope, signal, stack: [agent.id], agentCalls: 0, startedAt: Date.now(), runTimeLimitMs: CHANNEL_RUN_TIME_LIMIT_MS, modelCalls: 0, stop: new AbortController() };
     const peer = this.peerRuns.createChannelPeerCall({ agent, callableAgents, state, findParentRunId: () => this.findChannelRunId(turn) });
     const loop = new ChatEngineToolLoop(this.toolService, peer);
     const execution = new ChannelChatExecution(loop, turn, { systemPrompt: agent.systemPrompt, callableAgents, documentFormat, runnerLocale }, state);

@@ -518,14 +518,13 @@ A hop's model calls convert to credits with the same formula and the same tier r
 ```
 E_call(agent) = I × max(new rate, cached rate) + M × output rate          (section 3.1)
 L             = min(number of agents the root agent may call, peerRunMaxAgentCalls)
-n             = min(peerRunMaxModelCalls, 15)    agent run: a called agent's tool loop, at most 15 rounds (RNX-327)
-n             = 1                                 channel chat: a called agent makes one call, without tools
+n             = min(peerRunMaxModelCalls, 15)    a called agent's tool loop, at most 15 rounds (RNX-327; channel chat too, RNX-351)
 E_run         = (L + 1) × E_call(root agent) + Σ over the root's linked agents n × E_call(linked agent)
 ```
 
-Expected calls: one root call, the calls of each linked agent, and one more root call after each linked agent returns (the caller continues and writes the reply, PRD 10 R4). In an agent run a called agent runs its own tool loop, so each linked agent counts n model calls, each at the rates of its own model's tier; a channel chat's called agent makes one call. For a linked agent, I is the counted tokens of its system prompt (its tool definitions and the task are not counted) and M its max_tokens (4,096 when it sets none); for the root, I is the counted prompt. Deeper calls (depth 2) are not estimated; the cap bounds them.
+Expected calls: one root call, the calls of each linked agent, and one more root call after each linked agent returns (the caller continues and writes the reply, PRD 10 R4). A called agent runs its own tool loop, in an agent run and in a channel chat (RNX-351), so each linked agent counts n model calls, each at the rates of its own model's tier. For a linked agent, I is the counted tokens of its system prompt (its tool definitions and the task are not counted) and M its max_tokens (4,096 when it sets none); for the root, I is the counted prompt. Deeper calls (depth 2) are not estimated; the cap bounds them.
 
-The limits are platform settings only, with no value in code (RNX-327). Without the `peerRunMaxAgentCalls` row an agent run offers no `call_agent`, the estimate counts no linked agent (E_run = E_call(root agent)) and a log line names the setting; a channel chat counts no linked agent either. An agent run without the `peerRunMaxModelCalls` row counts no linked agent and logs the setting, since no agent call can run without it.
+The limits are platform settings only, with no value in code (RNX-327). Without the `peerRunMaxAgentCalls` row an agent run offers no `call_agent`, the estimate counts no linked agent (E_run = E_call(root agent)) and a log line names the setting; a channel chat counts no linked agent either. A run without the `peerRunMaxModelCalls` row (agent run or channel chat) counts no linked agent and logs the setting, since no agent call can run without it.
 
 - **Start** only if `available ≥ min(E_run, cap)`; otherwise 402 `CREDITS_EXHAUSTED` (RX-22).
 - **Hold** H = min(cap, available), one reservation for the run.
@@ -537,7 +536,7 @@ Before **every** model call in the run (root or hop): compute that call's `E_cal
 
 So the per-hop ledger lines always satisfy: **Σ (−amount of the run's usage entries) = consumed ≤ H, and H = consumed + released.**
 
-Run limits (RNX-326): from its first agent call, an agent run with agent calls also ends with the budget-stop answer and reason `limit_stopped` (the reservation is settled) when it reaches its model-call cap (`peerRunMaxModelCalls`, root and hop calls together, counted from the run's start) or its run time limit (`peerRunMaxMinutes` from the run's start, or the route's socket timeout minus a 10 s margin when that is smaller); the model call running at the time limit is aborted. A run without agent calls is not limited by either.
+Run limits (RNX-326): from its first agent call, an agent run with agent calls also ends with the budget-stop answer and reason `limit_stopped` (the reservation is settled) when it reaches its model-call cap (`peerRunMaxModelCalls`, root and hop calls together, counted from the run's start) or its run time limit (`peerRunMaxMinutes` from the run's start, or the route's socket timeout minus a 10 s margin when that is smaller); the model call running at the time limit is aborted. A channel chat with agent calls has the same two limits (RNX-351); its run time limit is the smaller of `peerRunMaxMinutes` and the channel's own limit of 5 minutes (`CHANNEL_RUN_TIME_LIMIT_MS`), never the route's 180 s socket timeout, which is an idle timeout the stream heartbeat resets (D383). A run without agent calls is not limited by either.
 
 ### 13.5 Example (c): a budget stop in the middle of a chain
 

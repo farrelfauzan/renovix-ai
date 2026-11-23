@@ -28,18 +28,19 @@ import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { fundPaidWallet } from "../../../../test/credit-funding";
 import { captureLogLines } from "../../../../test/capture-log-lines";
 
-// RNX-327 AC2: a channel chat keeps main's pre-run estimate (docs/credits.md section 13.3): one call per linked agent,
-// (L + 1) root calls, peerRunMaxModelCalls not read; without the peerRunMaxAgentCalls row (no value in code) no called
-// agent is counted. Real ChannelChatService, links, meter and ledger on the test database; fake provider. Non-default
-// numbers: the root and the writer on 2 / 1 / 3 micro-credits per token (standard), the helper on 7 / 5 / 11 (premium),
-// peerRunMaxAgentCalls 1 and peerRunMaxModelCalls 9. These collaborators load ESM-only packages.
+// RNX-327 AC2, RNX-351: a channel chat reserves RNX-327's pre-run estimate (docs/credits.md section 13.3), as an agent
+// run does: each linked agent counts min(peerRunMaxModelCalls, 15) calls, (L + 1) root calls; without the
+// peerRunMaxAgentCalls row (no value in code) no called agent is counted. Real ChannelChatService, links, meter and
+// ledger on the test database; fake provider. Non-default numbers: the root and the writer on 2 / 1 / 3 micro-credits
+// per token (standard), the helper on 7 / 5 / 11 (premium), peerRunMaxAgentCalls 1 and peerRunMaxModelCalls 9. These
+// collaborators load ESM-only packages.
 jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
 const ECHO = { type: "function", function: { name: "echo", description: "Echo", parameters: {} } };
 
-describe("RNX-327: the channel chat's reservation estimate, as on main (test database, fake provider)", () => {
+describe("RNX-327, RNX-351: the channel chat's reservation estimate (test database, fake provider)", () => {
   const fake = new FakeProviderAdapter();
   let moduleRef: TestingModule;
   let prisma: PrismaService;
@@ -123,15 +124,15 @@ describe("RNX-327: the channel chat's reservation estimate, as on main (test dat
   /** The root's E_call (section 3.1 rule 1): its counted prompt (messages and tools) x max(2, 1) + max_tokens 100 x 3. */
   const rootCallOf = (first: ChatRequest) => new Decimal(countPromptTokens(first.messages, first.tools ?? []) * 2 + 100 * 3).div(1_000_000);
 
-  it("AC2: a channel chat with links holds what main holds: (L + 1) root calls + one call per linked agent at its rates", async () => {
+  it("RNX-351 AC2: a channel chat with links holds RNX-327's estimate: (L + 1) root calls + min(peerRunMaxModelCalls 9, 15) calls per linked agent at its rates", async () => {
     const seeded = await seed();
 
     const actual = await chatOnce(seeded);
 
-    // Main: L = min(2 links, peerRunMaxAgentCalls 1) = 1, so 2 x E_call(root) + E_call(helper) + E_call(writer).
+    // L = min(2 links, peerRunMaxAgentCalls 1) = 1, n = min(9, 15) = 9, so 2 x E_call(root) + 9 x (E_call(helper) + E_call(writer)).
     // Each prompt is "system" + "Helper." or "Writer." = 13 bytes + 4 per message = 17 tokens.
-    // Helper: 17 x max(7, 5) + 1,000 x 11 = 11,119; writer: 17 x max(2, 1) + 2,000 x 3 = 6,034; together 0.017153.
-    expect(actual.minimum.toFixed(6)).toBe(rootCallOf(actual.first).times(2).plus("0.017153").toFixed(6));
+    // Helper: 17 x max(7, 5) + 1,000 x 11 = 11,119; writer: 17 x max(2, 1) + 2,000 x 3 = 6,034; 9 x 17,153 = 0.154377.
+    expect(actual.minimum.toFixed(6)).toBe(rootCallOf(actual.first).times(2).plus("0.154377").toFixed(6));
   });
 
   it("without the peerRunMaxAgentCalls row, no called agent is counted and a log line names the setting", async () => {
