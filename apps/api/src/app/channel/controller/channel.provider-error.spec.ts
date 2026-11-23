@@ -7,6 +7,8 @@ import { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ChannelController } from "./channel.controller";
 import { ChannelService } from "../service/channel.service";
 import { ChannelChatService } from "../service/channel-chat.service";
+import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { S3Service } from "../../knowledge/service/s3.service";
 import { DocumentService } from "../../document/service/document.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
@@ -49,6 +51,7 @@ import { asSessionUser } from "../../../../test/as-session-user";
 // against a local stub; these collaborators load ESM-only packages. The app
 // listens on a real port: the route sets a timeout on the request's socket,
 // which app.inject's mock socket does not have.
+jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../knowledge/service/s3.service", () => ({ S3Service: class {} }));
 jest.mock("../../document/service/document.service", () => ({ DocumentService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
@@ -110,6 +113,9 @@ describe("RX-169: provider error on the channel chat route (Fastify, test databa
         ChannelService,
         AgentRunPolicyService,
         ChannelChatService,
+        // RNX-24a: the knowledge of a channel run's called agents (RNX-121), unused here.
+        { provide: KnowledgeService, useValue: {} },
+        { provide: WorkspaceKnowledgeService, useValue: {} },
         AgentLinkService,
         WorkspaceQuotaService,
         AgentRunMeterService,

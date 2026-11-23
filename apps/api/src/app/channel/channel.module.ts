@@ -8,6 +8,7 @@ import { KnowledgeModule } from "../knowledge/knowledge.module";
 import { DocumentModule } from "../document/document.module";
 import { UsageModule } from "../usage/usage.module";
 import { OffersModule } from "../offers/offers.module";
+import { WorkspaceModule } from "../workspace/workspace.module";
 import { ChannelController } from "./controller/channel.controller";
 import { ChannelService } from "./service/channel.service";
 import { ChannelChatService } from "./service/channel-chat.service";
@@ -21,6 +22,8 @@ import { ChannelChatService } from "./service/channel-chat.service";
     DocumentModule,
     UsageModule,
     OffersModule,
+    // RNX-24a: WorkspaceKnowledgeService, for the knowledge of a channel run's called agents (RNX-121).
+    WorkspaceModule,
   ],
   controllers: [GowaWebhookController, ChannelController],
   providers: [GowaService, ChannelService, ChannelChatService],

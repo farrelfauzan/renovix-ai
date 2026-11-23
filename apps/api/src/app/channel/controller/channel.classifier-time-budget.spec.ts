@@ -100,7 +100,7 @@ describe("RNX-325: the channel chat's document-intent classifier call gets the m
     expect(classifierRequest().timeBudgetMs).toBe(BUDGET_MS);
     expect(raw.writeHead).toHaveBeenCalledWith(200, expect.anything());
     expect(runChat).toHaveBeenCalledTimes(1);
-    expect(runChat.mock.calls[0][4]).toBeUndefined(); // no documentFormat option
+    expect(runChat.mock.calls[0][4]).toEqual({ signal: expect.any(AbortSignal) }); // no documentFormat option (RNX-24a: the abort signal only)
     expect(raw.write).toHaveBeenCalledWith(expect.stringContaining('"status":"understanding"'));
   });
 

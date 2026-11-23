@@ -4,6 +4,7 @@ import { KnowledgeBaseRepository } from "../../knowledge/repository/knowledge-ba
 import { KnowledgeService } from "../../knowledge/service/knowledge.service";
 import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { CHAT_ENGINE_KNOWLEDGE_TOP_K_PER_BASE } from "../config/chat-engine.config";
+import { ChatEngineContextBuilder } from "../ports/chat-engine-context.port";
 import type { ChatContextRequest } from "../types/chat-context-request";
 import type { ChatEngineContext } from "../types/chat-engine-context";
 
@@ -11,15 +12,18 @@ import type { ChatEngineContext } from "../types/chat-engine-context";
  * RNX-281: builds the run's context from what the runner is permitted to read only: the memory of the run's scope
  * (AgentMemoryService: no workspace memory outside the workspace, R17), the knowledge bases the runner may search
  * (WorkspaceKnowledgeService.canSearchKnowledgeBase, checked before any embedding call) and the tools the agent offers.
+ * RNX-24a: the agent run's context port (ChatEngineContextBuilder).
  */
 @Injectable()
-export class ChatEngineContextService {
+export class ChatEngineContextService extends ChatEngineContextBuilder {
   constructor(
     private readonly memory: AgentMemoryService,
     private readonly knowledgeBases: KnowledgeBaseRepository,
     private readonly workspaceKnowledge: WorkspaceKnowledgeService,
     private readonly knowledge: KnowledgeService,
-  ) {}
+  ) {
+    super();
+  }
 
   /** The context for this runner and scope; a base the runner may not search adds nothing and a failing base is skipped. */
   async buildContext(request: ChatContextRequest): Promise<ChatEngineContext> {

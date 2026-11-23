@@ -270,7 +270,7 @@ export class ChannelController {
     });
   }
 
-  // RNX-42: `sse.signal` is aborted when the client leaves; the run does not read it yet (RNX-24/25 stop the model calls).
+  // RNX-42: `sse.signal` is aborted when the client leaves; RNX-24a (D336): the run gets it, so no further model call starts and no answer is stored.
   private async streamChat(id: string, agentId: string, input: ChatMessageDto, req: any, res: FastifyReply, sse: SseStream) {
     const userId = req.user.userId;
 
@@ -301,7 +301,7 @@ export class ChannelController {
         id,
         agentId,
         input.message,
-        detectedFormat ? { documentFormat: detectedFormat } : undefined,
+        { ...(detectedFormat && { documentFormat: detectedFormat }), signal: sse.signal },
       );
 
       // RNX-222: the document this run's own create_document call generated, if it was called

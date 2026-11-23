@@ -4,8 +4,6 @@
 // database calls into a repository. The list may only shrink: the check fails on an entry that no longer has
 // such an import and on an entry the base branch's list does not have. Never add a file here.
 export const PRISMA_IMPORT_EXCEPTIONS: string[] = [
-  // The channel chat run path; RX-136 left its 3 calls (sub-agents, history, delegation) for RX-24, which rewrites it.
-  "apps/api/src/app/channel/service/channel-chat.service.ts",
   "apps/api/src/app/config/model-registry.service.ts",
   "apps/api/src/app/email/service/email-job.service.ts",
   "apps/api/src/app/guardrail/service/violation-tracker.service.ts",
