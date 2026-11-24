@@ -27,7 +27,7 @@ Renovix AI solves the complexity of working with multiple AI providers by offeri
 | **State Management** | Zustand + TanStack React Query |
 | **AI Provider** | OpenRouter (chat + embeddings) |
 | **Payments** | Stripe |
-| **File Storage** | AWS S3 (MinIO for local dev) |
+| **File Storage** | AWS S3 (local development uses the AWS dev bucket) |
 | **Monorepo** | Nx |
 | **Package Manager** | Bun |
 
@@ -71,10 +71,13 @@ docs/           # Documentation
    ```
    Fill in the required values (see [Environment Variables](#environment-variables)).
 
+   **S3 for local development:** file storage is the AWS dev bucket; there is no local storage service. Ask the Tech Lead for the dev-only key and the bucket's region, and put them in `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and `S3_REGION` (the API does not start while `S3_REGION` is empty). Leave `S3_ENDPOINT` out. Never commit these values and never use production keys. Details: [infra/aws-assets/README.md](infra/aws-assets/README.md).
+
 4. **Start infrastructure**
    ```bash
    docker compose up -d
    ```
+   This starts PostgreSQL (and the two read-only API documentation pages). It starts no file storage.
 
 5. **Run database migrations**
    ```bash
@@ -135,7 +138,7 @@ bun run build:landing
 | `S3_REGION` | S3 region |
 | `S3_ACCESS_KEY_ID` | S3 access key |
 | `S3_SECRET_ACCESS_KEY` | S3 secret key |
-| `S3_ENDPOINT` | S3 endpoint (use MinIO URL for local dev) |
+| `S3_ENDPOINT` | S3 endpoint of another S3-compatible host (not set for AWS S3, also in local dev) |
 
 ## API
 

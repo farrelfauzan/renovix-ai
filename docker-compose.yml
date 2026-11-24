@@ -20,38 +20,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── MinIO (S3-compatible local storage) ───
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - miniodata:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # ─── Create default S3 bucket ───
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin;
-        mc mb local/performa-ai --ignore-existing;
-        exit 0;
-      "
-
   # ─── OpenAPI documentation (RX-170) ───
   # The two documents are generated from the code (`bun run openapi:generate`) and committed under
   # docs/openapi/; these services only serve them read-only. "Try it out" is disabled for every
@@ -98,5 +66,4 @@ services:
 
 volumes:
   pgdata:
-  miniodata:
   # redisdata:
