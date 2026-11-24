@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { CHANNEL_RUN_TYPE } from "../config/channel-run-type";
 import { LIVE_AGENT } from "../config/live-agent";
 import type { AgentMessageInput } from "../types/agent-message-input";
 import type { AgentRunSessionInput } from "../types/agent-run-session-input";
@@ -56,10 +57,13 @@ export class AgentRunRepository {
     });
   }
 
-  /** RNX-119: the active top-level run of this session that belongs to this runner (never another person's). RNX-302: never a hop. */
+  /**
+   * RNX-119: the active top-level run of this session that belongs to this runner (never another person's). RNX-302:
+   * never a hop. RNX-24a (D380): never a channel chat's run row.
+   */
   findActiveRun(agentId: string, userId: string, sessionId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agentRun.findFirst({
-      where: { agentId, userId, sessionId, status: "active", parentRunId: null },
+      where: { agentId, userId, sessionId, status: "active", parentRunId: null, channelType: { not: CHANNEL_RUN_TYPE } },
     });
   }
 
@@ -67,6 +71,13 @@ export class AgentRunRepository {
   createRun(input: AgentRunSessionInput, tx?: DbTransaction) {
     return (tx ?? this.prisma).agentRun.create({
       data: { ...input, channelType: "web", status: "active" },
+    });
+  }
+
+  /** RNX-24a (D380): a channel chat's top-level run row (no messages of its own), the parent of its agent calls' hops. */
+  createChannelRun(input: AgentRunSessionInput, tx?: DbTransaction) {
+    return (tx ?? this.prisma).agentRun.create({
+      data: { ...input, channelType: CHANNEL_RUN_TYPE, status: "active" },
     });
   }
 
@@ -85,10 +96,13 @@ export class AgentRunRepository {
     return (tx ?? this.prisma).agentMessage.create({ data: input });
   }
 
-  /** The runner's own top-level runs of a live agent, each with its last message and its message count. RNX-302: never a hop. */
+  /**
+   * The runner's own top-level runs of a live agent, each with its last message and its message count. RNX-302: never a
+   * hop. RNX-24a (D380): never a channel chat's run row.
+   */
   listRuns(agentId: string, userId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).agentRun.findMany({
-      where: { agentId, userId, parentRunId: null, agent: LIVE_AGENT },
+      where: { agentId, userId, parentRunId: null, channelType: { not: CHANNEL_RUN_TYPE }, agent: LIVE_AGENT },
       orderBy: { updatedAt: "desc" },
       take: LISTED_RUNS,
       include: {

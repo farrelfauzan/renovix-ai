@@ -1,5 +1,7 @@
 import { TestingModule } from "@nestjs/testing";
 import { ChannelChatService } from "./channel-chat.service";
+import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { ChannelService } from "./channel.service";
 import { AgentLinkService } from "../../agent/service/agent-link.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
@@ -19,6 +21,7 @@ import { createAgent, createPackageSnapshot, createUser, createWorkspace } from 
 import { FakeProviderAdapter, withFakeProvider } from "../../../../test/fake-provider";
 import { createResolvableModel } from "../../../../test/provider-model";
 import { fundPaidWallet } from "../../../../test/credit-funding";
+import { setPeerRunLimits } from "../../../../test/peer-run-limits";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 
 // RNX-118 (PRD 10, D81; replaces RX-112's channel sub-agent suite): in a channel chat, call_agent is offered and the
@@ -26,6 +29,7 @@ import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.serv
 // current collaborator of the agent's workspace. Anyone else (a channel owner running someone else's public agent)
 // runs it stand-alone (R17), and a call to an agent that is not a linked callee in the agent's workspace never runs.
 // These collaborators load ESM-only packages and are stubbed below.
+jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
@@ -46,6 +50,9 @@ describe("RNX-118: channel chat calls only linked agents (test database)", () =>
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          // RNX-24a: the knowledge of a channel run's called agents (RNX-121), unused here.
+          { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           AgentRunPolicyService,
           ChannelService,
           AgentLinkService,
@@ -72,6 +79,8 @@ describe("RNX-118: channel chat calls only linked agents (test database)", () =>
             provide: AgentMemoryService,
             useValue: {
               getWorkspaceMemoryContext: async () => "",
+              // RNX-24a: a called agent's memory read (RNX-121's agent-call step)
+              getMemoryContext: async () => "",
               extractAndStore: async () => undefined,
             },
           },
@@ -105,6 +114,8 @@ describe("RNX-118: channel chat calls only linked agents (test database)", () =>
       data: { tier: "standard", inputCreditsPerToken: 1, cachedCreditsPerToken: 1, outputCreditsPerToken: 1 },
     });
     await moduleRef.get(ModelRegistryService).refresh();
+    // RNX-24a: a call to B runs through RNX-121's agent-call step, which needs its limit settings.
+    await setPeerRunLimits(prisma, { maxDepth: 2, maxAgentCalls: 3, callTimeoutSeconds: 30 });
   });
 
   afterAll(() => moduleRef?.close());

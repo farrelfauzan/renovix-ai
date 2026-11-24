@@ -1,6 +1,8 @@
 import { TestingModule } from "@nestjs/testing";
 import { Decimal } from "@prisma/client/runtime/client";
 import { ChannelChatService } from "./channel-chat.service";
+import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
@@ -31,6 +33,7 @@ import { captureLogLines } from "../../../../test/capture-log-lines";
 // agent is counted. Real ChannelChatService, links, meter and ledger on the test database; fake provider. Non-default
 // numbers: the root and the writer on 2 / 1 / 3 micro-credits per token (standard), the helper on 7 / 5 / 11 (premium),
 // peerRunMaxAgentCalls 1 and peerRunMaxModelCalls 9. These collaborators load ESM-only packages.
+jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
@@ -48,6 +51,9 @@ describe("RNX-327: the channel chat's reservation estimate, as on main (test dat
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          // RNX-24a: the knowledge of a channel run's called agents (RNX-121), unused here.
+          { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,

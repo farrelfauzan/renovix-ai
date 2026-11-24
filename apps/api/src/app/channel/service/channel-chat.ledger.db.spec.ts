@@ -1,6 +1,8 @@
 import { TestingModule } from "@nestjs/testing";
 import { Decimal } from "@prisma/client/runtime/client";
 import { ChannelChatService } from "./channel-chat.service";
+import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
@@ -30,6 +32,7 @@ import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.serv
 // reservation, a usage entry per model call attributed to the agent, the run and the caller who runs it (RNX-186 removed
 // the old counters: User.balance, Transaction, the subscription counters). Real ChannelChatService, ChannelService,
 // meter, CreditService and UsageService on the test database; fake provider. These collaborators load ESM-only packages.
+jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
@@ -47,6 +50,9 @@ describe("RX-22b: channel chat on the credit ledger (test database, fake provide
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          // RNX-24a: the knowledge of a channel run's called agents (RNX-121), unused here.
+          { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           AgentRunPolicyService,
           AgentLinkService,
           WorkspaceQuotaService,

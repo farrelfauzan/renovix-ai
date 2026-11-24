@@ -178,7 +178,7 @@ Where each run-loop scenario is characterized (current behaviour, fake provider)
 Entry points:
 
 - **AR**, agent run: `POST /agents/:id/chat` (agent/controller/agent-run.controller.ts) and the GoWA webhook (channel/controller/gowa.webhook.controller.ts:94), both `AgentRunService.chat` (agent/service/agent-run.service.ts), since RNX-25 an adapter on the chat engine (the `agent-run` source; its ports are in agent/adapters/).
-- **CH**, channel chat: `POST /channels/:id/agents/:agentId/chat` (channel/controller/channel.controller.ts), `ChannelChatService.chat` (channel/service/channel-chat.service.ts).
+- **CH**, channel chat: `POST /channels/:id/agents/:agentId/chat` (channel/controller/channel.controller.ts), `ChannelChatService.chat` (channel/service/channel-chat.service.ts), since RNX-24a an adapter on the chat engine (the `channel-chat` source; its ports are in channel/adapters/; call_agent is RNX-121's agent-call step). Parity tests for the CH differences below: channel/service/channel-chat.engine.db.spec.ts ("AC2: the CH loop's differences, as on main before this change") and channel/controller/channel.run-loop.spec.ts (the SSE events).
 - **PO free**, **PO paid**: `POST /chat/portal/completions` (portal/controller/portal.controller.ts, `handleFreeRequest` and `handlePaidRequest`): one streamed model call, no tools, no output guardrail.
 - **CC**: `POST /chat/completions` (chat/service/chat.service.ts): one model call per request; no agent, no tool loop (the request schema has no tools), no guardrail.
 - **RM**: the reminder scheduler loop (reminder/scheduler/reminder.scheduler.ts): an agent tool loop, metered as a run; no guardrail, no call_agent.

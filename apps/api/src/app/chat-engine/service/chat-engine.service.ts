@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { AgentRepository } from "../../agent/repository/agent.repository";
 import { AgentRunPolicyService } from "../../agent/service/agent-run-policy.service";
 import { GuardrailService } from "../../guardrail/service/guardrail.service";
@@ -6,6 +6,7 @@ import { CHAT_ENGINE_DEFAULT_DECLINE } from "../config/chat-engine.config";
 import { EMPTY_CHAT_ENGINE_RESULT } from "../config/empty-chat-engine-result";
 import { ChatEngineRequestSchema } from "../dto/chat-engine-request.dto";
 import { ChatEngineToolResultSchema } from "../dto/chat-engine-tool-result.dto";
+import { ChatEngineContextBuilder } from "../ports/chat-engine-context.port";
 import { ChatEngineExecution } from "../ports/chat-engine-execution.port";
 import { ChatEngineOutputApproval } from "../ports/chat-engine-output-approval.port";
 import { ChatEnginePersistence } from "../ports/chat-engine-persistence.port";
@@ -34,7 +35,9 @@ import { ChatEngineMeterService } from "./chat-engine-meter.service";
  * however the run ends; a budget stop's message is the raw answer and goes through the output approval. An aborted
  * `signal` (ChatEngineRunOptions) stops the run, in-flight model work included, and nothing of it is persisted. RNX-25:
  * the agent run (AgentRunService.chat) is its first production caller; its other run options (the caller's MCP session,
- * the linked agents, the reservation hook) go to the execution and the meter.
+ * the linked agents, the reservation hook) go to the execution and the meter. RNX-24a: the context build is a port
+ * (ChatEngineContextBuilder; the agent run's is ChatEngineContextService, still the injection token), so the channel
+ * chat brings its own.
  */
 @Injectable()
 export class ChatEngineService {
@@ -42,7 +45,7 @@ export class ChatEngineService {
     private readonly agents: AgentRepository,
     private readonly policy: AgentRunPolicyService,
     private readonly guardrail: GuardrailService,
-    private readonly contexts: ChatEngineContextService,
+    @Inject(ChatEngineContextService) private readonly contexts: ChatEngineContextBuilder,
     private readonly meter: ChatEngineMeterService,
     private readonly execution: ChatEngineExecution,
     private readonly outputApproval: ChatEngineOutputApproval,

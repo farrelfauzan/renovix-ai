@@ -1,5 +1,7 @@
 import { TestingModule } from "@nestjs/testing";
 import { ChannelChatService } from "./channel-chat.service";
+import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
@@ -26,6 +28,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 // is a profile language other than the default "en"; otherwise it is the message main sent. The runner is the room's
 // user who sent the message, never the agent owner. Real ChannelChatService, ChannelService, run policy, meter and
 // ledger on the test database; fake provider. These collaborators load ESM-only packages.
+jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
@@ -47,6 +50,9 @@ describe("RNX-335: the runner's reply language in a channel chat (test database,
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          // RNX-24a: the knowledge of a channel run's called agents (RNX-121), unused here.
+          { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           ChannelService,
           AgentRunPolicyService,
           AgentLinkService,

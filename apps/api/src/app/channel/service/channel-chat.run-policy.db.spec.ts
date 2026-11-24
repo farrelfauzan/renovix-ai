@@ -1,6 +1,8 @@
 import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { ChannelChatService } from "./channel-chat.service";
+import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
@@ -26,6 +28,7 @@ import { fundPaidWallet } from "../../../../test/credit-funding";
 // the agent was added to the channel; the caller runs and pays from their own paid wallet; a run outside the agent's
 // workspace reads no workspace memory (R17). Real ChannelChatService, ChannelService, run policy, AgentMemoryService,
 // meter, CreditService and UsageService on the test database; fake provider. These collaborators load ESM-only packages.
+jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../agent/service/agent-tool.service", () => ({ AgentToolService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 
@@ -45,6 +48,9 @@ describe("RNX-119: the run policy on every channel chat message (test database, 
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          // RNX-24a: the knowledge of a channel run's called agents (RNX-121), unused here.
+          { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           ChannelService,
           AgentRunPolicyService,
           AgentLinkService,

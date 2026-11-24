@@ -21,6 +21,7 @@ import { RunLimitStoppedError } from "../errors/run-limit-stopped.error";
 import { AgentRepository } from "../repository/agent.repository";
 import { AgentRunRepository } from "../repository/agent-run.repository";
 import type { AgentRunSessionRow } from "../types/agent-run-session-row";
+import type { ChannelPeerCallInput } from "../types/channel-peer-call-input";
 import type { HopEnding } from "../types/hop-ending";
 import type { PeerCall } from "../types/peer-call";
 import type { PeerCallFrame } from "../types/peer-call-frame";
@@ -80,6 +81,16 @@ export class AgentPeerRunService {
   createRootPeerCall(input: RootPeerCallInput): ChatEnginePeerCall {
     const { turn, agent, callableAgents, state } = input;
     const record = (hop: PeerHop) => this.writeHop(hop, (turn.run as AgentRunSessionRow).id, turn.userId);
+    return new AgentPeerCall(this, { state, agent, depth: 0, callableAgents, record });
+  }
+
+  /**
+   * RNX-24a: the peer port of a channel chat message's agent (depth 0) on the run's state: each of its hops is written
+   * once it ends, under the channel run's agent_runs row (D380), which `findParentRunId` writes on its first ask.
+   */
+  createChannelPeerCall(input: ChannelPeerCallInput): ChatEnginePeerCall {
+    const { agent, callableAgents, state, findParentRunId } = input;
+    const record = async (hop: PeerHop) => this.writeHop(hop, await findParentRunId(), state.runnerUserId);
     return new AgentPeerCall(this, { state, agent, depth: 0, callableAgents, record });
   }
 

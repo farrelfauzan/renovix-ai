@@ -1,5 +1,7 @@
 import { TestingModule } from "@nestjs/testing";
 import { ChannelChatService } from "./channel-chat.service";
+import { KnowledgeService } from "../../knowledge/service/knowledge.service";
+import { WorkspaceKnowledgeService } from "../../workspace/service/workspace-knowledge.service";
 import { ChannelService } from "./channel.service";
 import { AgentToolService } from "../../agent/service/agent-tool.service";
 import { AgentMemoryService } from "../../agent/service/agent-memory.service";
@@ -32,6 +34,7 @@ import { assertCreditLedgerInvariants } from "../../../../test/credit-ledger-inv
 // messages and the ledger entries of each. The real AgentToolService runs the tools (its MCP, web search, document and
 // memory collaborators are spies); real ChannelChatService, ChannelService, meter and ledger on the test database; fake
 // provider. These collaborators load ESM-only packages.
+jest.mock("../../knowledge/service/knowledge.service", () => ({ KnowledgeService: class {} }));
 jest.mock("../../guardrail/service/guardrail.service", () => ({ GuardrailService: class {} }));
 jest.mock("../../mcp/service/mcp-client.service", () => ({ McpClientService: class {} }));
 jest.mock("../../mcp/service/mcp.service", () => ({ McpService: class {} }));
@@ -56,6 +59,9 @@ describe("RNX-16: channel chat loop scenarios (test database, fake provider, rea
         imports: [ProvidersModule],
         providers: [
           ChannelChatService,
+          // RNX-24a: the knowledge of a channel run's called agents (RNX-121), unused here.
+          { provide: KnowledgeService, useValue: {} },
+          { provide: WorkspaceKnowledgeService, useValue: {} },
           ChannelService,
           AgentRunPolicyService,
           AgentLinkService,
