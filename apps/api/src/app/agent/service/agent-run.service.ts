@@ -80,6 +80,7 @@ export class AgentRunService {
    * RNX-326: `options.socketTimeoutMs`, the route's socket timeout, cuts the run time limit of a run with agent calls.
    * RNX-335: the runner's saved language is read once per run for the AR prompt, unless the reader is not the runner
    * (`options.isExternalAudience`). RNX-327: without the `peerRunMaxAgentCalls` setting the run may call no agent.
+   * RNX-328: `options.onHopEvent` gets the start and end of each hop as they happen.
    */
   async chat(userId: string, agentId: string, message: string, sessionId?: string, options: AgentChatOptions = {}): Promise<AgentRunReply> {
     const agent = await this.agents.findAgentForRun(agentId);
@@ -94,7 +95,7 @@ export class AgentRunService {
     const engine = this.createEngine({ turn, agent, callableAgents, persistence, documentFormat: options.documentFormat, signal: options.signal, socketTimeoutMs: options.socketTimeoutMs, runnerLocale: runner?.locale });
     const mcpSession = createMcpRunSession();
     const request = await this.toEngineRequest(turn, callableAgents, sessionId, options.documentFormat);
-    const runOptions = { signal: options.signal, mcpSession, linkedAgents: callableAgents, onReserved: () => persistence.saveUserMessage() };
+    const runOptions = { signal: options.signal, mcpSession, linkedAgents: callableAgents, onReserved: () => persistence.saveUserMessage(), onHopEvent: options.onHopEvent };
     return toAgentRunReply(await engine.collect(request, runOptions), turn, mcpSession);
   }
 

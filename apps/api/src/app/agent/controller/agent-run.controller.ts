@@ -87,7 +87,8 @@ export class AgentRunController {
         id,
         message,
         sessionId,
-        { ...(detectedFormat && { documentFormat: detectedFormat }), signal: sse.signal },
+        // RNX-328: each hop's start and end is written as it happens, so before the content chunk.
+        { ...(detectedFormat && { documentFormat: detectedFormat }), signal: sse.signal, onHopEvent: (hop) => sse.writeJson({ hop }) },
       );
 
       this.logger.log(

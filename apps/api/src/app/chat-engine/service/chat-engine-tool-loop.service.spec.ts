@@ -409,7 +409,7 @@ describe("RNX-283: the chat engine's tool loop (fake provider, no database)", ()
       // RNX-25 (D341 D1): the peer request also carries the run's scope, the calling call (its parent) and the metered call.
       const [firstCall] = t.runMeter.callModel.mock.results;
       const parentCallId = (await firstCall.value).callId;
-      expect(t.peers.callPeer.mock.calls).toEqual([[{ runnerUserId: t.runnerUserId, agentId: t.agent.id, args: { agent: "B", task: "t" }, scope: "inside", parentCallId, callModel: expect.any(Function) }]]);
+      expect(t.peers.callPeer.mock.calls).toEqual([[{ runnerUserId: t.runnerUserId, agentId: t.agent.id, args: { agent: "B", task: "t" }, scope: "inside", parentCallId, callModel: expect.any(Function), onHopEvent: expect.any(Function) }]]);
       expect(t.lastMessage(1)).toEqual({ role: "tool", tool_call_id: "p", content: CHAT_ENGINE_PEER_UNAVAILABLE });
       expect(t.executeTool).not.toHaveBeenCalled();
       expect(t.fake.requests).toHaveLength(2);

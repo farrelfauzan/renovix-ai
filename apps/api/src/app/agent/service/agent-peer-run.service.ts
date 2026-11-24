@@ -31,6 +31,7 @@ import type { PeerRunState } from "../types/peer-run-state";
 import type { RootPeerCallInput } from "../types/root-peer-call-input";
 import { createMcpRunSession } from "../utils/create-mcp-run-session";
 import { findPeerRefusal } from "../utils/find-peer-refusal";
+import { toHopEvent } from "../utils/to-hop-event";
 import { toHopRequest } from "../utils/to-hop-request";
 import { toHopStatus } from "../utils/to-hop-status";
 import { toPeerHop } from "../utils/to-peer-hop";
@@ -59,6 +60,8 @@ const MS_PER_MINUTE = 60_000;
  * shared between requests or API instances. RNX-326: from the run's first agent call, its model-call cap
  * (peerRunMaxModelCalls) and run time limit (peerRunMaxMinutes, cut at the route's socket timeout) apply: at either one
  * the run stops (RunLimitStoppedError) with the budget-stop answer, and a hop stopped by the time limit is `timeout`.
+ * RNX-328: every hop that gets a child row reports its start, and its end with the row's status, to the peer port's
+ * request (`onHopEvent`); a called agent's own hops report through its caller's.
  */
 @Injectable()
 export class AgentPeerRunService {
@@ -139,7 +142,9 @@ export class AgentPeerRunService {
   /** A refused call: nothing runs; its `refused` row is recorded and the caller gets the refusal. */
   private async refuse(call: PeerCall, message: string): Promise<string> {
     this.logger.warn(`Agent call refused: ${call.frame.agent.id} -> ${call.callee.id}: ${message}`);
+    call.request.onHopEvent(toHopEvent(call));
     await call.frame.record(toPeerHop(call, { status: "refused", answer: message, durationMs: 0, children: [] }));
+    call.request.onHopEvent(toHopEvent(call, "refused"));
     return message;
   }
 
@@ -147,12 +152,14 @@ export class AgentPeerRunService {
   private async runHop(call: PeerCall, limits: PeerRunLimits): Promise<string> {
     const startedAt = Date.now();
     const children: PeerHop[] = [];
+    call.request.onHopEvent(toHopEvent(call));
     call.frame.state.stack.push(call.callee.id);
     const ending = await this.runCallee(call, limits, children)
       .then((answer): HopEnding => ({ status: "completed", answer, failure: null }))
       .catch((err: unknown) => this.toFailedEnding(call, err))
       .finally(() => call.frame.state.stack.pop());
     await call.frame.record(toPeerHop(call, { status: ending.status, answer: ending.answer, durationMs: Date.now() - startedAt, children }));
+    call.request.onHopEvent(toHopEvent(call, ending.status));
     if (ending.failure instanceof RunBudgetStoppedError || ending.failure instanceof RunLimitStoppedError) throw ending.failure;
     return ending.answer;
   }
@@ -173,7 +180,7 @@ export class AgentPeerRunService {
     const target = { agentId: callee.id, connection: { ...connection, fallbacks: [] }, parentCallId: request.parentCallId };
     const meter = new AgentHopMeter(this.meter, this.registry, { callerCallModel: request.callModel, target, timeoutMs: limits.callTimeoutMs });
     const mcpSession = { ...createMcpRunSession(), returnsDocumentsAsText: true };
-    const result = await this.createHopEngine(calleeFrame, meter).collect(toHopRequest(call, callableAgents), { signal: frame.state.signal, mcpSession });
+    const result = await this.createHopEngine(calleeFrame, meter).collect(toHopRequest(call, callableAgents), { signal: frame.state.signal, mcpSession, onHopEvent: request.onHopEvent });
     if (result.status === "denied") throw new NotFoundException("Agent not found");
     return result.content ?? "";
   }
