@@ -43,6 +43,7 @@ import { WebSearchService } from "./mcp/service/web-search.service";
 import { AdminPaymentsController } from "./payments/controller/admin-payments.controller";
 import { PaymentsController } from "./payments/controller/payments.controller";
 import { PortalController } from "./portal/controller/portal.controller";
+import { CreditEstimateController } from "./portal/controller/credit-estimate.controller";
 import { ReminderController } from "./reminder/controller/reminder.controller";
 import { WorkspaceChannelController } from "./workspace/controller/workspace-channel.controller";
 import { WorkspaceInviteController } from "./workspace/controller/workspace-invite.controller";
@@ -126,6 +127,7 @@ const ROWS: readonly Row[] = [
   { route: "POST /agents/generate-prompt", body: { name: "" }, details: ["name"] },
   { route: "PATCH /agents/:id/status", body: { status: "deleted" }, details: ["status"] },
   { route: "PATCH /agents/:id/channels/:channelId", body: NOT_AN_OBJECT },
+  { route: "POST /chat/portal/credit-estimate", body: { model: "m", messages: 1 }, details: ["messages"] },
   { route: "POST /chat/portal/knowledge", body: { name: "   " }, details: ["name"] },
   { route: "POST /webhooks/gowa", body: { event: "message.received", to: "628111000111" }, details: ["from", "message"] },
   // ─── back office (/admin) ───
@@ -233,7 +235,7 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
         AdminUsageController, AdminReconciliationController,
         AgentLinkController, AgentRunController, AgentController, ApiKeyController, AuthController, BillingController,
         ChannelController, GowaWebhookController, ChatController, CodesController, DocumentController,
-        KnowledgeController, McpUserController, WebSearchController, PortalController, ReminderController,
+        KnowledgeController, McpUserController, WebSearchController, PortalController, CreditEstimateController, ReminderController,
         WorkspaceChannelController, WorkspaceInviteController, WorkspaceController, SignInSecurityController,
         AdminPaymentsController, PaymentsController,
       ],

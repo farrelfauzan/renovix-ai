@@ -91,4 +91,6 @@ export const PLATFORM_SETTINGS = {
    * first token (RNX-44: 120). Not set: no limit.
    */
   modelCallBudgetSeconds: AT_LEAST_ONE,
+  /** Credits the pre-send chat estimate adds for each knowledge search that can run (RNX-331, D390: 0.5). Not set: no estimate is shown. */
+  knowledgeSearchAllowanceCredits: CREDIT_AMOUNT,
 } as const;

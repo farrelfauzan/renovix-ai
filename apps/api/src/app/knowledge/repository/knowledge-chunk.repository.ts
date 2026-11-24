@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { LIVE_KNOWLEDGE_BASE } from "../config/live-knowledge-base";
 import { SYSTEM_KNOWLEDGE_SYNC_LOCK_KEY } from "../config/system-knowledge-sync-lock-key";
 import type { ChunkSearchRow } from "../types/chunk-search-row";
 import type { NewKnowledgeChunk } from "../types/new-knowledge-chunk";
@@ -36,6 +37,24 @@ export class KnowledgeChunkRepository {
   /** The number of chunks in this base. */
   countChunks(knowledgeBaseId: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).knowledgeChunk.count({ where: { knowledgeBaseId } });
+  }
+
+  /** RNX-331: true when one of this user's active, live personal bases (no workspace base) has a chunk; one indexed lookup. */
+  async hasPersonalChunks(userId: string, tx?: DbTransaction): Promise<boolean> {
+    const found = await (tx ?? this.prisma).knowledgeChunk.findFirst({
+      where: { knowledgeBase: { userId, workspaceId: null, active: true, ...LIVE_KNOWLEDGE_BASE } },
+      select: { id: true },
+    });
+    return found !== null;
+  }
+
+  /** RNX-331: true when the active, live system knowledge base has a chunk; one lookup. */
+  async hasSystemChunks(tx?: DbTransaction): Promise<boolean> {
+    const found = await (tx ?? this.prisma).knowledgeChunk.findFirst({
+      where: { knowledgeBase: { isSystem: true, active: true, ...LIVE_KNOWLEDGE_BASE } },
+      select: { id: true },
+    });
+    return found !== null;
   }
 
   /** The chunk with this id, in whatever base: the service checks the base. */

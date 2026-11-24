@@ -438,6 +438,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /channels/:id/icon (ChannelController.uploadIcon)",
     "POST /channels/:id/restore (ChannelController.restore)",
     "POST /channels/upload-icon (ChannelController.uploadIconStandalone)",
+    "POST /chat/portal/credit-estimate (CreditEstimateController.estimate)",
     "POST /codes/redeem (CodesController.redeemCode)",
     "POST /mcp/servers/:id/test (McpController.testConnection)",
     "POST /mcp/user/connect (McpUserController.connectWithToken)",

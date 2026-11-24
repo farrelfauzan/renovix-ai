@@ -48,6 +48,7 @@ import { ConnectMcpTokenSchema } from "../../app/mcp/dto/connect-mcp-token.dto";
 import { WebSearchKeySchema } from "../../app/mcp/dto/web-search-key.dto";
 import { UpdateWebSearchPolicySchema } from "../../app/mcp/dto/update-web-search-policy.dto";
 import { PortalCompletionSchema } from "../../app/portal/dto/portal-completion.dto";
+import { CreditEstimateSchema } from "../../app/portal/dto/credit-estimate.dto";
 import { CreatePortalKnowledgeBaseSchema } from "../../app/portal/dto/create-portal-knowledge-base.dto";
 import { CreateWorkspaceKnowledgeBaseSchema } from "../../app/workspace/dto/create-workspace-knowledge-base.dto";
 import { AddWorkspaceChunksSchema } from "../../app/workspace/dto/add-workspace-chunks.dto";
@@ -138,6 +139,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /workspace-invites/accept", AcceptInviteSchema],
   // ─── portal ───
   ["POST /chat/portal/completions", PortalCompletionSchema],
+  ["POST /chat/portal/credit-estimate", CreditEstimateSchema],
   ["POST /chat/portal/knowledge", CreatePortalKnowledgeBaseSchema],
   // ─── the rest of the product API ───
   ["POST /auth/keys", CreateApiKeyDto],

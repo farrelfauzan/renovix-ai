@@ -4409,6 +4409,76 @@
         ]
       }
     },
+    "/api/v1/chat/portal/credit-estimate": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "messages": {
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "user",
+                            "assistant"
+                          ]
+                        },
+                        "content": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100000
+                        }
+                      },
+                      "required": [
+                        "role",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "model",
+                  "messages"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
+          },
+          "401": {
+            "description": "Not authenticated (missing or invalid credentials)"
+          }
+        },
+        "security": [
+          {
+            "SessionCookie": []
+          }
+        ],
+        "tags": [
+          "chat"
+        ]
+      }
+    },
     "/api/v1/chat/portal/credit-meter": {
       "get": {
         "responses": {

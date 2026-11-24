@@ -39,6 +39,7 @@ jest.mock('@/hooks/use-portal', () => ({
   usePortalModels: () => ({ data: models }),
 }));
 jest.mock('@/hooks/use-my-entitlements', () => ({ useMyEntitlements: () => mockEntitlements }));
+jest.mock('@/hooks/use-credit-estimate', () => ({ useCreditEstimate: () => ({ data: undefined }) }));
 jest.mock('@/hooks/use-current-user', () => ({ useCurrentUser: () => mockCurrentUser }));
 jest.mock('@/lib/api', () => ({ FREE_LIMIT_CODES: [], PortalError: class extends Error {}, streamCompletion: jest.fn() }));
 jest.mock('@performa-ai/ui/components/select', () => {

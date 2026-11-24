@@ -31,4 +31,5 @@ export const SETTING_DESCRIPTIONS: Readonly<Record<string, SettingDescription>> 
   reconciliationDriftThresholdPercent: percent("Reconciliation drift threshold, % of the high estimate (D84, RNX-228)"),
   memoryExtractionTimeoutSeconds: count("Memory extraction: seconds per model call, no retry (RNX-284)"),
   modelCallBudgetSeconds: count("Model call time budget, seconds across retries and fallbacks (RNX-44)"),
+  knowledgeSearchAllowanceCredits: credits("Pre-send estimate: credits per knowledge search (RNX-331)"),
 };
