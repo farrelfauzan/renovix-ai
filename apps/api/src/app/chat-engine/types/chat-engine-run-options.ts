@@ -1,5 +1,6 @@
 import type { LinkedAgent } from "../../agent/types/linked-agent";
 import type { McpRunSession } from "../../agent/types/mcp-run-session";
+import type { ChatHopEvent } from "./chat-hop-event";
 
 /**
  * RNX-282: how a caller controls a run besides its request (not request data, so not in the Zod schema): `signal` aborts
@@ -7,11 +8,12 @@ import type { McpRunSession } from "../../agent/types/mcp-run-session";
  * caller's own MCP session for the run's tools (the caller reads the run's `create_document` output from it),
  * `linkedAgents` are the agents the run's agent may call (they count in the reservation's minimum, as in
  * AgentRunMeterService.meterRun), and `onReserved` runs once, right after the run's reservation holds and before its
- * first model call.
+ * first model call. RNX-328: `onHopEvent` gets a collected run's hop events as they happen (a streamed run yields them).
  */
 export type ChatEngineRunOptions = {
   readonly signal?: AbortSignal;
   readonly mcpSession?: McpRunSession;
   readonly linkedAgents?: readonly LinkedAgent[];
   readonly onReserved?: () => Promise<void>;
+  readonly onHopEvent?: (event: ChatHopEvent) => void;
 };

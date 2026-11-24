@@ -11,6 +11,7 @@ import { ChatEngineExecution } from "../ports/chat-engine-execution.port";
 import { ChatEnginePeerCall } from "../ports/chat-engine-peer-call.port";
 import type { ChatExecutionChunk } from "../types/chat-execution-chunk";
 import type { ChatExecutionInput } from "../types/chat-execution-input";
+import type { ChatHopEvent } from "../types/chat-hop-event";
 import type { ChatModelReply } from "../types/chat-model-reply";
 import type { ChatToolCall } from "../types/chat-tool-call";
 import type { ChatToolLoopRun } from "../types/chat-tool-loop-run";
@@ -18,6 +19,7 @@ import { loopProfileOf } from "../utils/loop-profile-of";
 import { toInitialMessages } from "../utils/to-initial-messages";
 import { toLoopModelRequest } from "../utils/to-loop-model-request";
 import { truncateToolResult } from "../utils/truncate-tool-result";
+import { yieldReported } from "../utils/yield-reported";
 
 /**
  * RNX-283: the engine's execution: a bounded tool loop over the metered model call (`callModel`), the agent's tools
@@ -33,7 +35,8 @@ import { truncateToolResult } from "../utils/truncate-tool-result";
  * (`mcpSession`, so the caller can read the run's `create_document` output); the peer port gets the run's scope, the
  * calling model call as the hop's parent, and the run's metered model call. RNX-24a: a request with a room (the
  * channel chat) offers the MCP tools of the room's workspace (none without one), not the agent's, and its tool calls
- * get the room's channel id.
+ * get the room's channel id. RNX-328: while a call_agent call runs, the start and end of each hop it makes (the peer
+ * port reports them) are yielded as they happen, before that call's tool result.
  */
 @Injectable()
 export class ChatEngineToolLoop extends ChatEngineExecution {
@@ -103,7 +106,8 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
     loop.messages.push(reply);
     for (const toolCall of reply.tool_calls ?? []) {
       loop.input.signal?.throwIfAborted();
-      const content = truncateToolResult(await this.runToolCall(loop, toolCall, callId), loop.profile.toolResultMaxChars);
+      const result = yield* yieldReported<ChatHopEvent, string>((onHopEvent) => this.runToolCall(loop, toolCall, callId, onHopEvent));
+      const content = truncateToolResult(result, loop.profile.toolResultMaxChars);
       loop.messages.push({ role: "tool", tool_call_id: toolCall.id, content });
       yield { type: "tool_result", toolName: toolCall.function?.name ?? "", content };
     }
@@ -115,7 +119,7 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
    * RNX-121b-1 (D329): a call_agent the run did not offer is refused here, before the peer port (RNX-276's offer check).
    * RNX-326: a run-limit stop ends the run too.
    */
-  private async runToolCall(loop: ChatToolLoopRun, toolCall: ChatToolCall, parentCallId: string): Promise<string> {
+  private async runToolCall(loop: ChatToolLoopRun, toolCall: ChatToolCall, parentCallId: string, onHopEvent: (event: ChatHopEvent) => void): Promise<string> {
     const { input, mcpSession } = loop;
     try {
       const args: unknown = JSON.parse(toolCall.function.arguments);
@@ -125,7 +129,7 @@ export class ChatEngineToolLoop extends ChatEngineExecution {
       }
       const { principal, agent, context, callModel } = input;
       const isOffered = mcpSession.offeredToolNames.has("call_agent");
-      const result = isOffered ? await this.peers.callPeer({ runnerUserId: principal.runnerUserId, agentId: agent.id, args, scope: context.scope, parentCallId, callModel }) : CHAT_ENGINE_AGENT_NOT_CALLABLE;
+      const result = isOffered ? await this.peers.callPeer({ runnerUserId: principal.runnerUserId, agentId: agent.id, args, scope: context.scope, parentCallId, callModel, onHopEvent }) : CHAT_ENGINE_AGENT_NOT_CALLABLE;
       loop.iterations += loop.profile.agentCallExtraIterations;
       return result;
     } catch (err) {

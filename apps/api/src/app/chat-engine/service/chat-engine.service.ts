@@ -37,7 +37,8 @@ import { ChatEngineMeterService } from "./chat-engine-meter.service";
  * the agent run (AgentRunService.chat) is its first production caller; its other run options (the caller's MCP session,
  * the linked agents, the reservation hook) go to the execution and the meter. RNX-24a: the context build is a port
  * (ChatEngineContextBuilder; the agent run's is ChatEngineContextService, still the injection token), so the channel
- * chat brings its own.
+ * chat brings its own. RNX-328: a hop's start and end are yielded as the execution reports them; `collect` hands them
+ * to `onHopEvent` (ChatEngineRunOptions).
  */
 @Injectable()
 export class ChatEngineService {
@@ -82,7 +83,10 @@ export class ChatEngineService {
   /** Runs the request to the end and returns the folded result of the same events `run` yields. */
   async collect(rawRequest: unknown, options: ChatEngineRunOptions = {}): Promise<ChatEngineResult> {
     let result = EMPTY_CHAT_ENGINE_RESULT;
-    for await (const event of this.run(rawRequest, options)) result = applyChatEngineEvent(result, event);
+    for await (const event of this.run(rawRequest, options)) {
+      if (event.type === "hop_start" || event.type === "hop_end") options.onHopEvent?.(event);
+      else result = applyChatEngineEvent(result, event);
+    }
     return result;
   }
 
@@ -116,6 +120,7 @@ export class ChatEngineService {
     for await (const chunk of chunks) {
       if (chunk.type === "text") rawOutput += chunk.text;
       else if (chunk.type === "budget_stopped" || chunk.type === "limit_stopped") rawOutput = chunk.message;
+      else if (chunk.type === "hop_start" || chunk.type === "hop_end") yield chunk;
       else yield* this.approveToolResult(request, offered, chunk.toolName, chunk.content);
     }
     const output = await this.outputApproval.approveOutput(rawOutput, principal.runnerUserId, conversation.agentId);
