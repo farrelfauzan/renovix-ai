@@ -80,12 +80,13 @@ function renderApp(route: string, api: ReturnType<typeof createFakeApi>) {
   return view;
 }
 
-/** Password, "no authenticator yet", set one up, and the first code: up to the answer of totp/confirm. */
+/** Password, "no authenticator yet" and "Continue to enrolment", set one up, and the first code: up to the answer of totp/confirm. */
 async function signInAndConfirmFirstCode() {
   fireEvent.change(await screen.findByLabelText("Email"), { target: { value: EMAIL } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: PASSWORD } });
   fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-  fireEvent.click(screen.getByRole("button", { name: "No authenticator set up yet: continue without a code" }));
+  fireEvent.click(screen.getByRole("button", { name: "No authenticator set up yet?" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue to enrolment" }));
   fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
   fireEvent.change(await screen.findByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));

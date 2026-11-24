@@ -26,7 +26,8 @@ type SessionGateProps = {
 /**
  * The back-office route gate (RNX-207), visibility only: the API's AccessGuard stays the source of truth.
  * The session cookies are httpOnly on the API origin, so the gate asks the API (`GET /admin/auth/me`) on every
- * route change, in the browser. /sign-in and /accept-invitation are never gated. No session (the client's
+ * route change, in the browser. /sign-in and /accept-invitation are never gated; they render in one white card on
+ * the dark page, under the brand row (RNX-332). No session (the client's
  * refresh failed, as for a suspended admin) goes to sign-in; what else a session reaches is `decideGate`'s.
  * Nothing of a gated route renders until its own answer is in; if the API cannot be asked, nothing renders.
  * The shell around a route reads that answer's profile from SignedInAdminContext (RNX-312a): no other /me call.
@@ -59,9 +60,9 @@ export function SessionGate({ sideNavigation, publicHeader, children, api = defa
   }, [redirectTo, router]);
   if (isPublic) {
     return (
-      <main className="min-h-screen p-6">
-        <header className="mb-6">{publicHeader}</header>
-        {children}
+      <main className="flex min-h-screen flex-col items-center gap-7 bg-rx-dark-ground px-8 py-10 narrow:px-4 narrow:py-6">
+        <header className="w-full max-w-[1180px]">{publicHeader}</header>
+        <div className="w-full max-w-[400px] rounded-rx bg-rx-white p-7 text-rx-ink narrow:p-4">{children}</div>
       </main>
     );
   }

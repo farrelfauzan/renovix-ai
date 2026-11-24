@@ -31,16 +31,28 @@ function createMockClient(answers: Record<string, Answer>) {
   return { api: createSignInApi(client, client), request, sent };
 }
 
-function enterCredentials() {
-  fireEvent.change(screen.getByLabelText("Email"), { target: { value: EMAIL } });
-  fireEvent.change(screen.getByLabelText("Password"), { target: { value: PASSWORD } });
+function enterCredentials(inputEmail = EMAIL, inputPassword = PASSWORD) {
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: inputEmail } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: inputPassword } });
   fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 }
 
-function signInWithTotp() {
-  enterCredentials();
+function signInWithTotp(inputEmail = EMAIL, inputPassword = PASSWORD) {
+  enterCredentials(inputEmail, inputPassword);
   fireEvent.change(screen.getByLabelText("Authenticator code"), { target: { value: TOTP } });
   fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+}
+
+/** RNX-332: "no authenticator yet" opens the not-enrolled state; "Continue to enrolment" sends the sign-in without a factor. */
+function continueToEnrolment() {
+  fireEvent.click(screen.getByRole("button", { name: "No authenticator set up yet?" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue to enrolment" }));
+}
+
+/** Types the code one digit at a time into the six-box input, as a keyboard does. */
+function typeCode(inputCode: string) {
+  const input = screen.getByLabelText("Authenticator code");
+  for (let i = 1; i <= inputCode.length; i++) fireEvent.change(input, { target: { value: inputCode.slice(0, i) } });
 }
 
 describe("SignInScreen (RNX-188)", () => {
@@ -64,7 +76,7 @@ describe("SignInScreen (RNX-188)", () => {
     render(<SignInScreen api={mock.api} />);
     enterCredentials();
 
-    fireEvent.click(screen.getByRole("button", { name: "Use a recovery code instead" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lost your authenticator? Use a recovery code" }));
     fireEvent.change(screen.getByLabelText("Recovery code"), { target: { value: RECOVERY_CODE } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
@@ -99,7 +111,7 @@ describe("SignInScreen (RNX-188)", () => {
     render(<SignInScreen api={mock.api} />);
     enterCredentials();
 
-    fireEvent.click(screen.getByRole("button", { name: "Use a recovery code instead" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lost your authenticator? Use a recovery code" }));
     fireEvent.change(screen.getByLabelText("Recovery code"), { target: { value: RECOVERY_CODE } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
@@ -116,7 +128,7 @@ describe("SignInScreen (RNX-188)", () => {
     });
     render(<SignInScreen api={mock.api} />);
     enterCredentials();
-    fireEvent.click(screen.getByRole("button", { name: "No authenticator set up yet: continue without a code" }));
+    continueToEnrolment();
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
     fireEvent.change(await screen.findByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
 
@@ -157,7 +169,7 @@ describe("SignInScreen (RNX-188)", () => {
     });
     render(<SignInScreen api={mock.api} />);
     enterCredentials();
-    fireEvent.click(screen.getByRole("button", { name: "No authenticator set up yet: continue without a code" }));
+    continueToEnrolment();
 
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
 
@@ -189,9 +201,9 @@ describe("SignInScreen (RNX-188)", () => {
     expect(screen.getByLabelText("Password").getAttribute("type")).toBe("password");
     enterCredentials();
     expect(screen.getByLabelText("Authenticator code").getAttribute("autocomplete")).toBe("one-time-code");
-    fireEvent.click(screen.getByRole("button", { name: "Use a recovery code instead" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lost your authenticator? Use a recovery code" }));
     expect(screen.getByLabelText("Recovery code").getAttribute("autocomplete")).toBe("one-time-code");
-    fireEvent.click(screen.getByRole("button", { name: "No authenticator set up yet: continue without a code" }));
+    continueToEnrolment();
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
 
     expect((await screen.findByLabelText("Code from your authenticator app")).getAttribute("autocomplete")).toBe("one-time-code");
@@ -206,7 +218,7 @@ describe("SignInScreen (RNX-188)", () => {
     });
     render(<SignInScreen api={mock.api} />);
     enterCredentials();
-    fireEvent.click(screen.getByRole("button", { name: "Use a recovery code instead" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lost your authenticator? Use a recovery code" }));
     fireEvent.change(screen.getByLabelText("Recovery code"), { target: { value: RECOVERY_CODE } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
@@ -217,5 +229,93 @@ describe("SignInScreen (RNX-188)", () => {
     const logged = JSON.stringify(spies.flatMap((spy) => spy.mock.calls));
     for (const secret of [PASSWORD, TOTP, RECOVERY_CODE, SECRET, ...RECOVERY_CODES]) expect(logged).not.toContain(secret);
     spies.forEach((spy) => spy.mockRestore());
+  });
+});
+
+describe("SignInScreen in the canvas layout (RNX-332)", () => {
+  const SIGN_IN_PATH = "/api/v1/admin/auth/sign-in";
+  beforeEach(() => replace.mockClear());
+
+  it("AC2: typing the 6 digits into the boxes sends the same body as before and signs in", async () => {
+    const mock = createMockClient({ [SIGN_IN_PATH]: { status: 200, body: { scope: "full" } } });
+    const expectedSent = [{ path: SIGN_IN_PATH, body: { email: EMAIL, password: PASSWORD, totp: TOTP } }];
+    render(<SignInScreen api={mock.api} />);
+    enterCredentials();
+
+    typeCode(TOTP);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+    expect(mock.sent()).toEqual(expectedSent);
+  });
+
+  it("AC2: pasting the 6 digits into the boxes sends the same body as before and signs in", async () => {
+    const mock = createMockClient({ [SIGN_IN_PATH]: { status: 200, body: { scope: "full" } } });
+    const expectedSent = [{ path: SIGN_IN_PATH, body: { email: EMAIL, password: PASSWORD, totp: TOTP } }];
+    render(<SignInScreen api={mock.api} />);
+    enterCredentials();
+
+    fireEvent.paste(screen.getByLabelText("Authenticator code"), { clipboardData: { getData: () => TOTP } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
+    expect(mock.sent()).toEqual(expectedSent);
+  });
+
+  it("AC3: a wrong password and an unknown email show the same single generic text, with no attempts count and no lock time", async () => {
+    const inputs = [{ email: EMAIL, password: "wrong password here" }, { email: "nobody@example.com", password: PASSWORD }];
+    const actualTexts: string[] = [];
+    for (const input of inputs) {
+      const mock = createMockClient({ [SIGN_IN_PATH]: GENERIC_401 });
+      const view = render(<SignInScreen api={mock.api} />);
+      signInWithTotp(input.email, input.password);
+      const alerts = await screen.findAllByRole("alert");
+      expect(alerts).toHaveLength(1);
+      actualTexts.push(alerts[0].textContent ?? "");
+      expect(document.body.textContent).not.toMatch(/attempt|lock|\d+:\d{2}/i);
+      view.unmount();
+    }
+
+    expect(actualTexts).toEqual(["Invalid credentials", "Invalid credentials"]);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("AC4: the not-enrolled link sends no request and shows the not-enrolled state, with a way back to the code", () => {
+    const mock = createMockClient({ [SIGN_IN_PATH]: { status: 200, body: { scope: "enrolment" } } });
+    render(<SignInScreen api={mock.api} />);
+    enterCredentials();
+
+    fireEvent.click(screen.getByRole("button", { name: "No authenticator set up yet?" }));
+
+    expect(mock.request).not.toHaveBeenCalled();
+    expect(screen.getByText("Set up your authenticator before anything else loads.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Continue to enrolment" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back to the code" }));
+    expect(screen.getByLabelText("Authenticator code")).toBeTruthy();
+    expect(mock.request).not.toHaveBeenCalled();
+  });
+
+  it("AC4: \"Sign in\" with fewer than 6 digits sends no request", () => {
+    const mock = createMockClient({ [SIGN_IN_PATH]: { status: 200, body: { scope: "full" } } });
+    render(<SignInScreen api={mock.api} />);
+    enterCredentials();
+
+    typeCode("12345");
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(mock.request).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("AC4: \"Continue to enrolment\" sends exactly one request, without totp or recoveryCode, and shows the enrolment step", async () => {
+    const mock = createMockClient({ [SIGN_IN_PATH]: { status: 200, body: { scope: "enrolment" } } });
+    const expectedSent = [{ path: SIGN_IN_PATH, body: { email: EMAIL, password: PASSWORD } }];
+    render(<SignInScreen api={mock.api} />);
+    enterCredentials();
+
+    continueToEnrolment();
+
+    expect(await screen.findByRole("button", { name: "Set up authenticator" })).toBeTruthy();
+    expect(mock.sent()).toEqual(expectedSent);
   });
 });
