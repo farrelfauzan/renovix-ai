@@ -7,9 +7,9 @@ import { creditEstimateQueryKey } from "@/lib/credit-estimate-query-key";
 import { ESTIMATED_TIERS } from "@/lib/estimated-tiers";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 
-/** The most credits the reservation of a message would hold (POST /chat/portal/credit-estimate); a decimal string. */
+/** The most credits the reservation of a message would hold (POST /chat/portal/credit-estimate); a decimal string, null when the API has no figure. */
 export interface CreditEstimate {
-  credits: string;
+  credits: string | null;
 }
 
 /** How long the composer text must stay unchanged before an estimate is requested: at most one request per pause in typing. */

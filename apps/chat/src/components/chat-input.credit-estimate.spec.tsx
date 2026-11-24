@@ -108,6 +108,19 @@ describe('RNX-331 AC1: a Premium or Frontier model shows "up to N credits" befor
     expect(apiClient.post).toHaveBeenCalledTimes(1);
     expect(apiClient.post).toHaveBeenCalledWith(ESTIMATE_URL, { model: 'premium-model', messages: [{ role: 'user', content: 'hel' }] });
   });
+
+  it('the API has no figure (credits null, the allowance setting is not set): the request is made, nothing is shown', async () => {
+    mockSelectedModel = 'premium-model';
+    (apiClient.post as jest.Mock).mockResolvedValue({ credits: null });
+    renderComposer();
+
+    type('hello');
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await pause(PAST_THE_PAUSE_MS);
+
+    expect(apiClient.post).toHaveBeenCalledWith(ESTIMATE_URL, { model: 'premium-model', messages: [{ role: 'user', content: 'hello' }] });
+    expect(screen.queryByText(/up to/)).toBeNull();
+  });
 });
 
 describe('RNX-331 AC2: a Standard model shows no estimate and sends no estimate request', () => {

@@ -126,10 +126,13 @@ export class PromptTuningService {
    * - If user already has a system message, prepends our prompt to it.
    * - Otherwise inserts a new system message at index 0.
    * Returns a new array (does not mutate the original).
+   * RNX-331: `searchKnowledge: false` leaves out the two knowledge searches (each embeds the query, a paid call) and
+   * runs only the free parts: the system prompt, the template match and the user's memories.
    */
   async applyTuning(
     messages: ChatMessage[],
     userId?: string,
+    { searchKnowledge = true }: { searchKnowledge?: boolean } = {},
   ): Promise<TuningResult> {
     // Extract the latest user message for RAG query
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -141,10 +144,10 @@ export class PromptTuningService {
       userMemories,
     ] = await Promise.all([
       this.buildSystemPrompt(messages),
-      lastUserMsg
+      lastUserMsg && searchKnowledge
         ? this.systemKnowledge.searchSystemKB(lastUserMsg.content)
         : Promise.resolve([]),
-      lastUserMsg && userId
+      lastUserMsg && userId && searchKnowledge
         ? this.knowledgeService
             .searchChunks(userId, lastUserMsg.content, { topK: 5 })
             .catch((err) => {
