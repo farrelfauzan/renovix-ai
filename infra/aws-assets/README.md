@@ -6,6 +6,7 @@ AWS CDK (TypeScript) app with one stack, `RenovixAssetsDev`, that creates one pr
 - all four Block Public Access settings on, ACLs disabled (`BucketOwnerEnforced`), SSE-S3 encryption
 - SSL enforced: a bucket-policy Deny on `aws:SecureTransport = false`, the only statement in the policy
 - `RETAIN` on delete and replace
+- objects in the dev bucket are deleted after 7 days (and incomplete multipart uploads after 1 day)
 - IAM user `renovix-ai-assets-dev-api` with one managed policy and nothing else: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` on the bucket's objects and `s3:ListBucket` on the bucket. No console password, no group, no inline policy. The stack creates **no access key**: you create it by hand, see [API credentials (local/dev)](#api-credentials-localdev)
 - outputs: `BucketName`, `BucketArn`, `AssetsApiUserName` and `AssetsApiPolicyArn`
 
@@ -144,6 +145,6 @@ The bucket is `RETAIN`. `npx cdk destroy` removes the stack, including the IAM u
 - Which account/region or profile is the target for dev (and later prod)?
 - CDN: is CloudFront in front of the bucket needed (`S3_CDN_DOMAIN`)? Not added.
 - Browser uploads with presigned URLs from the chat app need CORS on the bucket. Not added.
-- Lifecycle/expiry rules and versioning for dev objects? Not added.
+- Versioning for dev objects? Not added. (Expiry is set: 7 days, RNX-354.)
 - How does the API get credentials in prod: IAM user with keys, or a role (RX-165)? For dev, this stack creates the IAM user `renovix-ai-assets-dev-api` (RX-176); its access key is created by hand, never by the stack.
 - Bucket name for prod? Names are global, so `renovix-ai-assets-dev` may also be taken.

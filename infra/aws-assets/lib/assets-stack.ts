@@ -1,7 +1,10 @@
-import { CfnOutput, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { ManagedPolicy, PolicyStatement, User } from 'aws-cdk-lib/aws-iam';
 import { BlockPublicAccess, Bucket, BucketEncryption, ObjectOwnership } from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
+
+const DEV_ASSET_EXPIRY_DAYS = 7;
+const INCOMPLETE_UPLOAD_ABORT_DAYS = 1;
 
 /** Private S3 bucket for Renovix AI assets (dev), plus the IAM user the API uses to reach it. */
 export class AssetsStack extends Stack {
@@ -14,6 +17,12 @@ export class AssetsStack extends Stack {
       enforceSSL: true,
       objectOwnership: ObjectOwnership.BUCKET_OWNER_ENFORCED,
       removalPolicy: RemovalPolicy.RETAIN,
+      lifecycleRules: [
+        {
+          expiration: Duration.days(DEV_ASSET_EXPIRY_DAYS),
+          abortIncompleteMultipartUploadAfter: Duration.days(INCOMPLETE_UPLOAD_ABORT_DAYS),
+        },
+      ],
     });
     const policy = new ManagedPolicy(this, 'AssetsApiPolicy', {
       statements: [
