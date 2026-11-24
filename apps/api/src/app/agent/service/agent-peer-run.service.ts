@@ -122,13 +122,13 @@ export class AgentPeerRunService {
 
   /**
    * RNX-326: once per run, at its first agent call: the model-call cap (counted from the run's start, root and hops;
-   * the run's execution enforces it) and the stop timer at the run time limit, counted from the run's start. When it
-   * fires, the model call running is aborted with RunLimitStoppedError and no further call starts; the run's
-   * execution clears it when the run ends, however it ends.
+   * the run's execution enforces it) and the stop timer at the run time limit (RNX-351: within the run's own limit, when
+   * it has one), counted from the run's start. When it fires, the model call running is aborted with
+   * RunLimitStoppedError and no further call starts; the run's execution clears it when the run ends, however it ends.
    */
   private startRunLimits(state: PeerRunState, limits: PeerRunLimits): void {
     if (state.maxModelCalls !== undefined) return;
-    const delayMs = state.startedAt + toRunTimeLimitMs({ maxRunMs: limits.maxRunMs, socketTimeoutMs: state.socketTimeoutMs }) - Date.now();
+    const delayMs = state.startedAt + toRunTimeLimitMs({ maxRunMs: limits.maxRunMs, runTimeLimitMs: state.runTimeLimitMs, socketTimeoutMs: state.socketTimeoutMs }) - Date.now();
     state.maxModelCalls = limits.maxModelCalls;
     state.stopTimer = setTimeout(() => {
       this.logger.warn(`Agent run stopped at its time limit (${state.stack[0]})`);
