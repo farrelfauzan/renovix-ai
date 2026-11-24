@@ -26,7 +26,7 @@ No shared library packages (`libs/`) exist yet; the shared UI package (D287: the
 ## Dev Commands
 
 ```bash
-# Infrastructure (PostgreSQL + MinIO)
+# Infrastructure (PostgreSQL)
 docker compose up -d
 
 # Development
@@ -168,15 +168,15 @@ Describes `apps/chat` (the only app with real UI besides `apps/landing`):
 
 ## Environment
 
-Copy `.env.example` to `.env` and keep the `S3_*` keys in it: the API stops at boot with "Configuration key S3_BUCKET does not exist" when `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY` is missing; `S3_ENDPOINT` and `S3_CDN_DOMAIN` are optional (RNX-43). Empty values boot, except `S3_REGION`, which must not be empty ('Region is missing'); uploads fail with empty values. `.env.example` points them at the local MinIO of `docker-compose.yml` (development only, never put real keys there):
+Copy `.env.example` to `.env` and keep the `S3_*` keys in it: the API stops at boot with "Configuration key S3_BUCKET does not exist" when `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY` is missing; `S3_ENDPOINT` and `S3_CDN_DOMAIN` are optional (RNX-43). Empty values boot, except `S3_REGION`, which must not be empty ('Region is missing'); uploads fail with empty values. Local development uses the AWS dev bucket (RNX-353, D385); `docker-compose.yml` has no storage service. `.env.example` names the bucket and leaves the region and the key empty (never commit them):
 
-- `S3_BUCKET`: the bucket that stores uploaded files (`performa-ai`, created by `minio-init`).
-- `S3_REGION`: the bucket's region (`ap-southeast-1`).
-- `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`: the credentials (MinIO root user `minioadmin`/`minioadmin`).
-- `S3_ENDPOINT`: the S3 API URL (`http://localhost:9000`); optional, leave it out for AWS S3.
+- `S3_BUCKET`: the bucket that stores uploaded files (`renovix-ai-assets-dev`, from the RenovixAssetsDev stack in `infra/aws-assets`).
+- `S3_REGION`: the bucket's region; empty in `.env.example`, so fill it in before the first start. The Tech Lead gives it with the key.
+- `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY`: the dev-only key of that stack's IAM user, from the Tech Lead (`infra/aws-assets/README.md`); never production keys.
+- `S3_ENDPOINT`: the S3 API URL of another S3-compatible host; optional, not set for AWS S3.
 - `S3_CDN_DOMAIN`: the host that replaces the storage host in signed download URLs; optional: unset or empty (as locally) keeps the signed URL as it is.
 
-Local uploads do not work until RNX-65 replaces the MinIO images, which no longer pull anonymously (Tech Lead, 2026-10-20).
+Without the dev key the API runs but local uploads fail. In development the chat app allows images from the dev bucket's host, built from `S3_BUCKET` and `S3_REGION` when the dev server starts (`apps/chat/next.config.js`); the production CSP has no such host.
 
 `ADMIN_JWT_SECRET` and `ADMIN_TOTP_ENCRYPTION_KEY` have no default in `.env.example`: generate both before the first start with the `openssl` commands written above them there (`openssl rand -base64 48` and `openssl rand -base64 32`), or the API stops at boot.
 
@@ -200,7 +200,7 @@ Key variables:
 | `LLM_BASE_URL` / `LLM_API_KEY` | -- | Only `GET /models` for the daily price refresh (RX-21); defaults `https://openrouter.ai/api/v1` / `OPENROUTER_API_KEY`; with no key the refresh is skipped (one log line), not a boot failure (RNX-192). Chat calls go to the model's provider record (RX-178), never here. `HTTP-Referer` and `X-Title` are sent only to OpenRouter's base URL |
 | `LLM_DEFAULT_MAX_TOKENS` | -- | `max_tokens` when a caller sets none (default 4096) |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` / `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | -- | Embedding provider (RX-160); defaults OpenRouter's URL, `OPENROUTER_API_KEY`, `intfloat/multilingual-e5-large-instruct`, 1024 (sent as `dimensions`). A vector that is not 1024 long (`knowledge_chunks.embedding vector(1024)`) is refused before anything is written. After changing `EMBEDDING_MODEL` in a local database, clear `knowledge_chunks`; the re-embed job is RX-27 |
-| `S3_*` | Yes | S3/MinIO config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` required; `S3_ENDPOINT` (MinIO) and `S3_CDN_DOMAIN` optional (RNX-43) |
+| `S3_*` | Yes | S3 config: `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` required; `S3_ENDPOINT` (only for another S3-compatible host) and `S3_CDN_DOMAIN` optional (RNX-43) |
 | `MCP_ENCRYPTION_KEY` | Yes | AES-256-GCM key for stored MCP credentials: exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback, no padding (RX-110) |
 | `LLM_KEY_ENCRYPTION_KEY` | Yes | AES-256-GCM key for the provider keys stored through `/admin/providers` (RX-177): exactly 32 bytes, 64 hex or 44 base64 characters (`openssl rand -hex 32`); no fallback. Changing it makes every stored provider key unreadable (enter them again) |
 | `LLM_KEY_VERSION` | -- | Version stamped on each sealed provider key (`credential_key_version`), a positive integer; default 1 |

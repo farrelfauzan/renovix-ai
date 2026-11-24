@@ -3,6 +3,16 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { composePlugins, withNx } = require('@nx/next');
 
+/**
+ * Returns the `img-src` entry for the AWS dev bucket (RNX-353), or '' when it must not be there: in a
+ * production build, or when S3_BUCKET or S3_REGION is not set. Local presigned image URLs point at this host.
+ * @returns {string}
+ */
+function buildDevBucketSource() {
+  const { NODE_ENV, S3_BUCKET, S3_REGION } = process.env;
+  if (NODE_ENV === 'production' || !S3_BUCKET || !S3_REGION) return '';
+  return ` https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
+}
 
 /**
  * @type {import('@nx/next/plugins/with-nx').WithNxOptions}
@@ -31,7 +41,7 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: https://cdn.renovix.id http://localhost:9000 https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://www.gstatic.com https://github.com https://a.slack-edge.com https://www.notion.so https://linear.app https://brave.com https://d3s3b8zw1epdnj.cloudfront.net",
+              `img-src 'self' data: https://cdn.renovix.id https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://www.gstatic.com https://github.com https://a.slack-edge.com https://www.notion.so https://linear.app https://brave.com https://d3s3b8zw1epdnj.cloudfront.net${buildDevBucketSource()}`,
               "font-src 'self'",
               "connect-src 'self' https://api.renovix.id wss://api.renovix.id http://localhost:3000 ws://localhost:3000",
               "frame-ancestors 'none'",

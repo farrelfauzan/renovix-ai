@@ -29,7 +29,7 @@ export class S3Service {
     this.client = new S3Client({
       region,
       endpoint,
-      forcePathStyle: !!endpoint, // needed for MinIO / local S3
+      forcePathStyle: !!endpoint, // needed for an S3-compatible endpoint
       requestChecksumCalculation: "WHEN_REQUIRED",
       responseChecksumValidation: "WHEN_REQUIRED",
       credentials: {
