@@ -35,8 +35,6 @@ import { estimateRunCredits } from "../utils/estimate-run-credits";
 const DEFAULT_RUN_CAP_CREDITS = 10;
 /** The lowest per-run cap without a platform setting row (docs/credits.md section 13.2, D115 item 7). */
 const DEFAULT_RUN_CAP_FLOOR_CREDITS = 1;
-/** RNX-327: the model calls counted for a channel chat's linked agent (executeSubAgent: one call, no tools; docs/credits.md section 13.3). */
-const CHANNEL_CHAT_CALLS_PER_LINKED_AGENT = 1;
 /** The max_tokens a sub-agent call sends when its agent sets none (executeSubAgent). */
 const SUB_AGENT_DEFAULT_MAX_TOKENS = 4096;
 const NO_CREDITS = new Decimal(0);
@@ -193,22 +191,21 @@ export class AgentRunMeterService {
    * own E_call. A run without linked agents, or one whose limits are not set, counts only its root call.
    */
   private async estimateRun(start: RunStart, rootCall: Decimal): Promise<Decimal> {
-    const limits = start.linkedAgents.length > 0 ? await this.readLinkedCallLimits(start) : null;
+    const limits = start.linkedAgents.length > 0 ? await this.readLinkedCallLimits() : null;
     if (!limits) return rootCall;
     const linkedCalls = await Promise.all(start.linkedAgents.map((agent) => this.estimateLinkedCall(agent)));
     return estimateRunCredits(rootCall, linkedCalls.map((call) => call.times(limits.callsPerLinkedAgent)), limits.agentCalls);
   }
 
   /**
-   * RNX-327: L's limit (`peerRunMaxAgentCalls`) and the model calls counted per linked agent: on the chat engine
-   * (`countsCalleeToolLoops`) its tool loop's rounds capped by `peerRunMaxModelCalls`, else one (channel chat). Null
-   * when a setting it needs is not set (no value in code): the estimate then counts no called agent, as no agent call
-   * can run (AgentPeerRunService refuses it), and a log line names the setting.
+   * RNX-327: L's limit (`peerRunMaxAgentCalls`) and the model calls counted per linked agent: its tool loop's rounds
+   * capped by `peerRunMaxModelCalls` (RNX-351: in a channel chat too). Null when a setting it needs is not set (no
+   * value in code): the estimate then counts no called agent, as no agent call can run (AgentPeerRunService refuses
+   * it), and a log line names the setting.
    */
-  private async readLinkedCallLimits(start: RunStart): Promise<LinkedCallLimits | null> {
+  private async readLinkedCallLimits(): Promise<LinkedCallLimits | null> {
     const agentCalls = await this.settings.getSetting("peerRunMaxAgentCalls");
     if (agentCalls === null) return this.skipLinkedCalls("peerRunMaxAgentCalls");
-    if (!start.countsCalleeToolLoops) return { agentCalls, callsPerLinkedAgent: CHANNEL_CHAT_CALLS_PER_LINKED_AGENT };
     const modelCalls = await this.settings.getSetting("peerRunMaxModelCalls");
     if (modelCalls === null) return this.skipLinkedCalls("peerRunMaxModelCalls");
     return { agentCalls, callsPerLinkedAgent: Math.min(modelCalls, AGENT_RUN_MAX_TOOL_ITERATIONS) };

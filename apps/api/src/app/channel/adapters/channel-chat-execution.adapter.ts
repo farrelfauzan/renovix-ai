@@ -22,9 +22,11 @@ import { buildChannelChatSystemPrompt } from "../utils/build-channel-chat-system
  * room's workspace memory folded in), the document mode's max_tokens (at least 8,192), and the run's totals on the
  * turn: the root agent's tokens (a called agent's are not counted, as before), and whether the run stopped at its
  * budget or ended with the max-steps text. The run's agent calls are RNX-121's step, so its per-call
- * rules apply (depth, the agent-call count, the call timeout, refused rows). RNX-326's run limits are NOT enforced
- * here: the first agent call sets the model-call cap and the run timer, but this execution neither counts model calls
- * nor reads the stop signal (D381: RNX-351 adds both). The timer is cleared when the run ends, however it ends.
+ * rules apply (depth, the agent-call count, the call timeout, refused rows). RNX-351: RNX-326's run limits apply as in
+ * an agent run: every model call of the run (root and hop) passes here, so here the run's model calls are counted
+ * against its cap and, once its limits have started (its first agent call), carry its stop signal; the stop timer runs
+ * to the smaller of `peerRunMaxMinutes` and the channel's own limit (CHANNEL_RUN_TIME_LIMIT_MS). A run-limit stop ends
+ * the run as a budget stop does, and the timer is cleared when the run ends, however it ends.
  */
 export class ChannelChatExecution extends ChatEngineExecution {
   constructor(
@@ -64,10 +66,24 @@ export class ChannelChatExecution extends ChatEngineExecution {
     };
   }
 
-  /** One metered call; a root call's tokens add to the run's tokens (a hop's do not, as before). */
+  /**
+   * One metered call; a root call's tokens add to the run's tokens (a hop's do not, as before). RNX-351: refused (no
+   * call) once the run is stopped or at its model-call cap; with the run's stop signal once its limits have started, so
+   * the run's time limit aborts it.
+   */
   private async callAndCount(callModel: ChatModelCall, request: ChatModelRequest, hop?: ChatHopTarget): Promise<ChargedResponse> {
-    const metered = await callModel(request, hop);
+    this.assertRunNotStopped();
+    this.peerRun.modelCalls++;
+    const hasRunLimits = this.peerRun.maxModelCalls !== undefined;
+    const metered = await callModel(hasRunLimits ? { ...request, signal: this.peerRun.stop.signal } : request, hop);
     if (!hop) this.turn.totalTokens += metered.response.usage?.total_tokens || 0;
     return metered;
+  }
+
+  /** RNX-351 (RNX-326's rule): the run's model-call cap reached stops the run; a stopped run throws its stop (RunLimitStoppedError). */
+  private assertRunNotStopped(): void {
+    const { modelCalls, maxModelCalls, stop } = this.peerRun;
+    if (maxModelCalls !== undefined && modelCalls >= maxModelCalls) stop.abort(new RunLimitStoppedError("model_calls"));
+    stop.signal.throwIfAborted();
   }
 }

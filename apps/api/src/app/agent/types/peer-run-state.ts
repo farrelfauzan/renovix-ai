@@ -6,7 +6,8 @@ import type { RunScope } from "./run-scope";
  * (agent ids, the run's own agent first) and how many agent calls have started. RNX-326: the run limits: when the run
  * started, the route's socket timeout (when it sets one), the model calls started (root and hops), and the run's stop
  * (aborted with RunLimitStoppedError at a run limit). The model-call cap and the stop timer are set at the run's first
- * agent call; the run's execution clears the timer when the run ends.
+ * agent call; the run's execution clears the timer when the run ends. RNX-351: the run's own time limit, when its
+ * source sets one (the channel chat), in milliseconds from its start.
  */
 export type PeerRunState = {
   readonly runnerUserId: string;
@@ -16,6 +17,7 @@ export type PeerRunState = {
   agentCalls: number;
   readonly startedAt: number;
   readonly socketTimeoutMs?: number;
+  readonly runTimeLimitMs?: number;
   modelCalls: number;
   readonly stop: AbortController;
   maxModelCalls?: number;

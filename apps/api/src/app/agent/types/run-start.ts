@@ -7,8 +7,6 @@ import type { LinkedAgent } from "./linked-agent";
  * RNX-162: the run's workspace, on each call's model_call_costs row (a linked callee is in the same workspace).
  * RNX-284: `isSingleCall` marks a run that makes only its first call (the memory extraction): its hold is that call's
  * estimate E_call(root), not min(cap, available) (docs/credits.md section 13.6).
- * RNX-327: `countsCalleeToolLoops` marks a run on the chat engine (an agent run), whose called agents run their own
- * tool loop: each linked agent counts its loop's model calls, capped by `peerRunMaxModelCalls`, not one call.
  */
 export type RunStart = {
   readonly runnerUserId: string;
@@ -16,5 +14,4 @@ export type RunStart = {
   readonly firstCall: ChatRequest;
   readonly linkedAgents: readonly LinkedAgent[];
   readonly isSingleCall?: boolean;
-  readonly countsCalleeToolLoops?: boolean;
 };
