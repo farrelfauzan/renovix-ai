@@ -60,10 +60,26 @@ describe('AssetsStack', () => {
     template.resourcePropertiesCountIs('AWS::S3::Bucket', { AccessControl: Match.anyValue() }, 0);
   });
 
-  it('has no website, CORS or lifecycle configuration', () => {
+  it('has no website or CORS configuration', () => {
     template.resourcePropertiesCountIs('AWS::S3::Bucket', { WebsiteConfiguration: Match.anyValue() }, 0);
     template.resourcePropertiesCountIs('AWS::S3::Bucket', { CorsConfiguration: Match.anyValue() }, 0);
-    template.resourcePropertiesCountIs('AWS::S3::Bucket', { LifecycleConfiguration: Match.anyValue() }, 0);
+  });
+
+  it('has exactly one lifecycle rule: expire after 7 days, abort incomplete uploads after 1 day', () => {
+    const bucketProperties = Object.values(resources).find((resource) => resource.Type === 'AWS::S3::Bucket')?.Properties;
+    const rules = (bucketProperties?.LifecycleConfiguration as { Rules: unknown[] }).Rules;
+    expect(rules).toHaveLength(1);
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      LifecycleConfiguration: {
+        Rules: [
+          Match.objectLike({
+            Status: 'Enabled',
+            ExpirationInDays: 7,
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 },
+          }),
+        ],
+      },
+    });
   });
 
   it('has no CloudFront resources', () => {
