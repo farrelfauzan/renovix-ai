@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from "@nestjs/common";
-import { Prisma } from "@generated/prisma/client.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 import type { CreditLedgerEntry } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";

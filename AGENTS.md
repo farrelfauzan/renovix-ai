@@ -51,6 +51,7 @@ bun run prisma:reset     # Reset (drops all data); then run `bun run seed`
 bun run prisma:seed      # Only the system prompt and prompt templates (prisma/seed.ts); use `bun run seed` for everything
 SEED_OPERATOR=<name> bun run seed:offers  # Offer catalog + platform settings from prisma/offers.seed.json (RX-86)
 SEED_OPERATOR=<name> bun run seed:tier-rates  # Tier credit rates from prisma/tier-rates.seed.json (RX-21); run after prisma:reset
+bun run seed:dev-account <email> [credits]  # RNX-355, dev only: gives ONE EXISTING local account a package and a paid credit balance (default 20, from prisma/dev-account.seed.json) by redeeming a single-use "both" code for it. Needs the account to exist and `bun run seed` run first (the Starter package; with no package version in the database it creates version 1 of Starter from the dev file, author "seed:dev"). Refuses NODE_ENV=production (exit 1, no override); a second run for the same account grants nothing ("already seeded").
 # RX-90: prisma/migrations is one baseline (20261014200000_baseline); migrations insert no plans,
 # prices or limits (those come from the catalog seed, RX-86). A local database created before
 # RX-90 must be recreated: `bun run prisma:reset` (drops all its data, then migrates and seeds).

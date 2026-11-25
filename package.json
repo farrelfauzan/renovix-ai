@@ -23,6 +23,7 @@
     "seed": "bun prisma/seed-all.ts",
     "seed:offers": "bun prisma/seed-offers.ts",
     "seed:tier-rates": "bun prisma/seed-tier-rates.ts",
+    "seed:dev-account": "bun prisma/seed-dev-account.ts",
     "openapi:generate": "UPDATE_OPENAPI=1 nx run api:test --testPathPatterns=openapi-document --skip-nx-cache",
     "check": "bun scripts/check.ts",
     "design:generate": "bun scripts/generate-design-assets.ts",
