@@ -73,6 +73,12 @@ docs/           # Documentation
 
    **S3 for local development:** file storage is the AWS dev bucket; there is no local storage service. Ask the Tech Lead for the dev-only key and the bucket's region, and put them in `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and `S3_REGION` (the API does not start while `S3_REGION` is empty). Leave `S3_ENDPOINT` out. Never commit these values and never use production keys. Details: [infra/aws-assets/README.md](infra/aws-assets/README.md).
 
+   **Local uploads:** a document upload needs the `S3_*` values and working embedding settings: `EMBEDDING_BASE_URL`; `EMBEDDING_API_KEY`, or `OPENROUTER_API_KEY` as its fallback; and an `EMBEDDING_MODEL` that the provider serves at 1024 dimensions. If the provider does not serve the model, the upload fails with `Model not found at the provider (400)`: set `EMBEDDING_MODEL` to a model that provider has. A profile photo needs only the `S3_*` values.
+
+   If an upload fails with `SignatureDoesNotMatch`, the S3 key pair in `.env` is wrong. `S3_ACCESS_KEY_ID` is 20 characters and `S3_SECRET_ACCESS_KEY` is 40, with no stray spaces or quotes, and `S3_ENDPOINT` is not set. If it still fails, ask the Tech Lead for a new key for the dev user ([infra/aws-assets/README.md](infra/aws-assets/README.md), step 2).
+
+   On a fresh local database a document upload is refused with `Top up required to use knowledge base features` until the account has a package and paid credits. Run `bun run seed`, then `bun run seed:dev-account <email>` for an existing account, with the email in lower case.
+
 4. **Start infrastructure**
    ```bash
    docker compose up -d
