@@ -55,6 +55,15 @@ function typeCode(inputCode: string) {
   for (let i = 1; i <= inputCode.length; i++) fireEvent.change(input, { target: { value: inputCode.slice(0, i) } });
 }
 
+/** RNX-333: the TOTP key as shown for entering by hand (groups of four, spaced by layout only, so its text is the key). */
+const shownKey = () => screen.getByText("Cannot scan? Enter this key by hand").nextElementSibling?.querySelector("code")?.textContent;
+
+/** RNX-333: the recovery codes' Finish is enabled only once "saved" is ticked. */
+function finishRecoveryCodes() {
+  fireEvent.click(screen.getByRole("checkbox", { name: /I have saved these codes somewhere safe/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+}
+
 describe("SignInScreen (RNX-188)", () => {
   beforeEach(() => replace.mockClear());
 
@@ -130,13 +139,13 @@ describe("SignInScreen (RNX-188)", () => {
     enterCredentials();
     continueToEnrolment();
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
-    fireEvent.change(await screen.findByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
+    fireEvent.change(await screen.findByLabelText("Authenticator code"), { target: { value: TOTP } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
 
     expect((await screen.findByRole("alert")).textContent).toBe("Invalid code");
     expect(screen.queryByRole("list", { name: "Recovery codes" })).toBeNull();
-    expect(screen.getByText(SECRET)).toBeTruthy();
+    expect(shownKey()).toBe(SECRET);
     expect(replace).not.toHaveBeenCalled();
   });
 
@@ -173,15 +182,16 @@ describe("SignInScreen (RNX-188)", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
 
-    expect(await screen.findByText(SECRET)).toBeTruthy();
+    await screen.findByText("Cannot scan? Enter this key by hand");
+    expect(shownKey()).toBe(SECRET);
     expect(screen.getByText(OTPAUTH_URI)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.change(screen.getByLabelText("Authenticator code"), { target: { value: TOTP } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
     const codes = await screen.findByRole("list", { name: "Recovery codes" });
     expect(Array.from(codes.querySelectorAll("li"), (li) => li.textContent)).toEqual(RECOVERY_CODES);
     expect(document.body.textContent).not.toContain(SECRET);
     expect(replace).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    finishRecoveryCodes();
     expect(replace).toHaveBeenCalledWith("/");
     expect(mock.sent()).toEqual([
       { path: "/api/v1/admin/auth/sign-in", body: { email: EMAIL, password: PASSWORD } },
@@ -206,7 +216,7 @@ describe("SignInScreen (RNX-188)", () => {
     continueToEnrolment();
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
 
-    expect((await screen.findByLabelText("Code from your authenticator app")).getAttribute("autocomplete")).toBe("one-time-code");
+    expect((await screen.findByLabelText("Authenticator code")).getAttribute("autocomplete")).toBe("one-time-code");
   });
 
   it("logs nothing: no password, code, recovery code or secret reaches the console", async () => {
@@ -222,8 +232,8 @@ describe("SignInScreen (RNX-188)", () => {
     fireEvent.change(screen.getByLabelText("Recovery code"), { target: { value: RECOVERY_CODE } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
-    fireEvent.change(await screen.findByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.change(await screen.findByLabelText("Authenticator code"), { target: { value: TOTP } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
     await screen.findByRole("list", { name: "Recovery codes" });
 
     const logged = JSON.stringify(spies.flatMap((spy) => spy.mock.calls));

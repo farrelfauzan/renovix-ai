@@ -121,13 +121,45 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       expect(preview.json()).toEqual({
         email: INVITEE,
         role: "support",
-        invitedBy: { name: null, email: owner.email },
+        invitedBy: { name: null, email: owner.email, role: "owner" },
         expiresAt: new Date(invitedAt + 72 * HOUR).toISOString(),
+        sentAt: (await prisma.adminInvitation.findFirstOrThrow({ where: { email: INVITEE } })).createdAt.toISOString(),
       });
       expect(accepted.json()).toEqual({ scope: "enrolment" });
       expect(confirm.json().recoveryCodes).toHaveLength(10);
       expect(await prisma.adminUser.findUniqueOrThrow({ where: { email: INVITEE } })).toMatchObject({ name: "Ina Vitee", role: "support" });
       expect(await prisma.adminAuditLog.count({ where: { resource: "admin_invitation", action: "accept" } })).toBe(1);
+    });
+
+    it("RNX-333 AC4: the preview carries exactly email, role, invitedBy (name, email, role name), expiresAt and sentAt; no password hash, TOTP secret, token hash, IP or session token", async () => {
+      const { owner, cookie } = await ownerSession();
+      const created = await invite(cookie);
+      const token = tokenOf(created.json().link);
+      const inviter = await prisma.adminUser.findUniqueOrThrow({ where: { id: owner.id } });
+      const invitation = await prisma.adminInvitation.findUniqueOrThrow({ where: { id: created.json().invitation.id } });
+      const sessions = await prisma.adminSession.findMany({ where: { adminId: owner.id } });
+
+      const preview = await http.call("POST", "/admin/invitations/preview", {}, { token });
+
+      const body = preview.json();
+      expect(preview.statusCode).toBe(200);
+      expect(Object.keys(body).sort()).toEqual(["email", "expiresAt", "invitedBy", "role", "sentAt"]);
+      expect(Object.keys(body.invitedBy).sort()).toEqual(["email", "name", "role"]);
+      expect(body.sentAt).toBe(invitation.createdAt.toISOString());
+      expect(body.invitedBy.role).toBe(inviter.role);
+      const forbidden = [
+        inviter.passwordHash,
+        inviter.totpSecretEncrypted,
+        owner.secret,
+        invitation.tokenHash,
+        token,
+        cookie.slice(cookie.indexOf("=") + 1),
+        ...sessions.map((session) => session.refreshTokenHash),
+        "127.0.0.1",
+      ];
+      expect(inviter.totpSecretEncrypted).toBeTruthy();
+      expect(forbidden.filter((value) => value && preview.body.includes(value))).toEqual([]);
+      expect(preview.body).not.toMatch(/"(passwordHash|totpSecret\w*|tokenHash|refreshToken\w*|ip\w*|session\w*|suspendedAt)"/i);
     });
 
     it("the email cannot be changed: an email in the accept body is ignored, the admin gets the invitation's email", async () => {

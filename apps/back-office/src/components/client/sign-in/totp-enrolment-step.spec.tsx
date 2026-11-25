@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { create } from "qrcode";
 import type { ApiClient } from "@/lib/api/api-client";
 import { createSignInApi } from "@/lib/sign-in/sign-in-api";
@@ -61,10 +61,12 @@ describe("TotpEnrolmentStep QR code (RNX-349)", () => {
     expect(drawn).not.toBe(expectedPath(SECRET));
   });
 
-  it("AC2: the text Secret is shown next to the QR and equals the API's secret", async () => {
+  it("AC2: the key is shown next to the QR and its text equals the API's secret (RNX-333: in groups of four, spaced by layout only)", async () => {
     await startEnrolment();
 
-    expect(screen.getByText("Secret").nextElementSibling?.textContent).toBe(SECRET);
+    const key = screen.getByText("Cannot scan? Enter this key by hand").nextElementSibling?.querySelector("code");
+    expect(key?.textContent).toBe(SECRET);
+    expect(Array.from(key?.children ?? [], (group) => group.textContent)).toEqual(["JBSW", "Y3DP", "EHPK", "3PXP"]);
   });
 
   it("AC3: rendering the QR makes no request: an inline svg, no img, no external src or href", async () => {
@@ -86,8 +88,8 @@ describe("TotpEnrolmentStep QR code (RNX-349)", () => {
     const consoleSpies = CONSOLE_METHODS.map((method) => jest.spyOn(console, method).mockImplementation(() => undefined));
     await startEnrolment();
 
-    fireEvent.change(screen.getByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.change(screen.getByLabelText("Authenticator code"), { target: { value: TOTP } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
     await screen.findByRole("list", { name: "Recovery codes" });
 
     const logged = JSON.stringify(consoleSpies.flatMap((spy) => spy.mock.calls));
@@ -98,5 +100,44 @@ describe("TotpEnrolmentStep QR code (RNX-349)", () => {
       expect(document.body.textContent).not.toContain(text);
     }
     expect(document.querySelector("svg[aria-label='QR code for your authenticator app']")).toBeNull();
+  });
+});
+
+describe("TotpEnrolmentStep key and code (RNX-333)", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("Copy puts the whole key, ungrouped, on the clipboard, and nothing else", async () => {
+    const writeText = jest.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    await startEnrolment();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+    expect(writeText.mock.calls).toEqual([[SECRET]]);
+  });
+
+  it("a refused clipboard: the button keeps its label and nothing is thrown", async () => {
+    const writeText = jest.fn(async (_text: string) => Promise.reject(new Error("denied")));
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    await startEnrolment();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Copy" })).toBeTruthy();
+  });
+
+  it("the first code goes in the six boxes; fewer than six digits are not sent", async () => {
+    const api = createApi();
+    const confirmTotp = jest.spyOn(api, "confirmTotp");
+    render(<TotpEnrolmentStep api={api} onDone={jest.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Set up authenticator" }));
+    await screen.findByRole("img", { name: "QR code for your authenticator app" });
+
+    fireEvent.change(screen.getByLabelText("Authenticator code"), { target: { value: "12345" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
+
+    expect(confirmTotp).not.toHaveBeenCalled();
   });
 });

@@ -119,6 +119,28 @@ describe("SessionGate (RNX-207)", () => {
     expect(screen.queryByRole("navigation")).toBeNull();
   });
 
+  it("RNX-333: /sign-in renders under the brand row in the white card; /accept-invitation draws its own header and cards", () => {
+    pathname = "/sign-in";
+    const session = createSession(NO_SESSION);
+    const view = render(
+      <SessionGate api={session.api} sideNavigation={null} publicHeader={<p>Brand row</p>}>
+        <p>Public content</p>
+      </SessionGate>,
+    );
+    expect(screen.getByText("Brand row")).toBeTruthy();
+    expect(screen.getByText("Public content").parentElement?.className).toContain("max-w-[400px]");
+    pathname = "/accept-invitation";
+
+    view.rerender(
+      <SessionGate api={session.api} sideNavigation={null} publicHeader={<p>Brand row</p>}>
+        <p>Public content</p>
+      </SessionGate>,
+    );
+
+    expect(screen.queryByText("Brand row")).toBeNull();
+    expect(screen.getByText("Public content").parentElement?.tagName).toBe("MAIN");
+  });
+
   it.each(GATED_ROUTES)("an invitee who has not enrolled TOTP yet (enrolment session) reaches nothing: %s goes to sign-in", async (route) => {
     renderGate(route, { [ME]: { status: 200, body: profile({ scope: "enrolment", mfaEnrolled: false }) } });
 

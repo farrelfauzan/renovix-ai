@@ -47,11 +47,14 @@ export class AdminInvitationRepository {
     return (tx ?? this.prisma).adminInvitation.findUnique({ where: { id }, select: INVITATION_VIEW });
   }
 
-  /** The invitation whose token has this hash, with the name, email and suspension (RNX-211) of the admin who invited. */
+  /**
+   * The invitation whose token has this hash, with the name, email, role name (RNX-333) and suspension (RNX-211)
+   * of the admin who invited: one query, the inviter joined on its required foreign key.
+   */
   findByTokenHash(tokenHash: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).adminInvitation.findUnique({
       where: { tokenHash },
-      select: { ...INVITATION_VIEW, invitedBy: { select: { name: true, email: true, suspendedAt: true } } },
+      select: { ...INVITATION_VIEW, invitedBy: { select: { name: true, email: true, role: true, suspendedAt: true } } },
     });
   }
 
