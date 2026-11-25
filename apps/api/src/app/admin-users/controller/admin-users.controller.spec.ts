@@ -18,7 +18,7 @@ const ACCESS = "rx_admin_access";
 const MINUTE = 60_000;
 const REASON = "ticket 5120: account question";
 /** Every key of a list item, a package, the detail and a ledger entry: a new field fails these on purpose (AC2). */
-const ITEM_KEYS = ["creditsBalance", "email", "id", "lastLoginAt", "name", "package", "status"];
+const ITEM_KEYS = ["creditsAvailable", "email", "id", "lastLoginAt", "name", "package", "status"];
 const PACKAGE_KEYS = ["id", "name"];
 const DETAIL_KEYS = [...ITEM_KEYS, "joinedAt", "language", "ledger", "phone", "signInMethods", "timezone"].sort();
 const LEDGER_KEYS = ["amount", "balanceAfter", "createdAt", "id", "type", "wallet"];
@@ -231,7 +231,7 @@ describe("Back-office users API (RNX-357, Fastify, test database)", () => {
       expect(page.items).toHaveLength(1);
       expect(Object.keys(page.items[0]).sort()).toEqual(ITEM_KEYS);
       expect(Object.keys(page.items[0].package).sort()).toEqual(PACKAGE_KEYS);
-      expect(page.items[0]).toMatchObject({ id: user.id, email: "***", name: "***", creditsBalance: "25", status: "active", package: { name: "Starter-rnx357" } });
+      expect(page.items[0]).toMatchObject({ id: user.id, email: "***", name: "***", creditsAvailable: "25", status: "active", package: { name: "Starter-rnx357" } });
       const body = detail.json();
       expect(Object.keys(body).sort()).toEqual(DETAIL_KEYS);
       expect(Object.keys(body.package).sort()).toEqual(PACKAGE_KEYS);
@@ -272,7 +272,7 @@ describe("Back-office users API (RNX-357, Fastify, test database)", () => {
       expect(withCredits.json().ledger.map((entry: Json) => entry.amount)).toEqual(Array.from({ length: 20 }, (_, i) => String(22 - i)));
       expect(withCredits.json().ledger[0]).toMatchObject({ wallet: "paid", type: "bonus", balanceAfter: "253" });
       expect(withoutCredits.statusCode).toBe(200);
-      expect(withoutCredits.json()).toMatchObject({ id: user.id, creditsBalance: "253", ledger: null });
+      expect(withoutCredits.json()).toMatchObject({ id: user.id, creditsAvailable: "253", ledger: null });
     });
 
     it("an empty ledger is [] for an admin with credits:read (distinct from null)", async () => {
@@ -288,6 +288,33 @@ describe("Back-office users API (RNX-357, Fastify, test database)", () => {
 
       expect((await get(cookie, `/admin/users/${deleted.id}`)).statusCode).toBe(404);
       expect((await get(cookie, `/admin/users/${randomUUID()}`)).statusCode).toBe(404);
+    });
+  });
+
+  describe("RNX-358: the credits figure of the list and the detail is the paid wallet's available credits (balance minus held)", () => {
+    it("AC3: balance 100 and 30 held lists 70; balance 5 and 5 held lists 0 and locked", async () => {
+      const partlyHeld = await createUser(prisma);
+      await paidWallet(partlyHeld.id, "100", "30");
+      const allHeld = await createUser(prisma);
+      await paidWallet(allHeld.id, "5", "5");
+      const { cookie } = await signedIn("support");
+
+      const items = (await get(cookie, "/admin/users")).json().items;
+
+      expect(Object.fromEntries(items.map((item: Json) => [item.id, [item.creditsAvailable, item.status]]))).toEqual({
+        [partlyHeld.id]: ["70", "active"], [allHeld.id]: ["0", "locked"],
+      });
+    });
+
+    it("AC4: balance 100 and 30 held answers 70 on the detail", async () => {
+      const user = await createUser(prisma);
+      await paidWallet(user.id, "100", "30");
+      const { cookie } = await signedIn("support");
+
+      const detail = await get(cookie, `/admin/users/${user.id}`);
+
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json().creditsAvailable).toBe("70");
     });
   });
 

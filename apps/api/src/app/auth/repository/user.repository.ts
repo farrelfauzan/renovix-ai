@@ -100,7 +100,8 @@ export class UserRepository {
    * RNX-357: one window of the back-office user list, deleted users left out, newest sign-in first (never signed in
    * last, then by id). One statement: the user's package (the snapshot the entitlement reports: highest display order,
    * then newest) and paid wallet are joined, and the status label is derived here, so every filter runs in the
-   * database. "locked": no paid wallet, or its available credits (balance - held) at or below 0, as chat's lock.
+   * database. The credits figure is the paid wallet's available credits (balance - held, 0 without a paid wallet), the
+   * figure chat shows (RNX-358). "locked": no paid wallet, or its available credits at or below 0, as chat's lock.
    */
   findAdminListRows(query: AdminUserListQuery, tx?: DbTransaction): Promise<AdminUserListRow[]> {
     const userConditions = [
@@ -115,7 +116,7 @@ export class UserRepository {
     return (tx ?? this.prisma).$queryRaw<AdminUserListRow[]>`
       SELECT listed.* FROM (
         SELECT u."id", u."name", u."last_login_at" AS "lastLoginAt",
-          pkg."id" AS "packageId", pkg."name" AS "packageName", COALESCE(ca."balance", 0) AS "creditsBalance",
+          pkg."id" AS "packageId", pkg."name" AS "packageName", COALESCE(ca."balance" - ca."held", 0) AS "creditsAvailable",
           CASE WHEN u."status" = 'suspended' THEN 'suspended'
             WHEN ca."id" IS NULL OR ca."balance" - ca."held" <= 0 THEN 'locked'
             ELSE 'active' END AS "status"
