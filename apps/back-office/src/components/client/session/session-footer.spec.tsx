@@ -69,6 +69,27 @@ describe("SessionFooter (RNX-312a)", () => {
     expect(shell.calls()).toEqual([`GET ${ME}`]);
   });
 
+  it("AC1 (RNX-346): the idle limit is sooner than the absolute limit: the line says idle", async () => {
+    renderShell({ [ME]: { status: 200, body: profile({ idleExpiresAt: new Date(START.getTime() + 20 * MINUTE).toISOString(), absoluteExpiresAt: new Date(START.getTime() + 90 * MINUTE).toISOString() }) } });
+
+    const footer = await screen.findByRole("group", { name: "Session" });
+    expect(footer.textContent).toContain("Session idle in 20 min");
+  });
+
+  it("AC2 (RNX-346): the absolute limit is sooner than the idle limit: the line says it ends", async () => {
+    renderShell({ [ME]: { status: 200, body: profile({ idleExpiresAt: new Date(START.getTime() + 30 * MINUTE).toISOString(), absoluteExpiresAt: new Date(START.getTime() + 5 * MINUTE).toISOString() }) } });
+
+    const footer = await screen.findByRole("group", { name: "Session" });
+    expect(footer.textContent).toContain("Session ends in 5 min");
+  });
+
+  it("AC3 (RNX-346): under a minute to the absolute limit: the line says it ends in under 1 min", async () => {
+    renderShell({ [ME]: { status: 200, body: profile({ idleExpiresAt: new Date(START.getTime() + 30 * MINUTE).toISOString(), absoluteExpiresAt: new Date(START.getTime() + 30_000).toISOString() }) } });
+
+    const footer = await screen.findByRole("group", { name: "Session" });
+    expect(footer.textContent).toContain("Session ends in under 1 min");
+  });
+
   it("MFA off for an admin without TOTP; the email when there is no name", async () => {
     renderShell({ [ME]: { status: 200, body: profile({ mfaEnrolled: false, name: null }) } });
 

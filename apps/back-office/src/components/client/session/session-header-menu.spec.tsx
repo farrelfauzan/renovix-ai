@@ -24,16 +24,17 @@ const ME = "http://api.test/api/v1/admin/auth/me";
 const SIGN_OUT = "http://api.test/api/v1/admin/auth/sign-out";
 const MINUTE = 60_000;
 
-const profile = (): AdminProfile => ({
+const profile = (overrides: Partial<AdminProfile> = {}): AdminProfile => ({
   id: "admin-1", name: "Farrel A.", email: "farrel@example.com", role: "owner", permissions: [], scope: "full", mfaEnrolled: true, mustChangePassword: false,
   idleExpiresAt: new Date(Date.now() + 28 * MINUTE).toISOString(), absoluteExpiresAt: new Date(Date.now() + 12 * 60 * MINUTE).toISOString(),
+  ...overrides,
 });
 
 /** The gate with the header menu and the footer as its shell; records every "METHOD url" fetched. */
-function renderShell() {
+function renderShell(meBody: AdminProfile = profile()) {
   const fetch = jest.fn(async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
     const url = String(input);
-    if (url === ME) return { ok: true, status: 200, json: async () => profile() } as Response;
+    if (url === ME) return { ok: true, status: 200, json: async () => meBody } as Response;
     if (url === SIGN_OUT) return { ok: true, status: 204, json: async () => null } as Response;
     return { ok: false, status: 404, json: async () => null } as Response;
   });
@@ -55,6 +56,15 @@ describe("SessionHeaderMenu (RNX-312a)", () => {
     const trigger = await screen.findByRole("button", { name: "Session menu" });
     expect(trigger.parentElement?.className).toContain("wide:hidden");
     expect(screen.getByRole("group", { name: "Session" }).className).toContain("narrow:hidden");
+  });
+
+  it("AC2 (RNX-346): the absolute limit is sooner than the idle limit: the menu says the session ends", async () => {
+    renderShell(profile({ idleExpiresAt: new Date(Date.now() + 30 * MINUTE).toISOString(), absoluteExpiresAt: new Date(Date.now() + 5 * MINUTE).toISOString() }));
+
+    fireEvent.keyDown(await screen.findByRole("button", { name: "Session menu" }), { key: "Enter" });
+
+    const menu = await screen.findByRole("menu");
+    expect(menu.textContent).toContain("Session ends in 5 min");
   });
 
   it("AC5: the header menu holds the idle time and Sign out; choosing Sign out sends the sign-out request, then sign-in", async () => {
