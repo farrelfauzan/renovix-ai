@@ -10,7 +10,7 @@ export function toAdminUserListItem(row: AdminUserListRow): AdminUserListItem {
     email: PERSONAL_DATA_MASK,
     name: maskUserField(row.name),
     package: row.packageId === null || row.packageName === null ? null : { id: row.packageId, name: row.packageName },
-    creditsBalance: row.creditsBalance.toString(),
+    creditsAvailable: row.creditsAvailable.toString(),
     status: row.status,
     lastLoginAt: row.lastLoginAt,
   };
