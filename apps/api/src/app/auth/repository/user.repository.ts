@@ -88,4 +88,9 @@ export class UserRepository {
       select: { id: true, email: true },
     });
   }
+
+  /** The id and email of the user with this email, if there is one (the dev account seed, RNX-355). */
+  findByEmail(email: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findUnique({ where: { email }, select: { id: true, email: true } });
+  }
 }

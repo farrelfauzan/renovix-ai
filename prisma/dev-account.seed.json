@@ -1,0 +1,20 @@
+{
+  "notes": [
+    "DEV ONLY (RNX-355). Read by `bun run seed:dev-account`, never by the production seed and never shipped as an offer.",
+    "These terms are used only when the database has no package version at all: the script then creates version 1 of the seeded Starter package from them.",
+    "They are not a price, a limit or a credit amount that the product sells."
+  ],
+  "reason": "dev seed",
+  "defaultCredits": 20,
+  "terms": {
+    "priceUsdCents": 0,
+    "creditsGranted": 0,
+    "billing": "one_time",
+    "maxAgents": 5,
+    "maxConnectedTools": 5,
+    "apiAccess": true,
+    "allowedChannels": ["web"],
+    "allowedTiers": ["standard", "advanced", "premium", "frontier"],
+    "collaborationEnabled": true
+  }
+}
