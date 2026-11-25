@@ -10,6 +10,9 @@ import type { CodeRedemption } from "@/lib/codes/code-redemption";
 import type { CodesApi } from "@/lib/codes/codes-api";
 import type { CodesPage } from "@/lib/codes/codes-page";
 import { defaultCodesApi } from "@/lib/codes/default-codes-api";
+import type { CatalogOffer } from "@/lib/packages/catalog-offer";
+import { defaultPackagesApi } from "@/lib/packages/default-packages-api";
+import type { PackagesApi } from "@/lib/packages/packages-api";
 import { describeFailure } from "@/lib/sign-in/describe-failure";
 import { defaultSessionApi } from "@/lib/session/default-session-api";
 import type { SessionApi } from "@/lib/session/session-api";
@@ -23,6 +26,7 @@ const PAGE_SIZE = 25;
 type CodesSectionProps = {
   /** Replaced in tests only. */
   readonly api?: CodesApi;
+  readonly packagesApi?: PackagesApi;
   readonly sessionApi?: SessionApi;
   readonly reauth?: (credentials: ReauthCredentials) => Promise<void>;
 };
@@ -32,11 +36,12 @@ type CodesSectionProps = {
  * `packages:write` (the code text is a redeemable secret), so the section shows only to such admins (visibility
  * only: the API enforces it). Create and deactivate ask for re-authentication; a refusal shows the API's message.
  */
-export function CodesSection({ api = defaultCodesApi, sessionApi = defaultSessionApi, reauth = defaultAdminsApi.reauth }: CodesSectionProps) {
+export function CodesSection({ api = defaultCodesApi, packagesApi = defaultPackagesApi, sessionApi = defaultSessionApi, reauth = defaultAdminsApi.reauth }: CodesSectionProps) {
   const profile = useAdminProfile(sessionApi);
   const [page, setPage] = useState(1);
   const [codes, setCodes] = useState<CodesPage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [packages, setPackages] = useState<readonly CatalogOffer[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [redemptions, setRedemptions] = useState<{ readonly id: string; readonly list: readonly CodeRedemption[] } | null>(null);
   const { perform, prompt } = useReauthGate(reauth);
@@ -52,6 +57,9 @@ export function CodesSection({ api = defaultCodesApi, sessionApi = defaultSessio
   useEffect(() => {
     if (canWrite) load();
   }, [canWrite, load]);
+  useEffect(() => {
+    if (canWrite && isCreating) packagesApi.listOffers("package").then(setPackages, (err) => setError(describeFailure(err)));
+  }, [canWrite, isCreating, packagesApi]);
   const create = async (input: CodeInput): Promise<string | null> => {
     const outcome = await perform(() => api.createCode(input));
     if (!outcome.ok) return outcome.message;
@@ -79,7 +87,7 @@ export function CodesSection({ api = defaultCodesApi, sessionApi = defaultSessio
       {canWrite && !isCreating && <Button variant="outline" type="button" onClick={() => setIsCreating(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Create code</Button>}
       {error && <p role="alert" className="mt-2 text-sm text-rx-red-bar">{error}</p>}
       {prompt && <ReauthPrompt prompt={prompt} />}
-      {isCreating && <CodeForm onSave={create} onClose={() => setIsCreating(false)} />}
+      {isCreating && <CodeForm packages={packages} onSave={create} onClose={() => setIsCreating(false)} />}
       {codes && codes.codes.length === 0 && <p className="mt-2 text-sm text-rx-muted">No invitation codes yet.</p>}
       {codes && codes.codes.length > 0 && (
         <div className="mt-2 overflow-x-auto">
