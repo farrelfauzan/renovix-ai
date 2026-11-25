@@ -66,7 +66,7 @@ export function CatalogSection({ kind, title, api = defaultPackagesApi, sessionA
   };
   if (!profile) return <p className="mt-4 text-sm text-rx-muted">Loading…</p>;
   return (
-    <section aria-label={title} className="mt-8">
+    <section aria-label={title}>
       <h2 className="rx-type-card-heading">{title}</h2>
       {!canRead && <p className="mt-2 text-sm text-rx-muted">Your role cannot view {title.toLowerCase()} (packages:read).</p>}
       {loadError && <p role="alert" className="mt-2 text-sm text-rx-red-bar">{loadError}</p>}

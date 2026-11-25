@@ -293,3 +293,66 @@ describe("the tables' pager (D274)", () => {
     expect(within(screen.getByLabelText("Totals")).getByText("Credits consumed").nextSibling?.textContent).toBe("777");
   });
 });
+
+describe("the range presets (RNX-315)", () => {
+  // 20:00 UTC on 23 Oct is 03:00 on 24 Oct in Jakarta: the report days are Jakarta days, so "today" is the 24th.
+  const NOW = new Date("2026-10-23T20:00:00.000Z");
+  const READS = ["GET /usage/daily", "GET /usage/profit", "GET /reconciliation"];
+  const handlers: Record<string, Handler> = {
+    ...USAGE_OK,
+    "GET /usage/profit": () => ({ status: 200, body: profitReport }),
+    "GET /reconciliation": () => ({ status: 200, body: { ...PERIOD, driftThresholdPercent: null, rows: [] } }),
+    "GET /providers": () => ({ status: 200, body: [] }),
+  };
+  /** The from/to each of the three reads was last sent with. */
+  const lastRanges = (mock: ReturnType<typeof createMock>) => READS.map((key) => mock.calls.filter((call) => call.key === key).at(-1)?.url.search);
+  const renderWithoutRange = () => {
+    const mock = createMock(handlers);
+    render(<UsageAndCostScreen api={mock.api} sessionApi={{ me: async () => profile(FINANCE) } as SessionApi} />);
+    return mock;
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: NOW, doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "requestAnimationFrame", "cancelAnimationFrame", "requestIdleCallback", "cancelIdleCallback", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("opens on the last 30 Jakarta days, sent on all three reads, without the custom form", async () => {
+    const mock = renderWithoutRange();
+
+    await screen.findByLabelText("Totals");
+
+    expect(screen.getByRole("combobox", { name: "Range" }).textContent).toBe("Last 30 days");
+    await waitFor(() => expect(lastRanges(mock)).toEqual(Array(3).fill("?from=2026-09-25&to=2026-10-24")));
+    expect(screen.queryByRole("form", { name: "Report range" })).toBeNull();
+  });
+
+  it.each([
+    ["Last 7 days", "?from=2026-10-18&to=2026-10-24"],
+    ["Last 90 days", "?from=2026-07-27&to=2026-10-24"],
+    ["Last 30 days", "?from=2026-09-25&to=2026-10-24"],
+  ])("%s sends %s on the usage, profit and reconciliation reads", async (preset, search) => {
+    const mock = renderWithoutRange();
+    await screen.findByLabelText("Totals");
+    if (preset === "Last 30 days") pickOption(screen.getByRole("combobox", { name: "Range" }), "Last 7 days");
+
+    pickOption(screen.getByRole("combobox", { name: "Range" }), preset);
+
+    await waitFor(() => expect(lastRanges(mock)).toEqual(Array(3).fill(search)));
+  });
+
+  it("Custom range shows the From and To form; applying it sends the typed days on all three reads", async () => {
+    const mock = renderWithoutRange();
+    await screen.findByLabelText("Totals");
+    const callsBefore = mock.calls.length;
+
+    pickOption(screen.getByRole("combobox", { name: "Range" }), "Custom range");
+    expect(mock.calls).toHaveLength(callsBefore);
+    const form = screen.getByRole("form", { name: "Report range" });
+    fireEvent.change(within(form).getByLabelText("From"), { target: { value: "2026-08-01" } });
+    fireEvent.change(within(form).getByLabelText("To"), { target: { value: "2026-08-31" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Apply range" }));
+
+    await waitFor(() => expect(lastRanges(mock)).toEqual(Array(3).fill("?from=2026-08-01&to=2026-08-31")));
+  });
+});

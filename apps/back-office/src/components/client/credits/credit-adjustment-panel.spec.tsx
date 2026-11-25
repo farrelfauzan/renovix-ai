@@ -108,3 +108,31 @@ describe("CreditAdjustmentPanel", () => {
     expect(adjust.mock.calls[0]).toEqual([expect.objectContaining({ target: { companyId: "u_71ab" } }), expect.any(String)]);
   });
 });
+
+describe("CreditAdjustmentPanel as a tab (RNX-315)", () => {
+  it("tells an admin without credits:adjust that the role cannot adjust credits, and offers no form", async () => {
+    render(<CreditAdjustmentPanel api={{ adjust: jest.fn() }} sessionApi={sessionOf(["packages:read"])} reauth={async () => undefined} />);
+
+    expect(await screen.findByText("Your role cannot adjust credits (credits:adjust).")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Reason (required, audited)" })).toBeNull();
+  });
+
+  it("AC3: refuses an adjustment without a reason before any call or re-authentication, as today", async () => {
+    const adjust = jest.fn(async () => entry);
+    renderPanel(adjust, ADJUST);
+    fireEvent.change(await screen.findByLabelText("User or company id (exact)"), { target: { value: "u_71ab" } });
+    fireEvent.change(screen.getByLabelText("Credits"), { target: { value: "20.5" } });
+
+    fireEvent.submit(screen.getByRole("form", { name: "Credit adjustment" }));
+
+    expect(await screen.findByText("Enter the reason.")).toBeTruthy();
+    expect(adjust).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Confirm it is you" })).toBeNull();
+  });
+
+  it("marks the panel as asking for re-authentication", async () => {
+    renderPanel(jest.fn(async () => entry), ADJUST);
+
+    expect(await screen.findByText("re-auth")).toBeTruthy();
+  });
+});

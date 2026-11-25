@@ -11,7 +11,7 @@ export function ProfitTotalsPanel({ report }: { report: ProfitReport }) {
   const unknownCalls = Math.max(totals.costUnknownUsdCalls, totals.costUnknownIdrCalls);
   return (
     <div className="flex flex-col gap-2">
-      <dl aria-label="Totals" className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <dl aria-label="Totals" className="grid grid-cols-6 gap-3 max-[1100px]:grid-cols-3 narrow:grid-cols-2">
         <MetricTile label="Cost, low" value={formatUsdIdr(totals.costLowUsd, totals.costLowIdr)} />
         <MetricTile label="Cost, high (estimate)" value={formatUsdIdr(totals.costHighUsd, totals.costHighIdr)} />
         <MetricTile label="Credits consumed" value={totals.creditsConsumed} />

@@ -14,8 +14,8 @@ type UsageSectionProps = { readonly api: UsageApi; readonly range: ReportRange; 
 export function UsageSection({ api, range, canReveal }: UsageSectionProps) {
   const { data, error } = useReport(useCallback(() => api.usage(range), [api, range]));
   return (
-    <section aria-labelledby="usage-heading" className="flex flex-col gap-3">
-      <h2 id="usage-heading" className="text-lg font-semibold">Token usage</h2>
+    <section aria-labelledby="usage-heading" className="flex min-w-0 flex-col gap-3 rounded-rx border border-rx-line p-[18px] narrow:p-3.5">
+      <h2 id="usage-heading" className="rx-type-card-heading">Token usage</h2>
       {error && <SectionMessage text={`Token usage could not be loaded: ${error}`} isError />}
       {!data && !error && <SectionMessage text="Loading token usage…" />}
       {data && data.rows.length === 0 && <SectionMessage text="No usage in this range." />}

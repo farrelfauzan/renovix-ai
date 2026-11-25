@@ -3,6 +3,7 @@ import type { SettingDescription } from "./setting-description";
 const credits = (label: string, min = 0): SettingDescription => ({ label, unit: "credits", min });
 const count = (label: string, min = 1, isNotAppliedYet = false): SettingDescription => ({ label, unit: "count", min, isNotAppliedYet });
 const percent = (label: string): SettingDescription => ({ label, unit: "percent", min: 0 });
+const readOnly = (label: string, unit: "boolean" | "list"): SettingDescription => ({ label, unit, min: 0 });
 
 /** The registry of apps/api (offers/config/platform-settings.ts) by name: label, unit and lowest value. */
 export const SETTING_DESCRIPTIONS: Readonly<Record<string, SettingDescription>> = {
@@ -29,6 +30,8 @@ export const SETTING_DESCRIPTIONS: Readonly<Record<string, SettingDescription>> 
   repeatOffenderThreshold: count("Repeat-offender threshold, violations in 7 days (D59)", 1, true),
   paymentGatewayFeePercent: percent("Payment gateway fee, % of gross (RNX-228)"),
   reconciliationDriftThresholdPercent: percent("Reconciliation drift threshold, % of the high estimate (D84, RNX-228)"),
+  paymentsEnabled: readOnly("Payments switch (RNX-35)", "boolean"),
+  paymentsAllowedUserIds: readOnly("Payments: pilot allow-list, user ids (RNX-35)", "list"),
   memoryExtractionTimeoutSeconds: count("Memory extraction: seconds per model call, no retry (RNX-284)"),
   modelCallBudgetSeconds: count("Model call time budget, seconds across retries and fallbacks (RNX-44)"),
   knowledgeSearchAllowanceCredits: credits("Pre-send estimate: credits per knowledge search (RNX-331)"),

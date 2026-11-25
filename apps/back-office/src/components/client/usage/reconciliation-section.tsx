@@ -29,8 +29,8 @@ export function ReconciliationSection({ api, range, canReadReport, canWrite, can
   }, [api, canListProviders]);
   const providerNames = useMemo(() => new Map((providers ?? []).map(({ id, name }) => [id, name])), [providers]);
   return (
-    <section aria-labelledby="reconciliation-heading" className="flex flex-col gap-3">
-      <h2 id="reconciliation-heading" className="text-lg font-semibold">Provider reconciliation</h2>
+    <section aria-labelledby="reconciliation-heading" className="flex min-w-0 flex-col gap-3 rounded-rx border border-rx-line p-[18px] narrow:p-3.5">
+      <h2 id="reconciliation-heading" className="rx-type-card-heading">Provider reconciliation</h2>
       {canWrite && <ReconciliationEntryForm api={api} providers={providers} onRecorded={reload} />}
       {error && <SectionMessage text={`The reconciliation could not be loaded: ${error}`} isError />}
       {data && (

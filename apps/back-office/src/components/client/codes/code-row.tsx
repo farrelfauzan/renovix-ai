@@ -1,8 +1,9 @@
 "use client";
 
-import { Button } from "@performa-ai/ui/components/button";
+import { Ban, ListChecks } from "lucide-react";
 import type { InvitationCode } from "@/lib/codes/invitation-code";
 import type { CodeRedemption } from "@/lib/codes/code-redemption";
+import { IconActionButton } from "../form/icon-action-button";
 import { RedemptionsList } from "./redemptions-list";
 
 type CodeRowProps = {
@@ -12,8 +13,6 @@ type CodeRowProps = {
   readonly onToggleRedemptions: () => void;
   readonly onDeactivate: () => void;
 };
-
-const BUTTON = "rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal";
 
 /** What a code grants, as one line. */
 function describeGrant({ creditAmount, packageVersion }: InvitationCode): string {
@@ -25,19 +24,21 @@ export function CodeRow({ code, redemptions, onToggleRedemptions, onDeactivate }
   return (
     <>
       <tr className="border-t border-rx-line align-top">
-        <td className="py-2 pr-3 font-mono">{code.code}</td>
-        <td className="py-2 pr-3">{describeGrant(code)}</td>
-        <td className="py-2 pr-3">{code._count.redemptions} / {code.maxRedemptions}</td>
-        <td className="py-2 pr-3">{new Date(code.expiresAt).toLocaleDateString("en-GB")}</td>
-        <td className="py-2 pr-3">{code.isActive ? "Active" : "Deactivated"}</td>
-        <td className="flex flex-wrap gap-2 py-2">
-          <Button variant="outline" type="button" onClick={onToggleRedemptions} aria-expanded={redemptions !== null} className={BUTTON}>Redemptions</Button>
-          {code.isActive && <Button variant="outline" type="button" onClick={onDeactivate} className={BUTTON}>Deactivate</Button>}
+        <td className="px-3 py-2 font-mono">{code.code}</td>
+        <td className="px-3 py-2">{describeGrant(code)}</td>
+        <td className="px-3 py-2">{code._count.redemptions} / {code.maxRedemptions}</td>
+        <td className="px-3 py-2">{new Date(code.expiresAt).toLocaleDateString("en-GB")}</td>
+        <td className="px-3 py-2">{code.isActive ? "Active" : "Deactivated"}</td>
+        <td className="px-3 py-2">
+          <div className="flex flex-wrap gap-2">
+            <IconActionButton title="Redemptions" icon={ListChecks} onClick={onToggleRedemptions} isExpanded={redemptions !== null} />
+            {code.isActive && <IconActionButton title="Deactivate" icon={Ban} onClick={onDeactivate} />}
+          </div>
         </td>
       </tr>
       {redemptions && (
         <tr>
-          <td colSpan={6} className="pb-3"><RedemptionsList redemptions={redemptions} /></td>
+          <td colSpan={6} className="px-3 pb-3"><RedemptionsList redemptions={redemptions} /></td>
         </tr>
       )}
     </>

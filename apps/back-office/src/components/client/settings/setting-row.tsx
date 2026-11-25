@@ -1,8 +1,11 @@
 "use client";
 
-import { Button } from "@performa-ai/ui/components/button";
+import { Pencil } from "lucide-react";
+import { formatSettingValue } from "@/lib/settings/format-setting-value";
+import { isEditableSetting } from "@/lib/settings/is-editable-setting";
 import type { PlatformSetting } from "@/lib/settings/platform-setting";
 import type { SettingDescription } from "@/lib/settings/setting-description";
+import { IconActionButton } from "../form/icon-action-button";
 
 type SettingRowProps = {
   readonly setting: PlatformSetting;
@@ -11,16 +14,23 @@ type SettingRowProps = {
   readonly onEdit: () => void;
 };
 
-/** One setting with its value ("not set" while it has none), its "not applied yet" label where it applies, and an Edit button for `settings:write`. */
+/**
+ * One setting with its value ("not set" while it has none), its "not applied yet" label where it applies, and an Edit
+ * button for `settings:write`. A boolean or list setting is read-only, with a note saying so (RNX-315).
+ */
 export function SettingRow({ setting, description, canWrite, onEdit }: SettingRowProps) {
+  const isEditable = isEditableSetting(description, setting.value);
   return (
     <tr className="border-t border-rx-line align-top">
-      <td className="py-2 pr-3">
+      <td className="px-3 py-2">
         {description.label}
         {description.isNotAppliedYet && <span className="ml-2 rounded-rx-pill bg-rx-amber-tint px-2 py-0.5 text-xs text-rx-amber-text">not applied yet</span>}
       </td>
-      <td className="py-2 pr-3 font-mono">{setting.value === null ? "not set" : setting.value}</td>
-      <td className="py-2">{canWrite && <Button variant="outline" type="button" onClick={onEdit} aria-label={`Edit ${description.label}`} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Edit</Button>}</td>
+      <td className="px-3 py-2 font-mono">{formatSettingValue(setting.value)}</td>
+      <td className="px-3 py-2">
+        {isEditable && canWrite && <IconActionButton title="Edit" label={`Edit ${description.label}`} icon={Pencil} onClick={onEdit} />}
+        {!isEditable && <span className="text-xs text-rx-muted">Read-only: this screen edits number settings only.</span>}
+      </td>
     </tr>
   );
 }
