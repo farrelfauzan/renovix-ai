@@ -75,6 +75,16 @@ export class CreditLedgerEntryRepository {
     return new Map(rows.map((row) => [row.accountId, { spent: new Prisma.Decimal(row.spent), usageDays: row.usageDays }] as const));
   }
 
+  /** RNX-357: the newest `count` entries on this user's own wallets (paid and weekly free), newest first. */
+  findLatestOfUser(userId: string, count: number, tx?: DbTransaction) {
+    return (tx ?? this.prisma).creditLedgerEntry.findMany({
+      where: { account: { userId } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: count,
+      select: { id: true, wallet: true, type: true, amount: true, balanceAfter: true, createdAt: true },
+    });
+  }
+
   /**
    * Inserts an entry. A 409 when a unique key is taken: its call already has a usage entry (I3), or its seq or
    * idempotency key is already on the account.

@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@generated/prisma/client.js";
+import { Prisma } from "../../../generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import type { AdminUserListQuery } from "../types/admin-user-list-query";
+import type { AdminUserListRow } from "../types/admin-user-list-row";
 import type { ProfileStepData } from "../types/profile-step-data";
 
 /** The queries on `users`. Every method takes the transaction as its last argument, optional. */
@@ -92,5 +94,64 @@ export class UserRepository {
   /** The id and email of the user with this email, if there is one (the dev account seed, RNX-355). */
   findByEmail(email: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).user.findUnique({ where: { email }, select: { id: true, email: true } });
+  }
+
+  /**
+   * RNX-357: one window of the back-office user list, deleted users left out, newest sign-in first (never signed in
+   * last, then by id). One statement: the user's package (the snapshot the entitlement reports: highest display order,
+   * then newest) and paid wallet are joined, and the status label is derived here, so every filter runs in the
+   * database. "locked": no paid wallet, or its available credits (balance - held) at or below 0, as chat's lock.
+   */
+  findAdminListRows(query: AdminUserListQuery, tx?: DbTransaction): Promise<AdminUserListRow[]> {
+    const userConditions = [
+      Prisma.sql`u."status" <> 'deleted'`,
+      query.email === undefined ? undefined : Prisma.sql`u."email" = ${query.email}`,
+      query.id === undefined ? undefined : Prisma.sql`u."id" = ${query.id}`,
+    ].filter((condition): condition is Prisma.Sql => condition !== undefined);
+    const rowConditions = [
+      query.packageId === undefined ? undefined : Prisma.sql`listed."packageId" = ${query.packageId}`,
+      query.status === undefined ? undefined : Prisma.sql`listed."status" = ${query.status}`,
+    ].filter((condition): condition is Prisma.Sql => condition !== undefined);
+    return (tx ?? this.prisma).$queryRaw<AdminUserListRow[]>`
+      SELECT listed.* FROM (
+        SELECT u."id", u."name", u."last_login_at" AS "lastLoginAt",
+          pkg."id" AS "packageId", pkg."name" AS "packageName", COALESCE(ca."balance", 0) AS "creditsBalance",
+          CASE WHEN u."status" = 'suspended' THEN 'suspended'
+            WHEN ca."id" IS NULL OR ca."balance" - ca."held" <= 0 THEN 'locked'
+            ELSE 'active' END AS "status"
+        FROM "users" u
+        LEFT JOIN "credit_accounts" ca ON ca."user_id" = u."id" AND ca."wallet" = 'paid'
+        LEFT JOIN LATERAL (
+          SELECT p."id", p."name" FROM "purchase_snapshots" ps
+          JOIN "package_versions" pv ON pv."id" = ps."package_version_id"
+          JOIN "packages" p ON p."id" = pv."package_id"
+          WHERE ps."buyer_user_id" = u."id" AND ps."package_version_id" IS NOT NULL
+          ORDER BY p."display_order" DESC, ps."created_at" DESC, ps."id" ASC
+          LIMIT 1
+        ) pkg ON TRUE
+        WHERE ${Prisma.join(userConditions, " AND ")}
+      ) listed
+      WHERE ${rowConditions.length ? Prisma.join(rowConditions, " AND ") : Prisma.sql`TRUE`}
+      ORDER BY listed."lastLoginAt" DESC NULLS LAST, listed."id" ASC
+      LIMIT ${query.limit} OFFSET ${query.offset}`;
+  }
+
+  /**
+   * RNX-357: the back-office detail fields of this user that the list row does not hold, unless the user is deleted:
+   * phone, timezone, language, joined date and sign-in methods (the providers of its accounts, nothing else of them).
+   */
+  findAdminProfile(userId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findFirst({
+      where: { id: userId, status: { not: "deleted" } },
+      select: { phone: true, timezone: true, locale: true, createdAt: true, accounts: { select: { providerId: true } } },
+    });
+  }
+
+  /** RNX-357: one personal field of this user (only that column is read), unless the user is deleted. */
+  findPiiField(userId: string, field: "email" | "phone" | "name", tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findFirst({
+      where: { id: userId, status: { not: "deleted" } },
+      select: { email: field === "email", phone: field === "phone", name: field === "name" },
+    });
   }
 }

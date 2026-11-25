@@ -37,6 +37,7 @@ import { AdminProvidersModule } from "./admin-providers/admin-providers.module";
 import { AdminCreditsModule } from "./admin-credits/admin-credits.module";
 import { AdminCatalogModule } from "./admin-catalog/admin-catalog.module";
 import { AdminUsageModule } from "./admin-usage/admin-usage.module";
+import { AdminUsersModule } from "./admin-users/admin-users.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { AdminAuditInterceptor } from "./admin-auth/interceptor/admin-audit.interceptor";
 import { AccessModule } from "../common/access.module";
@@ -91,6 +92,7 @@ import { clientIp } from "../common/utils/client-ip";
     AdminCreditsModule,
     AdminCatalogModule,
     AdminUsageModule,
+    AdminUsersModule,
     PaymentsModule,
     AccessModule,
   ],

@@ -1,8 +1,7 @@
-/**
- * What a masked value shows (RX-164, PRD 09 §5). The whole value is replaced; no part of it (first
- * letter, domain, last digits) is kept, so nothing about the person can be read from the mask.
- */
-const MASK = "***";
+import { PERSONAL_DATA_MASK } from "../config/personal-data-mask";
+
+/** What a masked value shows: the whole value is replaced (RX-164, PRD 09 §5). */
+const MASK = PERSONAL_DATA_MASK;
 /** Keys whose value is personal whatever it looks like (compared lowercased, without "_" and "-"). */
 const PERSONAL_KEYS = new Set(["email", "phone", "phonenumber"]);
 /** An email address anywhere in a text. */
