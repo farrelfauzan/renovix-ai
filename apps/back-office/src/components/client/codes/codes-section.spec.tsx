@@ -60,3 +60,37 @@ describe("CodesSection create form", () => {
     expect(createCode).not.toHaveBeenCalled();
   });
 });
+
+describe("CodesSection package list not loaded yet (RNX-315, RNX-356 follow-up)", () => {
+  beforeEach(() => createCode.mockClear());
+  const openWith = async (listOffers: PackagesApi["listOffers"]) => {
+    render(<CodesSection api={codesApi} packagesApi={{ ...packagesApiOf([]), listOffers }} sessionApi={sessionApi} reauth={async () => undefined} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Create code" }));
+  };
+  const expectNoVersionsNoteAndNoSubmit = () => {
+    expect(screen.queryByText("No package versions yet")).toBeNull();
+    const submit = screen.getAllByRole("button", { name: "Create code" })[0];
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(createCode).not.toHaveBeenCalled();
+  };
+
+  it.each(["A plan", "Credits and a plan"])("while the package list loads, says nothing about versions and cannot create (Grants = %s)", async (grants) => {
+    const listOffers = jest.fn(() => new Promise<readonly CatalogOffer[]>(() => undefined));
+    await openWith(listOffers);
+
+    pickOption(screen.getByRole("combobox", { name: "Grants" }), grants);
+
+    expect(listOffers).toHaveBeenCalledWith("package");
+    expectNoVersionsNoteAndNoSubmit();
+  });
+
+  it.each(["A plan", "Credits and a plan"])("when the package list fails to load, shows the failure, not \"No package versions yet\", and cannot create (Grants = %s)", async (grants) => {
+    await openWith(async () => { throw new Error("The packages could not be loaded."); });
+
+    pickOption(screen.getByRole("combobox", { name: "Grants" }), grants);
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expectNoVersionsNoteAndNoSubmit();
+  });
+});

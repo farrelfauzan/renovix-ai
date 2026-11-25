@@ -61,13 +61,13 @@ export function SettingsScreen({ api = defaultSettingsApi, sessionApi = defaultS
       {editing && <div className="mb-4"><SettingForm key={editing.name} setting={editing} description={describe(editing.name)} onSave={(value, reason) => save(editing.name, value, reason)} onClose={() => setEditing(null)} /></div>}
       {settings && settings.length === 0 && <p className="text-sm text-rx-muted">No settings.</p>}
       {settings && settings.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto rounded-rx border border-rx-line">
           <table className="w-full min-w-[30rem] text-left text-sm">
-            <thead className="text-rx-muted">
+            <thead className="bg-rx-surface text-rx-muted">
               <tr>
-                <th className="pr-3 font-normal">Setting</th>
-                <th className="pr-3 font-normal">Value</th>
-                <th className="font-normal"><span className="sr-only">Actions</span></th>
+                <th className="px-3 py-2 font-medium">Setting</th>
+                <th className="px-3 py-2 font-medium">Value</th>
+                <th className="px-3 py-2 font-medium"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>

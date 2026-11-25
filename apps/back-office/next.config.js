@@ -41,6 +41,12 @@ const nextConfig = {
     ];
   },
 
+  // RNX-315: the platform settings moved into a tab of /packages-and-credits. Redirected before any page renders, as chat
+  // does (a redirect() inside a page races with the client session gate); the tab still needs settings:read.
+  async redirects() {
+    return [{ source: '/settings', destination: '/packages-and-credits?tab=platform-settings', permanent: false }];
+  },
+
   poweredByHeader: false,
   compress: true,
   reactStrictMode: true,

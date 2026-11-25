@@ -24,15 +24,16 @@ type CreditAdjustmentPanelProps = {
 
 /**
  * Credit adjustment (RNX-99, PRD 09 F6): add or remove credits on a user's or a company's wallet, shown only to an
- * admin with `credits:adjust` (visibility only: the API enforces the permission, the re-authentication and the
- * audit). Asks for re-authentication when the API requires it, then shows the ledger entry and the balance the API
+ * admin with `credits:adjust`; others see a line saying their role cannot (RNX-315: it is a tab now). Visibility only:
+ * the API enforces the permission, the re-authentication and the audit. Asks for re-authentication when the API requires it, then shows the ledger entry and the balance the API
  * answered; a refusal shows a readable message and nothing changes.
  */
 export function CreditAdjustmentPanel({ api = defaultCreditsApi, sessionApi = defaultSessionApi, reauth = defaultAdminsApi.reauth }: CreditAdjustmentPanelProps) {
   const profile = useAdminProfile(sessionApi);
   const [entry, setEntry] = useState<CreditAdjustmentEntry | null>(null);
   const { perform, prompt } = useReauthGate(reauth);
-  if (!profile?.permissions.includes("credits:adjust")) return null;
+  if (!profile) return null;
+  if (!profile.permissions.includes("credits:adjust")) return <p className="text-sm text-rx-muted">Your role cannot adjust credits (credits:adjust).</p>;
   const submit = async (input: CreditAdjustmentInput, idempotencyKey: string): Promise<string | null> => {
     setEntry(null);
     const outcome = await perform(() => api.adjust(input, idempotencyKey));
@@ -41,8 +42,11 @@ export function CreditAdjustmentPanel({ api = defaultCreditsApi, sessionApi = de
     return null;
   };
   return (
-    <section aria-label="Credit adjustment" className="mt-8">
-      <h2 className="rx-type-card-heading">Credit adjustment</h2>
+    <section aria-label="Credit adjustment">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="rx-type-card-heading">Credit adjustment</h2>
+        <span className="rounded-rx-pill bg-rx-red-tint px-2 py-0.5 font-mono text-[11px] tracking-[0.05em] text-rx-red-text uppercase">re-auth</span>
+      </div>
       {prompt && <ReauthPrompt prompt={prompt} />}
       <CreditAdjustmentForm onSubmit={submit} />
       {entry && <div className="mt-4 max-w-xl"><CreditAdjustmentResult entry={entry} /></div>}

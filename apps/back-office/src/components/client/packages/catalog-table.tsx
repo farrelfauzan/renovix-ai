@@ -21,17 +21,17 @@ export function CatalogTable({ kind, offers, priceList, canWrite, historyOpenId,
   if (offers.length === 0) return <p className="mt-2 text-sm text-rx-muted">Nothing here yet.</p>;
   const prices = kind === "package" ? priceList?.packages : kind === "top-up-pack" ? priceList?.topUpPacks : undefined;
   return (
-    <div className="mt-2 overflow-x-auto">
+    <div className="relative mt-3 overflow-x-auto rounded-rx border border-rx-line">
       <table className="w-full min-w-[56rem] text-left text-sm">
-        <thead className="text-rx-muted">
+        <thead className="bg-rx-surface text-rx-muted">
           <tr>
-            <th className="pr-3 font-normal">Name</th>
-            <th className="pr-3 font-normal">Price (USD)</th>
-            <th className="pr-3 font-normal">Rupiah (derived)</th>
-            <th className="pr-3 font-normal">Terms</th>
-            <th className="pr-3 font-normal">Status</th>
-            <th className="pr-3 font-normal">Version</th>
-            <th className="font-normal"><span className="sr-only">Actions</span></th>
+            <th className="px-3 py-2 font-medium">Name</th>
+            <th className="px-3 py-2 font-medium">Price (USD)</th>
+            <th className="px-3 py-2 font-medium">Rupiah (derived)</th>
+            <th className="px-3 py-2 font-medium">Terms</th>
+            <th className="px-3 py-2 font-medium">Status</th>
+            <th className="px-3 py-2 font-medium">Version</th>
+            <th className="px-3 py-2 font-medium"><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>

@@ -9,8 +9,8 @@ import { formatUsdCents } from "@/lib/packages/format-usd-cents";
 import { LabeledInput } from "../form/labeled-input";
 
 type CodeFormProps = {
-  /** The packages with their versions (the picker lists every version, scheduled ones marked). */
-  readonly packages: readonly CatalogOffer[];
+  /** The packages with their versions (the picker lists every version, scheduled ones marked); null until they have loaded. */
+  readonly packages: readonly CatalogOffer[] | null;
   /** Creates the code (asks for re-authentication first); answers the refusal text, or null when it was created. */
   readonly onSave: (input: CodeInput) => Promise<string | null>;
   readonly onClose: () => void;
@@ -27,11 +27,11 @@ export function CodeForm({ packages, onSave, onClose }: CodeFormProps) {
   const grantsCredits = type !== "subscription";
   const grantsPlan = type !== "topup";
   const now = new Date();
-  const versionOptions = packages.flatMap((offer) => offer.versions.map((version) => ({
+  const versionOptions = (packages ?? []).flatMap((offer) => offer.versions.map((version) => ({
     id: version.id,
     label: `${offer.name} v${version.versionNumber}${new Date(version.effectiveFrom) > now ? " (scheduled)" : ""} · ${formatUsdCents(version.priceUsdCents)} · from ${new Date(version.effectiveFrom).toLocaleDateString("en-GB")}`,
   })));
-  const isMissingVersions = grantsPlan && versionOptions.length === 0;
+  const isMissingVersions = grantsPlan && packages !== null && versionOptions.length === 0;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const input: CodeInput = {
@@ -62,7 +62,7 @@ export function CodeForm({ packages, onSave, onClose }: CodeFormProps) {
       </label>
       <LabeledInput label="Code text (blank: generated)" name="code" maxLength={50} value={code} onChange={setCode} />
       {grantsCredits && <LabeledInput label="Credits" name="creditAmount" type="number" min={0} step="any" isRequired value={creditAmount} onChange={setCreditAmount} />}
-      {grantsPlan && !isMissingVersions && (
+      {grantsPlan && versionOptions.length > 0 && (
         <label className="flex flex-col gap-1 text-sm">
           Package version
           <Select name="packageVersionId" required value={packageVersionId} onValueChange={setPackageVersionId}>

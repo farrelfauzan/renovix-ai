@@ -41,7 +41,8 @@ export function CodesSection({ api = defaultCodesApi, packagesApi = defaultPacka
   const [page, setPage] = useState(1);
   const [codes, setCodes] = useState<CodesPage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [packages, setPackages] = useState<readonly CatalogOffer[]>([]);
+  /** Null until the package list has loaded (also when its load failed): the form says "none yet" only after a load. */
+  const [packages, setPackages] = useState<readonly CatalogOffer[] | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [redemptions, setRedemptions] = useState<{ readonly id: string; readonly list: readonly CodeRedemption[] } | null>(null);
   const { perform, prompt } = useReauthGate(reauth);
@@ -81,25 +82,27 @@ export function CodesSection({ api = defaultCodesApi, packagesApi = defaultPacka
   };
   if (!profile) return <p className="mt-4 text-sm text-rx-muted">Loading…</p>;
   return (
-    <section aria-label="Invitation codes" className="mt-8">
-      <h2 className="rx-type-card-heading">Invitation codes</h2>
+    <section aria-label="Invitation codes">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="rx-type-card-heading">Invitation codes</h2>
+        {canWrite && !isCreating && <Button variant="outline" type="button" onClick={() => setIsCreating(true)} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Create code</Button>}
+      </div>
       {!canWrite && <p className="mt-2 text-sm text-rx-muted">Your role cannot see invitation codes (packages:write).</p>}
-      {canWrite && !isCreating && <Button variant="outline" type="button" onClick={() => setIsCreating(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Create code</Button>}
       {error && <p role="alert" className="mt-2 text-sm text-rx-red-bar">{error}</p>}
       {prompt && <ReauthPrompt prompt={prompt} />}
       {isCreating && <CodeForm packages={packages} onSave={create} onClose={() => setIsCreating(false)} />}
       {codes && codes.codes.length === 0 && <p className="mt-2 text-sm text-rx-muted">No invitation codes yet.</p>}
       {codes && codes.codes.length > 0 && (
-        <div className="mt-2 overflow-x-auto">
+        <div className="relative mt-3 overflow-x-auto rounded-rx border border-rx-line">
           <table className="w-full min-w-[44rem] text-left text-sm">
-            <thead className="text-rx-muted">
+            <thead className="bg-rx-surface text-rx-muted">
               <tr>
-                <th className="pr-3 font-normal">Code</th>
-                <th className="pr-3 font-normal">Grants</th>
-                <th className="pr-3 font-normal">Redeemed</th>
-                <th className="pr-3 font-normal">Expires</th>
-                <th className="pr-3 font-normal">Status</th>
-                <th className="font-normal"><span className="sr-only">Actions</span></th>
+                <th className="px-3 py-2 font-medium">Code</th>
+                <th className="px-3 py-2 font-medium">Grants</th>
+                <th className="px-3 py-2 font-medium">Redeemed</th>
+                <th className="px-3 py-2 font-medium">Expires</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
