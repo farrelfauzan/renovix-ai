@@ -8,7 +8,7 @@ import { defaultSessionApi } from "@/lib/session/default-session-api";
 import type { SessionApi } from "@/lib/session/session-api";
 import { SignedInAdminContext } from "@/lib/session/signed-in-admin-context";
 import { useSignOut } from "@/lib/session/use-sign-out";
-import { IdleTimeLeft } from "./idle-time-left";
+import { SessionTimeLeft } from "./session-time-left";
 
 type SessionHeaderMenuProps = {
   /** Replaced in tests only. */
@@ -39,7 +39,7 @@ export function SessionHeaderMenu({ api = defaultSessionApi }: SessionHeaderMenu
               <span className="capitalize">{profile.role}</span> · {profile.mfaEnrolled ? "MFA on" : "MFA off"}
             </span>
             <span className="text-xs text-rx-muted">
-              <IdleTimeLeft idleExpiresAt={profile.idleExpiresAt} />
+              <SessionTimeLeft idleExpiresAt={profile.idleExpiresAt} absoluteExpiresAt={profile.absoluteExpiresAt} />
             </span>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />

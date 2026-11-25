@@ -8,7 +8,7 @@ import { initialsOf } from "@/lib/session/initials-of";
 import type { SessionApi } from "@/lib/session/session-api";
 import { SignedInAdminContext } from "@/lib/session/signed-in-admin-context";
 import { useSignOut } from "@/lib/session/use-sign-out";
-import { IdleTimeLeft } from "./idle-time-left";
+import { SessionTimeLeft } from "./session-time-left";
 
 type SessionFooterProps = {
   /** Replaced in tests only. */
@@ -37,7 +37,7 @@ export function SessionFooter({ api = defaultSessionApi }: SessionFooterProps) {
         </span>
       </div>
       <span>
-        <IdleTimeLeft idleExpiresAt={profile.idleExpiresAt} /> ·{" "}
+        <SessionTimeLeft idleExpiresAt={profile.idleExpiresAt} absoluteExpiresAt={profile.absoluteExpiresAt} /> ·{" "}
         <Button variant="link" type="button" onClick={signOut} className="h-auto p-0 text-xs font-normal text-rx-dark-accent">
           Sign out
         </Button>
