@@ -84,6 +84,8 @@ The output shows `AccessKeyId` and `SecretAccessKey`. The secret is shown **once
 
 ### 3. `.env` values
 
+For the embedding settings and the credits a document upload needs, see "Local uploads" in step 3 of the [root README](../../README.md).
+
 In the repo-root `.env` (see `.env.example`):
 
 ```sh

@@ -73,6 +73,7 @@ Check the origin first. Open the app at exactly `http://localhost:4400` and keep
 - **The API is on another port or host** (for example `NEXT_PUBLIC_API_URL=http://localhost:3001` or a LAN IP).
   The browser console shows a CSP error (`connect-src`), and the request never reaches the API.
   Cause: the CSP allows only `'self'`, `https://api.renovix.id` and `http://localhost:3000` (`apps/back-office/next.config.js:29`).
+  Fix: move the API back to port 3000, or put a same-origin proxy in front of it. This repo ships no such proxy.
 
 - **`NEXT_PUBLIC_API_URL` is set to anything but `http://localhost:3000`.**
   Same symptom as above, a CSP error in the console, unless the value is `https://api.renovix.id`.
