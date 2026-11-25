@@ -22,7 +22,18 @@ const TOTP = "123456";
 const SECRET = "JBSWY3DPEHPK3PXP";
 const OTPAUTH_URI = `otpauth://totp/Renovix%20Admin:rina%40example.com?secret=${SECRET}&issuer=Renovix%20Admin`;
 const RECOVERY_CODES = ["1111-2222-3333-4444", "5555-6666-7777-8888"];
-const PREVIEW_BODY = { email: "rina@example.com", role: "operations", invitedBy: { name: "Owner One", email: "owner@example.com" }, expiresAt: "2026-10-28T08:00:00.000Z" };
+const EXPIRES_AT = "2026-10-28T08:00:00.000Z";
+const PREVIEW_BODY = {
+  email: "rina@example.com",
+  role: "operations",
+  invitedBy: { name: "Owner One", email: "owner@example.com", role: "owner" },
+  expiresAt: EXPIRES_AT,
+  sentAt: "2026-10-25T08:03:00.000Z",
+};
+const BREACHED = "This password is on a list of breached passwords. Choose another one.";
+const SAVED = /I have saved these codes somewhere safe\. I understand they will not be shown again\./;
+const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
 const gone = (message: string) => ({ status: 410, body: { statusCode: 410, message, error: "Gone" } });
 
 type Answer = { status: number; body?: unknown };
@@ -59,9 +70,18 @@ const FULL_FLOW = {
 async function completeFlow() {
   fillAndSubmit();
   fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
-  fireEvent.change(await screen.findByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
-  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  fireEvent.change(await screen.findByLabelText("Authenticator code"), { target: { value: TOTP } });
+  fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
   await screen.findByRole("list", { name: "Recovery codes" });
+}
+
+/** The step the stepper marks as current (RNX-333). */
+const currentStep = () => screen.getByRole("navigation", { name: "Setup progress" }).querySelector("[aria-current='step']")?.textContent;
+
+/** RNX-333: the recovery codes' Finish is enabled only once "saved" is ticked. */
+function finishRecoveryCodes() {
+  fireEvent.click(screen.getByRole("checkbox", { name: SAVED }));
+  fireEvent.click(screen.getByRole("button", { name: "Finish" }));
 }
 
 describe("AcceptInvitationScreen (RNX-207)", () => {
@@ -76,20 +96,21 @@ describe("AcceptInvitationScreen (RNX-207)", () => {
     openLink();
     render(<AcceptInvitationScreen invitationApi={mock.invitationApi} signInApi={mock.signInApi} />);
 
-    expect(await screen.findByText(/Owner One \(owner@example\.com\) invited you/)).toBeTruthy();
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("You were invited by Owner One");
     expect(screen.getByText("operations")).toBeTruthy();
     const email = screen.getByLabelText("Email") as HTMLInputElement;
     expect([email.value, email.readOnly]).toEqual(["rina@example.com", true]);
     fillAndSubmit();
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
-    expect(await screen.findByText(SECRET)).toBeTruthy();
+    await screen.findByText("Cannot scan? Enter this key by hand");
+    expect(screen.getByText("Cannot scan? Enter this key by hand").nextElementSibling?.querySelector("code")?.textContent).toBe(SECRET);
     expect(screen.getByText(OTPAUTH_URI)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
-    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    fireEvent.change(screen.getByLabelText("Authenticator code"), { target: { value: TOTP } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
     const codes = await screen.findByRole("list", { name: "Recovery codes" });
     expect(Array.from(codes.querySelectorAll("li"), (li) => li.textContent)).toEqual(RECOVERY_CODES);
     expect(replace).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    finishRecoveryCodes();
 
     expect(replace).toHaveBeenCalledWith("/");
     expect(mock.sent()).toEqual([
@@ -120,7 +141,7 @@ describe("AcceptInvitationScreen (RNX-207)", () => {
     expect(window.location.href).not.toContain(TOKEN);
 
     await completeFlow();
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    finishRecoveryCodes();
 
     const requests = mock.sent();
     expect(requests.filter(({ url }) => url.includes(TOKEN))).toEqual([]);
@@ -195,7 +216,7 @@ describe("AcceptInvitationScreen (RNX-207)", () => {
     expect(screen.getByLabelText("Password").getAttribute("type")).toBe("password");
     fillAndSubmit();
     fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
-    expect((await screen.findByLabelText("Code from your authenticator app")).getAttribute("autocomplete")).toBe("one-time-code");
+    expect((await screen.findByLabelText("Authenticator code")).getAttribute("autocomplete")).toBe("one-time-code");
   });
 
   it("logs nothing: no token, password, TOTP code, secret or recovery code reaches the console", async () => {
@@ -212,3 +233,134 @@ describe("AcceptInvitationScreen (RNX-207)", () => {
     spies.forEach((spy) => spy.mockRestore());
   });
 });
+
+describe("AcceptInvitationScreen as the Invite artboard (RNX-333)", () => {
+  beforeEach(() => {
+    replace.mockClear();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const renderScreen = (answers: Record<string, Answer> = FULL_FLOW) => {
+    const mock = createMockApi(answers);
+    openLink();
+    const view = render(<AcceptInvitationScreen invitationApi={mock.invitationApi} signInApi={mock.signInApi} />);
+    return { ...mock, view };
+  };
+
+  it("the inviter card: the inviter's name, role name and sent date, the invitee's email and role, and no role summary", async () => {
+    renderScreen();
+
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("You were invited by Owner One");
+    expect(screen.getByText(/· sent /).textContent).toMatch(/^owner · sent 25 Oct 2026, \d{2}:\d{2} \S+$/);
+    expect(screen.getByText("Your email").nextElementSibling?.textContent).toBe("rina@example.com");
+    expect(screen.getByText("Role").nextElementSibling?.textContent).toBe("operations");
+    expect(screen.queryByText(/^Can/)).toBeNull();
+  });
+
+  it("an inviter without a name (made by the create-admin script): the card names their email", async () => {
+    renderScreen({ ...FULL_FLOW, [PREVIEW]: { status: 200, body: { ...PREVIEW_BODY, invitedBy: { ...PREVIEW_BODY.invitedBy, name: null } } } });
+
+    expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe("You were invited by owner@example.com");
+  });
+
+  it("one step at a time: the stepper marks Password, then Authenticator, then Recovery codes, with the done steps ticked", async () => {
+    renderScreen();
+    await screen.findByLabelText("Name");
+
+    expect(currentStep()).toBe("1Password");
+    expect(screen.queryByRole("button", { name: "Set up authenticator" })).toBeNull();
+    fillAndSubmit();
+    fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
+    expect(currentStep()).toBe("2Authenticator");
+    expect(screen.queryByLabelText("Password")).toBeNull();
+    expect(screen.getAllByLabelText("done")).toHaveLength(1);
+    fireEvent.change(await screen.findByLabelText("Authenticator code"), { target: { value: TOTP } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
+    await screen.findByRole("list", { name: "Recovery codes" });
+
+    expect(currentStep()).toBe("3Recovery codes");
+    expect(screen.getAllByLabelText("done")).toHaveLength(2);
+    expect(screen.queryByText("Cannot scan? Enter this key by hand")).toBeNull();
+  });
+
+  it("the header gives the link's time left from the preview's expiry while it is unused, and drops it once the link is used", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(Date.parse(EXPIRES_AT) - 70 * HOUR_MS - 12 * MINUTE_MS - 30_000);
+    renderScreen();
+
+    expect(await screen.findByText("Invitation link, single use, expires in 70 h 12 min")).toBeTruthy();
+    fillAndSubmit();
+    await screen.findByRole("button", { name: "Set up authenticator" });
+
+    expect(screen.queryByText(/Invitation link, single use/)).toBeNull();
+  });
+
+  it("AC2: on the recovery-code step Finish is disabled until \"saved\" is ticked; nothing navigates before", async () => {
+    renderScreen();
+    await screen.findByLabelText("Name");
+    await completeFlow();
+    const finish = screen.getByRole("button", { name: "Finish" }) as HTMLButtonElement;
+
+    fireEvent.click(finish);
+    expect(finish.disabled).toBe(true);
+    expect(replace).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: SAVED }));
+    fireEvent.click(finish);
+
+    expect(replace).toHaveBeenCalledWith("/");
+  });
+
+  it("AC5: typing the password shows only the length feedback and sends no request; a breached password is refused at submit with the API's message", async () => {
+    const mock = renderScreen({ ...FULL_FLOW, [ACCEPT]: { status: 400, body: { statusCode: 400, message: BREACHED, error: "Bad Request" } } });
+    await screen.findByLabelText("Name");
+    const requestsBeforeTyping = mock.sent().length;
+    const typed = "password1234";
+    const globalFetch = jest.fn();
+    const globalXhr = jest.fn();
+    const originalFetch = global.fetch;
+    const originalXhr = global.XMLHttpRequest;
+    global.fetch = globalFetch as unknown as typeof fetch;
+    global.XMLHttpRequest = globalXhr as unknown as typeof XMLHttpRequest;
+
+    for (let i = 1; i <= typed.length; i++) fireEvent.change(screen.getByLabelText("Password"), { target: { value: typed.slice(0, i) } });
+    global.fetch = originalFetch;
+    global.XMLHttpRequest = originalXhr;
+
+    expect(mock.sent().length - requestsBeforeTyping).toBe(0);
+    expect([globalFetch.mock.calls.length, globalXhr.mock.calls.length]).toEqual([0, 0]);
+    expect(screen.getByText(`At least 12 characters (${typed.length} entered)`)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/breach/i);
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: NAME } });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(BREACHED);
+    expect(mock.sent().map(({ url }) => url)).toEqual([PREVIEW, ACCEPT]);
+    expect(screen.getByLabelText("Password")).toBeTruthy();
+  });
+
+  it("the length feedback counts characters, not bytes, as the API does", async () => {
+    renderScreen();
+    await screen.findByLabelText("Name");
+
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "ééé😀" } });
+
+    expect(screen.getByText("At least 12 characters (4 entered)")).toBeTruthy();
+  });
+
+  it.each([
+    ["410 (used)", gone("This invitation link has already been used")],
+    ["410 (expired)", gone("This invitation link has expired")],
+    ["404 (unknown)", { status: 404, body: { statusCode: 404, message: "Invitation not found", error: "Not Found" } }],
+  ])("AC6: a %s link shows only the message the body carries: no inviter, date, stepper or form", async (_kind, answer) => {
+    const { view } = renderScreen({ ...FULL_FLOW, [PREVIEW]: answer });
+
+    const notice = await screen.findByRole("alert");
+
+    const message = (answer.body as { message: string }).message;
+    expect(notice.textContent).toBe(message);
+    expect(view.container.textContent).toBe(`Renovix Admin · set up your account${message}`);
+    expect(screen.queryByRole("navigation", { name: "Setup progress" })).toBeNull();
+  });
+});
+

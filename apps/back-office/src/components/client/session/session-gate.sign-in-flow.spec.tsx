@@ -88,8 +88,8 @@ async function signInAndConfirmFirstCode() {
   fireEvent.click(screen.getByRole("button", { name: "No authenticator set up yet?" }));
   fireEvent.click(screen.getByRole("button", { name: "Continue to enrolment" }));
   fireEvent.click(await screen.findByRole("button", { name: "Set up authenticator" }));
-  fireEvent.change(await screen.findByLabelText("Code from your authenticator app"), { target: { value: TOTP } });
-  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  fireEvent.change(await screen.findByLabelText("Authenticator code"), { target: { value: TOTP } });
+  fireEvent.click(screen.getByRole("button", { name: "Confirm authenticator" }));
 }
 
 /** Lets pending answers and the redirects they cause settle. */
@@ -103,7 +103,8 @@ describe("RNX-286: first sign-in that starts on a gated route", () => {
     const view = renderApp("/", api);
     await signInAndConfirmFirstCode();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Continue" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /I have saved these codes somewhere safe/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
 
     expect(await screen.findByText("Overview")).toBeTruthy();
     await settle();
@@ -124,7 +125,7 @@ describe("RNX-286: first sign-in that starts on a gated route", () => {
 
     expect((await screen.findByRole("alert")).textContent).toBe("Invalid code");
     await settle();
-    expect(screen.getByLabelText("Code from your authenticator app")).toBeTruthy();
+    expect(screen.getByLabelText("Authenticator code")).toBeTruthy();
     expect(screen.queryByText("Overview")).toBeNull();
     expect(pathname).toBe("/sign-in");
     // The proof that a wrong code creates no full session is the API test "confirm with a wrong code: 400, not enrolled, no recovery codes, the session stays an enrolment one"

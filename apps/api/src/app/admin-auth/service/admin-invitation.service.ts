@@ -75,10 +75,14 @@ export class AdminInvitationService {
     return { before: describeInvitation(invitation), after: { ...describeInvitation(invitation), revoked: true } };
   }
 
-  /** Who invited and with which role, for the link's holder. 404 unknown token; 410 used, revoked or expired. */
+  /**
+   * Who invited (name, email, role name) and with which role, when this link was sent and until when it is valid,
+   * for the link's holder. 404 unknown token; 410 used, revoked or expired. The inviter cannot be missing: the
+   * foreign key is required and restricts deleting an admin who invited (admins are suspended, never deleted).
+   */
   async preview(token: string): Promise<InvitationPreview> {
-    const { email, role, invitedBy, expiresAt } = await this.findUsable(token);
-    return { email, role, invitedBy: { name: invitedBy.name, email: invitedBy.email }, expiresAt };
+    const { email, role, invitedBy, expiresAt, createdAt } = await this.findUsable(token);
+    return { email, role, invitedBy: { name: invitedBy.name, email: invitedBy.email, role: invitedBy.role }, expiresAt, sentAt: createdAt };
   }
 
   /**
