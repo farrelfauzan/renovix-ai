@@ -22,6 +22,8 @@ import { AuditLogExportQueryDto } from "../../app/admin-auth/dto/audit-log-expor
 import { CreditAdjustmentDto } from "../../app/admin-credits/dto/credit-adjustment.dto";
 import { EmailRevealBodyDto } from "../../app/admin-usage/dto/email-reveal-body.dto";
 import { ReconciliationEntryBodyDto } from "../../app/admin-usage/dto/reconciliation-entry-body.dto";
+import { ListUsersQueryDto } from "../../app/admin-users/dto/list-users-query.dto";
+import { UserRevealBodyDto } from "../../app/admin-users/dto/user-reveal-body.dto";
 import { CreateProviderDto } from "../../app/admin-providers/dto/create-provider.dto";
 import { UpdateProviderDto } from "../../app/admin-providers/dto/update-provider.dto";
 import { TestProviderDto } from "../../app/admin-providers/dto/test-provider.dto";
@@ -105,6 +107,7 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["PUT /admin/settings/:name", SaveSettingBodyDto],
   ["POST /admin/usage/users/:userId/email", EmailRevealBodyDto],
   ["POST /admin/reconciliation/entries", ReconciliationEntryBodyDto],
+  ["POST /admin/users/:id/reveal", UserRevealBodyDto],
   ["POST /admin/payments/orders/:id/confirm", ConfirmOrderBodyDto],
   ["POST /admin/payments/unmatched/:id/refunded", MarkRefundedBodyDto],
   // ─── chat and agents ───
@@ -169,4 +172,5 @@ export const ROUTE_QUERY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string,
   ["GET /admin/codes", ListCodesQueryDto],
   ["GET /admin/payments/orders", OrdersListQueryDto],
   ["GET /admin/payments/orders/export", OrdersDayQueryDto],
+  ["GET /admin/users", ListUsersQueryDto],
 ]);

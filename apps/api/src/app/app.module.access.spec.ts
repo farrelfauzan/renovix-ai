@@ -223,6 +223,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/top-up-packs/:id (AdminTopUpPacksController.get)",
     "GET /admin/usage/daily (AdminUsageController.daily)",
     "GET /admin/usage/profit (AdminUsageController.profit)",
+    "GET /admin/users (AdminUsersController.list)",
+    "GET /admin/users/:id (AdminUsersController.detail)",
     "PATCH /admin/codes/:id (AdminCodesController.deactivate)",
     "PATCH /admin/enterprise-bundles/:id (AdminEnterpriseBundlesController.update)",
     "PATCH /admin/packages/:id (AdminPackagesController.update)",
@@ -251,6 +253,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/roles (AdminRolesController.create)",
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)",
     "POST /admin/usage/users/:userId/email (AdminUsageController.revealEmail)",
+    "POST /admin/users/:id/reveal (AdminUsersController.reveal)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
     "PUT /admin/settings/:name (AdminSettingsController.save)",
   ];
@@ -331,6 +334,11 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/usage/users/:userId/email (AdminUsageController.revealEmail)": ["usage:read", "users:read_pii"],
     "GET /admin/reconciliation (AdminReconciliationController.report)": ["profit:read"],
     "POST /admin/reconciliation/entries (AdminReconciliationController.record)": ["reconciliation:write"],
+    // RNX-357: the user list, detail and reveal need users:read; the reveal's users:read_pii-or-grant check and the
+    // detail's credits:read check (ledger part only) run in AdminUsersService, from the admin's role read on the request.
+    "GET /admin/users (AdminUsersController.list)": ["users:read"],
+    "GET /admin/users/:id (AdminUsersController.detail)": ["users:read"],
+    "POST /admin/users/:id/reveal (AdminUsersController.reveal)": ["users:read"],
   };
   // RNX-225 (D113): every route that accepted the login JWT or the session now accepts the session only (the
   // login JWT is retired as an access method). This is the full list of the routes whose @Access changed, plus
@@ -643,6 +651,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/roles (AdminRolesController.create)",
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)",
     "POST /admin/usage/users/:userId/email (AdminUsageController.revealEmail)",
+    "POST /admin/users/:id/reveal (AdminUsersController.reveal)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
     "PUT /admin/settings/:name (AdminSettingsController.save)",
   ];

@@ -71,6 +71,10 @@ model User {
   creditAccounts  CreditAccount[]
   apiKeys         ApiKey[]
 
+  /// RNX-357: the back-office user list reads the users that are not deleted, newest sign-in first (never signed in
+  /// last), then by id, and stops after one page. The migration creates last_login_at DESC NULLS LAST, which the schema
+  /// cannot say (Prisma has no NULLS FIRST/LAST); `migrate diff` does not compare it. Predicate written as Postgres prints it.
+  @@index([lastLoginAt(sort: Desc), id], map: "users_last_login_at_id_idx", where: raw("status <> 'deleted'::text"))
   @@map("users")
 }
 
