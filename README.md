@@ -98,7 +98,7 @@ docs/           # Documentation
 
 7. **Seed the database**
    ```bash
-   bun run prisma:seed
+   bun run seed
    ```
    The seed writes no providers or models (RX-177). Create them as an admin through `/api/v1/admin/providers` (below); `prisma/seed-agents.ts` then uses the slug you pass (`npx tsx prisma/seed-agents.ts <slug>`) or the cheapest active standard model.
 
