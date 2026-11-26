@@ -7,6 +7,7 @@ import axios, {
 } from "axios";
 import { toast } from "sonner";
 import { config } from "./config";
+import { getInvalidBodyMessage } from "./get-invalid-body-message";
 import { getPackageLimitMessage } from "./package-limit-message";
 
 export interface TypedAxiosInstance extends AxiosInstance {
@@ -69,6 +70,7 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
     const message =
       (error.response?.data as Record<string, any>)?.message ||
+      getInvalidBodyMessage(error.response?.data) ||
       error.message ||
       "An unexpected error occurred";
 
