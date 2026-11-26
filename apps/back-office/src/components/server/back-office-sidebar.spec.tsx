@@ -32,4 +32,14 @@ describe("BackOfficeSidebar (RNX-312a)", () => {
 
     expect(screen.getByText("Renovix Admin").parentElement?.children).toHaveLength(1);
   });
+
+  // RNX-374: jsdom has no layout, so this pins the classes the layout rests on; the real scroll is shown in a browser.
+  it("stays in view above 760 px: stuck to the top at the height of the screen, with its own scroll, and not as the top row", () => {
+    render(<BackOfficeSidebar />);
+
+    const actualClasses = screen.getByRole("complementary").className.split(" ");
+
+    expect(actualClasses).toEqual(expect.arrayContaining(["wide:sticky", "wide:top-0", "wide:h-screen", "wide:overflow-y-auto"]));
+    expect(actualClasses.filter((name) => /^(narrow:)?(sticky|fixed|h-screen|top-0)$/.test(name))).toEqual([]);
+  });
 });
