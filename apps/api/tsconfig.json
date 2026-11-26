@@ -1,5 +1,14 @@
+// Solution file: it compiles nothing itself (tsconfig.app.json and tsconfig.spec.json do). bun reads this file, the
+// nearest tsconfig.json, when a seed script loads API code, so the alias is repeated here (RNX-363). Two targets:
+// the first is the path as TypeScript reads it (from this folder); the second is the same folder from the repo
+// root, because bun 1.3 resolves "paths" against the folder of the extended tsconfig.base.json.
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@generated/prisma/*": ["./src/generated/prisma/*", "./apps/api/src/generated/prisma/*"]
+    }
+  },
   "files": [],
   "include": [],
   "references": [
