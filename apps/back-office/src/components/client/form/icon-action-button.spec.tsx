@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type React from "react";
 import { Pencil } from "lucide-react";
-import { IconActionButton } from "./icon-action-button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 
 // D406: a table row's action is an icon-only button; its title is the accessible name and shows in a tooltip.
 // jsdom has no hover or focus-visible, so the shared tooltip is replaced by one that always shows its content: this

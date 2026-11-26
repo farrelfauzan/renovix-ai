@@ -3,7 +3,7 @@
 import { Ban, ListChecks } from "lucide-react";
 import type { InvitationCode } from "@/lib/codes/invitation-code";
 import type { CodeRedemption } from "@/lib/codes/code-redemption";
-import { IconActionButton } from "../form/icon-action-button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { RedemptionsList } from "./redemptions-list";
 
 type CodeRowProps = {
