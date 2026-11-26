@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createAdminsApi } from "@/lib/admins/admins-api";
 import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 import type { AdminRole } from "@/lib/admins/admin-role";
@@ -8,11 +8,13 @@ import { createPublicApiClient } from "@/lib/api/create-public-api-client";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import type { SessionApi } from "@/lib/session/session-api";
 import { pickOption } from "@/test/pick-option";
+import { AdminDetailScreen } from "./admin-detail-screen";
 import { AdminsAndRolesScreen } from "./admins-and-roles-screen";
 
 // RNX-189: the admins and roles screen against a stateful fake of the API at the ApiClient boundary. The API's
 // own rules (audit rows, last owner, direct calls without permission) are tested in apps/api; here the screen
-// shows its answers. Obviously fake values only.
+// shows its answers. Obviously fake values only. Since RNX-373 (D443) every admin write lives on the admin's own page
+// (AdminDetailScreen), so the tests of those writes render that page against the same fake.
 
 const SECRET_LINK = "https://bo.test/accept-invitation#token=SECRET-TOKEN-1";
 const PAST = "2020-01-01T00:00:00.000Z";
@@ -125,11 +127,13 @@ const renderScreen = async (fake: ReturnType<typeof createFakeApi>, me = profile
   await screen.findByRole("table", { name: "Admins" });
 };
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole("button", { name }));
-/** Opens the detail of the admin or invitation with this email (RNX-373: every admin write lives there) and returns it. */
-const openDetail = (email: string): HTMLElement => {
-  click(`Open admin ${email}`);
-  return screen.getByRole("region", { name: `Admin ${email}` });
+/** Renders the page of the admin or invitation with this id and returns its detail once loaded. */
+const renderDetail = async (fake: ReturnType<typeof createFakeApi>, id: string, me = profile(OWNER_PERMISSIONS)): Promise<HTMLElement> => {
+  render(<AdminDetailScreen adminId={id} api={fake.api} sessionApi={sessionOf(me)} />);
+  return screen.findByRole("region", { name: `Admin ${id}@example.com` });
 };
+/** The value the detail shows for a term, e.g. "Status". */
+const field = (term: string): string | null | undefined => screen.getByText(term, { selector: "dt" }).nextElementSibling?.textContent;
 // The role and provider pickers are the shared Select (Radix, RNX-291): open the trigger, then click the option.
 // jsdom has no scrollIntoView, which the open list calls on its selected item, and no ResizeObserver, which the
 // shared Checkbox of the role form uses to size its hidden form input.
@@ -168,27 +172,29 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
   describe("criterion 1: after the API answers the list is fetched again and shows the new state", () => {
     it("suspend, reactivate, reset MFA, assign a role and invite", async () => {
       const fake = createFakeApi({ isReauthed: true });
-      await renderScreen(fake);
+      await renderDetail(fake, "ops");
       expect(fake.count("GET /admins")).toBe(1);
 
-      openDetail("ops@example.com");
       click("Suspend / remove access");
-      await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("suspended"));
+      await waitFor(() => expect(field("Status")).toBe("suspended"));
       click("Reactivate");
-      await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("active"));
+      await waitFor(() => expect(field("Status")).toBe("active"));
       click("Reset MFA");
-      await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[3].textContent).toBe("not enrolled"));
+      await waitFor(() => expect(field("MFA")).toBe("not enrolled"));
       pickOption(screen.getByLabelText("Role for ops@example.com"), "custom_ro");
       click("Save role for ops@example.com");
-      await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[2].textContent).toBe("custom_ro"));
+      await waitFor(() => expect(field("Role")).toBe("custom_ro"));
       click("Force password reset");
+      await waitFor(() => expect(fake.count("GET /admins")).toBe(6));
+      cleanup();
+      await renderScreen(fake);
       click("Invite admin");
       fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
       fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
       await waitFor(() => expect(within(rowOf("new@example.com")).getAllByRole("cell")[5].textContent).toBe("invited"));
 
       expect(fake.calls).toEqual(expect.arrayContaining(["POST /admins/ops/suspend", "POST /admins/ops/reactivate", "POST /admins/ops/reset-mfa", "PUT /admins/ops/role", "POST /admins/ops/force-password-reset", "POST /invitations"]));
-      await waitFor(() => expect(fake.count("GET /admins")).toBe(7));
+      await waitFor(() => expect(fake.count("GET /admins")).toBe(8));
     });
   });
 
@@ -220,9 +226,8 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
     it("a resend shows the new link once too", async () => {
       const fake = createFakeApi();
       fake.state.admins.push(admin("late", { status: "invited", invitationExpiresAt: FUTURE }));
-      await renderScreen(fake);
+      await renderDetail(fake, "late");
 
-      openDetail("late@example.com");
       click("Resend");
 
       expect((await screen.findByLabelText("Invitation link") as HTMLInputElement).value).toBe(SECRET_LINK);
@@ -240,16 +245,21 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
     };
 
     it("is listed as invited, expired, with resend and revoke", async () => {
-      await renderScreen(expired());
+      const fake = expired();
+      await renderScreen(fake);
+      expect(within(rowOf("late@example.com")).getAllByRole("cell")[5].textContent).toBe("invited, expired");
+      cleanup();
 
-      const row = rowOf("late@example.com");
+      const detail = await renderDetail(fake, "late");
 
-      expect(within(row).getAllByRole("cell")[5].textContent).toBe("invited, expired");
-      const detail = openDetail("late@example.com");
+      expect(field("Invitation")).toBe("invited, expired");
       expect(within(detail).getByRole("button", { name: "Resend" })).toBeTruthy();
       expect(within(detail).getByRole("button", { name: "Revoke" })).toBeTruthy();
       click("Revoke");
-      await waitFor(() => expect(screen.queryByText("late@example.com")).toBeNull());
+      expect(await screen.findByText("This invitation was revoked.")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Admins and roles" }).getAttribute("href")).toBe("/admins-and-roles");
+      expect(screen.queryAllByRole("button")).toEqual([]);
+      expect(screen.queryByText("late@example.com")).toBeNull();
     });
 
     it("inviting the same email shows the API's 409 message and offers that invitation's resend and revoke", async () => {
@@ -273,9 +283,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
   describe("criterion 4: sensitive actions ask for a fresh password and TOTP", () => {
     it("sends the action, is refused, asks, sends reauth, then retries the action once", async () => {
       const fake = createFakeApi();
-      await renderScreen(fake);
-
-      openDetail("ops@example.com");
+      await renderDetail(fake, "ops");
       click("Suspend / remove access");
       const prompt = await screen.findByRole("dialog", { name: "Confirm it is you" });
       expect(within(prompt).getByLabelText("Password").getAttribute("autocomplete")).toBe("current-password");
@@ -283,25 +291,24 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       expect(fake.calls.filter((call) => call.includes("suspend"))).toEqual(["POST /admins/ops/suspend"]);
       await confirmIdentity();
 
-      await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("suspended"));
+      await waitFor(() => expect(field("Status")).toBe("suspended"));
       expect(fake.calls.filter((call) => call.includes("suspend") || call.includes("reauth"))).toEqual(["POST /admins/ops/suspend", "POST /auth/reauth", "POST /admins/ops/suspend"]);
       expect(screen.queryByRole("dialog", { name: "Confirm it is you" })).toBeNull();
     });
 
     it("a wrong code shows the API's refusal and nothing changes; the right one then works", async () => {
       const fake = createFakeApi();
-      await renderScreen(fake);
-      openDetail("ops@example.com");
+      await renderDetail(fake, "ops");
       click("Suspend / remove access");
 
       await confirmIdentity("pw", "000000");
 
       expect((await screen.findByRole("alert")).textContent).toBe("Invalid credentials");
-      expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("active");
+      expect(field("Status")).toBe("active");
       expect(fake.count("POST /admins/ops/suspend")).toBe(1);
       expect(fake.state.admins.find((entry) => entry.id === "ops")?.status).toBe("active");
       await confirmIdentity();
-      await waitFor(() => expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("suspended"));
+      await waitFor(() => expect(field("Status")).toBe("suspended"));
     });
 
     it("with the real clients, a wrong code shows the API's 401: no refresh, no second reauth, no sign-out, nothing changes", async () => {
@@ -323,9 +330,8 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
         createApiClient({ baseUrl: BASE, fetch: fetchMock, onSignedOut, runExclusive: (task) => task() }),
         createPublicApiClient({ baseUrl: BASE, fetch: fetchMock }),
       );
-      render(<AdminsAndRolesScreen api={api} sessionApi={sessionOf(profile(OWNER_PERMISSIONS))} />);
-      await screen.findByRole("table", { name: "Admins" });
-      openDetail("ops@example.com");
+      render(<AdminDetailScreen adminId="ops" api={api} sessionApi={sessionOf(profile(OWNER_PERMISSIONS))} />);
+      await screen.findByRole("region", { name: "Admin ops@example.com" });
       click("Suspend / remove access");
 
       await confirmIdentity("pw", "000000");
@@ -340,8 +346,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
 
     it("cancelling the prompt leaves everything unchanged", async () => {
       const fake = createFakeApi();
-      await renderScreen(fake);
-      openDetail("ops@example.com");
+      await renderDetail(fake, "ops");
       click("Suspend / remove access");
       await screen.findByRole("dialog", { name: "Confirm it is you" });
 
@@ -350,7 +355,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       expect((await screen.findByRole("alert")).textContent).toBe("Re-authentication was cancelled.");
       expect(fake.count("POST /admins/ops/suspend")).toBe(1);
       expect(fake.count("POST /auth/reauth")).toBe(0);
-      expect(within(rowOf("ops@example.com")).getAllByRole("cell")[5].textContent).toBe("active");
+      expect(field("Status")).toBe("active");
     });
   });
 
@@ -361,21 +366,28 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       await renderScreen(fake, profile(["admins:read", "roles:read"], "viewer"));
 
       expect(screen.queryByRole("button", { name: /Invite admin|Create role/ })).toBeNull();
-      for (const email of ["ops@example.com", "late@example.com"]) {
-        openDetail(email);
-        expect(screen.queryByRole("button", { name: /Suspend|Reactivate|Reset MFA|Force password|Resend|Revoke|Save|Edit role|Delete role/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Edit role|Delete role/ })).toBeNull();
+      expect(screen.getByRole("table", { name: "Roles" })).toBeTruthy();
+      for (const id of ["ops", "late"]) {
+        cleanup();
+        await renderDetail(fake, id, profile(["admins:read", "roles:read"], "viewer"));
+        expect(screen.queryAllByRole("button")).toEqual([]);
         expect(screen.queryAllByRole("combobox")).toEqual([]);
       }
-      expect(screen.getByRole("table", { name: "Roles" })).toBeTruthy();
     });
 
     it("with roles:write but not admins:write: role assignment and role writes, no admin actions", async () => {
-      await renderScreen(createFakeApi(), profile(["admins:read", "roles:read", "roles:write"], "mgr"));
-
-      openDetail("ops@example.com");
-      expect(screen.getByRole("button", { name: "Save role for ops@example.com" })).toBeTruthy();
+      const fake = createFakeApi();
+      const manager = profile(["admins:read", "roles:read", "roles:write"], "mgr");
+      await renderScreen(fake, manager);
       expect(screen.getByRole("button", { name: "Create role" })).toBeTruthy();
-      expect(screen.queryByRole("button", { name: /Invite admin|Suspend|Reset MFA|Force password/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Invite admin" })).toBeNull();
+      cleanup();
+
+      await renderDetail(fake, "ops", manager);
+
+      expect(screen.getByRole("button", { name: "Save role for ops@example.com" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /Suspend|Reset MFA|Force password/ })).toBeNull();
     });
 
     it("without admins:read the admin list is not shown, without roles:read the roles are not", async () => {
@@ -387,10 +399,11 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
     });
 
     it("the signed-in admin's own detail has no role change (others do)", async () => {
-      await renderScreen(createFakeApi());
+      const fake = createFakeApi();
 
-      expect(within(openDetail("owner@example.com")).queryByRole("combobox")).toBeNull();
-      expect(within(openDetail("ops@example.com")).getByRole("combobox")).toBeTruthy();
+      expect(within(await renderDetail(fake, "owner")).queryByRole("combobox")).toBeNull();
+      cleanup();
+      expect(within(await renderDetail(fake, "ops")).getByRole("combobox")).toBeTruthy();
     });
   });
 
@@ -399,26 +412,24 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       const fake = createFakeApi({ isReauthed: true });
       fake.state.admins = [admin("owner", { role: "owner" }), admin("owner2", { role: "owner" }), admin("ops", { status: "suspended" })];
       fake.state.admins[1] = { ...fake.state.admins[1], status: "suspended" };
-      await renderScreen(fake, profile(OWNER_PERMISSIONS, "ops"));
+      await renderDetail(fake, "owner", profile(OWNER_PERMISSIONS, "ops"));
 
-      openDetail("owner@example.com");
       click("Suspend / remove access");
 
       expect((await screen.findByRole("alert")).textContent).toBe("The last active owner cannot be suspended");
-      expect(within(rowOf("owner@example.com")).getAllByRole("cell")[5].textContent).toBe("active");
+      expect(field("Status")).toBe("active");
     });
 
     it("taking the Owner role from the last active owner", async () => {
       const fake = createFakeApi({ isReauthed: true });
       fake.state.admins = [admin("owner", { role: "owner" }), admin("ops")];
-      await renderScreen(fake, profile(OWNER_PERMISSIONS, "ops"));
-      openDetail("owner@example.com");
+      await renderDetail(fake, "owner", profile(OWNER_PERMISSIONS, "ops"));
       pickOption(screen.getByLabelText("Role for owner@example.com"), "support");
 
       click("Save role for owner@example.com");
 
       expect((await screen.findByRole("alert")).textContent).toBe("The last active owner keeps the Owner role");
-      expect(within(rowOf("owner@example.com")).getAllByRole("cell")[2].textContent).toBe("owner");
+      expect(field("Role")).toBe("owner");
     });
 
     it("a role name that is taken keeps the form open with the API's message; a 400 shows its status text", async () => {

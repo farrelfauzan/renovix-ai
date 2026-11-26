@@ -1,23 +1,15 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
-import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 import { describeAdminStatus } from "@/lib/admins/describe-admin-status";
-
-type AdminRowProps = {
-  readonly entry: AdminListEntry;
-  readonly isSelected: boolean;
-  /** Opens this admin's detail, which holds every write (RNX-373). */
-  readonly onOpen: () => void;
-};
+import { AdminOpenLink } from "./admin-open-link";
 
 const CELL = "border-b border-rx-line px-2 py-1";
 
-/** One row of the admin list; its only action opens the admin's detail. */
-export function AdminRow({ entry, isSelected, onOpen }: AdminRowProps) {
+/** One row of the admin list; its only action opens the admin's page, which holds every write (RNX-373, D443). */
+export function AdminRow({ entry }: { readonly entry: AdminListEntry }) {
   return (
-    <tr className={`align-top ${isSelected ? "bg-rx-accent-fill" : ""}`}>
+    <tr className="align-top">
       <td className={CELL}>{entry.name ?? "-"}</td>
       <td className={CELL}>{entry.email}</td>
       <td className={CELL}>{entry.role}</td>
@@ -25,7 +17,7 @@ export function AdminRow({ entry, isSelected, onOpen }: AdminRowProps) {
       <td className={CELL}>{entry.lastSignInAt ?? "never"}</td>
       <td className={CELL}>{describeAdminStatus(entry)}</td>
       <td className={CELL}>
-        <IconActionButton title="Open" label={`Open admin ${entry.email}`} icon={ExternalLink} onClick={onOpen} />
+        <AdminOpenLink id={entry.id} email={entry.email} />
       </td>
     </tr>
   );

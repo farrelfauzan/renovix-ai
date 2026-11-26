@@ -5,14 +5,8 @@ import { AdminRow } from "./admin-row";
 
 const COLUMNS = ["Name", "Email", "Role", "MFA", "Last sign-in", "Status", "Actions"];
 
-type AdminsTableProps = {
-  readonly admins: readonly AdminListEntry[];
-  readonly selectedId: string | null;
-  readonly onOpen: (id: string) => void;
-};
-
 /** The admins and pending invitations (RNX-189). */
-export function AdminsTable({ admins, selectedId, onOpen }: AdminsTableProps) {
+export function AdminsTable({ admins }: { readonly admins: readonly AdminListEntry[] }) {
   return (
     <table aria-label="Admins" className="w-full border-collapse text-left text-sm">
       <thead>
@@ -24,7 +18,7 @@ export function AdminsTable({ admins, selectedId, onOpen }: AdminsTableProps) {
       </thead>
       <tbody>
         {admins.map((entry) => (
-          <AdminRow key={entry.id} entry={entry} isSelected={entry.id === selectedId} onOpen={() => onOpen(entry.id)} />
+          <AdminRow key={entry.id} entry={entry} />
         ))}
       </tbody>
     </table>

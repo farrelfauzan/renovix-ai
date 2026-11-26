@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Button } from "@performa-ai/ui/components/button";
 import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 import type { AdminRole } from "@/lib/admins/admin-role";
 import type { AdminsApi } from "@/lib/admins/admins-api";
@@ -21,15 +20,14 @@ type AdminDetailPanelProps = {
   readonly onAct: (action: () => Promise<unknown>) => void;
   /** Resends the invitation and shows its new link once. */
   readonly onResend: (id: string) => void;
-  readonly onClose: () => void;
 };
 
 /**
  * The detail of one admin or pending invitation (RNX-373), from its list entry: no request of its own. It holds every
- * write of the admins table; its controls follow the permissions (visibility only: the API enforces them). Mount it
- * with `key={entry.id}` so another admin starts afresh. Its heading takes the focus, which also scrolls it into view.
+ * write that the admins table had in its rows; its controls follow the permissions (visibility only: the API
+ * enforces them). Its heading takes the focus when the page opens.
  */
-export function AdminDetailPanel({ entry, api, roles, isOwnDetail, canWriteAdmins, canWriteRoles, onAct, onResend, onClose }: AdminDetailPanelProps) {
+export function AdminDetailPanel({ entry, api, roles, isOwnDetail, canWriteAdmins, canWriteRoles, onAct, onResend }: AdminDetailPanelProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     headingRef.current?.focus();
@@ -45,15 +43,10 @@ export function AdminDetailPanel({ entry, api, roles, isOwnDetail, canWriteAdmin
     ...(isInvited && entry.invitationExpiresAt ? [["Invitation expires", entry.invitationExpiresAt] as const] : []),
   ];
   return (
-    <section aria-labelledby="admin-detail-heading" className="mt-4 flex min-w-0 flex-col gap-4 rounded-rx border border-rx-line p-[18px] narrow:p-3.5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h3 id="admin-detail-heading" ref={headingRef} tabIndex={-1} className="break-all text-lg font-semibold outline-none">
-          Admin <span className="font-mono">{entry.email}</span>
-        </h3>
-        <Button variant="outline" type="button" onClick={onClose} className="h-9 rounded-rx border-rx-line bg-transparent px-3.5 text-[13px] font-medium">
-          Close
-        </Button>
-      </div>
+    <section aria-labelledby="admin-detail-heading" className="flex min-w-0 flex-col gap-4 rounded-rx border border-rx-line p-[18px] narrow:p-3.5">
+      <h2 id="admin-detail-heading" ref={headingRef} tabIndex={-1} className="break-all text-lg font-semibold outline-none">
+        Admin <span className="font-mono">{entry.email}</span>
+      </h2>
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
         {fields.map(([term, value]) => (
           <div key={term} className="contents">
