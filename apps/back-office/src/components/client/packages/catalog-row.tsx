@@ -6,7 +6,7 @@ import { findCurrentVersion } from "@/lib/packages/current-version";
 import { formatRupiah } from "@/lib/packages/format-rupiah";
 import type { CatalogOffer } from "@/lib/packages/catalog-offer";
 import type { OfferKind } from "@/lib/packages/offer-kind";
-import { IconActionButton } from "../form/icon-action-button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { VersionHistory } from "./version-history";
 
 type CatalogRowProps = {

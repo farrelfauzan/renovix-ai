@@ -1,6 +1,7 @@
 "use client";
 
-import { Button } from "@performa-ai/ui/components/button";
+import { Copy } from "lucide-react";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 
 /**
  * Puts a package version's full id on the clipboard, for pasting where an id is asked for. Without a clipboard (an
@@ -15,6 +16,6 @@ export function CopyVersionIdButton({ versionId }: { readonly versionId: string 
     }
   };
   return (
-    <Button variant="outline" type="button" aria-label={`Copy id of version ${versionId}`} onClick={copy} className="rounded-rx border border-rx-line px-2 py-0 text-xs h-auto bg-transparent font-normal whitespace-normal">Copy</Button>
+    <IconActionButton title="Copy" label={`Copy id of version ${versionId}`} icon={Copy} onClick={() => void copy()} />
   );
 }

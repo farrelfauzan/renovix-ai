@@ -5,7 +5,7 @@ import { formatSettingValue } from "@/lib/settings/format-setting-value";
 import { isEditableSetting } from "@/lib/settings/is-editable-setting";
 import type { PlatformSetting } from "@/lib/settings/platform-setting";
 import type { SettingDescription } from "@/lib/settings/setting-description";
-import { IconActionButton } from "../form/icon-action-button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 
 type SettingRowProps = {
   readonly setting: PlatformSetting;
