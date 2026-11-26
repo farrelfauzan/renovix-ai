@@ -1,6 +1,7 @@
 "use client";
 
-import { Button } from "@performa-ai/ui/components/button";
+import { Pencil, Trash2 } from "lucide-react";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import type { AdminRole } from "@/lib/admins/admin-role";
 
 type RoleRowProps = {
@@ -21,8 +22,8 @@ export function RoleRow({ role, canWrite, onEdit, onDelete }: RoleRowProps) {
       <td className={CELL}>{role.builtIn ? "built-in" : "custom"}</td>
       <td className={CELL}>{role.permissions.join(", ")}</td>
       <td className={`${CELL} flex gap-1`}>
-        {canChange && <Button variant="outline" type="button" aria-label={`Edit role ${role.name}`} onClick={onEdit} className="rounded-rx border border-rx-line px-2 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Edit</Button>}
-        {canChange && <Button variant="outline" type="button" aria-label={`Delete role ${role.name}`} onClick={onDelete} className="rounded-rx border border-rx-line px-2 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Delete</Button>}
+        {canChange && <IconActionButton title="Edit" label={`Edit role ${role.name}`} icon={Pencil} onClick={onEdit} />}
+        {canChange && <IconActionButton title="Delete" label={`Delete role ${role.name}`} icon={Trash2} onClick={onDelete} />}
       </td>
     </tr>
   );
