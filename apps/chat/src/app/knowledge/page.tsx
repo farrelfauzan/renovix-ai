@@ -11,6 +11,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import Link from "next/link";
 import { useAuthStore, useHydrated } from "@/lib/stores";
 import {
@@ -118,14 +119,7 @@ export default function KnowledgePage() {
                       {kb._count.chunks} chunks
                     </span>
                   </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => deleteMutation.mutate(kb.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <IconActionButton title="Delete" label={`Delete ${kb.name}`} icon={Trash2} onClick={() => deleteMutation.mutate(kb.id)} />
                 </div>
 
                 <AnimatePresence>
@@ -182,16 +176,14 @@ function KBChunksSection({ knowledgeBaseId }: { knowledgeBaseId: string }) {
           <p className="text-xs text-muted-foreground flex-1 line-clamp-2">
             {chunk.content.slice(0, 200)}
           </p>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 shrink-0"
+          <IconActionButton
+            title="Delete"
+            label="Delete chunk"
+            icon={Trash2}
             onClick={() =>
               deleteMutation.mutate({ knowledgeBaseId, chunkId: chunk.id })
             }
-          >
-            <Trash2 className="h-3 w-3 text-destructive" />
-          </Button>
+          />
         </div>
       ))}
       {data.total > data.chunks.length && (

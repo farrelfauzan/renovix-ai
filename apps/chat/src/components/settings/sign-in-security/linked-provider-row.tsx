@@ -1,6 +1,7 @@
 "use client";
 
-import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
+import { Link, Unlink } from "lucide-react";
 import { SignInSecurityRow } from "@/components/settings/sign-in-security/sign-in-security-row";
 import { type LinkableProvider, useLinkAccount } from "@/hooks/use-link-account";
 import { useUnlinkAccount } from "@/hooks/use-unlink-account";
@@ -24,13 +25,9 @@ export function LinkedProviderRow({ provider, label, isLinked, isOnlyMethod }: L
       detail={detail}
       action={
         isLinked ? (
-          <Button type="button" variant="outline" disabled={isOnlyMethod || unlinkAccount.isPending} onClick={() => unlinkAccount.mutate(provider)}>
-            Disconnect
-          </Button>
+          <IconActionButton title="Disconnect" icon={Unlink} isDisabled={isOnlyMethod || unlinkAccount.isPending} onClick={() => unlinkAccount.mutate(provider)} />
         ) : (
-          <Button type="button" variant="outline" disabled={linkAccount.isPending} onClick={() => linkAccount.mutate(provider)}>
-            Connect
-          </Button>
+          <IconActionButton title="Connect" icon={Link} isDisabled={linkAccount.isPending} onClick={() => linkAccount.mutate(provider)} />
         )
       }
     />

@@ -29,4 +29,13 @@ describe("IconActionButton", () => {
     render(<IconActionButton title="Edit" label="Edit Seat ceiling" icon={Pencil} onClick={() => undefined} isExpanded />);
     expect(screen.getByRole("button", { name: "Edit Seat ceiling" }).getAttribute("aria-expanded")).toBe("true");
   });
+
+  it("is disabled when told so, and a click does not run the action", () => {
+    const onClick = jest.fn();
+    render(<IconActionButton title="Flags" icon={Pencil} onClick={onClick} isDisabled />);
+    const button = screen.getByRole("button", { name: "Flags" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });

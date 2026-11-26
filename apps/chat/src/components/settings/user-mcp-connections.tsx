@@ -5,12 +5,13 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  LogOut,
+  Unlink,
   ExternalLink,
   Info,
 } from "lucide-react";
 import { Badge } from "@performa-ai/ui/components/badge";
 import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import {
   useUserMcpCredentials,
   useStartUserOAuth,
@@ -133,18 +134,7 @@ export function UserMcpConnections({ workspaceId }: UserMcpConnectionsProps) {
 
               <div className="shrink-0 ml-2">
                 {isConnected ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() =>
-                      handleDisconnect(entry.name, entry.displayName)
-                    }
-                    disabled={disconnect.isPending}
-                  >
-                    <LogOut className="h-3.5 w-3.5 mr-1" />
-                    Disconnect
-                  </Button>
+                  <IconActionButton title="Disconnect" label={`Disconnect ${entry.displayName}`} icon={Unlink} isDisabled={disconnect.isPending} onClick={() => handleDisconnect(entry.name, entry.displayName)} />
                 ) : (
                   <Button
                     variant="outline"

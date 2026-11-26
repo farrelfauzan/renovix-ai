@@ -8,6 +8,7 @@ import {
 } from "@/hooks/use-agents";
 import { useKnowledgeBases } from "@/hooks/use-knowledge";
 import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import {
   Select,
   SelectContent,
@@ -93,24 +94,24 @@ export function AgentKnowledgeTab({ agent, agentId }: AgentKnowledgeTabProps) {
                 {akb.knowledgeBase?.description || "No description"}
               </p>
             </div>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={async () => {
-                try {
-                  await removeKB.mutateAsync({
-                    agentId,
-                    kbId: akb.id,
-                  });
-                  toast.success("Knowledge base removed");
-                } catch {
-                  toast.error("Failed to remove knowledge base");
-                }
-              }}
-            >
-              <X className="h-4 w-4 mr-1" />
-              Remove
-            </Button>
+            <IconActionButton
+              title="Remove"
+              label={`Remove ${akb.knowledgeBase?.name || akb.knowledgeBaseId}`}
+              icon={X}
+              onClick={() =>
+                void (async () => {
+                  try {
+                    await removeKB.mutateAsync({
+                      agentId,
+                      kbId: akb.id,
+                    });
+                    toast.success("Knowledge base removed");
+                  } catch {
+                    toast.error("Failed to remove knowledge base");
+                  }
+                })()
+              }
+            />
           </div>
         ))
       )}

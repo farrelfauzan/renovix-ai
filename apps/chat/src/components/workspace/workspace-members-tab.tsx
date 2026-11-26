@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useRemoveMember, useUpdateMember } from "@/hooks/use-workspaces";
-import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { Badge } from "@performa-ai/ui/components/badge";
 import {
   AlertDialog,
@@ -12,7 +13,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@performa-ai/ui/components/alert-dialog";
 import { Shield, UserMinus } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ interface Props {
 export function WorkspaceMembersTab({ workspaceId, members }: Props) {
   const removeMember = useRemoveMember();
   const updateMember = useUpdateMember();
+  const [memberToRemove, setMemberToRemove] = useState<WorkspaceMember | null>(null);
 
   const handleRemove = (memberId: string) => {
     removeMember.mutate(
@@ -96,36 +97,32 @@ export function WorkspaceMembersTab({ workspaceId, members }: Props) {
                     <option value="member">Member</option>
                   </select>
 
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
-                        <UserMinus className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Remove member</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Remove {member.user.email} from this workspace? They will lose access to shared agents and knowledge.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleRemove(member.id)}
-                          className="bg-destructive hover:bg-destructive/90 text-primary-foreground"
-                        >
-                          Remove
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  <IconActionButton title="Remove" label={`Remove ${member.user.email}`} icon={UserMinus} onClick={() => setMemberToRemove(member)} />
                 </div>
               )}
             </div>
           </div>
         ))}
       </div>
+      <AlertDialog open={memberToRemove !== null} onOpenChange={(open) => !open && setMemberToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove member</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove {memberToRemove?.user.email} from this workspace? They will lose access to shared agents and knowledge.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => memberToRemove && handleRemove(memberToRemove.id)}
+              className="bg-destructive hover:bg-destructive/90 text-primary-foreground"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

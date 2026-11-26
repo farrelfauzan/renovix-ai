@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Badge } from "@performa-ai/ui/components/badge";
-import { Button } from "@performa-ai/ui/components/button";
+import { CircleX } from "lucide-react";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { formatKeyPrefix } from "@/lib/format-key-prefix";
 import type { ApiKeyListItem } from "@/lib/api-key-types";
 import { RevokeKeyDialog } from "./revoke-key-dialog";
@@ -30,9 +31,7 @@ export function KeyRow({ apiKey, onRevokeAction }: KeyRowProps) {
           <Badge variant="outline">revoked</Badge>
         ) : (
           <>
-            <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => setIsConfirming(true)}>
-              Revoke
-            </Button>
+            <IconActionButton title="Revoke" label={`Revoke key ${apiKey.name}`} icon={CircleX} onClick={() => setIsConfirming(true)} />
             <RevokeKeyDialog
               keyName={apiKey.name}
               open={isConfirming}

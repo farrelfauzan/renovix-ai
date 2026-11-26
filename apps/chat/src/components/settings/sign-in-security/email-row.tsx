@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Pencil } from "lucide-react";
 import { Badge } from "@performa-ai/ui/components/badge";
 import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { SettingsTextField } from "@/components/settings/general/settings-text-field";
 import { SignInSecurityRow } from "@/components/settings/sign-in-security/sign-in-security-row";
 import type { CurrentUser } from "@/hooks/use-current-user";
@@ -42,11 +44,7 @@ export function EmailRow({ user }: { user: CurrentUser }) {
         </span>
       }
       action={
-        isEditing ? null : (
-          <Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
-            Change
-          </Button>
-        )
+        isEditing ? null : <IconActionButton title="Change" icon={Pencil} onClick={() => setIsEditing(true)} />
       }
     >
       {sentTo ? (

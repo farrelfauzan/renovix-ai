@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@performa-ai/ui/components/select";
 import { Badge } from "@performa-ai/ui/components/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@performa-ai/ui/components/tooltip";
 import {
   useChannelWorkspace,
   useWorkspaceMembers,
@@ -300,18 +301,25 @@ function MemberRow({
       </div>
       {roleIcon}
       {isOwner && member.role !== "owner" && (
-        <button
-          onClick={() =>
-            removeMember.mutate(
-              { channelId, memberId: member.id },
-              { onSuccess: () => toast.success("Member removed") },
-            )
-          }
-          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-          title="Remove"
-        >
-          <X className="w-3 h-3" />
-        </button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() =>
+                  removeMember.mutate(
+                    { channelId, memberId: member.id },
+                    { onSuccess: () => toast.success("Member removed") },
+                  )
+                }
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                aria-label={`Remove ${member.user.email}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Remove</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
     </div>
   );
@@ -327,30 +335,44 @@ function InviteRow({ invite, channelId }: { invite: any; channelId: string }) {
       <div className="flex-1 min-w-0">
         <span className="text-xs text-muted-foreground truncate block">{invite.email}</span>
       </div>
-      <button
-        onClick={() =>
-          resend.mutate(
-            { channelId, inviteId: invite.id },
-            { onSuccess: () => toast.success("Invite resent") },
-          )
-        }
-        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
-        title="Resend"
-      >
-        <RotateCw className="w-3 h-3" />
-      </button>
-      <button
-        onClick={() =>
-          revoke.mutate(
-            { channelId, inviteId: invite.id },
-            { onSuccess: () => toast.success("Invite revoked") },
-          )
-        }
-        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-        title="Revoke"
-      >
-        <X className="w-3 h-3" />
-      </button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() =>
+                resend.mutate(
+                  { channelId, inviteId: invite.id },
+                  { onSuccess: () => toast.success("Invite resent") },
+                )
+              }
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+              aria-label={`Resend invite ${invite.email}`}
+            >
+              <RotateCw className="w-3 h-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Resend</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() =>
+                revoke.mutate(
+                  { channelId, inviteId: invite.id },
+                  { onSuccess: () => toast.success("Invite revoked") },
+                )
+              }
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+              aria-label={`Revoke invite ${invite.email}`}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Revoke</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
@@ -402,26 +424,40 @@ function KnowledgeSection({ channelId, isOwner }: { channelId: string; isOwner: 
               <span className="text-xs text-foreground truncate block">{kb.name}</span>
               <span className="text-[10px] text-muted-foreground">{kb._count.chunks} chunks</span>
             </div>
-            <button
-              onClick={() => openAddContentDialog({ id: kb.id, name: kb.name })}
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-rx-green"
-              title="Add knowledge"
-            >
-              <FileText className="w-3 h-3" />
-            </button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => openAddContentDialog({ id: kb.id, name: kb.name })}
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-rx-green"
+                    aria-label={`Add knowledge to ${kb.name}`}
+                  >
+                    <FileText className="w-3 h-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Add knowledge</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {isOwner && (
-              <button
-                onClick={() =>
-                  deleteKB.mutate(
-                    { channelId, kbId: kb.id },
-                    { onSuccess: () => toast.success("Knowledge base deleted") },
-                  )
-                }
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-                title="Delete"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() =>
+                        deleteKB.mutate(
+                          { channelId, kbId: kb.id },
+                          { onSuccess: () => toast.success("Knowledge base deleted") },
+                        )
+                      }
+                      className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                      aria-label={`Delete ${kb.name}`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
         ))}
