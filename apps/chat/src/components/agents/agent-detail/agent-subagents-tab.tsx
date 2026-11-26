@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useAgents, useUpdateAgent } from "@/hooks/use-agents";
 import { Badge } from "@performa-ai/ui/components/badge";
 import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import {
   Select,
   SelectContent,
@@ -13,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@performa-ai/ui/components/select";
-import { Plus, X } from "lucide-react";
+import { Eye, Plus, X } from "lucide-react";
 
 type AgentSubAgentsTabProps = {
   agent: any;
@@ -150,27 +151,25 @@ export function AgentSubAgentsTab({
               </Badge>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => onViewAgentAction(sub.id)}>
-                View
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    await updateAgent.mutateAsync({
-                      id: sub.id,
-                      data: { parentAgentId: null, agentType: "standalone" },
-                    });
-                    toast.success("Sub-agent unlinked");
-                  } catch {
-                    toast.error("Failed to unlink sub-agent");
-                  }
-                }}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Remove
-              </Button>
+              <IconActionButton title="View" label={`View ${sub.name}`} icon={Eye} onClick={() => onViewAgentAction(sub.id)} />
+              <IconActionButton
+                title="Remove"
+                label={`Remove ${sub.name}`}
+                icon={X}
+                onClick={() =>
+                  void (async () => {
+                    try {
+                      await updateAgent.mutateAsync({
+                        id: sub.id,
+                        data: { parentAgentId: null, agentType: "standalone" },
+                      });
+                      toast.success("Sub-agent unlinked");
+                    } catch {
+                      toast.error("Failed to unlink sub-agent");
+                    }
+                  })()
+                }
+              />
             </div>
           </div>
         ))

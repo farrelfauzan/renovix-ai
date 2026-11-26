@@ -161,13 +161,13 @@ describe('RNX-82 AC3: Revoke', () => {
   it('confirming Revoke on row 2 fires DELETE with that row id, and the row shows revoked', async () => {
     renderPage();
     const rows = await screen.findAllByRole('row');
-    fireEvent.click(within(rows[2]).getByRole('button', { name: 'Revoke' }));
+    fireEvent.click(within(rows[2]).getByRole('button', { name: 'Revoke key Second' }));
 
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Revoke' }));
 
     await waitFor(() => expect(within(screen.getAllByRole('row')[2]).getByText('revoked')).toBeTruthy());
     expect(requests.filter((r) => r.method === 'delete')).toEqual([{ method: 'delete', url: '/auth/keys/key-two-0002-bbbb', data: undefined }]);
-    expect(within(screen.getAllByRole('row')[1]).getByRole('button', { name: 'Revoke' })).toBeTruthy();
+    expect(within(screen.getAllByRole('row')[1]).getByRole('button', { name: 'Revoke key First' })).toBeTruthy();
   });
 
   it('each row shows the key as the rnx_live_ marker plus its stored prefix, never the id', async () => {

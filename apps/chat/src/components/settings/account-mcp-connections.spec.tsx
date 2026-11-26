@@ -47,8 +47,8 @@ it('AC1: with no connection every provider shows Connect, whatever workspace is 
     mockSelectedId = selected;
     const view = renderScreen();
     expect(await screen.findByText('Gmail')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: /Connect/ })).toHaveLength(2);
-    expect(screen.queryByRole('button', { name: /Disconnect/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /^Connect (Gmail|Notion)$/ })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: /^Disconnect / })).toBeNull();
     view.unmount();
   }
   expect(mockApi.get).not.toHaveBeenCalledWith(expect.stringContaining('workspaceId'));
@@ -68,7 +68,7 @@ it('AC2: Connect on this page starts OAuth for the account, without a workspaceI
   const defaultGet = mockApi.get.getMockImplementation() as (url: string) => Promise<unknown>;
   mockApi.get.mockImplementation(async (url: string) => (url.startsWith('/mcp/user/oauth/start') ? { authUrl: 'about:blank' } : defaultGet(url)));
   renderScreen();
-  fireEvent.click(within(await waitFor(() => screen.getByText('Gmail').closest('div.rounded-lg') as HTMLElement)).getByRole('button', { name: /Connect/ }));
+  fireEvent.click(within(await waitFor(() => screen.getByText('Gmail').closest('div.rounded-lg') as HTMLElement)).getByRole('button', { name: /^Connect (Gmail|Notion)$/ }));
   fireEvent.click(await screen.findByRole('button', { name: /Authorize Gmail/ }));
   await waitFor(() => expect(mockApi.get).toHaveBeenCalledWith('/mcp/user/oauth/start?provider=google-gmail'));
   expect(mockApi.get).not.toHaveBeenCalledWith(expect.stringMatching(/oauth\/start.*workspaceId/));
@@ -78,7 +78,7 @@ it('AC2: a token connect on this page sends no workspaceId, even with a workspac
   mockSelectedId = 'ws-a';
   mockApi.post.mockResolvedValue({ connected: true, provider: 'notion' });
   renderScreen();
-  fireEvent.click(within(await waitFor(() => screen.getByText('Notion').closest('div.rounded-lg') as HTMLElement)).getByRole('button', { name: /Connect/ }));
+  fireEvent.click(within(await waitFor(() => screen.getByText('Notion').closest('div.rounded-lg') as HTMLElement)).getByRole('button', { name: /^Connect (Gmail|Notion)$/ }));
   fireEvent.change(await screen.findByPlaceholderText(/notion token/i), { target: { value: 'test-notion-token-not-real' } });
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Connect & Test/ }));
   await waitFor(() => expect(mockApi.post).toHaveBeenCalledTimes(1));
@@ -111,14 +111,14 @@ it('AC4: turning A off calls DELETE with workspaceId A and the provider stays Co
 it('AC5: Disconnect asks first, names A, then deletes the account connection without a workspaceId', async () => {
   mockAccount = [gmail(['ws-a'])];
   renderScreen();
-  fireEvent.click(await screen.findByRole('button', { name: /Disconnect/ }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Gmail' }));
   const dialog = await screen.findByRole('alertdialog');
   expect(dialog.textContent).toContain('Alpha');
   expect(dialog.textContent).not.toContain('Beta');
   expect(mockApi.delete).not.toHaveBeenCalled();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }));
   await waitFor(() => expect(mockApi.delete).toHaveBeenCalledWith('/mcp/user/credentials/google-gmail'));
-  await waitFor(() => expect(screen.getAllByRole('button', { name: /Connect/ })).toHaveLength(2));
+  await waitFor(() => expect(screen.getAllByRole('button', { name: /^Connect (Gmail|Notion)$/ })).toHaveLength(2));
   expect(screen.queryAllByRole('switch')).toHaveLength(0);
 });
 

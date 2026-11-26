@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@performa-ai/ui/components/button";
+import { KeyRound, Pencil } from "lucide-react";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { ChangePasswordForm } from "@/components/settings/sign-in-security/change-password-form";
 import { SetPasswordForm } from "@/components/settings/sign-in-security/set-password-form";
 import { SignInSecurityRow } from "@/components/settings/sign-in-security/sign-in-security-row";
@@ -19,9 +20,7 @@ export function PasswordRow({ hasPassword }: { hasPassword: boolean }) {
       detail={hasPassword ? "You can sign in with your email and password." : "You sign in with Google or GitHub. Set a password to also sign in with your email."}
       action={
         isEditing ? null : (
-          <Button type="button" variant="outline" onClick={() => setIsEditing(true)}>
-            {hasPassword ? "Change" : "Set a password"}
-          </Button>
+          <IconActionButton title={hasPassword ? "Change" : "Set a password"} icon={hasPassword ? Pencil : KeyRound} onClick={() => setIsEditing(true)} />
         )
       }
     >

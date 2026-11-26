@@ -5,14 +5,14 @@ import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
 import {
   Loader2,
-  Plus,
-  Trash2,
   CheckCircle2,
   XCircle,
   TestTube,
+  Link,
+  Unlink,
 } from "lucide-react";
 import { Badge } from "@performa-ai/ui/components/badge";
-import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import {
   useMcpServers,
   useMcpRegistry,
@@ -160,26 +160,8 @@ export function WorkspaceIntegrations({ channelId }: { channelId: string }) {
                     )}
                     {server.status.replace(/^\w/, (c) => c.toUpperCase())}
                   </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => handleTest(server.id, server.displayName)}
-                    disabled={testConn.isPending}
-                    title="Test connection"
-                  >
-                    <TestTube className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => handleDisconnect(server.id, server.displayName)}
-                    disabled={deleteMcp.isPending}
-                    title="Disconnect"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <IconActionButton title="Test connection" label={`Test connection ${server.displayName}`} icon={TestTube} isDisabled={testConn.isPending} onClick={() => handleTest(server.id, server.displayName)} />
+                  <IconActionButton title="Disconnect" label={`Disconnect ${server.displayName}`} icon={Unlink} isDisabled={deleteMcp.isPending} onClick={() => handleDisconnect(server.id, server.displayName)} />
                 </div>
               </div>
             ))}
@@ -242,17 +224,7 @@ export function WorkspaceIntegrations({ channelId }: { channelId: string }) {
                       </p>
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="ml-2 shrink-0"
-                    disabled={!workspaceReady}
-                    onClick={() => setConnectProvider(entry)}
-                    title={!workspaceReady ? "Create/select a workspace first" : "Connect"}
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    Connect
-                  </Button>
+                  <IconActionButton title="Connect" label={`Connect ${entry.displayName}`} icon={Link} isDisabled={!workspaceReady} onClick={() => setConnectProvider(entry)} />
                 </div>
               ))}
             </div>

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@performa-ai/ui/components/badge";
-import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import {
   useMcpServers,
   useTestMcpConnection,
@@ -108,15 +108,7 @@ export function IntegrationsTab({ agent, agentId }: IntegrationsTabProps) {
                     )}
                     {server.status}
                   </Badge>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => handleTest(server.id, server.displayName)}
-                    title="Test connection"
-                  >
-                    <TestTube className="h-3.5 w-3.5" />
-                  </Button>
+                  <IconActionButton title="Test connection" label={`Test connection ${server.displayName}`} icon={TestTube} onClick={() => void handleTest(server.id, server.displayName)} />
                 </div>
               </div>
             ))}

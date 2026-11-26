@@ -22,6 +22,7 @@ import {
   useSidebar,
 } from "@performa-ai/ui/components/sidebar";
 import Link from "next/link";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@performa-ai/ui/components/tooltip";
 import { usePathname, useRouter } from "next/navigation";
 import { useChatStore, useAuthStore, useHydrated } from "@/lib/stores";
 import {
@@ -212,15 +213,23 @@ function ChatsContent() {
                       <MessageSquare className="h-4 w-4" />
                       <span>{conv.title || "Untitled"}</span>
                     </SidebarMenuButton>
-                    <SidebarMenuAction
-                      showOnHover
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleDeleteConversation(conv.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </SidebarMenuAction>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <SidebarMenuAction
+                            showOnHover
+                            aria-label={`Delete ${conv.title || "Untitled"}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleDeleteConversation(conv.id);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </SidebarMenuAction>
+                        </TooltipTrigger>
+                        <TooltipContent>Delete</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

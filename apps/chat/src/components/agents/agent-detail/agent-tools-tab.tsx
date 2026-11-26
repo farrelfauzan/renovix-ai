@@ -14,7 +14,9 @@ import {
   useWebSearchPolicy,
   useWebSearchStatus,
 } from "@/hooks/use-web-search";
+import { Plus, X } from "lucide-react";
 import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { Input } from "@performa-ai/ui/components/input";
 import { PackageLimitPill } from "@/components/package-limit-pill";
 
@@ -266,13 +268,12 @@ export function AgentToolsTab({ agent, agentId }: AgentToolsTabProps) {
                 </div>
               )}
             </div>
-            <Button
-              variant={isActive ? "destructive" : "default"}
-              size="sm"
-              onClick={() => handleToggleTool(tool.type, isActive)}
-            >
-              {isActive ? "Remove" : "Add"}
-            </Button>
+            <IconActionButton
+              title={isActive ? "Remove" : "Add"}
+              label={`${isActive ? "Remove" : "Add"} ${tool.name}`}
+              icon={isActive ? X : Plus}
+              onClick={() => void handleToggleTool(tool.type, isActive)}
+            />
           </div>
         );
       })}

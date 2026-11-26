@@ -1,9 +1,9 @@
 "use client";
 
 import { useResendInvite, useRevokeInvite } from "@/hooks/use-workspaces";
-import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { Badge } from "@performa-ai/ui/components/badge";
-import { RefreshCw, X, Mail } from "lucide-react";
+import { CircleX, Send, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { isPackageLimitError } from "@/lib/is-package-limit-error";
 import type { WorkspaceInvite } from "@/lib/workspace-types";
@@ -75,26 +75,8 @@ export function WorkspaceInvitesTab({ workspaceId, invites }: Props) {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs gap-1"
-                  onClick={() => handleResend(invite.id)}
-                  disabled={resendInvite.isPending}
-                >
-                  <RefreshCw className="h-3 w-3" />
-                  Resend
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
-                  onClick={() => handleRevoke(invite.id)}
-                  disabled={revokeInvite.isPending}
-                >
-                  <X className="h-3 w-3" />
-                  Revoke
-                </Button>
+                <IconActionButton title="Resend" label={`Resend invite ${invite.email}`} icon={Send} isDisabled={resendInvite.isPending} onClick={() => handleResend(invite.id)} />
+                <IconActionButton title="Revoke" label={`Revoke invite ${invite.email}`} icon={CircleX} isDisabled={revokeInvite.isPending} onClick={() => handleRevoke(invite.id)} />
               </div>
             </div>
           ))}

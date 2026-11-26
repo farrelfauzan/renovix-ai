@@ -40,6 +40,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { Input } from "@performa-ai/ui/components/input";
 import {
   AlertDialog,
@@ -51,6 +52,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@performa-ai/ui/components/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@performa-ai/ui/components/tooltip";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -498,15 +500,7 @@ function ServerMiddlePanel({
             <Settings className="w-3.5 h-3.5" />
           </Button>
           <div className="flex-1" />
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-7 w-7 text-destructive hover:text-destructive hover:bg-rx-red-tint"
-            onClick={handleDeleteServer}
-            title="Delete Server"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
+          <IconActionButton title="Delete Server" icon={Trash2} onClick={handleDeleteServer} />
         </div>
       </div>
 
@@ -585,26 +579,40 @@ function ServerMiddlePanel({
                 <span className="text-[9px] text-muted-foreground">sub-agent</span>
               )}
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                router.push(`/agents/${link.agentId}`);
-              }}
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity"
-              title="Configure agent"
-            >
-              <Wrench className="w-3 h-3" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRemoveAgent(link.agentId);
-              }}
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-              title="Remove agent"
-            >
-              <X className="w-3 h-3" />
-            </button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/agents/${link.agentId}`);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity"
+                    aria-label={`Configure ${link.agent.name}`}
+                  >
+                    <Wrench className="w-3 h-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Configure agent</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveAgent(link.agentId);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                    aria-label={`Remove ${link.agent.name}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Remove agent</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         ))}
       </div>

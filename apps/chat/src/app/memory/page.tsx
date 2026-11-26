@@ -17,6 +17,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Button } from "@performa-ai/ui/components/button";
+import { IconActionButton } from "@performa-ai/ui/components/icon-action-button";
 import { AppSidebar } from "@/components/chat-sidebar";
 import { SidebarProvider, SidebarInset } from "@performa-ai/ui/components/sidebar";
 
@@ -151,15 +152,7 @@ export default function MemoryPage() {
                         }`}
                       />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      title="Delete"
-                      onClick={() => deleteMutation.mutate(mem.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
+                    <IconActionButton title="Delete" icon={Trash2} onClick={() => deleteMutation.mutate(mem.id)} />
                   </div>
                 </div>
               </div>
