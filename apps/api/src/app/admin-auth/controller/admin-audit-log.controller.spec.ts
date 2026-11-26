@@ -102,6 +102,7 @@ describe("Audit log screen API (RX-164, Fastify, test database)", () => {
         before: { step: 119 },
         after: { step: 120 },
         reason: "reason 119",
+        requestId: "req-119",
         effectiveAt: new Date(BASE.getTime() + 119 * SECOND).toISOString(),
         createdAt: new Date(BASE.getTime() + 119 * SECOND).toISOString(),
       });
@@ -214,9 +215,10 @@ describe("Audit log screen API (RX-164, Fastify, test database)", () => {
       expect(res.statusCode).toBe(200);
       expect(res.headers["content-type"]).toBe("text/csv; charset=utf-8");
       expect(res.headers["content-disposition"]).toBe('attachment; filename="audit-log.csv"');
-      expect(res.body.split("\r\n")[0]).toBe("id,created_at,admin_id,admin_email,resource,action,before,after,reason,effective_at");
+      expect(res.body.split("\r\n")[0]).toBe("id,created_at,admin_id,admin_email,resource,action,before,after,reason,effective_at,request_id");
       const lines = csvLines(res.body);
       expect(lines).toHaveLength(1103);
+      expect(lines.every((line) => /,req-\d+$/.test(line))).toBe(true);
       expect(lines.map((line) => line.split(",")[8]).sort()).toEqual(Array.from({ length: 1103 }, (_, i) => `match ${i}`).sort());
       expect(findPage.mock.calls.map(([, , limit]) => limit)).toEqual([500, 500, 500]);
       const audit = await exportRows();

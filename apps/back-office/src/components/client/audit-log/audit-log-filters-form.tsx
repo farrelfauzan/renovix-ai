@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@performa-ai/ui/components/button";
 import { Input } from "@performa-ai/ui/components/input";
 import type { AuditLogFilters } from "@/lib/audit-log/audit-log-filters";
-import { EMPTY_AUDIT_LOG_FILTERS } from "@/lib/audit-log/empty-audit-log-filters";
+import { buildAuditLogPresetRange } from "@/lib/audit-log/build-audit-log-preset-range";
 
 const FIELDS = [
   { name: "adminId", label: "Admin id", type: "text" },
@@ -14,12 +14,22 @@ const FIELDS = [
   { name: "to", label: "To", type: "datetime-local" },
 ] as const;
 
-/** The audit log filters (RX-164); `onApply` gets them when the form is submitted. */
-export function AuditLogFiltersForm({ onApply }: { onApply: (filters: AuditLogFilters) => void }) {
-  const [filters, setFilters] = useState<AuditLogFilters>(EMPTY_AUDIT_LOG_FILTERS);
+const PRESETS = [
+  { label: "Last 7 days", days: 7 },
+  { label: "Last 30 days", days: 30 },
+] as const;
+
+/** The audit log filters (RX-164), starting from `initial`; `onApply` gets them when the form is submitted or a last-days preset is chosen (RX-371). */
+export function AuditLogFiltersForm({ initial, onApply }: { initial: AuditLogFilters; onApply: (filters: AuditLogFilters) => void }) {
+  const [filters, setFilters] = useState<AuditLogFilters>(initial);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onApply(filters);
+  };
+  const applyPreset = (days: number) => {
+    const preset = { ...filters, ...buildAuditLogPresetRange(days) };
+    setFilters(preset);
+    onApply(preset);
   };
   return (
     <form aria-label="Audit log filters" onSubmit={submit} className="flex flex-wrap items-end gap-3">
@@ -37,6 +47,11 @@ export function AuditLogFiltersForm({ onApply }: { onApply: (filters: AuditLogFi
       <Button variant="outline" type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
         Apply filters
       </Button>
+      {PRESETS.map(({ label, days }) => (
+        <Button key={days} variant="outline" type="button" onClick={() => applyPreset(days)} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">
+          {label}
+        </Button>
+      ))}
     </form>
   );
 }

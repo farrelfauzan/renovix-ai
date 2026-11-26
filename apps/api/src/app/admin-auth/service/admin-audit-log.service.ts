@@ -16,7 +16,7 @@ import { cursorOf } from "../utils/cursor-of";
 const PAGE_SIZE = 50;
 /** Rows the CSV export reads per query: never the whole log at once. */
 const EXPORT_BATCH_SIZE = 500;
-const CSV_HEADER = ["id", "created_at", "admin_id", "admin_email", "resource", "action", "before", "after", "reason", "effective_at"];
+const CSV_HEADER = ["id", "created_at", "admin_id", "admin_email", "resource", "action", "before", "after", "reason", "effective_at", "request_id"];
 
 /**
  * The audit log screen and its CSV export (RX-164, PRD 09 F11 and F16). Personal data in before, after
