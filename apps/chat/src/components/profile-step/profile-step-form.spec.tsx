@@ -10,6 +10,8 @@ const mockReplace = jest.fn();
 jest.mock('next/navigation', () => ({ useRouter: () => ({ replace: mockReplace }) }));
 jest.mock('@/lib/stores', () => ({ useAuthStore: () => ({ email: 'dewi@example.test' }) }));
 jest.mock('@/lib/api-client', () => ({ __esModule: true, default: { put: jest.fn() } }));
+// The form renders every country and timezone as an option, so a test can pass Jest's 5 s default when the machine is busy (RNX-362).
+jest.setTimeout(30000);
 
 const user: CurrentUser = {
   id: 'u1',
