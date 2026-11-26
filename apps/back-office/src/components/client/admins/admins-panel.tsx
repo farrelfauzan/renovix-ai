@@ -7,6 +7,7 @@ import type { AdminRole } from "@/lib/admins/admin-role";
 import type { AdminsApi } from "@/lib/admins/admins-api";
 import type { IssuedInvitation } from "@/lib/admins/issued-invitation";
 import { useState } from "react";
+import { AdminDetailPanel } from "./admin-detail-panel";
 import { AdminsTable } from "./admins-table";
 import { InviteDialog } from "./invite-dialog";
 
@@ -23,15 +24,24 @@ type AdminsPanelProps = {
   readonly onResend: (id: string) => void;
 };
 
-/** The admin list with its invite dialog (`admins:read`; the write controls follow `admins:write` and `roles:write`). */
+/**
+ * The admin list with its invite dialog and the detail of the admin opened from it (`admins:read`; the write controls
+ * follow `admins:write` and `roles:write`). The detail reads its admin from the list, so it shows the new state after
+ * every refetch and closes when its entry is gone (a revoked invitation).
+ */
 export function AdminsPanel({ admins, roles, api, currentAdminId, canWriteAdmins, canWriteRoles, run, onAct, onIssued, onResend }: AdminsPanelProps) {
   const [isInviting, setIsInviting] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = admins.find((entry) => entry.id === selectedId);
   return (
     <section aria-label="Admins" className="mt-4">
       <h2 className="text-lg font-semibold">Admins</h2>
       {canWriteAdmins && <Button variant="outline" type="button" onClick={() => setIsInviting(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Invite admin</Button>}
       {isInviting && <InviteDialog api={api} roles={roles} admins={admins} run={run} onIssued={onIssued} onClose={() => setIsInviting(false)} />}
-      <AdminsTable admins={admins} api={api} roles={roles} currentAdminId={currentAdminId} canWriteAdmins={canWriteAdmins} canWriteRoles={canWriteRoles} onAct={onAct} onResend={onResend} />
+      <AdminsTable admins={admins} selectedId={selectedId} onOpen={setSelectedId} />
+      {selected && (
+        <AdminDetailPanel key={selected.id} entry={selected} api={api} roles={roles} isOwnDetail={selected.id === currentAdminId} canWriteAdmins={canWriteAdmins} canWriteRoles={canWriteRoles} onAct={onAct} onResend={onResend} onClose={() => setSelectedId(null)} />
+      )}
     </section>
   );
 }
