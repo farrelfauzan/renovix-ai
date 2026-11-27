@@ -54,7 +54,7 @@ describe("RNX-336: a revoked session is refused at once (Fastify, test database)
     await post("/api/auth/better/sign-up/email", { email: EMAIL, password: PASSWORD, name: "RNX-336" });
     const deviceA = await signIn();
     const deviceB = await signIn();
-    expect(deviceB).toContain("better-auth.session_data=");
+    expect(deviceB).not.toContain("better-auth.session_data="); // RNX-379: the cookie cache is off, so sign-in sets no cache cookie
     expect((await me(deviceB)).statusCode).toBe(200);
 
     const revoke = await post("/api/auth/better/revoke-session", { token: sessionTokenOf(deviceB) }, deviceA);

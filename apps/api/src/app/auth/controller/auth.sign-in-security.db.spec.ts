@@ -155,7 +155,7 @@ describe("RNX-78: Settings > Sign-in and security (Fastify, real Better Auth, te
     await signUp("rnx78-ac3@renovix.test");
     const thisDevice = await signIn("rnx78-ac3@renovix.test", MAC_CHROME);
     const otherDevice = await signIn("rnx78-ac3@renovix.test", IPHONE_SAFARI);
-    expect(otherDevice).toContain("better-auth.session_data=");
+    expect(otherDevice).not.toContain("better-auth.session_data="); // RNX-379: the cookie cache is off, so sign-in sets no cache cookie
     expect((await me(otherDevice)).statusCode).toBe(200);
 
     const signOutOthers = await post("/api/auth/better/revoke-other-sessions", {}, thisDevice);
