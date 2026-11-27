@@ -18,7 +18,7 @@ export const AttachToolSchema = z.object({
     "create_reminder",
     "create_document",
   ]),
-  config: z.record(z.any()).optional(),
+  config: z.record(z.string(), z.any()).optional(),
   enabled: z.boolean().optional().default(true),
 });
 
@@ -34,7 +34,7 @@ export const AttachIntegrationSchema = z.object({
     "slack",
     "github",
   ]),
-  config: z.record(z.any()),
+  config: z.record(z.string(), z.any()),
   scopes: z.array(z.string()).min(1),
 });
 
@@ -51,7 +51,7 @@ export const WhatsappChannelConfigSchema = z.object({
 export const DeployChannelSchema = z
   .object({
     channelType: z.enum(["web", "whatsapp", "api"]),
-    config: z.record(z.any()).optional(),
+    config: z.record(z.string(), z.any()).optional(),
   })
   .refine(
     (data) =>
