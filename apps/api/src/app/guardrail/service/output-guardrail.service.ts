@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { GuardrailResult } from "../dto/guardrail-result.dto";
 import { ContentPolicyService } from "./content-policy.service";
 import { PiiDetectorService } from "./pii-detector.service";
@@ -8,8 +8,6 @@ const MAX_RESPONSE_LENGTH = 16000;
 
 @Injectable()
 export class OutputGuardrailService {
-  private readonly logger = new Logger(OutputGuardrailService.name);
-
   constructor(
     private readonly contentPolicy: ContentPolicyService,
     private readonly piiDetector: PiiDetectorService,

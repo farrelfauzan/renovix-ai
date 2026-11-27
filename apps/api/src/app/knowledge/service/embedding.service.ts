@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { resolveLlmProvider } from "../../providers/llm-provider";
 import { readProviderHttpError } from "../../providers/utils/read-provider-http-error";
@@ -20,7 +20,6 @@ export interface EmbeddingResult {
 
 @Injectable()
 export class EmbeddingService {
-  private readonly logger = new Logger(EmbeddingService.name);
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly model: string;

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import type { Decimal } from "@prisma/client/runtime/client";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -14,8 +14,6 @@ export interface LogUsageParams {
 
 @Injectable()
 export class UsageService {
-  private readonly logger = new Logger(UsageService.name);
-
   constructor(private readonly prisma: PrismaService) {}
 
   async logUsage(params: LogUsageParams): Promise<void> {

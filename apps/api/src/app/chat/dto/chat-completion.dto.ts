@@ -4,7 +4,7 @@ const JsonSchemaResponseFormatSchema = z.object({
   type: z.literal("json_schema"),
   json_schema: z.object({
     name: z.string().min(1),
-    schema: z.record(z.unknown()),
+    schema: z.record(z.string(), z.unknown()),
   }),
 });
 
