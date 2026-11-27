@@ -4,6 +4,31 @@ import { createTestModule } from "../../../test/test-module";
 import { resetDatabase } from "../../../test/test-database";
 import { createAgent, createUser } from "../../../test/factories";
 
+/** A server backend: its pid, and its start time so a reused pid is not mistaken for it. */
+type Backend = { pid: number; started: string };
+
+const BACKEND_EXIT_ATTEMPTS = 50;
+const BACKEND_EXIT_POLL_MS = 100;
+
+/** The backend this client's connection is, read through that client (pg_backend_pid is the session's own). */
+async function backendOf(client: PrismaService): Promise<Backend> {
+  const [backend] = await client.$queryRaw<Backend[]>`
+    SELECT pid, backend_start::text AS started FROM pg_stat_activity WHERE pid = pg_backend_pid()`;
+  return backend;
+}
+
+/** Whether the backend is still listed; polls briefly, since a closed backend can take a moment to exit. */
+async function isBackendOpen(client: PrismaService, backend: Backend): Promise<boolean> {
+  for (let attempt = 0; attempt < BACKEND_EXIT_ATTEMPTS; attempt++) {
+    const [{ n }] = await client.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE pid = ${backend.pid} AND backend_start::text = ${backend.started}`;
+    if (n === 0) return false;
+    await new Promise((resolve) => setTimeout(resolve, BACKEND_EXIT_POLL_MS));
+  }
+  return true;
+}
+
 // The default filter's map holds Provider, Agent (RNX-124), Workspace, UserMemory and WorkspaceMemory (RNX-125), not Reminder, so the tests that need a model on it
 // build a second client through the same factory, with Reminder on it.
 describe("PrismaService (test database)", () => {
@@ -167,26 +192,24 @@ describe("PrismaService (test database)", () => {
   });
 
   it("a module gets the client PrismaService.create() built, connects it on init and disconnects it on close", async () => {
+    const [released, kept] = [PrismaService.create(), PrismaService.create()]; // other sessions on the same database, built before the spy counts
     const create = jest.spyOn(PrismaService, "create");
     const init = jest.spyOn(PrismaService.prototype, "onModuleInit");
     const destroy = jest.spyOn(PrismaService.prototype, "onModuleDestroy");
-    const otherConnections = async () => {
-      const [{ n }] = await prisma.$queryRaw<{ n: number }[]>`
-        SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE datname = current_database() AND pid <> pg_backend_pid()`;
-      return n;
-    };
-
     const other = await createTestModule({});
     await other.moduleRef.init();
     await other.prisma.reminder.count();
-    const openBeforeClose = await otherConnections();
-    await other.moduleRef.close();
-    const closedByModule = openBeforeClose - (await otherConnections());
-
-    expect(create.mock.calls).toEqual([[]]); // no map passed: the shipped one
-    expect(other.prisma).toBe(create.mock.results[0].value);
-    expect([init.mock.calls.length, destroy.mock.calls.length]).toEqual([1, 1]);
-    expect(closedByModule).toBeGreaterThan(0);
+    const witness = await backendOf(other.prisma); // a backend that served the module's own client
+    try {
+      await Promise.all([released, kept].map((client) => client.$queryRaw`SELECT 1`)); // each opens a connection
+      await other.moduleRef.close();
+      await released.$disconnect(); // other sessions come and go between the two checks
+      expect(await isBackendOpen(prisma, witness)).toBe(false);
+      expect(create.mock.calls).toEqual([[]]); // no map passed: the shipped one
+      expect(other.prisma).toBe(create.mock.results[0].value);
+      expect([init.mock.calls.length, destroy.mock.calls.length]).toEqual([1, 1]);
+    } finally {
+      await Promise.allSettled([released.$disconnect(), kept.$disconnect()]);
+    }
   });
 });
