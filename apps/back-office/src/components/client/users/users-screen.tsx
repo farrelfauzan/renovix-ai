@@ -23,13 +23,16 @@ type UsersScreenProps = {
 /**
  * The users screen (RNX-358, PRD 09): the list with exact email or id search and the package and status filters, and
  * the detail with masked personal data and the audited reveal. Shown to admins with `users:read` (visibility only:
- * the API enforces every permission).
+ * the API enforces every permission). RNX-100: with `users:write` the detail also offers suspend or reinstate, the API
+ * key reset and the session revokes.
  */
 export function UsersScreen({ heading, api = defaultUsersApi, packagesApi = defaultPackagesApi, sessionApi = defaultSessionApi }: UsersScreenProps) {
   const profile = useAdminProfile(sessionApi);
   const has = (permission: string): boolean => profile?.permissions.includes(permission) ?? false;
   if (profile && has("users:read")) {
-    return <UsersDirectory heading={heading} api={api} packagesApi={packagesApi} canListPackages={has("packages:read")} isMasked={!has("users:read_pii")} />;
+    return (
+      <UsersDirectory heading={heading} api={api} packagesApi={packagesApi} canListPackages={has("packages:read")} isMasked={!has("users:read_pii")} canWriteUsers={has("users:write")} />
+    );
   }
   return (
     <div className="flex flex-col gap-4">

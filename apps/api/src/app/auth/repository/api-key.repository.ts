@@ -36,7 +36,7 @@ export class ApiKeyRepository {
     });
   }
 
-  /** The key with this prefix, with its hash, state and owner, for the API key check. */
+  /** The key with this prefix, with its hash, state and owner (RNX-100: and the owner's status), for the API key check. */
   findKeyByPrefix(prefix: string, tx?: DbTransaction) {
     return (tx ?? this.prisma).apiKey.findUnique({
       where: { prefix },
@@ -46,7 +46,7 @@ export class ApiKeyRepository {
         revokedAt: true,
         expiresAt: true,
         allowedTiers: true,
-        user: { select: { id: true, email: true } },
+        user: { select: { id: true, email: true, status: true } },
       },
     });
   }
@@ -62,6 +62,12 @@ export class ApiKeyRepository {
       where: { id: keyId, userId, revokedAt: null },
       data: { revokedAt: now },
     });
+    return count;
+  }
+
+  /** RNX-100: revokes every key of this user that is not revoked yet (a revoked key keeps its time); returns how many. */
+  async revokeAllOfUser(userId: string, now: Date, tx?: DbTransaction): Promise<number> {
+    const { count } = await (tx ?? this.prisma).apiKey.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } });
     return count;
   }
 

@@ -10,6 +10,7 @@ import { resolveTrustedOrigins } from "../common/utils/resolve-trusted-origins";
 import { ensureWeeklyFreeWallet } from "../app/billing/repository/ensure-weekly-free-wallet";
 import { ensureDefaultWorkspace } from "../app/workspace/repository/ensure-default-workspace";
 import { enqueueEmailChangeVerification } from "../app/email/repository/enqueue-email-change-verification";
+import { isUserSuspended } from "../app/auth/repository/is-user-suspended";
 
 const isProduction = process.env.NODE_ENV === "production";
 const clientIpHeader = readClientIpHeader();
@@ -120,6 +121,14 @@ export const auth = betterAuth({
         },
       },
     },
+    // RNX-100 (D427): no new session for a suspended user, whatever the sign-in method. Email sign-in then answers
+    // Better Auth's own 401 FAILED_TO_CREATE_SESSION ("Failed to create session", after the password check); SSO
+    // redirects to its error URL with error=unable_to_create_session.
+    session: {
+      create: {
+        before: async (session) => !(await isUserSuspended(getPrisma(), session.userId)),
+      },
+    },
   },
   user: {
     modelName: "User",
@@ -135,7 +144,8 @@ export const auth = betterAuth({
       jobTitle: { type: "string", required: false },
       timezone: { type: "string", required: false, defaultValue: "UTC" },
       locale: { type: "string", required: false, defaultValue: "en" },
-      status: { type: "string", required: false, defaultValue: "active" },
+      // RNX-100: never settable by the client (sign-up, update-user): only the back office changes a user's status.
+      status: { type: "string", required: false, defaultValue: "active", input: false },
       firstName: { type: "string", required: false },
       lastName: { type: "string", required: false },
     },

@@ -5,6 +5,7 @@ import { Button } from "@performa-ai/ui/components/button";
 import { useReport } from "@/lib/usage/use-report";
 import type { UsersApi } from "@/lib/users/users-api";
 import { SectionMessage } from "../usage/section-message";
+import { UserDetailActions } from "./user-detail-actions";
 import { UserDetailTabs } from "./user-detail-tabs";
 import { UserPersonalData } from "./user-personal-data";
 import { formatDateTime } from "@/lib/users/format-date-time";
@@ -12,15 +13,18 @@ import { formatDateTime } from "@/lib/users/format-date-time";
 type UserDetailPanelProps = {
   readonly userId: string;
   readonly api: UsersApi;
+  /** Holds `users:write`: the account actions and the session revokes show (RNX-100, visibility only). */
+  readonly canWriteUsers: boolean;
   readonly onClose: () => void;
 };
 
 /**
  * The detail of one user, loaded once when it opens (mount it with `key={userId}` so another user starts afresh and
- * nothing revealed carries over). Its heading takes the focus, which also scrolls it into view on a phone.
+ * nothing revealed carries over), and again after a suspend or reinstate. Its heading takes the focus, which also
+ * scrolls it into view on a phone.
  */
-export function UserDetailPanel({ userId, api, onClose }: UserDetailPanelProps) {
-  const { data, error } = useReport(useCallback(() => api.getUser(userId), [api, userId]));
+export function UserDetailPanel({ userId, api, canWriteUsers, onClose }: UserDetailPanelProps) {
+  const { data, error, reload } = useReport(useCallback(() => api.getUser(userId), [api, userId]));
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     headingRef.current?.focus();
@@ -38,16 +42,19 @@ export function UserDetailPanel({ userId, api, onClose }: UserDetailPanelProps) 
             </span>
           )}
         </div>
-        <Button variant="outline" type="button" onClick={onClose} className="h-9 rounded-rx border-rx-line bg-transparent px-3.5 text-[13px] font-medium">
-          Close
-        </Button>
+        <div className="flex flex-wrap items-start gap-2">
+          {data && canWriteUsers && <UserDetailActions detail={data} api={api} onStatusChange={reload} />}
+          <Button variant="outline" type="button" onClick={onClose} className="h-9 rounded-rx border-rx-line bg-transparent px-3.5 text-[13px] font-medium">
+            Close
+          </Button>
+        </div>
       </div>
       {error && <SectionMessage text={`The user could not be loaded: ${error}`} isError />}
       {!data && !error && <SectionMessage text="Loading the user…" />}
       {data && (
         <div className="grid grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <UserPersonalData detail={data} api={api} />
-          <UserDetailTabs detail={data} />
+          <UserDetailTabs detail={data} api={api} canWriteUsers={canWriteUsers} />
         </div>
       )}
     </section>

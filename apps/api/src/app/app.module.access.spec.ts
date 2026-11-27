@@ -201,6 +201,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "DELETE /admin/invitations/:id (AdminInvitationsController.revoke)",
     "DELETE /admin/providers/:id (AdminProvidersController.remove)",
     "DELETE /admin/roles/:name (AdminRolesController.delete)",
+    "DELETE /admin/users/:id/sessions (AdminUserSessionsController.revokeAll)",
+    "DELETE /admin/users/:id/sessions/:sessionId (AdminUserSessionsController.revoke)",
     "GET /admin/admins (AdminAdminsController.list)",
     "GET /admin/audit-log (AdminAuditLogController.list)",
     "GET /admin/audit-log/export (AdminAuditLogController.export)",
@@ -225,6 +227,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/usage/profit (AdminUsageController.profit)",
     "GET /admin/users (AdminUsersController.list)",
     "GET /admin/users/:id (AdminUsersController.detail)",
+    "GET /admin/users/:id/sessions (AdminUserSessionsController.list)",
     "PATCH /admin/codes/:id (AdminCodesController.deactivate)",
     "PATCH /admin/enterprise-bundles/:id (AdminEnterpriseBundlesController.update)",
     "PATCH /admin/packages/:id (AdminPackagesController.update)",
@@ -253,7 +256,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/roles (AdminRolesController.create)",
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)",
     "POST /admin/usage/users/:userId/email (AdminUsageController.revealEmail)",
+    "POST /admin/users/:id/reinstate (AdminUsersController.reinstate)",
+    "POST /admin/users/:id/reset-api-keys (AdminUsersController.resetApiKeys)",
     "POST /admin/users/:id/reveal (AdminUsersController.reveal)",
+    "POST /admin/users/:id/suspend (AdminUsersController.suspend)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
     "PUT /admin/settings/:name (AdminSettingsController.save)",
   ];
@@ -339,6 +345,14 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "GET /admin/users (AdminUsersController.list)": ["users:read"],
     "GET /admin/users/:id (AdminUsersController.detail)": ["users:read"],
     "POST /admin/users/:id/reveal (AdminUsersController.reveal)": ["users:read"],
+    // RNX-100: the user's sessions are read with users:read (as the detail); suspend, reinstate, the API key reset and
+    // the session revokes need users:write.
+    "GET /admin/users/:id/sessions (AdminUserSessionsController.list)": ["users:read"],
+    "POST /admin/users/:id/suspend (AdminUsersController.suspend)": ["users:write"],
+    "POST /admin/users/:id/reinstate (AdminUsersController.reinstate)": ["users:write"],
+    "POST /admin/users/:id/reset-api-keys (AdminUsersController.resetApiKeys)": ["users:write"],
+    "DELETE /admin/users/:id/sessions (AdminUserSessionsController.revokeAll)": ["users:write"],
+    "DELETE /admin/users/:id/sessions/:sessionId (AdminUserSessionsController.revoke)": ["users:write"],
   };
   // RNX-225 (D113): every route that accepted the login JWT or the session now accepts the session only (the
   // login JWT is retired as an access method). This is the full list of the routes whose @Access changed, plus
@@ -625,6 +639,8 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "DELETE /admin/invitations/:id (AdminInvitationsController.revoke)",
     "DELETE /admin/providers/:id (AdminProvidersController.remove)",
     "DELETE /admin/roles/:name (AdminRolesController.delete)",
+    "DELETE /admin/users/:id/sessions (AdminUserSessionsController.revokeAll)",
+    "DELETE /admin/users/:id/sessions/:sessionId (AdminUserSessionsController.revoke)",
     "PATCH /admin/codes/:id (AdminCodesController.deactivate)",
     "PATCH /admin/enterprise-bundles/:id (AdminEnterpriseBundlesController.update)",
     "PATCH /admin/packages/:id (AdminPackagesController.update)",
@@ -655,7 +671,10 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/roles (AdminRolesController.create)",
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)",
     "POST /admin/usage/users/:userId/email (AdminUsageController.revealEmail)",
+    "POST /admin/users/:id/reinstate (AdminUsersController.reinstate)",
+    "POST /admin/users/:id/reset-api-keys (AdminUsersController.resetApiKeys)",
     "POST /admin/users/:id/reveal (AdminUsersController.reveal)",
+    "POST /admin/users/:id/suspend (AdminUsersController.suspend)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
     "PUT /admin/settings/:name (AdminSettingsController.save)",
   ];

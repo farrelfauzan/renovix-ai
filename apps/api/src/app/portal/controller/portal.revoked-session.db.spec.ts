@@ -150,4 +150,24 @@ describe("RNX-342: the portal guard drops a revoked session at once (Fastify, te
     expect(walletAfterRevoke).toEqual(walletBeforeRevoke);
     expect(usageAfterA).toMatchObject({ tier: "paid" });
   });
+
+  it("RNX-100 (D427): a suspended user's session that outlived the suspension is anonymous (free tier) and spends nothing from the paid wallet", async () => {
+    const email = "rnx100-portal-suspended@renovix.test";
+    await post("/api/auth/better/sign-up/email", { email, password: PASSWORD, name: "RNX-100" });
+    const user = await started.prisma.user.findUniqueOrThrow({ where: { email } });
+    await fundPaidWallet(started.prisma, user.id, FUNDED_CREDITS);
+    const device = cookiesOf(await post("/api/auth/better/sign-in/email", { email, password: PASSWORD }));
+    expect(await usage(device)).toMatchObject({ tier: "paid" });
+
+    await started.prisma.user.update({ where: { id: user.id }, data: { status: "suspended" } });
+    const usageWhileSuspended = await usage(device);
+    const walletBefore = await paidWallet(user.id);
+    const chatWhileSuspended = await chat(device);
+    const walletAfter = await paidWallet(user.id);
+
+    expect(usageWhileSuspended).toMatchObject({ tier: "free" });
+    expect(usageWhileSuspended).not.toHaveProperty("balance");
+    expect(chatWhileSuspended.body).toContain("data: [DONE]");
+    expect(walletAfter).toEqual(walletBefore);
+  });
 });

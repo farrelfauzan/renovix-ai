@@ -101,11 +101,20 @@ describe("ApiKeyGuard (RNX-18, test database)", () => {
     await expect(check(header())).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  // NOTE (RX-15): user.status ("active" | "suspended" | "deleted") is not read
-  // by any guard or service today; a suspended user's key still works.
-  it("allows the key of a user with status 'suspended' (status is not checked)", async () => {
+  // RX-15 characterized that user.status was read by no guard, so a suspended user's key still worked. RNX-100 (D427)
+  // changes that: the key lookup reads the owner's status (no extra query) and a suspended user's key is refused.
+  it("RNX-100: denies the key of a user with status 'suspended' (and does not record a use)", async () => {
     const user = await createUser(prisma, { status: "suspended" });
     await createApiKey(prisma, user.id, { apiKey: VALID_KEY });
+
+    await expect(check(`Bearer ${VALID_KEY}`)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect((await prisma.apiKey.findFirstOrThrow()).lastUsedAt).toBeNull();
+  });
+
+  it("RNX-100 control: the same key works again once the user is active", async () => {
+    const user = await createUser(prisma, { status: "suspended" });
+    await createApiKey(prisma, user.id, { apiKey: VALID_KEY });
+    await prisma.user.update({ where: { id: user.id }, data: { status: "active" } });
 
     await expect(check(`Bearer ${VALID_KEY}`)).resolves.toBe(true);
   });

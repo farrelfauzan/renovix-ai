@@ -47,6 +47,13 @@ const createFakeApi = ({ hasMore = false, detail = detailOf(), reveal = async (_
   listUsers: jest.fn(async (query: UserListQuery): Promise<UserListPage> => ({ page: query.page, pageSize: 50, hasMore, items: [AVAILABLE_70, AVAILABLE_0] })),
   getUser: jest.fn(async (): Promise<UserDetail> => detail),
   revealField: jest.fn(reveal),
+  // RNX-100's routes: not used here (users-actions.spec.tsx fires them).
+  suspend: jest.fn(async () => undefined),
+  reinstate: jest.fn(async () => undefined),
+  resetApiKeys: jest.fn(async () => ({ revoked: 0 })),
+  listSessions: jest.fn(async () => ({ sessions: [] })),
+  revokeSession: jest.fn(async () => undefined),
+  revokeAllSessions: jest.fn(async () => ({ revoked: 0 })),
 });
 const createPackagesApi = () => ({
   listOffers: jest.fn(async () => PACKAGES),
