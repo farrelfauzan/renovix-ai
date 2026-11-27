@@ -22,7 +22,7 @@ export function SideNavigation() {
         <Fragment key={group.heading ?? "main"}>
           {group.heading && <span className="px-3 pt-3.5 pb-1 font-mono text-[10px] tracking-[0.08em] text-rx-ink-group uppercase narrow:hidden">{group.heading}</span>}
           {group.items.map((item) => (
-            <SideNavigationLink key={item.href} item={item} isCurrent={pathname === item.href} />
+            <SideNavigationLink key={item.href} item={item} isCurrent={pathname === item.href || pathname.startsWith(`${item.href}/`)} />
           ))}
         </Fragment>
       ))}
