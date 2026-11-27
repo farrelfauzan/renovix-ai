@@ -9,6 +9,7 @@ import type { AdminRole } from "@/lib/admins/admin-role";
 import type { AdminsApi } from "@/lib/admins/admins-api";
 import { defaultAdminsApi } from "@/lib/admins/default-admins-api";
 import type { IssuedInvitation } from "@/lib/admins/issued-invitation";
+import { resendHandoff } from "@/lib/admins/resend-handoff";
 import { useReauthGate } from "@/lib/admins/use-reauth-gate";
 import { buildAuditLogSearch } from "@/lib/audit-log/build-audit-log-search";
 import type { AdminProfile } from "@/lib/session/admin-profile";
@@ -24,6 +25,8 @@ type AdminDetailScreenProps = {
   /** Replaced in tests only. */
   readonly api?: AdminsApi;
   readonly sessionApi?: SessionApi;
+  /** Called with the new invitation's id after a Resend, to move the page there (RNX-377); without it the page stays. */
+  readonly onInvitationResent?: (id: string) => void;
 };
 
 const LOAD_ERROR = "The admin could not be loaded.";
@@ -36,13 +39,15 @@ const LOAD_ERROR = "The admin could not be loaded.";
  * the signed-in admin's permissions (visibility only: the API enforces them and audits every write).
  * With `audit:read`, an admin's page links to the audit log filtered to that admin as the actor (RNX-371).
  */
-export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi = defaultSessionApi }: AdminDetailScreenProps) {
+export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi = defaultSessionApi, onInvitationResent }: AdminDetailScreenProps) {
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [admins, setAdmins] = useState<readonly AdminListEntry[] | null>(null);
   const [roles, setRoles] = useState<readonly AdminRole[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [issued, setIssued] = useState<IssuedInvitation | null>(null);
+  const [issued, setIssued] = useState<IssuedInvitation | null>(() => resendHandoff.peek(adminId));
+  const [hasResent, setHasResent] = useState(issued !== null);
+  const [isMoving, setIsMoving] = useState(false);
   const [hasSeenInvitation, setHasSeenInvitation] = useState(false);
   const { perform, prompt } = useReauthGate(api.reauth);
   const has = (permission: string) => profile?.permissions.includes(permission) ?? false;
@@ -63,6 +68,7 @@ export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi 
     },
     [api, adminId],
   );
+  useEffect(() => resendHandoff.clear(), []);
   useEffect(() => {
     sessionApi.me().then((me) => {
       setProfile(me);
@@ -71,6 +77,7 @@ export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi 
   }, [sessionApi, load]);
   const run = async <T,>(action: () => Promise<T>): Promise<ActionOutcome<T>> => {
     setActionError(null);
+    setHasResent(false);
     const outcome = await perform(action);
     if (outcome.ok && profile) await load(profile);
     return outcome;
@@ -80,12 +87,20 @@ export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi 
     if (!outcome.ok) setActionError(outcome.message);
   };
   const resend = async (id: string, reason: string) => {
-    const outcome = await run(() => api.resendInvitation(id, reason));
-    if (outcome.ok) setIssued(outcome.value);
-    else setActionError(outcome.message);
+    setActionError(null);
+    const outcome = await perform(() => api.resendInvitation(id, reason));
+    if (!outcome.ok) return setActionError(outcome.message);
+    if (onInvitationResent && outcome.value.invitation.id !== adminId) {
+      // The old id is revoked: no reload here (it would say so) and no actions on it; the new id's page loads its own and opens the link.
+      resendHandoff.stash(outcome.value);
+      setIsMoving(true);
+      return onInvitationResent(outcome.value.invitation.id);
+    }
+    setIssued(outcome.value);
+    if (profile) await load(profile);
   };
   if (loadError) return <p role="alert" className="mt-4 text-sm text-rx-red-bar">{loadError}</p>;
-  if (!profile || !admins) return <p className="mt-4 text-sm text-rx-muted">Loading…</p>;
+  if (!profile || !admins || isMoving) return <p className="mt-4 text-sm text-rx-muted">Loading…</p>;
   const entry = admins.find((candidate) => candidate.id === adminId);
   return (
     <div className="mt-4 flex flex-col gap-4">
@@ -95,6 +110,7 @@ export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi 
       </Link>
       {actionError && <p role="alert" className="text-sm text-rx-red-bar">{actionError}</p>}
       {prompt && <ReauthPrompt prompt={prompt} />}
+      {hasResent && <p role="status" className="text-sm text-rx-muted">Invitation resent. The previous link no longer works.</p>}
       {issued && <InvitationLinkDialog issued={issued} onClose={() => setIssued(null)} />}
       {entry && (
         <AdminDetailPanel entry={entry} api={api} roles={roles} isOwnDetail={entry.id === profile.id} canWriteAdmins={has("admins:write")} canWriteRoles={has("roles:write")} onAct={act} onResend={resend} />

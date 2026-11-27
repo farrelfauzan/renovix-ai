@@ -1,4 +1,4 @@
-import { AdminDetailScreen } from "@/components/client/admins/admin-detail-screen";
+import { AdminDetailRoute } from "@/components/client/admins/admin-detail-route";
 
 type AdminDetailPageProps = {
   readonly params: Promise<{ readonly adminId: string }>;
@@ -9,7 +9,7 @@ export default async function AdminDetailPage({ params }: AdminDetailPageProps) 
   return (
     <section>
       <h1 className="text-xl font-semibold">Admins and roles</h1>
-      <AdminDetailScreen adminId={adminId} />
+      <AdminDetailRoute adminId={adminId} />
     </section>
   );
 }
