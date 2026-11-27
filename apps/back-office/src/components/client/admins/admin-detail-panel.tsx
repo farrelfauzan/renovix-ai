@@ -18,8 +18,8 @@ type AdminDetailPanelProps = {
   readonly canWriteRoles: boolean;
   /** Runs an API call with the re-authentication prompt, then refetches; shows the API's refusal. */
   readonly onAct: (action: () => Promise<unknown>) => void;
-  /** Resends the invitation and shows its new link once. */
-  readonly onResend: (id: string) => void;
+  /** Resends the invitation with the reason (RNX-370) and shows its new link once. */
+  readonly onResend: (id: string, reason: string) => void;
 };
 
 /**
@@ -56,7 +56,7 @@ export function AdminDetailPanel({ entry, api, roles, isOwnDetail, canWriteAdmin
         ))}
       </dl>
       {canWriteRoles && !isInvited && !isOwnDetail && (
-        <AssignRoleControl email={entry.email} currentRole={entry.role} roles={roles} onAssign={(role) => onAct(() => api.assignRole(entry.id, role))} />
+        <AssignRoleControl email={entry.email} currentRole={entry.role} roles={roles} onAssign={(role, reason) => onAct(() => api.assignRole(entry.id, role, reason))} />
       )}
       {canWriteAdmins && <AdminDetailActions entry={entry} api={api} onAct={onAct} onResend={onResend} />}
     </section>

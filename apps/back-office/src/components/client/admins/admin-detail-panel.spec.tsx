@@ -5,7 +5,8 @@ import { pickOption } from "@/test/pick-option";
 import { AdminDetailPanel } from "./admin-detail-panel";
 
 // RNX-373 (D436/D437/D443): the detail of an admin's page holds every admin write, shown by status and permission
-// (visibility only), and the role changes on Save, not on select. Obviously fake values only.
+// (visibility only), and the role changes on Save, not on select. Since RNX-370 each write asks for its reason in the
+// reason dialog first and sends it. Obviously fake values only.
 // The role picker is the shared Select (Radix): the open list calls scrollIntoView, which jsdom does not have.
 Element.prototype.scrollIntoView = jest.fn();
 
@@ -36,6 +37,13 @@ function renderDetail(entry: AdminListEntry, { canWriteAdmins = true, canWriteRo
 }
 const namesOfButtons = (container: HTMLElement): string[] => within(container).queryAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent ?? "");
 const clickIn = (container: HTMLElement, name: string) => fireEvent.click(within(container).getByRole("button", { name }));
+const REASON = "Made-up reason for an RNX-370 test";
+/** Types the reason into the open reason dialog titled `title` and confirms it (RNX-370). */
+const giveReason = (title: string, reason = REASON) => {
+  const dialog = screen.getByRole("dialog", { name: title });
+  fireEvent.change(within(dialog).getByLabelText("Reason (required, audited)"), { target: { value: reason } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+};
 
 describe("admin detail: what it shows", () => {
   it("the list entry's fields, with the focus on its heading", () => {
@@ -56,11 +64,14 @@ describe("admin detail: the allowed actions show and each fires its request (AC2
     const { api, detail } = renderDetail(ACTIVE);
     expect(namesOfButtons(detail)).toEqual(["Save role for ops@example.com", "Suspend / remove access", "Reset MFA", "Force password reset"]);
     clickIn(detail, "Suspend / remove access");
-    expect(api.suspend.mock.calls).toEqual([["ops"]]);
+    giveReason("Suspend ops@example.com");
+    expect(api.suspend.mock.calls).toEqual([["ops", REASON]]);
     clickIn(detail, "Reset MFA");
-    expect(api.resetMfa.mock.calls).toEqual([["ops"]]);
+    giveReason("Reset the MFA of ops@example.com");
+    expect(api.resetMfa.mock.calls).toEqual([["ops", REASON]]);
     clickIn(detail, "Force password reset");
-    expect(api.forcePasswordReset.mock.calls).toEqual([["ops"]]);
+    giveReason("Force a password reset for ops@example.com");
+    expect(api.forcePasswordReset.mock.calls).toEqual([["ops", REASON]]);
     expect(api.reactivate).not.toHaveBeenCalled();
   });
 
@@ -68,7 +79,8 @@ describe("admin detail: the allowed actions show and each fires its request (AC2
     const { api, detail } = renderDetail(SUSPENDED);
     expect(within(detail).queryByRole("button", { name: /Suspend/ })).toBeNull();
     clickIn(detail, "Reactivate");
-    expect(api.reactivate.mock.calls).toEqual([["gone"]]);
+    giveReason("Reactivate gone@example.com");
+    expect(api.reactivate.mock.calls).toEqual([["gone", REASON]]);
     expect(api.suspend).not.toHaveBeenCalled();
   });
 
@@ -77,9 +89,11 @@ describe("admin detail: the allowed actions show and each fires its request (AC2
     expect(namesOfButtons(detail)).toEqual(["Resend", "Revoke"]);
     expect(within(detail).queryByRole("combobox")).toBeNull();
     clickIn(detail, "Resend");
-    expect(onResend.mock.calls).toEqual([["late"]]);
+    giveReason("Resend the invitation of late@example.com");
+    expect(onResend.mock.calls).toEqual([["late", REASON]]);
     clickIn(detail, "Revoke");
-    expect(api.revokeInvitation.mock.calls).toEqual([["late"]]);
+    giveReason("Revoke the invitation of late@example.com");
+    expect(api.revokeInvitation.mock.calls).toEqual([["late", REASON]]);
   });
 
   it("the role changes on Save with the picked role, not when it is picked", () => {
@@ -87,7 +101,9 @@ describe("admin detail: the allowed actions show and each fires its request (AC2
     pickOption(within(detail).getByRole("combobox", { name: "Role for ops@example.com" }), "custom_ro");
     expect(api.assignRole).not.toHaveBeenCalled();
     clickIn(detail, "Save role for ops@example.com");
-    expect(api.assignRole.mock.calls).toEqual([["ops", "custom_ro"]]);
+    expect(api.assignRole).not.toHaveBeenCalled();
+    giveReason("Change the role of ops@example.com to custom_ro");
+    expect(api.assignRole.mock.calls).toEqual([["ops", "custom_ro", REASON]]);
   });
 
   it("without admins:write: the role change only; nothing on an invitation", () => {

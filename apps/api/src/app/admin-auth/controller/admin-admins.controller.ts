@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Req } from "@nestjs/common";
 import { Access } from "../../../common/decorators/access.decorator";
 import { AdminAudit } from "../decorator/admin-audit.decorator";
+import { AdminWriteReasonDto } from "../dto/admin-write-reason.dto";
 import { AssignRoleDto } from "../dto/assign-role.dto";
 import { AdminManagementService } from "../service/admin-management.service";
 import { AdminRoleService } from "../service/admin-role.service";
@@ -9,10 +10,11 @@ import { createInvalidBodyException } from "../../../common/utils/create-invalid
 
 /**
  * Admin management (RX-95) under /api/v1/admin/admins. The list needs `admins:read`; every write needs
- * `admins:write` (Owners only among the built-in roles) and is audited. Suspend, MFA reset and forced
- * password reset also need a re-authentication within REAUTH_WINDOW_MINUTES (`reauth: true`). Removing an
- * admin is a suspension: no route deletes an admin. Role assignment (RNX-187) needs `roles:write` and a
- * re-authentication.
+ * `admins:write` (Owners only among the built-in roles) and is audited. Suspend, reactivate (RNX-370), MFA reset
+ * and forced password reset also need a re-authentication within REAUTH_WINDOW_MINUTES (`reauth: true`). Removing
+ * an admin is a suspension: no route deletes an admin. Role assignment (RNX-187) needs `roles:write` and a
+ * re-authentication. Every write takes a required `reason` in its body (RNX-370), checked before anything changes
+ * and stored on its audit row.
  */
 @Controller("admin/admins")
 export class AdminAdminsController {
@@ -33,17 +35,21 @@ export class AdminAdminsController {
   @Access({ auth: ["staff"], permissions: ["admins:write"], reauth: true })
   @AdminAudit({ resource: "admin_user", action: "suspend" })
   @HttpCode(204)
-  async suspend(@Param("id") id: string, @Req() req: AuditedAdminRequest) {
-    req.audit.record(await this.management.suspend(req.admin.adminId, id, req.audit.tx));
+  async suspend(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
+    const parsed = AdminWriteReasonDto.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    req.audit.record({ ...(await this.management.suspend(req.admin.adminId, id, req.audit.tx)), reason: parsed.data.reason });
   }
 
   /** Lifts a suspension. */
   @Post(":id/reactivate")
-  @Access({ auth: ["staff"], permissions: ["admins:write"] })
+  @Access({ auth: ["staff"], permissions: ["admins:write"], reauth: true })
   @AdminAudit({ resource: "admin_user", action: "reactivate" })
   @HttpCode(204)
-  async reactivate(@Param("id") id: string, @Req() req: AuditedAdminRequest) {
-    req.audit.record(await this.management.reactivate(id, req.audit.tx));
+  async reactivate(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
+    const parsed = AdminWriteReasonDto.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    req.audit.record({ ...(await this.management.reactivate(id, req.audit.tx)), reason: parsed.data.reason });
   }
 
   /** Removes the admin's TOTP and recovery codes and ends their sessions; they enrol again at the next sign-in. */
@@ -51,8 +57,10 @@ export class AdminAdminsController {
   @Access({ auth: ["staff"], permissions: ["admins:write"], reauth: true })
   @AdminAudit({ resource: "admin_user", action: "reset_mfa" })
   @HttpCode(204)
-  async resetMfa(@Param("id") id: string, @Req() req: AuditedAdminRequest) {
-    req.audit.record(await this.management.resetMfa(id, req.audit.tx));
+  async resetMfa(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
+    const parsed = AdminWriteReasonDto.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    req.audit.record({ ...(await this.management.resetMfa(id, req.audit.tx)), reason: parsed.data.reason });
   }
 
   /** Forces a password change at the admin's next sign-in and ends their sessions. */
@@ -60,8 +68,10 @@ export class AdminAdminsController {
   @Access({ auth: ["staff"], permissions: ["admins:write"], reauth: true })
   @AdminAudit({ resource: "admin_user", action: "force_password_reset" })
   @HttpCode(204)
-  async forcePasswordReset(@Param("id") id: string, @Req() req: AuditedAdminRequest) {
-    req.audit.record(await this.management.forcePasswordReset(id, req.audit.tx));
+  async forcePasswordReset(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
+    const parsed = AdminWriteReasonDto.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    req.audit.record({ ...(await this.management.forcePasswordReset(id, req.audit.tx)), reason: parsed.data.reason });
   }
 
   /**
@@ -75,6 +85,6 @@ export class AdminAdminsController {
   async assignRole(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
     const parsed = AssignRoleDto.safeParse(body);
     if (!parsed.success) throw createInvalidBodyException(parsed.error);
-    req.audit.record(await this.roles.assignRole(id, parsed.data.role, req.admin.adminId, req.audit.tx));
+    req.audit.record({ ...(await this.roles.assignRole(id, parsed.data.role, req.admin.adminId, req.audit.tx)), reason: parsed.data.reason });
   }
 }

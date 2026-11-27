@@ -6,6 +6,7 @@ import { ADMIN_AUTH_CONFIG } from "../config/admin-auth-config.token";
 import { BUILT_IN_ROLES } from "../config/built-in-roles";
 import { AdminAudit } from "../decorator/admin-audit.decorator";
 import { AcceptInvitationDto } from "../dto/accept-invitation.dto";
+import { AdminWriteReasonDto } from "../dto/admin-write-reason.dto";
 import { CreateInvitationDto } from "../dto/create-invitation.dto";
 import { InvitationTokenDto } from "../dto/invitation-token.dto";
 import { AdminInvitationService } from "../service/admin-invitation.service";
@@ -22,7 +23,9 @@ const ADMIN_WRITE = ["admins:write"];
  * Back-office invitations (RX-95) under /api/v1/admin/invitations. Owners (`admins:write`) create, resend
  * and revoke; the raw link is in the create and resend responses only. The link's holder previews and
  * completes it on the public, rate-limited token routes; the token travels in the body, never the URL.
- * Inviting an Owner also needs a re-authentication within REAUTH_WINDOW_MINUTES (RNX-187).
+ * Inviting an Owner also needs a re-authentication within REAUTH_WINDOW_MINUTES (RNX-187). Create, resend and
+ * revoke take a required `reason` in their body (RNX-370), checked before anything changes and stored on the
+ * audit row.
  */
 @Controller("admin/invitations")
 export class AdminInvitationsController {
@@ -45,7 +48,7 @@ export class AdminInvitationsController {
     if (!parsed.success) throw createInvalidBodyException(parsed.error);
     if (parsed.data.role === BUILT_IN_ROLES.owner) await this.sessions.assertRecentReauth(req.admin.sessionId, req.audit.tx);
     const { invitation, link, change } = await this.invitations.create(req.admin.adminId, parsed.data, req.audit.tx);
-    req.audit.record(change);
+    req.audit.record({ ...change, reason: parsed.data.reason });
     return { invitation, link };
   }
 
@@ -58,10 +61,12 @@ export class AdminInvitationsController {
   @AdminAudit({ resource: "admin_invitation", action: "resend" })
   @HttpCode(200)
   @Header("Cache-Control", "no-store")
-  async resend(@Param("id") id: string, @Req() req: AuditedAdminRequest) {
+  async resend(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
+    const parsed = AdminWriteReasonDto.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
     if ((await this.invitations.roleOf(id, req.audit.tx)) === BUILT_IN_ROLES.owner) await this.sessions.assertRecentReauth(req.admin.sessionId, req.audit.tx);
     const { invitation, link, change } = await this.invitations.resend(id, req.audit.tx);
-    req.audit.record(change);
+    req.audit.record({ ...change, reason: parsed.data.reason });
     return { invitation, link };
   }
 
@@ -70,8 +75,10 @@ export class AdminInvitationsController {
   @Access({ auth: ["staff"], permissions: ADMIN_WRITE })
   @AdminAudit({ resource: "admin_invitation", action: "revoke" })
   @HttpCode(204)
-  async revoke(@Param("id") id: string, @Req() req: AuditedAdminRequest) {
-    req.audit.record(await this.invitations.revoke(id, req.audit.tx));
+  async revoke(@Param("id") id: string, @Body() body: unknown, @Req() req: AuditedAdminRequest) {
+    const parsed = AdminWriteReasonDto.safeParse(body);
+    if (!parsed.success) throw createInvalidBodyException(parsed.error);
+    req.audit.record({ ...(await this.invitations.revoke(id, req.audit.tx)), reason: parsed.data.reason });
   }
 
   /** Who invited and with which role. 404 unknown token; 410 used, revoked or expired. */

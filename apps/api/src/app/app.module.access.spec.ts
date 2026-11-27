@@ -595,10 +595,13 @@ describe("RX-114: every route of AppModule declares its access", () => {
   // RNX-227: a credit adjustment.
   // D250 (RNX-226): every price change (a new package, pack or bundle version) and every invitation code write.
   // RNX-35: the two payment writes, confirm from provider and mark unmatched as refunded.
+  // RNX-370: reactivating an admin, and creating and deleting a role.
   const REAUTH_ROUTES = [
+    "DELETE /admin/roles/:name (AdminRolesController.delete)",
     "PATCH /admin/codes/:id (AdminCodesController.deactivate)",
     "PATCH /admin/roles/:name (AdminRolesController.update)",
     "POST /admin/admins/:id/force-password-reset (AdminAdminsController.forcePasswordReset)",
+    "POST /admin/admins/:id/reactivate (AdminAdminsController.reactivate)",
     "POST /admin/admins/:id/reset-mfa (AdminAdminsController.resetMfa)",
     "POST /admin/admins/:id/suspend (AdminAdminsController.suspend)",
     "POST /admin/codes (AdminCodesController.create)",
@@ -607,6 +610,7 @@ describe("RX-114: every route of AppModule declares its access", () => {
     "POST /admin/packages/:id/versions (AdminPackagesController.createVersion)",
     "POST /admin/payments/orders/:id/confirm (AdminPaymentsController.confirmFromProvider)",
     "POST /admin/payments/unmatched/:id/refunded (AdminPaymentsController.markRefunded)",
+    "POST /admin/roles (AdminRolesController.create)",
     "POST /admin/top-up-packs/:id/versions (AdminTopUpPacksController.createVersion)",
     "PUT /admin/admins/:id/role (AdminAdminsController.assignRole)",
   ];

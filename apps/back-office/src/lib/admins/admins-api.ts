@@ -16,23 +16,24 @@ const FORBIDDEN = 403;
 /**
  * The admin, invitation and role routes. Each throws SignedOutError when the session is over, a
  * ReauthRequiredError for 403 "Re-authentication required", and a RefusedError with the API's message on any
- * other answer but 2xx.
+ * other answer but 2xx. Every write sends the admin's reason (RNX-370): the API requires it and stores it on the
+ * write's audit row.
  */
 export type AdminsApi = {
   readonly listAdmins: () => Promise<readonly AdminListEntry[]>;
-  readonly invite: (email: string, role: string) => Promise<IssuedInvitation>;
-  readonly resendInvitation: (id: string) => Promise<IssuedInvitation>;
-  readonly revokeInvitation: (id: string) => Promise<void>;
-  readonly suspend: (id: string) => Promise<void>;
-  readonly reactivate: (id: string) => Promise<void>;
-  readonly resetMfa: (id: string) => Promise<void>;
-  readonly forcePasswordReset: (id: string) => Promise<void>;
-  readonly assignRole: (id: string, role: string) => Promise<void>;
+  readonly invite: (email: string, role: string, reason: string) => Promise<IssuedInvitation>;
+  readonly resendInvitation: (id: string, reason: string) => Promise<IssuedInvitation>;
+  readonly revokeInvitation: (id: string, reason: string) => Promise<void>;
+  readonly suspend: (id: string, reason: string) => Promise<void>;
+  readonly reactivate: (id: string, reason: string) => Promise<void>;
+  readonly resetMfa: (id: string, reason: string) => Promise<void>;
+  readonly forcePasswordReset: (id: string, reason: string) => Promise<void>;
+  readonly assignRole: (id: string, role: string, reason: string) => Promise<void>;
   readonly listRoles: () => Promise<readonly AdminRole[]>;
-  readonly createRole: (input: RoleInput) => Promise<void>;
-  /** Only the changed fields are sent (a rename, new permissions, or both). */
-  readonly updateRole: (name: string, changes: Partial<RoleInput>) => Promise<void>;
-  readonly deleteRole: (name: string) => Promise<void>;
+  readonly createRole: (input: RoleInput, reason: string) => Promise<void>;
+  /** Only the changed fields are sent (a rename, new permissions, or both), with the reason. */
+  readonly updateRole: (name: string, changes: Partial<RoleInput>, reason: string) => Promise<void>;
+  readonly deleteRole: (name: string, reason: string) => Promise<void>;
   /** Password and TOTP again; the API accepts the sensitive actions for two minutes after it. */
   readonly reauth: (credentials: ReauthCredentials) => Promise<void>;
 };
@@ -57,18 +58,18 @@ export function createAdminsApi(client: ApiClient, reauthClient: ApiClient): Adm
   const rolePath = (name: string): string => `/roles/${encodeURIComponent(name)}`;
   return {
     listAdmins: async () => (await (await send("/admins")).json()).admins,
-    invite: async (email, role) => (await send("/invitations", "POST", { email, role })).json(),
-    resendInvitation: async (id) => (await send(`/invitations/${encodeURIComponent(id)}/resend`, "POST")).json(),
-    revokeInvitation: (id) => act(`/invitations/${encodeURIComponent(id)}`, "DELETE"),
-    suspend: (id) => act(adminPath(id, "suspend")),
-    reactivate: (id) => act(adminPath(id, "reactivate")),
-    resetMfa: (id) => act(adminPath(id, "reset-mfa")),
-    forcePasswordReset: (id) => act(adminPath(id, "force-password-reset")),
-    assignRole: (id, role) => act(adminPath(id, "role"), "PUT", { role }),
+    invite: async (email, role, reason) => (await send("/invitations", "POST", { email, role, reason })).json(),
+    resendInvitation: async (id, reason) => (await send(`/invitations/${encodeURIComponent(id)}/resend`, "POST", { reason })).json(),
+    revokeInvitation: (id, reason) => act(`/invitations/${encodeURIComponent(id)}`, "DELETE", { reason }),
+    suspend: (id, reason) => act(adminPath(id, "suspend"), "POST", { reason }),
+    reactivate: (id, reason) => act(adminPath(id, "reactivate"), "POST", { reason }),
+    resetMfa: (id, reason) => act(adminPath(id, "reset-mfa"), "POST", { reason }),
+    forcePasswordReset: (id, reason) => act(adminPath(id, "force-password-reset"), "POST", { reason }),
+    assignRole: (id, role, reason) => act(adminPath(id, "role"), "PUT", { role, reason }),
     listRoles: async () => (await (await send("/roles")).json()).roles,
-    createRole: (input) => act("/roles", "POST", input),
-    updateRole: (name, changes) => act(rolePath(name), "PATCH", changes),
-    deleteRole: (name) => act(rolePath(name), "DELETE"),
+    createRole: (input, reason) => act("/roles", "POST", { ...input, reason }),
+    updateRole: (name, changes, reason) => act(rolePath(name), "PATCH", { ...changes, reason }),
+    deleteRole: (name, reason) => act(rolePath(name), "DELETE", { reason }),
     reauth: async (credentials) => {
       await send("/auth/reauth", "POST", credentials, reauthClient);
     },

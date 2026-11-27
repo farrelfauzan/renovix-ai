@@ -79,8 +79,8 @@ export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi 
     const outcome = await run(action);
     if (!outcome.ok) setActionError(outcome.message);
   };
-  const resend = async (id: string) => {
-    const outcome = await run(() => api.resendInvitation(id));
+  const resend = async (id: string, reason: string) => {
+    const outcome = await run(() => api.resendInvitation(id, reason));
     if (outcome.ok) setIssued(outcome.value);
     else setActionError(outcome.message);
   };

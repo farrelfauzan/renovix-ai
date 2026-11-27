@@ -4,20 +4,22 @@ import { useState } from "react";
 import { Button } from "@performa-ai/ui/components/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@performa-ai/ui/components/select";
 import type { AdminRole } from "@/lib/admins/admin-role";
+import { ReasonDialog } from "./reason-dialog";
 
 type AssignRoleControlProps = {
   readonly email: string;
   readonly currentRole: string;
   readonly roles: readonly AdminRole[];
-  readonly onAssign: (role: string) => void;
+  readonly onAssign: (role: string, reason: string) => void;
 };
 
 /**
  * The role change of an admin's detail (`roles:write`; never rendered on the signed-in admin's own detail): picking
- * a role changes nothing until Save (D436).
+ * a role changes nothing until Save (D436), and Save asks for the reason first (RNX-370).
  */
 export function AssignRoleControl({ email, currentRole, roles, onAssign }: AssignRoleControlProps) {
   const [role, setRole] = useState(currentRole);
+  const [isAsking, setIsAsking] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="text-rx-muted">Change role</span>
@@ -31,7 +33,8 @@ export function AssignRoleControl({ email, currentRole, roles, onAssign }: Assig
           ))}
         </SelectContent>
       </Select>
-      <Button variant="outline" type="button" aria-label={`Save role for ${email}`} onClick={() => onAssign(role)} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Save</Button>
+      <Button variant="outline" type="button" aria-label={`Save role for ${email}`} onClick={() => setIsAsking(true)} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Save</Button>
+      {isAsking && <ReasonDialog request={{ title: `Change the role of ${email} to ${role}`, confirm: (reason) => onAssign(role, reason) }} onClose={() => setIsAsking(false)} />}
     </div>
   );
 }

@@ -55,9 +55,32 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Success (no content)"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -90,9 +113,32 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Success (no content)"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -125,9 +171,32 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Success (no content)"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -171,10 +240,16 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 64
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
                   }
                 },
                 "required": [
-                  "role"
+                  "role",
+                  "reason"
                 ]
               }
             }
@@ -218,9 +293,32 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Success (no content)"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -1276,11 +1374,17 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 64
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
                   }
                 },
                 "required": [
                   "email",
-                  "role"
+                  "role",
+                  "reason"
                 ]
               }
             }
@@ -1324,9 +1428,32 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Success (no content)"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -1359,9 +1486,32 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"
@@ -2672,11 +2822,17 @@
                         "reconciliation:write"
                       ]
                     }
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
                   }
                 },
                 "required": [
                   "name",
-                  "permissions"
+                  "permissions",
+                  "reason"
                 ]
               }
             }
@@ -2769,8 +2925,16 @@
                         "reconciliation:write"
                       ]
                     }
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
                   }
-                }
+                },
+                "required": [
+                  "reason"
+                ]
               }
             }
           }
@@ -2811,9 +2975,32 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Success (no content)"
+          },
+          "400": {
+            "description": "Invalid request body (Zod validation failed)"
           },
           "401": {
             "description": "Not authenticated (missing or invalid credentials)"

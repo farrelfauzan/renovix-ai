@@ -14,12 +14,16 @@ import { AdminsAndRolesScreen } from "./admins-and-roles-screen";
 // RNX-189: the admins and roles screen against a stateful fake of the API at the ApiClient boundary. The API's
 // own rules (audit rows, last owner, direct calls without permission) are tested in apps/api; here the screen
 // shows its answers. Obviously fake values only. Since RNX-373 (D443) every admin write lives on the admin's own page
-// (AdminDetailScreen), so the tests of those writes render that page against the same fake.
+// (AdminDetailScreen), so the tests of those writes render that page against the same fake. Since RNX-370 every write
+// carries a reason: the fake refuses a write without one (400), and reactivate and role create and delete need a
+// recent re-authentication, as in the API.
 
 const SECRET_LINK = "https://bo.test/accept-invitation#token=SECRET-TOKEN-1";
 const PAST = "2020-01-01T00:00:00.000Z";
 const FUTURE = "2999-01-01T00:00:00.000Z";
 const OWNER_PERMISSIONS = ["admins:read", "admins:write", "roles:read", "roles:write"];
+const REASON = "Made-up reason for an RNX-370 test";
+const REASON_LABEL = "Reason (required, audited)";
 
 const admin = (id: string, overrides: Partial<AdminListEntry> = {}): AdminListEntry => ({
   id, status: "active", name: id, email: `${id}@example.com`, role: "support", mfa: "enrolled", lastSignInAt: "2026-10-20T08:00:00.000Z", ...overrides,
@@ -31,7 +35,7 @@ const profile = (permissions: string[], id = "owner"): AdminProfile => ({
 
 type FakeState = { admins: AdminListEntry[]; roles: AdminRole[]; isReauthed: boolean; counter: number };
 
-/** A fake API: the lists, the writes, and the re-authentication window; `calls` is every "METHOD path". */
+/** A fake API: the lists, the writes, and the re-authentication window; `calls` is every "METHOD path", `sent` each with its body. */
 function createFakeApi(initial: Partial<FakeState> = {}) {
   const state: FakeState = {
     admins: [admin("owner", { role: "owner" }), admin("ops"), admin("owner2", { role: "owner" })],
@@ -41,6 +45,7 @@ function createFakeApi(initial: Partial<FakeState> = {}) {
     ...initial,
   };
   const calls: string[] = [];
+  const sent: { readonly call: string; readonly body: Record<string, any> }[] = [];
   const reply = (status: number, body?: unknown): Response =>
     ({ ok: status < 400, status, json: async () => body }) as Response;
   const needsReauth = (): Response | null => (state.isReauthed ? null : reply(403, { message: "Re-authentication required" }));
@@ -51,6 +56,8 @@ function createFakeApi(initial: Partial<FakeState> = {}) {
   const activeOwners = () => state.admins.filter((entry) => entry.role === "owner" && entry.status === "active");
   const handle = (method: string, path: string, body: Record<string, any>): Response => {
     const [, , , , area, id, action] = path.split("/").map(decodeURIComponent);
+    const isWrite = method !== "GET" && area !== "auth";
+    if (isWrite && (typeof body.reason !== "string" || body.reason.trim() === "")) return reply(400, { message: "Invalid request body" });
     if (area === "admins" && !id) return reply(200, { admins: state.admins });
     if (area === "roles" && !id && method === "GET") return reply(200, { roles: state.roles });
     if (area === "auth") {
@@ -75,10 +82,10 @@ function createFakeApi(initial: Partial<FakeState> = {}) {
       state.admins = state.admins.filter((entry) => entry.id !== id);
       return reply(204);
     }
-    if (area === "admins" && action === "reactivate") return patch(id, { status: "active" }), reply(204);
     if (area === "admins") {
       const denied = needsReauth();
       if (denied) return denied;
+      if (action === "reactivate") return patch(id, { status: "active" }), reply(204);
       const target = find(id);
       const isLastOwner = target?.role === "owner" && activeOwners().length < 2;
       if (action === "suspend") {
@@ -93,6 +100,8 @@ function createFakeApi(initial: Partial<FakeState> = {}) {
       }
     }
     if (area === "roles" && method === "POST") {
+      const denied = needsReauth();
+      if (denied) return denied;
       if (state.roles.some((entry) => entry.name === body.name)) return reply(409, { message: "A role with this name already exists" });
       state.roles = [...state.roles, role(body.name, false, body.permissions)];
       return reply(204);
@@ -104,6 +113,8 @@ function createFakeApi(initial: Partial<FakeState> = {}) {
       return reply(204);
     }
     if (area === "roles" && method === "DELETE") {
+      const denied = needsReauth();
+      if (denied) return denied;
       if (state.roles.find((entry) => entry.name === id)?.builtIn) return reply(403, { message: "Built-in roles cannot be deleted" });
       if (id === "held_role") return reply(409, { message: "The role is held by an admin or an invitation" });
       state.roles = state.roles.filter((entry) => entry.name !== id);
@@ -113,11 +124,16 @@ function createFakeApi(initial: Partial<FakeState> = {}) {
   };
   const request = jest.fn(async (path: string, init?: RequestInit): Promise<Response> => {
     const method = init?.method ?? "GET";
-    calls.push(`${method} ${path.replace("/api/v1/admin", "")}`);
-    return handle(method, path, init?.body ? JSON.parse(String(init.body)) : {});
+    const call = `${method} ${path.replace("/api/v1/admin", "")}`;
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    calls.push(call);
+    sent.push({ call, body });
+    return handle(method, path, body);
   });
   const client: ApiClient = { request };
-  return { state, calls, api: createAdminsApi(client, client), count: (call: string) => calls.filter((entry) => entry === call).length };
+  /** The reason of each request sent as `call`, in order. */
+  const reasonsOf = (call: string) => sent.filter((entry) => entry.call === call).map((entry) => entry.body.reason);
+  return { state, calls, sent, reasonsOf, api: createAdminsApi(client, client), count: (call: string) => calls.filter((entry) => entry === call).length };
 }
 
 const sessionOf = (me: AdminProfile): SessionApi => ({ me: async () => me, changePassword: async () => undefined, signOut: async () => undefined });
@@ -143,6 +159,14 @@ global.ResizeObserver = class {
   unobserve() {}
   disconnect() {}
 };
+/** Types the reason into the open reason dialog titled `title` and confirms it (RNX-370). */
+const giveReason = async (title: string, reason = REASON) => {
+  const dialog = await screen.findByRole("dialog", { name: title });
+  fireEvent.change(within(dialog).getByLabelText(REASON_LABEL), { target: { value: reason } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+};
+/** The writes sent so far (every request but a GET and the re-authentication). */
+const writesOf = (fake: ReturnType<typeof createFakeApi>) => fake.calls.filter((call) => !call.startsWith("GET") && call !== "POST /auth/reauth");
 const confirmIdentity = async (password = "pw", totp = "123456") => {
   const prompt = await screen.findByRole("dialog", { name: "Confirm it is you" });
   fireEvent.change(within(prompt).getByLabelText("Password"), { target: { value: password } });
@@ -176,20 +200,26 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       expect(fake.count("GET /admins")).toBe(1);
 
       click("Suspend / remove access");
+      await giveReason("Suspend ops@example.com");
       await waitFor(() => expect(field("Status")).toBe("suspended"));
       click("Reactivate");
+      await giveReason("Reactivate ops@example.com");
       await waitFor(() => expect(field("Status")).toBe("active"));
       click("Reset MFA");
+      await giveReason("Reset the MFA of ops@example.com");
       await waitFor(() => expect(field("MFA")).toBe("not enrolled"));
       pickOption(screen.getByLabelText("Role for ops@example.com"), "custom_ro");
       click("Save role for ops@example.com");
+      await giveReason("Change the role of ops@example.com to custom_ro");
       await waitFor(() => expect(field("Role")).toBe("custom_ro"));
       click("Force password reset");
+      await giveReason("Force a password reset for ops@example.com");
       await waitFor(() => expect(fake.count("GET /admins")).toBe(6));
       cleanup();
       await renderScreen(fake);
       click("Invite admin");
       fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+      fireEvent.change(screen.getByLabelText(REASON_LABEL), { target: { value: REASON } });
       fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
       await waitFor(() => expect(within(rowOf("new@example.com")).getAllByRole("cell")[5].textContent).toBe("invited"));
 
@@ -204,6 +234,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       await renderScreen(fake);
       click("Invite admin");
       fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+      fireEvent.change(screen.getByLabelText(REASON_LABEL), { target: { value: REASON } });
 
       fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
@@ -229,6 +260,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       await renderDetail(fake, "late");
 
       click("Resend");
+      await giveReason("Resend the invitation of late@example.com");
 
       expect((await screen.findByLabelText("Invitation link") as HTMLInputElement).value).toBe(SECRET_LINK);
       fireEvent.click(within(screen.getByRole("dialog", { name: "Invitation created" })).getByRole("button", { name: "Close" }));
@@ -256,6 +288,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       expect(within(detail).getByRole("button", { name: "Resend" })).toBeTruthy();
       expect(within(detail).getByRole("button", { name: "Revoke" })).toBeTruthy();
       click("Revoke");
+      await giveReason("Revoke the invitation of late@example.com");
       expect(await screen.findByText("This invitation was revoked.")).toBeTruthy();
       expect(screen.getByRole("link", { name: "Admins and roles" }).getAttribute("href")).toBe("/admins-and-roles");
       expect(screen.queryAllByRole("button")).toEqual([]);
@@ -267,6 +300,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       await renderScreen(fake);
       click("Invite admin");
       fireEvent.change(screen.getByLabelText("Email"), { target: { value: "late@example.com" } });
+      fireEvent.change(screen.getByLabelText(REASON_LABEL), { target: { value: REASON } });
 
       fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
 
@@ -276,6 +310,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Resend invitation" }));
       expect((await screen.findByLabelText("Invitation link") as HTMLInputElement).value).toBe(SECRET_LINK);
       expect(fake.calls).toContain("POST /invitations/late/resend");
+      expect(fake.reasonsOf("POST /invitations/late/resend")).toEqual([REASON]);
       expect(screen.queryByRole("dialog", { name: "Invite an admin" })).toBeNull();
     });
   });
@@ -285,6 +320,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       const fake = createFakeApi();
       await renderDetail(fake, "ops");
       click("Suspend / remove access");
+      await giveReason("Suspend ops@example.com");
       const prompt = await screen.findByRole("dialog", { name: "Confirm it is you" });
       expect(within(prompt).getByLabelText("Password").getAttribute("autocomplete")).toBe("current-password");
       expect(within(prompt).getByLabelText("Authenticator code").getAttribute("autocomplete")).toBe("one-time-code");
@@ -293,6 +329,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
 
       await waitFor(() => expect(field("Status")).toBe("suspended"));
       expect(fake.calls.filter((call) => call.includes("suspend") || call.includes("reauth"))).toEqual(["POST /admins/ops/suspend", "POST /auth/reauth", "POST /admins/ops/suspend"]);
+      expect(fake.reasonsOf("POST /admins/ops/suspend")).toEqual([REASON, REASON]);
       expect(screen.queryByRole("dialog", { name: "Confirm it is you" })).toBeNull();
     });
 
@@ -300,6 +337,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       const fake = createFakeApi();
       await renderDetail(fake, "ops");
       click("Suspend / remove access");
+      await giveReason("Suspend ops@example.com");
 
       await confirmIdentity("pw", "000000");
 
@@ -333,6 +371,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       render(<AdminDetailScreen adminId="ops" api={api} sessionApi={sessionOf(profile(OWNER_PERMISSIONS))} />);
       await screen.findByRole("region", { name: "Admin ops@example.com" });
       click("Suspend / remove access");
+      await giveReason("Suspend ops@example.com");
 
       await confirmIdentity("pw", "000000");
 
@@ -348,6 +387,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       const fake = createFakeApi();
       await renderDetail(fake, "ops");
       click("Suspend / remove access");
+      await giveReason("Suspend ops@example.com");
       await screen.findByRole("dialog", { name: "Confirm it is you" });
 
       click("Cancel");
@@ -415,6 +455,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       await renderDetail(fake, "owner", profile(OWNER_PERMISSIONS, "ops"));
 
       click("Suspend / remove access");
+      await giveReason("Suspend owner@example.com");
 
       expect((await screen.findByRole("alert")).textContent).toBe("The last active owner cannot be suspended");
       expect(field("Status")).toBe("active");
@@ -427,6 +468,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       pickOption(screen.getByLabelText("Role for owner@example.com"), "support");
 
       click("Save role for owner@example.com");
+      await giveReason("Change the role of owner@example.com to support");
 
       expect((await screen.findByRole("alert")).textContent).toBe("The last active owner keeps the Owner role");
       expect(field("Role")).toBe("owner");
@@ -438,8 +480,10 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       click("Create role");
       const form = screen.getByRole("dialog", { name: "Create a role" });
       fireEvent.change(within(form).getByLabelText("Role name"), { target: { value: "custom_ro" } });
+      fireEvent.change(within(form).getByLabelText(REASON_LABEL), { target: { value: REASON } });
 
       fireEvent.click(within(form).getByRole("button", { name: "Save role" }));
+      await confirmIdentity();
 
       expect((await within(form).findByRole("alert")).textContent).toBe("A role with this name already exists");
       expect(fake.state.roles.filter((entry) => entry.name === "custom_ro")).toHaveLength(1);
@@ -450,7 +494,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       const refusing: ApiClient = { request: async () => ({ ok: false, status: 400, json: async () => ({ permissions: ["bad"] }) }) as Response };
       const api = createAdminsApi(refusing, refusing);
 
-      await expect(api.createRole({ name: "x", permissions: ["bad"] })).rejects.toThrow("The request was refused (400).");
+      await expect(api.createRole({ name: "x", permissions: ["bad"] }, REASON)).rejects.toThrow("The request was refused (400).");
     });
   });
 
@@ -461,6 +505,7 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       click("Invite admin");
       fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
       pickOption(screen.getByRole("combobox", { name: "Role" }), "custom_ro");
+      fireEvent.change(screen.getByLabelText(REASON_LABEL), { target: { value: REASON } });
       fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
       await waitFor(() => expect(within(rowOf("new@example.com")).getAllByRole("cell")[2].textContent).toBe("custom_ro"));
     });
@@ -477,8 +522,10 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       fireEvent.change(within(form).getByLabelText("Role name"), { target: { value: "finance_ro" } });
       fireEvent.click(within(form).getByLabelText("credits:read"));
       fireEvent.click(within(form).getByLabelText("usage:read"));
+      fireEvent.change(within(form).getByLabelText(REASON_LABEL), { target: { value: REASON } });
 
       fireEvent.click(within(form).getByRole("button", { name: "Save role" }));
+      await confirmIdentity();
 
       await waitFor(() => expect(within(screen.getByRole("table", { name: "Roles" })).getByText("credits:read, usage:read")).toBeTruthy());
       expect(fake.state.roles.at(-1)).toMatchObject({ name: "finance_ro", permissions: ["credits:read", "usage:read"] });
@@ -493,8 +540,10 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       fireEvent.change(within(form).getByLabelText("Role name"), { target: { value: "profit_viewer" } });
       fireEvent.click(within(form).getByLabelText("profit:read"));
       fireEvent.click(within(form).getByLabelText("reconciliation:write"));
+      fireEvent.change(within(form).getByLabelText(REASON_LABEL), { target: { value: REASON } });
 
       fireEvent.click(within(form).getByRole("button", { name: "Save role" }));
+      await confirmIdentity();
 
       await waitFor(() => expect(screen.queryByRole("dialog", { name: "Create a role" })).toBeNull());
       expect(fake.state.roles.at(-1)).toMatchObject({ name: "profit_viewer", permissions: ["profit:read", "reconciliation:write"] });
@@ -506,12 +555,14 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       click("Edit role custom_ro");
       const form = screen.getByRole("dialog", { name: "Edit role custom_ro" });
       fireEvent.click(within(form).getByLabelText("usage:read"));
+      fireEvent.change(within(form).getByLabelText(REASON_LABEL), { target: { value: REASON } });
       fireEvent.click(within(form).getByRole("button", { name: "Save role" }));
 
       await confirmIdentity();
 
       await waitFor(() => expect(within(screen.getByRole("table", { name: "Roles" })).getByText("users:read, usage:read")).toBeTruthy());
       expect(fake.calls.filter((call) => call.includes("custom_ro"))).toEqual(["PATCH /roles/custom_ro", "PATCH /roles/custom_ro"]);
+      expect(fake.reasonsOf("PATCH /roles/custom_ro")).toEqual([REASON, REASON]);
     });
   });
 
@@ -521,6 +572,8 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       await renderScreen(fake);
 
       click("Delete role custom_ro");
+      await giveReason("Delete role custom_ro");
+      await confirmIdentity();
 
       await waitFor(() => expect(within(screen.getByRole("table", { name: "Roles" })).queryByText("custom_ro")).toBeNull());
       expect(fake.calls).toContain("DELETE /roles/custom_ro");
@@ -531,6 +584,8 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       await renderScreen(fake);
 
       click("Delete role held_role");
+      await giveReason("Delete role held_role");
+      await confirmIdentity();
 
       expect((await screen.findByRole("alert")).textContent).toBe("The role is held by an admin or an invitation");
       expect(within(screen.getByRole("table", { name: "Roles" })).getByText("held_role")).toBeTruthy();
@@ -544,6 +599,177 @@ describe("AdminsAndRolesScreen (RNX-189)", () => {
       expect(roles.getAllByText("built-in", { selector: "td" })).toHaveLength(2);
       expect(roles.queryByRole("button", { name: /(Edit|Delete) role (owner|support)/ })).toBeNull();
       expect(screen.getByRole("button", { name: "Delete role custom_ro" })).toBeTruthy();
+    });
+  });
+
+  describe("RNX-370 AC3: every admin write asks for the reason and sends it; with no reason nothing is sent", () => {
+    /** The page with an active (ops), a suspended (gone) admin and a pending invitation (late), not re-authenticated. */
+    const withEveryState = () => {
+      const fake = createFakeApi();
+      fake.state.admins.push(admin("gone", { status: "suspended" }), admin("late", { status: "invited", name: null, mfa: "not_enrolled", lastSignInAt: null, invitationExpiresAt: FUTURE }));
+      return fake;
+    };
+    // (button, reason dialog title, page id, request, whether the API asks for a re-authentication first)
+    const DETAIL_WRITES: readonly (readonly [string, string, string, string, boolean])[] = [
+      ["Suspend / remove access", "Suspend ops@example.com", "ops", "POST /admins/ops/suspend", true],
+      ["Reactivate", "Reactivate gone@example.com", "gone", "POST /admins/gone/reactivate", true],
+      ["Reset MFA", "Reset the MFA of ops@example.com", "ops", "POST /admins/ops/reset-mfa", true],
+      ["Force password reset", "Force a password reset for ops@example.com", "ops", "POST /admins/ops/force-password-reset", true],
+      ["Resend", "Resend the invitation of late@example.com", "late", "POST /invitations/late/resend", false],
+      ["Revoke", "Revoke the invitation of late@example.com", "late", "DELETE /invitations/late", false],
+    ];
+
+    it.each(DETAIL_WRITES)("%s: confirming with a reason sends the request carrying it (again after a re-authentication)", async (button, title, id, request, isGated) => {
+      const fake = withEveryState();
+      await renderDetail(fake, id);
+
+      click(button);
+      await giveReason(title);
+      if (isGated) await confirmIdentity();
+
+      await waitFor(() => expect(fake.reasonsOf(request)).toEqual(isGated ? [REASON, REASON] : [REASON]));
+      expect(writesOf(fake)).toEqual(isGated ? [request, request] : [request]);
+    });
+
+    it.each(DETAIL_WRITES)("%s: with the reason empty or only spaces Confirm is disabled and no request fires; Esc closes it", async (button, title, id) => {
+      const fake = withEveryState();
+      await renderDetail(fake, id);
+
+      click(button);
+      const dialog = await screen.findByRole("dialog", { name: title });
+      const confirm = within(dialog).getByRole("button", { name: "Confirm" }) as HTMLButtonElement;
+      const isDisabledWhenEmpty = confirm.disabled;
+      fireEvent.click(confirm);
+      fireEvent.change(within(dialog).getByLabelText(REASON_LABEL), { target: { value: "   " } });
+      const isDisabledWhenBlank = confirm.disabled;
+      fireEvent.click(confirm);
+      fireEvent.keyDown(dialog, { key: "Escape" });
+
+      expect([isDisabledWhenEmpty, isDisabledWhenBlank]).toEqual([true, true]);
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: title })).toBeNull());
+      expect(writesOf(fake)).toEqual([]);
+    });
+
+    it("change role: Save asks for the reason; confirming sends the role and the reason (again after a re-authentication)", async () => {
+      const fake = withEveryState();
+      await renderDetail(fake, "ops");
+      pickOption(screen.getByLabelText("Role for ops@example.com"), "custom_ro");
+
+      click("Save role for ops@example.com");
+      await giveReason("Change the role of ops@example.com to custom_ro");
+      await confirmIdentity();
+
+      await waitFor(() => expect(fake.reasonsOf("PUT /admins/ops/role")).toEqual([REASON, REASON]));
+      expect(fake.sent.filter((entry) => entry.call === "PUT /admins/ops/role").map((entry) => entry.body.role)).toEqual(["custom_ro", "custom_ro"]);
+    });
+
+    it("change role: with the reason empty or only spaces Confirm is disabled and no request fires; the close button closes it", async () => {
+      const fake = withEveryState();
+      await renderDetail(fake, "ops");
+      click("Save role for ops@example.com");
+      const dialog = await screen.findByRole("dialog", { name: "Change the role of ops@example.com to support" });
+      const confirm = within(dialog).getByRole("button", { name: "Confirm" }) as HTMLButtonElement;
+      const isDisabledWhenEmpty = confirm.disabled;
+      fireEvent.change(within(dialog).getByLabelText(REASON_LABEL), { target: { value: "  " } });
+      fireEvent.click(confirm);
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+      expect([isDisabledWhenEmpty, confirm.disabled]).toEqual([true, true]);
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: /Change the role/ })).toBeNull());
+      expect(writesOf(fake)).toEqual([]);
+    });
+
+    it("invite: Send invitation carries the reason; with it empty or only spaces the button is disabled and nothing is sent", async () => {
+      const fake = createFakeApi();
+      await renderScreen(fake);
+      click("Invite admin");
+      fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+      const send = screen.getByRole("button", { name: "Send invitation" }) as HTMLButtonElement;
+      const isDisabledWhenEmpty = send.disabled;
+      fireEvent.click(send);
+      fireEvent.change(screen.getByLabelText(REASON_LABEL), { target: { value: "   " } });
+      const isDisabledWhenBlank = send.disabled;
+      fireEvent.submit(send.closest("form") as HTMLFormElement);
+      const writesWithoutReason = writesOf(fake);
+
+      fireEvent.change(screen.getByLabelText(REASON_LABEL), { target: { value: REASON } });
+      fireEvent.click(send);
+
+      expect([isDisabledWhenEmpty, isDisabledWhenBlank, writesWithoutReason]).toEqual([true, true, []]);
+      await waitFor(() => expect(fake.reasonsOf("POST /invitations")).toEqual([REASON]));
+    });
+
+    it("create role: Save role carries the reason, again after the re-authentication; with it empty or only spaces Save is disabled and nothing is sent", async () => {
+      const fake = createFakeApi();
+      await renderScreen(fake);
+      click("Create role");
+      const form = screen.getByRole("dialog", { name: "Create a role" });
+      fireEvent.change(within(form).getByLabelText("Role name"), { target: { value: "finance_ro" } });
+      const save = within(form).getByRole("button", { name: "Save role" }) as HTMLButtonElement;
+      const isDisabledWhenEmpty = save.disabled;
+      fireEvent.change(within(form).getByLabelText(REASON_LABEL), { target: { value: "   " } });
+      const isDisabledWhenBlank = save.disabled;
+      fireEvent.submit(form);
+      const writesWithoutReason = writesOf(fake);
+
+      fireEvent.change(within(form).getByLabelText(REASON_LABEL), { target: { value: REASON } });
+      fireEvent.click(save);
+      await confirmIdentity();
+
+      expect([isDisabledWhenEmpty, isDisabledWhenBlank, writesWithoutReason]).toEqual([true, true, []]);
+      await waitFor(() => expect(fake.reasonsOf("POST /roles")).toEqual([REASON, REASON]));
+      expect(fake.state.roles.at(-1)?.name).toBe("finance_ro");
+    });
+
+    it("edit role: Save role carries the reason; with it empty or only spaces Save is disabled and nothing is sent", async () => {
+      const fake = createFakeApi({ isReauthed: true });
+      await renderScreen(fake);
+      click("Edit role custom_ro");
+      const form = screen.getByRole("dialog", { name: "Edit role custom_ro" });
+      fireEvent.click(within(form).getByLabelText("usage:read"));
+      const save = within(form).getByRole("button", { name: "Save role" }) as HTMLButtonElement;
+      const isDisabledWhenEmpty = save.disabled;
+      fireEvent.change(within(form).getByLabelText(REASON_LABEL), { target: { value: " " } });
+      const isDisabledWhenBlank = save.disabled;
+      fireEvent.submit(form);
+      const writesWithoutReason = writesOf(fake);
+
+      fireEvent.change(within(form).getByLabelText(REASON_LABEL), { target: { value: REASON } });
+      fireEvent.click(save);
+
+      expect([isDisabledWhenEmpty, isDisabledWhenBlank, writesWithoutReason]).toEqual([true, true, []]);
+      await waitFor(() => expect(fake.reasonsOf("PATCH /roles/custom_ro")).toEqual([REASON]));
+    });
+
+    it("delete role: confirming with a reason sends it, again after the re-authentication", async () => {
+      const fake = createFakeApi();
+      await renderScreen(fake);
+
+      click("Delete role custom_ro");
+      await giveReason("Delete role custom_ro");
+      await confirmIdentity();
+
+      await waitFor(() => expect(fake.reasonsOf("DELETE /roles/custom_ro")).toEqual([REASON, REASON]));
+      expect(writesOf(fake)).toEqual(["DELETE /roles/custom_ro", "DELETE /roles/custom_ro"]);
+    });
+
+    it("delete role: with the reason empty or only spaces Confirm is disabled and no request fires; Cancel closes it", async () => {
+      const fake = createFakeApi();
+      await renderScreen(fake);
+      click("Delete role custom_ro");
+      const dialog = await screen.findByRole("dialog", { name: "Delete role custom_ro" });
+      const confirm = within(dialog).getByRole("button", { name: "Confirm" }) as HTMLButtonElement;
+      const isDisabledWhenEmpty = confirm.disabled;
+      fireEvent.change(within(dialog).getByLabelText(REASON_LABEL), { target: { value: "   " } });
+      fireEvent.submit(confirm.closest("form") as HTMLFormElement);
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      expect([isDisabledWhenEmpty, confirm.disabled]).toEqual([true, true]);
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delete role custom_ro" })).toBeNull());
+      expect(writesOf(fake)).toEqual([]);
+      expect(within(screen.getByRole("table", { name: "Roles" })).getByText("custom_ro")).toBeTruthy();
     });
   });
 });
