@@ -14,6 +14,7 @@ export function toAuditLogRow(record: AuditLogRecord, showPii: boolean): AuditLo
     before: show(record.before),
     after: show(record.after),
     reason: String(show(record.reason)),
+    requestId: record.requestId,
     effectiveAt: record.effectiveAt.toISOString(),
     createdAt: record.createdAt.toISOString(),
   };

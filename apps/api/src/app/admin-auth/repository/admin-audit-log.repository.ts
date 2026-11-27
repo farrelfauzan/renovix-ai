@@ -38,7 +38,7 @@ export class AdminAuditLogRepository {
     const where = conditions.length ? Prisma.join(conditions, " AND ") : Prisma.sql`TRUE`;
     return this.prisma.$queryRaw<AuditLogRecord[]>`
       SELECT l."id", l."admin_id" AS "adminId", a."email" AS "adminEmail", l."resource", l."action",
-        l."before", l."after", l."reason", l."effective_at" AS "effectiveAt", l."created_at" AS "createdAt",
+        l."before", l."after", l."reason", l."request_id" AS "requestId", l."effective_at" AS "effectiveAt", l."created_at" AS "createdAt",
         to_char(l."created_at" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "cursorAt"
       FROM "admin_audit_log" l
       JOIN "admin_users" a ON a."id" = l."admin_id"

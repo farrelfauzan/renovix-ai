@@ -10,6 +10,7 @@ import type { AdminsApi } from "@/lib/admins/admins-api";
 import { defaultAdminsApi } from "@/lib/admins/default-admins-api";
 import type { IssuedInvitation } from "@/lib/admins/issued-invitation";
 import { useReauthGate } from "@/lib/admins/use-reauth-gate";
+import { buildAuditLogSearch } from "@/lib/audit-log/build-audit-log-search";
 import type { AdminProfile } from "@/lib/session/admin-profile";
 import { defaultSessionApi } from "@/lib/session/default-session-api";
 import type { SessionApi } from "@/lib/session/session-api";
@@ -33,6 +34,7 @@ const LOAD_ERROR = "The admin could not be loaded.";
  * re-authentication gate, whose prompt and refusals show here, and refetches after the API answers, so the page shows
  * the new state (a revoked invitation is gone from the list: the page says so). Controls follow
  * the signed-in admin's permissions (visibility only: the API enforces them and audits every write).
+ * With `audit:read`, an admin's page links to the audit log filtered to that admin as the actor (RNX-371).
  */
 export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi = defaultSessionApi }: AdminDetailScreenProps) {
   const [profile, setProfile] = useState<AdminProfile | null>(null);
@@ -96,6 +98,11 @@ export function AdminDetailScreen({ adminId, api = defaultAdminsApi, sessionApi 
       {issued && <InvitationLinkDialog issued={issued} onClose={() => setIssued(null)} />}
       {entry && (
         <AdminDetailPanel entry={entry} api={api} roles={roles} isOwnDetail={entry.id === profile.id} canWriteAdmins={has("admins:write")} canWriteRoles={has("roles:write")} onAct={act} onResend={resend} />
+      )}
+      {entry && entry.status !== "invited" && has("audit:read") && (
+        <Link href={`/audit-log${buildAuditLogSearch({ adminId: entry.id, resource: "", action: "", from: "", to: "" })}`} className="self-start text-sm text-rx-accent underline-offset-2 hover:underline">
+          View in audit log
+        </Link>
       )}
       {!entry && <p className="text-sm text-rx-muted">{hasSeenInvitation ? "This invitation was revoked." : "No admin or invitation has this id."}</p>}
     </div>
