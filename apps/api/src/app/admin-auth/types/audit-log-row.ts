@@ -8,6 +8,8 @@ export type AuditLogRow = {
   readonly before: unknown;
   readonly after: unknown;
   readonly reason: string;
+  /** The request that made the change; not personal data, so never masked. */
+  readonly requestId: string;
   /** ISO time. */
   readonly effectiveAt: string;
   /** ISO time the row was recorded; the list is newest first by it. */

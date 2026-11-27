@@ -10,6 +10,7 @@ const FILLER: AuditLogRecord = {
   before: {},
   after: {},
   reason: "made-up reason",
+  requestId: "req-filler",
   effectiveAt: new Date("2026-10-15T08:00:00.000Z"),
   createdAt: new Date("2026-10-15T08:00:00.000Z"),
   cursorAt: "2026-10-15T08:00:00.000000Z",

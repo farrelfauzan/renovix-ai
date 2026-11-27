@@ -8,6 +8,8 @@ export type AuditLogRecord = {
   readonly before: unknown;
   readonly after: unknown;
   readonly reason: string;
+  /** The request that made the change (not personal data, never masked). */
+  readonly requestId: string;
   readonly effectiveAt: Date;
   readonly createdAt: Date;
   /** created_at with microseconds, UTC text: the keyset cursor's position (see AuditLogCursor). */
