@@ -31,6 +31,8 @@ import {
 
 const NEW_PASSWORD = "Vr7!kQp2#Lm9-rnx95-new";
 const INVITEE = "invitee@example.com";
+/** RNX-370: every admin and invitation write carries a reason. */
+const REASON = "Made-up reason for an RNX-370 test";
 const HOUR = 60 * MINUTE;
 
 type Admin = { id: string; email: string; secret: string };
@@ -79,7 +81,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
     return { owner, cookie };
   };
   const invite = (cookie: string, email = INVITEE, role = "support") =>
-    http.call("POST", "/admin/invitations", { cookie }, { email, role });
+    http.call("POST", "/admin/invitations", { cookie }, { email, role, reason: REASON });
   const tokenOf = (link: string): string => new URL(link).hash.replace("#token=", "");
   const accept = (token: string, name = "New Admin", password = NEW_PASSWORD) =>
     http.call("POST", "/admin/invitations/accept", {}, { token, name, password });
@@ -192,7 +194,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
     it("revoked: 410, no admin row", async () => {
       const { cookie } = await ownerSession();
       const created = (await invite(cookie)).json();
-      expect((await http.call("DELETE", `/admin/invitations/${created.invitation.id}`, { cookie })).statusCode).toBe(204);
+      expect((await http.call("DELETE", `/admin/invitations/${created.invitation.id}`, { cookie }, { reason: REASON })).statusCode).toBe(204);
 
       const res = await accept(tokenOf(created.link));
 
@@ -312,7 +314,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
     it("resend: the old link fails, the new one works", async () => {
       const { cookie } = await ownerSession();
       const created = (await invite(cookie)).json();
-      const resent = await http.call("POST", `/admin/invitations/${created.invitation.id}/resend`, { cookie });
+      const resent = await http.call("POST", `/admin/invitations/${created.invitation.id}/resend`, { cookie }, { reason: REASON });
 
       const old = await accept(tokenOf(created.link));
       const fresh = await accept(tokenOf(resent.json().link));
@@ -326,7 +328,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       const { owner, cookie } = await ownerSession();
       const created = (await invite(cookie)).json();
       advance(71 * HOUR);
-      const resent = await http.call("POST", `/admin/invitations/${created.invitation.id}/resend`, { cookie: await signIn(owner) });
+      const resent = await http.call("POST", `/admin/invitations/${created.invitation.id}/resend`, { cookie: await signIn(owner) }, { reason: REASON });
       advance(2 * HOUR);
 
       expect(resent.statusCode).toBe(200);
@@ -385,10 +387,10 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
 
   describe("criterion 6: a non-Owner (re-authenticated) gets 403 and changes nothing", () => {
     it.each([
-      ["invites", (target: Admin) => ["/admin/invitations", { email: `x-${target.id}@example.com`, role: "viewer" }] as const],
-      ["suspends", (target: Admin) => [`/admin/admins/${target.id}/suspend`, undefined] as const],
-      ["resets MFA", (target: Admin) => [`/admin/admins/${target.id}/reset-mfa`, undefined] as const],
-      ["forces a password reset", (target: Admin) => [`/admin/admins/${target.id}/force-password-reset`, undefined] as const],
+      ["invites", (target: Admin) => ["/admin/invitations", { email: `x-${target.id}@example.com`, role: "viewer", reason: REASON }] as const],
+      ["suspends", (target: Admin) => [`/admin/admins/${target.id}/suspend`, { reason: REASON }] as const],
+      ["resets MFA", (target: Admin) => [`/admin/admins/${target.id}/reset-mfa`, { reason: REASON }] as const],
+      ["forces a password reset", (target: Admin) => [`/admin/admins/${target.id}/force-password-reset`, { reason: REASON }] as const],
     ])("%s: 403", async (_case, route) => {
       const ops = await enrolledAdmin("ops@example.com");
       const target = await enrolledAdmin("fin@example.com", "finance");
@@ -425,7 +427,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       await prisma.adminUser.update({ where: { id: suspendedOwner.id }, data: { suspendedAt: new Date() } });
       const cookie = await customManagerSession();
 
-      const res = await http.call("POST", `/admin/admins/${lastOwner.id}/suspend`, { cookie });
+      const res = await http.call("POST", `/admin/admins/${lastOwner.id}/suspend`, { cookie }, { reason: REASON });
 
       expect(res.statusCode).toBe(409);
       expect((await prisma.adminUser.findUniqueOrThrow({ where: { id: lastOwner.id } })).suspendedAt).toBeNull();
@@ -436,7 +438,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       await enrolledAdmin("owner2@example.com", "owner");
       const cookie = await customManagerSession();
 
-      const res = await http.call("POST", `/admin/admins/${owner.id}/suspend`, { cookie });
+      const res = await http.call("POST", `/admin/admins/${owner.id}/suspend`, { cookie }, { reason: REASON });
 
       expect(res.statusCode).toBe(204);
     });
@@ -445,7 +447,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       const { owner, cookie } = await ownerSession();
       await enrolledAdmin("owner2@example.com", "owner");
 
-      const res = await http.call("POST", `/admin/admins/${owner.id}/suspend`, { cookie });
+      const res = await http.call("POST", `/admin/admins/${owner.id}/suspend`, { cookie }, { reason: REASON });
 
       expect(res.statusCode).toBe(403);
       expect((await prisma.adminUser.findUniqueOrThrow({ where: { id: owner.id } })).suspendedAt).toBeNull();
@@ -458,7 +460,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       const ops = await enrolledAdmin("ops@example.com");
       const oldCookie = await signIn(ops);
 
-      const force = await http.call("POST", `/admin/admins/${ops.id}/force-password-reset`, { cookie: ownerCookie });
+      const force = await http.call("POST", `/admin/admins/${ops.id}/force-password-reset`, { cookie: ownerCookie }, { reason: REASON });
       const oldSession = await http.call("GET", "/admin/probe", { cookie: oldCookie });
       const restricted = await signIn(ops);
       const me = await http.call("GET", "/admin/auth/me", { cookie: restricted });
@@ -486,8 +488,8 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
     it("after an MFA reset too, re-enrolling (totp/confirm) gives only a password_change session: 403 elsewhere until the password is changed", async () => {
       const { cookie: ownerCookie } = await ownerSession();
       const ops = await enrolledAdmin("ops@example.com");
-      const resetMfa = await http.call("POST", `/admin/admins/${ops.id}/reset-mfa`, { cookie: ownerCookie });
-      const force = await http.call("POST", `/admin/admins/${ops.id}/force-password-reset`, { cookie: ownerCookie });
+      const resetMfa = await http.call("POST", `/admin/admins/${ops.id}/reset-mfa`, { cookie: ownerCookie }, { reason: REASON });
+      const force = await http.call("POST", `/admin/admins/${ops.id}/force-password-reset`, { cookie: ownerCookie }, { reason: REASON });
       nextStep();
       const enrolmentCookie = accessCookie(await http.signIn({ email: ops.email, password: ADMIN_PASSWORD }));
       const enrol = await http.call("POST", "/admin/auth/totp/enrol", { cookie: enrolmentCookie });
@@ -527,16 +529,41 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       const cookie = await signIn(owner);
       const url = `/admin/admins/${target.id}/${action}`;
 
-      const never = await http.call("POST", url, { cookie });
+      const never = await http.call("POST", url, { cookie }, { reason: REASON });
       await reauth(cookie, owner);
       advance(2 * MINUTE + 1_000);
-      const stale = await http.call("POST", url, { cookie });
+      const stale = await http.call("POST", url, { cookie }, { reason: REASON });
       await reauth(cookie, owner);
       advance(2 * MINUTE - 30_000 - 1_000);
-      const fresh = await http.call("POST", url, { cookie });
+      const fresh = await http.call("POST", url, { cookie }, { reason: REASON });
 
       expect([never.statusCode, stale.statusCode, fresh.statusCode]).toEqual([403, 403, 204]);
       expect([never.json().message, stale.json().message]).toEqual(["Re-authentication required", "Re-authentication required"]);
+    });
+
+    it("RNX-370 AC2: reactivate: 403 \"Re-authentication required\" without re-auth and 2 minutes after it, still suspended, no audit row; 204 within 2 minutes", async () => {
+      const owner = await enrolledAdmin("owner@example.com", "owner");
+      const target = await enrolledAdmin("ops@example.com");
+      await prisma.adminUser.update({ where: { id: target.id }, data: { suspendedAt: new Date() } });
+      const cookie = await signIn(owner);
+      const url = `/admin/admins/${target.id}/reactivate`;
+      const suspendedAfterRefusals: (Date | null)[] = [];
+
+      const never = await http.call("POST", url, { cookie }, { reason: REASON });
+      suspendedAfterRefusals.push((await prisma.adminUser.findUniqueOrThrow({ where: { id: target.id } })).suspendedAt);
+      await reauth(cookie, owner);
+      advance(2 * MINUTE + 1_000);
+      const stale = await http.call("POST", url, { cookie }, { reason: REASON });
+      suspendedAfterRefusals.push((await prisma.adminUser.findUniqueOrThrow({ where: { id: target.id } })).suspendedAt);
+      const auditRowsAfterRefusals = await prisma.adminAuditLog.count({ where: { resource: "admin_user", action: "reactivate" } });
+      await reauth(cookie, owner);
+      const fresh = await http.call("POST", url, { cookie }, { reason: REASON });
+
+      expect([never.statusCode, stale.statusCode, fresh.statusCode]).toEqual([403, 403, 204]);
+      expect([never.json().message, stale.json().message]).toEqual(["Re-authentication required", "Re-authentication required"]);
+      expect(suspendedAfterRefusals.every((suspendedAt) => suspendedAt !== null)).toBe(true);
+      expect(auditRowsAfterRefusals).toBe(0);
+      expect((await prisma.adminUser.findUniqueOrThrow({ where: { id: target.id } })).suspendedAt).toBeNull();
     });
   });
 
@@ -550,7 +577,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       });
       const granterCookie = await signIn(granter);
 
-      const res = await http.call("POST", `/admin/admins/${granter.id}/suspend`, { cookie });
+      const res = await http.call("POST", `/admin/admins/${granter.id}/suspend`, { cookie }, { reason: REASON });
 
       expect(res.statusCode).toBe(204);
       expect((await prisma.adminUser.findUniqueOrThrow({ where: { id: granter.id } })).suspendedAt).not.toBeNull();
@@ -563,9 +590,9 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
     it("reactivate lifts the suspension; sign-in works again", async () => {
       const { cookie } = await ownerSession();
       const ops = await enrolledAdmin("ops@example.com");
-      await http.call("POST", `/admin/admins/${ops.id}/suspend`, { cookie });
+      await http.call("POST", `/admin/admins/${ops.id}/suspend`, { cookie }, { reason: REASON });
 
-      const res = await http.call("POST", `/admin/admins/${ops.id}/reactivate`, { cookie });
+      const res = await http.call("POST", `/admin/admins/${ops.id}/reactivate`, { cookie }, { reason: REASON });
 
       expect(res.statusCode).toBe(204);
       await signIn(ops);
@@ -588,7 +615,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       await prisma.adminRecoveryCode.create({ data: { adminId: ops.id, codeHash: "hash-of-a-fake-code" } });
       const opsCookie = await signIn(ops);
 
-      const res = await http.call("POST", `/admin/admins/${ops.id}/reset-mfa`, { cookie });
+      const res = await http.call("POST", `/admin/admins/${ops.id}/reset-mfa`, { cookie }, { reason: REASON });
       const signedIn = await http.signIn({ email: ops.email, password: ADMIN_PASSWORD });
 
       expect(res.statusCode).toBe(204);
@@ -694,7 +721,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
   describe("RNX-211: suspending an admin revokes their pending invitations; a suspended inviter's link is refused", () => {
     /** Owners A and B, both signed in and re-authenticated; B suspends A through the real route. */
     const twoOwners = async () => ({ a: await ownerSession("owner-a@example.com"), b: await ownerSession("owner-b@example.com") });
-    const suspend = (cookie: string, adminId: string) => http.call("POST", `/admin/admins/${adminId}/suspend`, { cookie });
+    const suspend = (cookie: string, adminId: string) => http.call("POST", `/admin/admins/${adminId}/suspend`, { cookie }, { reason: REASON });
     const preview = (token: string) => http.call("POST", "/admin/invitations/preview", {}, { token });
     /** The `revokedInvitations` of the one suspension audit entry, parsed. */
     const revokedInAudit = async (): Promise<{ id: string; email: string }[]> => {
@@ -777,11 +804,11 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       const created = (await invite(a.cookie)).json();
       expect((await suspend(b.cookie, a.owner.id)).statusCode).toBe(204);
 
-      const reactivated = await http.call("POST", `/admin/admins/${a.owner.id}/reactivate`, { cookie: b.cookie });
+      const reactivated = await http.call("POST", `/admin/admins/${a.owner.id}/reactivate`, { cookie: b.cookie }, { reason: REASON });
       const oldPreview = await preview(tokenOf(created.link));
       const oldAccept = await accept(tokenOf(created.link));
       expect([reactivated.statusCode, oldPreview.statusCode, oldAccept.statusCode]).toEqual([204, 410, 410]);
-      const resent = await http.call("POST", `/admin/invitations/${created.invitation.id}/resend`, { cookie: b.cookie });
+      const resent = await http.call("POST", `/admin/invitations/${created.invitation.id}/resend`, { cookie: b.cookie }, { reason: REASON });
       const reinvited = await invite(b.cookie);
       expect([resent.statusCode, reinvited.statusCode]).toEqual([404, 201]);
       const fresh = await accept(tokenOf(reinvited.json().link));
@@ -802,7 +829,7 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
       await suspend(b.cookie, a.owner.id);
       await preview(oldToken);
       await accept(oldToken);
-      await http.call("POST", `/admin/admins/${a.owner.id}/reactivate`, { cookie: b.cookie });
+      await http.call("POST", `/admin/admins/${a.owner.id}/reactivate`, { cookie: b.cookie }, { reason: REASON });
       const newToken = tokenOf((await invite(b.cookie, "again@example.com")).json().link);
       expect((await accept(newToken)).statusCode).toBe(200);
       const audit = JSON.stringify(await prisma.adminAuditLog.findMany());
@@ -814,6 +841,73 @@ describe("Admin management (RNX-95, Fastify, test database)", () => {
         expect(logged.join("\n")).not.toContain(token);
         expect(audit).not.toContain(token);
       }
+    });
+  });
+
+  describe("RNX-370 AC1: every admin and invitation write needs a reason (1 to 500 characters after trimming); its audit row carries it", () => {
+    type Prepared = { readonly url: string; readonly body: object };
+    /** Each write as (resource, action, method, how to set up its target as an Owner): the body is everything but the reason. */
+    const WRITES: readonly (readonly [string, string, "POST" | "DELETE", (cookie: string) => Promise<Prepared>])[] = [
+      ["admin_user", "suspend", "POST", async () => ({ url: `/admin/admins/${(await enrolledAdmin("ops@example.com")).id}/suspend`, body: {} })],
+      [
+        "admin_user",
+        "reactivate",
+        "POST",
+        async () => {
+          const ops = await enrolledAdmin("ops@example.com");
+          await prisma.adminUser.update({ where: { id: ops.id }, data: { suspendedAt: new Date() } });
+          return { url: `/admin/admins/${ops.id}/reactivate`, body: {} };
+        },
+      ],
+      ["admin_user", "reset_mfa", "POST", async () => ({ url: `/admin/admins/${(await enrolledAdmin("ops@example.com")).id}/reset-mfa`, body: {} })],
+      ["admin_user", "force_password_reset", "POST", async () => ({ url: `/admin/admins/${(await enrolledAdmin("ops@example.com")).id}/force-password-reset`, body: {} })],
+      ["admin_invitation", "create", "POST", async () => ({ url: "/admin/invitations", body: { email: INVITEE, role: "support" } })],
+      ["admin_invitation", "resend", "POST", async (cookie) => ({ url: `/admin/invitations/${(await invite(cookie)).json().invitation.id}/resend`, body: {} })],
+      ["admin_invitation", "revoke", "DELETE", async (cookie) => ({ url: `/admin/invitations/${(await invite(cookie)).json().invitation.id}`, body: {} })],
+    ];
+    /** What the writes change (sessions without lastSeenAt, which every request moves), and the audit row count. */
+    const databaseState = async () => ({
+      admins: await prisma.adminUser.findMany({ select: { id: true, role: true, suspendedAt: true, mustChangePassword: true, totpEnrolledAt: true }, orderBy: { id: "asc" } }),
+      invitations: await prisma.adminInvitation.findMany({ select: { id: true, tokenHash: true, revokedAt: true, expiresAt: true }, orderBy: { id: "asc" } }),
+      sessions: await prisma.adminSession.findMany({ select: { id: true, revokedAt: true }, orderBy: { id: "asc" } }),
+      auditRows: await prisma.adminAuditLog.count(),
+    });
+
+    it.each(WRITES)("%s %s without a valid reason (none, blank, over 500 characters, not a string): 400 each time, nothing changes, no audit row", async (_resource, _action, method, prepare) => {
+      const { cookie } = await ownerSession();
+      const { url, body } = await prepare(cookie);
+      const before = await databaseState();
+
+      const none = await http.call(method, url, { cookie }, body);
+      const blank = await http.call(method, url, { cookie }, { ...body, reason: "   " });
+      const tooLong = await http.call(method, url, { cookie }, { ...body, reason: "x".repeat(501) });
+      const notAString = await http.call(method, url, { cookie }, { ...body, reason: 5 });
+
+      const responses = [none, blank, tooLong, notAString];
+      expect(responses.map((res) => res.statusCode)).toEqual([400, 400, 400, 400]);
+      expect(responses.map((res) => Object.keys(res.json().error.details))).toEqual([["reason"], ["reason"], ["reason"], ["reason"]]);
+      expect(await databaseState()).toEqual(before);
+    });
+
+    it.each(WRITES)("%s %s with a reason: it succeeds and its one audit row carries the reason, trimmed", async (resource, action, method, prepare) => {
+      const { cookie } = await ownerSession();
+      const { url, body } = await prepare(cookie);
+
+      const res = await http.call(method, url, { cookie }, { ...body, reason: `  ${REASON}  ` });
+
+      expect(res.statusCode).toBeLessThan(300);
+      expect((await prisma.adminAuditLog.findMany({ where: { resource, action } })).map((row) => row.reason)).toEqual([REASON]);
+    });
+
+    it("a reason of exactly 500 characters is accepted and stored whole", async () => {
+      const { cookie } = await ownerSession();
+      const ops = await enrolledAdmin("ops@example.com");
+      const reason = "r".repeat(500);
+
+      const res = await http.call("POST", `/admin/admins/${ops.id}/force-password-reset`, { cookie }, { reason });
+
+      expect(res.statusCode).toBe(204);
+      expect((await prisma.adminAuditLog.findFirstOrThrow({ where: { resource: "admin_user", action: "force_password_reset" } })).reason).toBe(reason);
     });
   });
 });

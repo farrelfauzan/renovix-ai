@@ -12,6 +12,7 @@ import { ReauthDto } from "../../app/admin-auth/dto/reauth.dto";
 import { ChangePasswordDto } from "../../app/admin-auth/dto/change-password.dto";
 import { CreateInvitationDto } from "../../app/admin-auth/dto/create-invitation.dto";
 import { AssignRoleDto } from "../../app/admin-auth/dto/assign-role.dto";
+import { AdminWriteReasonDto } from "../../app/admin-auth/dto/admin-write-reason.dto";
 import { CreateRoleDto } from "../../app/admin-auth/dto/create-role.dto";
 import { UpdateRoleDto } from "../../app/admin-auth/dto/update-role.dto";
 import { InvitationTokenDto } from "../../app/admin-auth/dto/invitation-token.dto";
@@ -85,11 +86,18 @@ export const ROUTE_BODY_SCHEMAS: ReadonlyMap<string, ZodType> = new Map<string, 
   ["POST /admin/auth/reauth", ReauthDto],
   ["POST /admin/auth/password", ChangePasswordDto],
   ["POST /admin/invitations", CreateInvitationDto],
+  ["POST /admin/invitations/:id/resend", AdminWriteReasonDto],
+  ["DELETE /admin/invitations/:id", AdminWriteReasonDto],
   ["POST /admin/invitations/preview", InvitationTokenDto],
   ["POST /admin/invitations/accept", AcceptInvitationDto],
+  ["POST /admin/admins/:id/suspend", AdminWriteReasonDto],
+  ["POST /admin/admins/:id/reactivate", AdminWriteReasonDto],
+  ["POST /admin/admins/:id/reset-mfa", AdminWriteReasonDto],
+  ["POST /admin/admins/:id/force-password-reset", AdminWriteReasonDto],
   ["PUT /admin/admins/:id/role", AssignRoleDto],
   ["POST /admin/roles", CreateRoleDto],
   ["PATCH /admin/roles/:name", UpdateRoleDto],
+  ["DELETE /admin/roles/:name", AdminWriteReasonDto],
   ["POST /admin/providers", CreateProviderDto],
   ["PATCH /admin/providers/:id", UpdateProviderDto],
   ["POST /admin/providers/:id/test", TestProviderDto],

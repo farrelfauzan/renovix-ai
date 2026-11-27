@@ -137,11 +137,18 @@ const ROWS: readonly Row[] = [
   { route: "POST /admin/auth/reauth", body: NOT_AN_OBJECT },
   { route: "POST /admin/auth/password", body: NOT_AN_OBJECT },
   { route: "POST /admin/invitations", body: NOT_AN_OBJECT },
+  { route: "POST /admin/invitations/:id/resend", body: { reason: "   " }, details: ["reason"] },
+  { route: "DELETE /admin/invitations/:id", body: { reason: "   " }, details: ["reason"] },
   { route: "POST /admin/invitations/preview", body: NOT_AN_OBJECT },
   { route: "POST /admin/invitations/accept", body: NOT_AN_OBJECT },
+  { route: "POST /admin/admins/:id/suspend", body: { reason: "   " }, details: ["reason"] },
+  { route: "POST /admin/admins/:id/reactivate", body: { reason: "   " }, details: ["reason"] },
+  { route: "POST /admin/admins/:id/reset-mfa", body: { reason: "   " }, details: ["reason"] },
+  { route: "POST /admin/admins/:id/force-password-reset", body: { reason: "   " }, details: ["reason"] },
   { route: "PUT /admin/admins/:id/role", body: NOT_AN_OBJECT },
   { route: "POST /admin/roles", body: NOT_AN_OBJECT },
   { route: "PATCH /admin/roles/:name", body: NOT_AN_OBJECT },
+  { route: "DELETE /admin/roles/:name", body: { reason: "   " }, details: ["reason"] },
   { route: "POST /admin/providers", body: NOT_AN_OBJECT },
   { route: "PATCH /admin/providers/:id", body: NOT_AN_OBJECT },
   { route: "POST /admin/providers/:id/test", body: NOT_AN_OBJECT },
@@ -195,10 +202,10 @@ const ROWS: readonly Row[] = [
 ];
 
 /** `METHOD /path/:param` → the method and a URL with every parameter filled in (`:provider` with the one that has a key). */
-function toRequest(route: string): { method: "POST" | "PUT" | "PATCH"; url: string } {
+function toRequest(route: string): { method: "POST" | "PUT" | "PATCH" | "DELETE"; url: string } {
   const [method, path] = route.split(" ");
   const url = path.replace(/:(\w+)/g, (_match, name: string) => (name === "provider" ? "brave-search" : ID));
-  return { method: method as "POST" | "PUT" | "PATCH", url };
+  return { method: method as "POST" | "PUT" | "PATCH" | "DELETE", url };
 }
 
 /** The GOWA signature header for a raw body (the webhook checks it before it reads the body). */
@@ -280,6 +287,23 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
     const body = res.json();
     expect(body).toEqual({ error: { message: "Invalid request body", type: "invalid_request_error", details: expect.any(Object) } });
     expect(Object.keys(body.error.details).sort()).toEqual([...(row.details ?? [])].sort());
+  });
+
+  // RNX-370: the two DELETE routes take their reason as a JSON body. Fastify parses a DELETE body like any other; an
+  // empty body sent as JSON, or no body at all, is a clean 400, never a 500.
+  describe.each(["DELETE /admin/invitations/:id", "DELETE /admin/roles/:name"])("RNX-370: %s with no reason body", (route) => {
+    it("content-type application/json and an empty body: 400, not a 500", async () => {
+      const res = await app.inject({ ...toRequest(route), headers: { "content-type": "application/json" }, payload: "" });
+
+      expect(res.statusCode).toBe(400);
+    });
+
+    it("no body and no content type: the one 400 shape", async () => {
+      const res = await app.inject(toRequest(route));
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: { message: "Invalid request body", type: "invalid_request_error", details: {} } });
+    });
   });
 
   describe("a valid body behaves as before (the parsed values reach the service)", () => {

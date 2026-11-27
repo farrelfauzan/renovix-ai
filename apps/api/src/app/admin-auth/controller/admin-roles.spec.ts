@@ -27,6 +27,8 @@ type Admin = { id: string; email: string; secret: string };
 
 const BUILT_IN = ["owner", "operations", "finance", "support", "viewer"];
 const REAUTH_REQUIRED = "Re-authentication required";
+/** RNX-370: every role write and role assignment carries a reason. */
+const REASON = "Made-up reason for an RNX-370 test";
 
 describe("Roles API (RNX-187, Fastify, test database)", () => {
   let moduleRef: TestingModule;
@@ -73,11 +75,11 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
   };
   const send = (method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", url: string, cookie: string, payload?: object) =>
     app.inject({ method, url, headers: { ...BACK_OFFICE_ORIGIN, cookie }, payload });
-  const createRole = (cookie: string, name: string, permissions: string[]) => send("POST", "/admin/roles", cookie, { name, permissions });
-  const editRole = (cookie: string, name: string, body: object) => send("PATCH", `/admin/roles/${name}`, cookie, body);
-  const assign = (cookie: string, adminId: string, role: string) => send("PUT", `/admin/admins/${adminId}/role`, cookie, { role });
+  const createRole = (cookie: string, name: string, permissions: string[]) => send("POST", "/admin/roles", cookie, { name, permissions, reason: REASON });
+  const editRole = (cookie: string, name: string, body: object) => send("PATCH", `/admin/roles/${name}`, cookie, { ...body, reason: REASON });
+  const assign = (cookie: string, adminId: string, role: string) => send("PUT", `/admin/admins/${adminId}/role`, cookie, { role, reason: REASON });
   const invite = (cookie: string, role: string, email = "invitee@example.com") =>
-    http.call("POST", "/admin/invitations", { cookie }, { email, role });
+    http.call("POST", "/admin/invitations", { cookie }, { email, role, reason: REASON });
   const roleOf = async (adminId: string) => (await prisma.adminUser.findUniqueOrThrow({ where: { id: adminId } })).role;
   const rolesTable = () => prisma.adminRole.findMany({ select: { name: true, permissions: true }, orderBy: { name: "asc" } });
   const adminRoles = () => prisma.adminUser.findMany({ select: { id: true, role: true }, orderBy: { id: "asc" } });
@@ -120,7 +122,7 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
           createRole(cookie, "made-up", ["users:read"]),
           editRole(cookie, "spare", { permissions: ["usage:read"] }),
           editRole(cookie, "spare", { name: "renamed" }),
-          send("DELETE", "/admin/roles/spare", cookie),
+          send("DELETE", "/admin/roles/spare", cookie, { reason: REASON }),
           assign(cookie, target.id, "owner"),
           assign(cookie, target.id, "spare"),
         ]);
@@ -156,8 +158,8 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
       await prisma.adminRole.createMany({ data: [{ name: "unused" }, { name: "held" }] });
       await enrolledAdmin("held@example.com", "held");
 
-      const unused = await send("DELETE", "/admin/roles/unused", cookie);
-      const held = await send("DELETE", "/admin/roles/held", cookie);
+      const unused = await send("DELETE", "/admin/roles/unused", cookie, { reason: REASON });
+      const held = await send("DELETE", "/admin/roles/held", cookie, { reason: REASON });
 
       expect([unused.statusCode, held.statusCode]).toEqual([204, 409]);
       expect((await rolesTable()).map((role) => role.name)).toEqual(expect.arrayContaining(["held"]));
@@ -172,7 +174,7 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
       const rolesBefore = await rolesTable();
       const adminsBefore = await adminRoles();
 
-      const res = await send("DELETE", `/admin/roles/${name}`, cookie);
+      const res = await send("DELETE", `/admin/roles/${name}`, cookie, { reason: REASON });
 
       expect(res.statusCode).toBe(403);
       expect(await rolesTable()).toEqual(rolesBefore);
@@ -331,6 +333,44 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
       expect((await prisma.adminRole.findUniqueOrThrow({ where: { name: "helper" } })).permissions).toEqual(["usage:read"]);
     });
 
+    it("RNX-370 AC2: creating a role: 403 \"Re-authentication required\" without re-auth and 2 minutes after it, no role, no audit row; 204 within 2 minutes", async () => {
+      const owner = await enrolledAdmin("owner@example.com", "owner");
+      const cookie = await signIn(owner);
+      const rolesAfterRefusals: unknown[] = [];
+      const rolesBefore = await rolesTable();
+
+      const responses = await windowResponses(owner, cookie, async () => {
+        const res = await createRole(cookie, "helper", ["users:read"]);
+        if (res.statusCode === 403) rolesAfterRefusals.push(await rolesTable());
+        return res;
+      });
+
+      expect(responses.map((res) => res.statusCode)).toEqual([403, 403, 204]);
+      expect(responses.slice(0, 2).map((res) => res.json().message)).toEqual([REAUTH_REQUIRED, REAUTH_REQUIRED]);
+      expect(rolesAfterRefusals).toEqual([rolesBefore, rolesBefore]);
+      expect(await auditRows("admin_role", "create")).toHaveLength(1);
+      expect(await prisma.adminRole.findUniqueOrThrow({ where: { name: "helper" } })).toMatchObject({ permissions: ["users:read"] });
+    });
+
+    it("RNX-370 AC2: deleting a role: 403 \"Re-authentication required\" without re-auth and 2 minutes after it, the role stays, no audit row; 204 within 2 minutes", async () => {
+      const owner = await enrolledAdmin("owner@example.com", "owner");
+      await prisma.adminRole.create({ data: { name: "unused", permissions: ["users:read"] } });
+      const cookie = await signIn(owner);
+      const keptAfterRefusals: boolean[] = [];
+
+      const responses = await windowResponses(owner, cookie, async () => {
+        const res = await send("DELETE", "/admin/roles/unused", cookie, { reason: REASON });
+        if (res.statusCode === 403) keptAfterRefusals.push((await prisma.adminRole.findUnique({ where: { name: "unused" } })) !== null);
+        return res;
+      });
+
+      expect(responses.map((res) => res.statusCode)).toEqual([403, 403, 204]);
+      expect(responses.slice(0, 2).map((res) => res.json().message)).toEqual([REAUTH_REQUIRED, REAUTH_REQUIRED]);
+      expect(keptAfterRefusals).toEqual([true, true]);
+      expect(await auditRows("admin_role", "delete")).toHaveLength(1);
+      expect(await prisma.adminRole.findUnique({ where: { name: "unused" } })).toBeNull();
+    });
+
     it("inviting with role owner: 403 without re-auth and 2 minutes after it, no invitation; 201 within 2 minutes", async () => {
       const owner = await enrolledAdmin("owner@example.com", "owner");
       const cookie = await signIn(owner);
@@ -360,7 +400,7 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
 
   describe("RNX-214: resending an Owner invitation needs a re-authentication within 2 minutes", () => {
     const NEW_PASSWORD = "Vr7!kQp2#Lm9-rnx214-new";
-    const resend = (cookie: string, invitationId: string) => send("POST", `/admin/invitations/${invitationId}/resend`, cookie);
+    const resend = (cookie: string, invitationId: string) => send("POST", `/admin/invitations/${invitationId}/resend`, cookie, { reason: REASON });
     const tokenOf = (link: string): string => new URL(link).hash.replace("#token=", "");
     const preview = (token: string) => http.call("POST", "/admin/invitations/preview", {}, { token });
     const accept = (token: string) => http.call("POST", "/admin/invitations/accept", {}, { token, name: "New Admin", password: NEW_PASSWORD });
@@ -413,7 +453,7 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
     it.each(["revoked", "used"])("a %s Owner invitation resent with a valid re-auth: 404, no invitation created", async (state) => {
       const { cookie } = await reauthedSession("owner@example.com", "owner");
       const created = await invite(cookie, "owner");
-      if (state === "revoked") expect((await send("DELETE", `/admin/invitations/${created.json().invitation.id}`, cookie)).statusCode).toBe(204);
+      if (state === "revoked") expect((await send("DELETE", `/admin/invitations/${created.json().invitation.id}`, cookie, { reason: REASON })).statusCode).toBe(204);
       else expect((await accept(tokenOf(created.json().link))).statusCode).toBe(200);
       const countBefore = await prisma.adminInvitation.count();
 
@@ -421,6 +461,60 @@ describe("Roles API (RNX-187, Fastify, test database)", () => {
 
       expect(res.statusCode).toBe(404);
       expect(await prisma.adminInvitation.count()).toBe(countBefore);
+    });
+  });
+
+  describe("RNX-370 AC1: every role write and role assignment needs a reason (1 to 500 characters after trimming); its audit row carries it", () => {
+    type Prepared = { readonly url: string; readonly body: object };
+    /** Each write as (resource, action, method, how to set up its target): the body is everything but the reason. */
+    const WRITES: readonly (readonly [string, string, "POST" | "PUT" | "PATCH" | "DELETE", () => Promise<Prepared>])[] = [
+      ["admin_user", "assign_role", "PUT", async () => ({ url: `/admin/admins/${(await enrolledAdmin("target@example.com", "viewer")).id}/role`, body: { role: "support" } })],
+      ["admin_role", "create", "POST", async () => ({ url: "/admin/roles", body: { name: "helper", permissions: ["users:read"] } })],
+      [
+        "admin_role",
+        "update",
+        "PATCH",
+        async () => {
+          await prisma.adminRole.create({ data: { name: "helper", permissions: ["users:read"] } });
+          return { url: "/admin/roles/helper", body: { permissions: ["usage:read"] } };
+        },
+      ],
+      [
+        "admin_role",
+        "delete",
+        "DELETE",
+        async () => {
+          await prisma.adminRole.create({ data: { name: "unused", permissions: ["users:read"] } });
+          return { url: "/admin/roles/unused", body: {} };
+        },
+      ],
+    ];
+    const databaseState = async () => ({ roles: await rolesTable(), admins: await adminRoles(), auditRows: await prisma.adminAuditLog.count() });
+
+    it.each(WRITES)("%s %s without a valid reason (none, blank, over 500 characters, not a string): 400 each time, nothing changes, no audit row", async (_resource, _action, method, prepare) => {
+      const { cookie } = await reauthedSession("owner@example.com", "owner");
+      const { url, body } = await prepare();
+      const before = await databaseState();
+
+      const none = await send(method, url, cookie, body);
+      const blank = await send(method, url, cookie, { ...body, reason: "   " });
+      const tooLong = await send(method, url, cookie, { ...body, reason: "x".repeat(501) });
+      const notAString = await send(method, url, cookie, { ...body, reason: 5 });
+
+      const responses = [none, blank, tooLong, notAString];
+      expect(responses.map((res) => res.statusCode)).toEqual([400, 400, 400, 400]);
+      expect(responses.map((res) => Object.keys(res.json().error.details))).toEqual([["reason"], ["reason"], ["reason"], ["reason"]]);
+      expect(await databaseState()).toEqual(before);
+    });
+
+    it.each(WRITES)("%s %s with a reason: it succeeds and its one audit row carries the reason, trimmed", async (resource, action, method, prepare) => {
+      const { cookie } = await reauthedSession("owner@example.com", "owner");
+      const { url, body } = await prepare();
+
+      const res = await send(method, url, cookie, { ...body, reason: `  ${REASON}  ` });
+
+      expect(res.statusCode).toBe(204);
+      expect((await auditRows(resource, action)).map((row) => row.reason)).toEqual([REASON]);
     });
   });
 });

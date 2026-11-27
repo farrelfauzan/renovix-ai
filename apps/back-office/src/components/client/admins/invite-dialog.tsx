@@ -9,6 +9,8 @@ import type { AdminListEntry } from "@/lib/admins/admin-list-entry";
 import type { AdminRole } from "@/lib/admins/admin-role";
 import type { AdminsApi } from "@/lib/admins/admins-api";
 import type { IssuedInvitation } from "@/lib/admins/issued-invitation";
+import { MAX_REASON_LENGTH } from "@/lib/admins/max-reason-length";
+import { LabeledInput } from "../form/labeled-input";
 import { InviteConflict } from "./invite-conflict";
 
 const CONFLICT = 409;
@@ -24,10 +26,15 @@ type InviteDialogProps = {
   readonly onClose: () => void;
 };
 
-/** Invites an email with a role (`admins:write`); the answer's link goes to the link dialog (shown once). */
+/**
+ * Invites an email with a role (`admins:write`); the answer's link goes to the link dialog (shown once). The reason is
+ * required (RNX-370): without one nothing is sent, and the resend or revoke offered after a 409 carry it too.
+ */
 export function InviteDialog({ api, roles, admins, run, onIssued, onClose }: InviteDialogProps) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState(roles[0]?.name ?? "");
+  const [reason, setReason] = useState("");
+  const isReasonEmpty = reason.trim() === "";
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<AdminListEntry | null>(null);
   const finish = async <T,>(action: () => Promise<T>, onDone: (value: T) => void) => {
@@ -38,9 +45,10 @@ export function InviteDialog({ api, roles, admins, run, onIssued, onClose }: Inv
   };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isReasonEmpty) return;
     setError(null);
     setPending(null);
-    const outcome = await run(() => api.invite(email, role));
+    const outcome = await run(() => api.invite(email, role, reason.trim()));
     if (outcome.ok) {
       onIssued(outcome.value);
       return onClose();
@@ -67,10 +75,13 @@ export function InviteDialog({ api, roles, admins, run, onIssued, onClose }: Inv
           </SelectContent>
         </Select>
       </label>
+      <LabeledInput label="Reason (required, audited)" name="reason" isRequired maxLength={MAX_REASON_LENGTH} value={reason} onChange={setReason} />
       {error && <p role="alert" className="text-sm text-rx-red-bar">{error}</p>}
-      {pending && <InviteConflict pending={pending} onResend={() => finish(() => api.resendInvitation(pending.id), onIssued)} onRevoke={() => finish(() => api.revokeInvitation(pending.id), () => undefined)} />}
+      {pending && (
+        <InviteConflict pending={pending} isDisabled={isReasonEmpty} onResend={() => finish(() => api.resendInvitation(pending.id, reason.trim()), onIssued)} onRevoke={() => finish(() => api.revokeInvitation(pending.id, reason.trim()), () => undefined)} />
+      )}
       <div className="flex gap-2">
-        <Button variant="outline" type="submit" className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Send invitation</Button>
+        <Button variant="outline" type="submit" disabled={isReasonEmpty} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Send invitation</Button>
         <Button variant="outline" type="button" onClick={onClose} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Cancel</Button>
       </div>
     </form>
