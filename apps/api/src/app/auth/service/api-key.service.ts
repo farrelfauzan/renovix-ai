@@ -17,6 +17,8 @@ import { toApiKeyExpiry } from "../utils/to-api-key-expiry";
 
 const HASH_SECRET_NAME = "API_KEY_HASH_SECRET";
 const USAGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+/** The user status whose keys no longer authenticate (RNX-100, D427). */
+const SUSPENDED = "suspended";
 
 /**
  * A user's API keys (RNX-18, D49, D50): several per user, each shown once at creation and stored only as its prefix
@@ -74,8 +76,9 @@ export class ApiKeyService {
 
   /**
    * The owner of a presented key, or null when the key is malformed, unknown, does not match its stored hash
-   * (constant-time compare), is revoked or has expired. A valid key's last use is set to now. RNX-232: with the key's
-   * id and allowed tiers.
+   * (constant-time compare), is revoked or has expired, or (RNX-100, D427) its owner is suspended: the status comes
+   * with the key's own lookup, no extra query. A valid key's last use is set to now. RNX-232: with the key's id and
+   * allowed tiers.
    */
   async authenticate(presented: string): Promise<ApiKeyOwner | null> {
     const prefix = parseApiKeyPrefix(presented);
@@ -84,7 +87,7 @@ export class ApiKeyService {
     const secret = readRequiredSecret(process.env, HASH_SECRET_NAME);
     if (!key || !matchesApiKeyHash(presented, key.keyHash, secret)) return null;
     const now = new Date();
-    if (key.revokedAt || (key.expiresAt && key.expiresAt <= now)) return null;
+    if (key.revokedAt || (key.expiresAt && key.expiresAt <= now) || key.user.status === SUSPENDED) return null;
     await this.keys.touchLastUsed(key.id, now);
     return { id: key.user.id, email: key.user.email, apiKeyId: key.id, allowedTiers: key.allowedTiers };
   }

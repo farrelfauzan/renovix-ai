@@ -10,8 +10,9 @@ import { ApiKeyService } from "../../app/auth/service/api-key.service";
 /**
  * `Authorization: Bearer rnx_live_…` (RNX-18): the key is looked up by its prefix and its HMAC-SHA256 compared with
  * the stored hash in constant time (ApiKeyService.authenticate); a missing, malformed, unknown, wrong, revoked or
- * expired key is a 401. A valid key attaches its owner as `request.user` and records its last use. RNX-232:
- * `request.user` also carries the key's id and allowed tiers.
+ * expired key is a 401, and so is the key of a suspended user (RNX-100, D427), before any handler runs. A valid key
+ * attaches its owner as `request.user` and records its last use. RNX-232: `request.user` also carries the key's id
+ * and allowed tiers.
  */
 @Injectable()
 export class ApiKeyGuard implements CanActivate {

@@ -19,6 +19,7 @@ import { AdminTopUpPacksController } from "./admin-catalog/controller/admin-top-
 import { AdminCreditsController } from "./admin-credits/controller/admin-credits.controller";
 import { AdminReconciliationController } from "./admin-usage/controller/admin-reconciliation.controller";
 import { AdminUsageController } from "./admin-usage/controller/admin-usage.controller";
+import { AdminUserSessionsController } from "./admin-users/controller/admin-user-sessions.controller";
 import { AdminUsersController } from "./admin-users/controller/admin-users.controller";
 import { AdminProviderModelsController } from "./admin-providers/controller/admin-provider-models.controller";
 import { AdminProvidersController } from "./admin-providers/controller/admin-providers.controller";
@@ -167,6 +168,12 @@ const ROWS: readonly Row[] = [
   { route: "POST /admin/usage/users/:userId/email", body: NOT_AN_OBJECT },
   { route: "POST /admin/reconciliation/entries", body: { day: "2026-10-20", portalBalanceUsd: "10" }, details: ["providerId"] },
   { route: "POST /admin/users/:id/reveal", body: { field: "email", reason: "   " }, details: ["reason"] },
+  // RNX-100: the user writes that take nothing but their reason.
+  { route: "POST /admin/users/:id/suspend", body: { reason: "   " }, details: ["reason"] },
+  { route: "POST /admin/users/:id/reinstate", body: { reason: "   " }, details: ["reason"] },
+  { route: "POST /admin/users/:id/reset-api-keys", body: { reason: "   " }, details: ["reason"] },
+  { route: "DELETE /admin/users/:id/sessions", body: { reason: "   " }, details: ["reason"] },
+  { route: "DELETE /admin/users/:id/sessions/:sessionId", body: { reason: "   " }, details: ["reason"] },
   { route: "POST /admin/payments/orders/:id/confirm", body: { reason: "" }, details: ["reason"] },
   { route: "POST /admin/payments/unmatched/:id/refunded", body: NOT_AN_OBJECT },
   // ─── the rest of the product API ───
@@ -241,7 +248,7 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
         AdminAdminsController, AdminAuthController, AdminInvitationsController, AdminRolesController,
         AdminCodesController, AdminEnterpriseBundlesController, AdminPackagesController, AdminSettingsController,
         AdminTopUpPacksController, AdminCreditsController, AdminProviderModelsController, AdminProvidersController,
-        AdminUsageController, AdminReconciliationController, AdminUsersController,
+        AdminUsageController, AdminReconciliationController, AdminUsersController, AdminUserSessionsController,
         AgentLinkController, AgentRunController, AgentController, ApiKeyController, AuthController, BillingController,
         ChannelController, GowaWebhookController, ChatController, CodesController, DocumentController,
         KnowledgeController, McpUserController, WebSearchController, PortalController, CreditEstimateController, ReminderController,
@@ -289,9 +296,9 @@ describe("RNX-28: one 400 shape for an invalid request body on every route (Fast
     expect(Object.keys(body.error.details).sort()).toEqual([...(row.details ?? [])].sort());
   });
 
-  // RNX-370: the two DELETE routes take their reason as a JSON body. Fastify parses a DELETE body like any other; an
-  // empty body sent as JSON, or no body at all, is a clean 400, never a 500.
-  describe.each(["DELETE /admin/invitations/:id", "DELETE /admin/roles/:name"])("RNX-370: %s with no reason body", (route) => {
+  // RNX-370: the DELETE routes take their reason as a JSON body (RNX-100: the two session routes too). Fastify parses a
+  // DELETE body like any other; an empty body sent as JSON, or no body at all, is a clean 400, never a 500.
+  describe.each(["DELETE /admin/invitations/:id", "DELETE /admin/roles/:name", "DELETE /admin/users/:id/sessions", "DELETE /admin/users/:id/sessions/:sessionId"])("RNX-370: %s with no reason body", (route) => {
     it("content-type application/json and an empty body: 400, not a 500", async () => {
       const res = await app.inject({ ...toRequest(route), headers: { "content-type": "application/json" }, payload: "" });
 

@@ -23,13 +23,15 @@ type UsersDirectoryProps = {
   readonly canListPackages: boolean;
   /** Lacks `users:read_pii`: the banner says so (visibility only: the API masks and decides reveals). */
   readonly isMasked: boolean;
+  /** Holds `users:write`: the detail offers the account actions and the session revokes (RNX-100, visibility only). */
+  readonly canWriteUsers: boolean;
 };
 
 /**
  * The user list with its search and filters, one page (50) per request, and the detail of the user opened from it.
  * A search or a filter change goes back to page 1; nothing polls.
  */
-export function UsersDirectory({ heading, api, packagesApi, canListPackages, isMasked }: UsersDirectoryProps) {
+export function UsersDirectory({ heading, api, packagesApi, canListPackages, isMasked, canWriteUsers }: UsersDirectoryProps) {
   const [query, setQuery] = useState<UserListQuery>({ page: FIRST_PAGE });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [packages, setPackages] = useState<readonly CatalogOffer[] | null>(null);
@@ -62,7 +64,7 @@ export function UsersDirectory({ heading, api, packagesApi, canListPackages, isM
         {data && data.items.length > 0 && <UsersTable items={data.items} selectedId={selectedId} onOpen={setSelectedId} />}
         {data && <UsersPager page={data.page} hasMore={data.hasMore} onPage={(page) => setQuery((current) => ({ ...current, page }))} />}
       </section>
-      {selectedId && <UserDetailPanel key={selectedId} userId={selectedId} api={api} onClose={() => setSelectedId(null)} />}
+      {selectedId && <UserDetailPanel key={selectedId} userId={selectedId} api={api} canWriteUsers={canWriteUsers} onClose={() => setSelectedId(null)} />}
     </div>
   );
 }

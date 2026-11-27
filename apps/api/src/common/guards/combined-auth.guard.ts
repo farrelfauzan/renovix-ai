@@ -22,7 +22,7 @@ export class CombinedAuthGuard implements CanActivate {
     throw new UnauthorizedException("Authentication required");
   }
 
-  /** Accepts a valid Better Auth cookie session and attaches request.user; false otherwise. */
+  /** Accepts a valid Better Auth cookie session of a user who is not suspended and attaches request.user; false otherwise. */
   async trySession(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     if (request.headers.cookie) {
@@ -43,7 +43,8 @@ export class CombinedAuthGuard implements CanActivate {
           headers,
           query: { disableCookieCache: true },
         });
-        if (session?.user) {
+        // RNX-100 (D427): a suspended user's session is refused; the status comes with the session's own user row.
+        if (session?.user && session.user.status !== "suspended") {
           request.user = {
             userId: session.user.id,
             email: session.user.email,

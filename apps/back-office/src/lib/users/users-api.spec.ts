@@ -1,5 +1,5 @@
 import type { ApiClient } from "@/lib/api/api-client";
-import { createUsersApi } from "./users-api";
+import { createUsersApi, type UsersApi } from "./users-api";
 
 // RNX-358: the users routes as sent through the session client: paths, query parameters and the reveal body.
 
@@ -27,5 +27,23 @@ describe("createUsersApi (RNX-358)", () => {
     expect(request).toHaveBeenCalledWith("/api/v1/admin/users/user-7/reveal", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ field: "phone", reason: "ticket 5120" }),
     });
+  });
+
+  it("RNX-100: listSessions reads the user's sessions by its encoded id", async () => {
+    const { request, api } = okClient({ sessions: [] });
+    expect(await api.listSessions("user/7")).toEqual({ sessions: [] });
+    expect(request).toHaveBeenCalledWith("/api/v1/admin/users/user%2F7/sessions", { method: "GET" });
+  });
+
+  it.each([
+    ["suspend", (api: UsersApi) => api.suspend("user-7", "r"), "/api/v1/admin/users/user-7/suspend", "POST"],
+    ["reinstate", (api: UsersApi) => api.reinstate("user-7", "r"), "/api/v1/admin/users/user-7/reinstate", "POST"],
+    ["resetApiKeys", (api: UsersApi) => api.resetApiKeys("user-7", "r"), "/api/v1/admin/users/user-7/reset-api-keys", "POST"],
+    ["revokeSession", (api: UsersApi) => api.revokeSession("user-7", "session/1", "r"), "/api/v1/admin/users/user-7/sessions/session%2F1", "DELETE"],
+    ["revokeAllSessions", (api: UsersApi) => api.revokeAllSessions("user-7", "r"), "/api/v1/admin/users/user-7/sessions", "DELETE"],
+  ])("RNX-100: %s sends one request with the reason as its JSON body", async (_name, call, path, method) => {
+    const { request, api } = okClient({ revoked: 2 });
+    await call(api);
+    expect(request.mock.calls).toEqual([[path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify({ reason: "r" }) }]]);
   });
 });

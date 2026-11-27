@@ -61,7 +61,7 @@ export class PortalGuard implements CanActivate {
     return true;
   }
 
-  /** The Better Auth session's user, with the paid wallet's available credits; undefined when there is none. */
+  /** The Better Auth session's user, with the paid wallet's available credits; undefined when there is none or the user is suspended. */
   private async findSessionUser(
     requestHeaders: Record<string, string | string[] | undefined>,
   ): Promise<PortalIdentity["user"] | undefined> {
@@ -78,7 +78,8 @@ export class PortalGuard implements CanActivate {
       // RNX-342: read the session row on every request instead of trusting the 5-minute cookie cache
       // (lib/auth.ts session.cookieCache), so a revoked session is anonymous at once (as RNX-336's guard).
       const session = await auth.api.getSession({ headers, query: { disableCookieCache: true } });
-      if (!session?.user) {
+      // RNX-100 (D427): a suspended user's session is anonymous too (the status comes with the session's user row).
+      if (!session?.user || session.user.status === "suspended") {
         this.logger.debug(
           `Better Auth getSession returned no user (session expired or invalid)`,
         );

@@ -148,6 +148,20 @@ export class UserRepository {
     });
   }
 
+  /** RNX-100: this user's status, unless the user is deleted (null for a deleted or unknown user). */
+  findLiveStatus(userId: string, tx?: DbTransaction) {
+    return (tx ?? this.prisma).user.findFirst({ where: { id: userId, status: { not: "deleted" } }, select: { status: true } });
+  }
+
+  /**
+   * RNX-100: sets this user's status to `to` only while it is `from`, in one conditional UPDATE (of two concurrent
+   * changes only one can pass); returns how many rows changed (0 or 1).
+   */
+  async changeStatus(userId: string, from: string, to: string, tx?: DbTransaction): Promise<number> {
+    const { count } = await (tx ?? this.prisma).user.updateMany({ where: { id: userId, status: from }, data: { status: to } });
+    return count;
+  }
+
   /** RNX-357: one personal field of this user (only that column is read), unless the user is deleted. */
   findPiiField(userId: string, field: "email" | "phone" | "name", tx?: DbTransaction) {
     return (tx ?? this.prisma).user.findFirst({

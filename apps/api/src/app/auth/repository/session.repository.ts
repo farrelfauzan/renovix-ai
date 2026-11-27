@@ -15,4 +15,26 @@ export class SessionRepository {
       orderBy: { updatedAt: "desc" },
     });
   }
+
+  /** RNX-100: this user's newest `limit` sessions, expired ones included: never the token or the IP address. */
+  findLatestOfUser(userId: string, limit: number, tx?: DbTransaction) {
+    return (tx ?? this.prisma).session.findMany({
+      where: { userId },
+      select: { id: true, createdAt: true, expiresAt: true, userAgent: true },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take: limit,
+    });
+  }
+
+  /** RNX-100: deletes this user's session with this id (another user's session is left alone); returns 0 or 1. */
+  async deleteOfUser(userId: string, sessionId: string, tx?: DbTransaction): Promise<number> {
+    const { count } = await (tx ?? this.prisma).session.deleteMany({ where: { id: sessionId, userId } });
+    return count;
+  }
+
+  /** RNX-100: deletes every session of this user; returns how many were deleted. */
+  async deleteAllOfUser(userId: string, tx?: DbTransaction): Promise<number> {
+    const { count } = await (tx ?? this.prisma).session.deleteMany({ where: { userId } });
+    return count;
+  }
 }
