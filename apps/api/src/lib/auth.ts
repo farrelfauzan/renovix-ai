@@ -144,7 +144,8 @@ export const auth = betterAuth({
       jobTitle: { type: "string", required: false },
       timezone: { type: "string", required: false, defaultValue: "UTC" },
       locale: { type: "string", required: false, defaultValue: "en" },
-      status: { type: "string", required: false, defaultValue: "active" },
+      // RNX-100: never settable by the client (sign-up, update-user): only the back office changes a user's status.
+      status: { type: "string", required: false, defaultValue: "active", input: false },
       firstName: { type: "string", required: false },
       lastName: { type: "string", required: false },
     },

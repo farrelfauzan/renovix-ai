@@ -24,6 +24,8 @@ jest.mock("../../chat/service/chat.service", () => ({ ChatService: class {} }));
 
 const PASSWORD = "rnx100-made-up-password";
 const FUNDED_CREDITS = 5;
+/** A trusted origin in test (CORS_ORIGIN unset: the local origins); Better Auth checks it on a cookie POST. */
+const CHAT_ORIGIN = "http://localhost:3000";
 
 /** The name=value pairs of every cookie a response set: the session token and the cookie cache. */
 const cookiesOf = (res: LightMyRequestResponse): string => {
@@ -118,5 +120,36 @@ describe("RNX-100: a suspended user is refused on every way in (Fastify, test da
     expect(await started.prisma.session.count({ where: { userId } })).toBeGreaterThan(0);
     expect(whileSuspended.statusCode).toBe(401);
     expect(afterwards.statusCode).toBe(200);
+  });
+
+  it("a suspended user cannot lift the suspension through Better Auth's update-user, even with the cookie-cached session from before it", async () => {
+    const email = "rnx100-self-reinstate@renovix.test";
+    const userId = await signUp(email);
+    const sessionBefore = cookiesOf(await signIn(email));
+    const statusOf = async () => (await started.prisma.user.findUniqueOrThrow({ where: { id: userId } })).status;
+    const updateUser = (payload: Record<string, unknown>) =>
+      app.inject({ method: "POST", url: "/api/auth/better/update-user", headers: { cookie: sessionBefore, origin: CHAT_ORIGIN }, payload });
+    const control = await updateUser({ name: "RNX-100 renamed" });
+    const whileActive = await updateUser({ status: "deleted" });
+    const statusAfterActiveAttempt = await statusOf();
+
+    await runAsAdmin((service, tx) => service.suspend(userId, tx));
+    const whileSuspended = await updateUser({ status: "active" });
+
+    expect(control.statusCode).toBe(200);
+    expect(whileActive.statusCode).not.toBe(200);
+    expect(statusAfterActiveAttempt).toBe("active");
+    expect(whileSuspended.statusCode).not.toBe(200);
+    expect(await statusOf()).toBe("suspended");
+  });
+
+  it("a sign-up cannot choose its own status: the account is active whatever the body says", async () => {
+    const email = "rnx100-signup-status@renovix.test";
+
+    const res = await app.inject({ method: "POST", url: "/api/auth/better/sign-up/email", payload: { email, password: PASSWORD, name: "RNX-100", status: "deleted" } });
+
+    const stored = await started.prisma.user.findUnique({ where: { email } });
+    expect(stored === null ? res.statusCode : stored.status).not.toBe("deleted");
+    expect(stored?.status ?? "active").toBe("active");
   });
 });
