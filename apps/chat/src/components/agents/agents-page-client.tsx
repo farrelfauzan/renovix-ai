@@ -500,7 +500,7 @@ function ServerMiddlePanel({
             <Settings className="w-3.5 h-3.5" />
           </Button>
           <div className="flex-1" />
-          <IconActionButton title="Delete Server" icon={Trash2} onClick={handleDeleteServer} />
+          <IconActionButton title="Delete Server" tone="destructive" icon={Trash2} onClick={handleDeleteServer} />
         </div>
       </div>
 

@@ -32,7 +32,7 @@ export function CodeRow({ code, redemptions, onToggleRedemptions, onDeactivate }
         <td className="px-3 py-2">
           <div className="flex flex-wrap gap-2">
             <IconActionButton title="Redemptions" icon={ListChecks} onClick={onToggleRedemptions} isExpanded={redemptions !== null} />
-            {code.isActive && <IconActionButton title="Deactivate" icon={Ban} onClick={onDeactivate} />}
+            {code.isActive && <IconActionButton title="Deactivate" tone="destructive" icon={Ban} onClick={onDeactivate} />}
           </div>
         </td>
       </tr>

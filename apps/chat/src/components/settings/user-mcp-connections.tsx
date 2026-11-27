@@ -134,7 +134,7 @@ export function UserMcpConnections({ workspaceId }: UserMcpConnectionsProps) {
 
               <div className="shrink-0 ml-2">
                 {isConnected ? (
-                  <IconActionButton title="Disconnect" label={`Disconnect ${entry.displayName}`} icon={Unlink} isDisabled={disconnect.isPending} onClick={() => handleDisconnect(entry.name, entry.displayName)} />
+                  <IconActionButton title="Disconnect" tone="destructive" label={`Disconnect ${entry.displayName}`} icon={Unlink} isDisabled={disconnect.isPending} onClick={() => handleDisconnect(entry.name, entry.displayName)} />
                 ) : (
                   <Button
                     variant="outline"

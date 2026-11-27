@@ -38,4 +38,22 @@ describe("IconActionButton", () => {
     fireEvent.click(button);
     expect(onClick).not.toHaveBeenCalled();
   });
+  // RNX-372: the destructive tone takes the shared destructive role (`--destructive`, one token for light and dark); the default does not.
+  it("paints a destructive action with the destructive token and a default one without it", () => {
+    render(
+      <>
+        <IconActionButton title="Delete" tone="destructive" icon={Pencil} onClick={() => undefined} />
+        <IconActionButton title="Edit" icon={Pencil} onClick={() => undefined} />
+      </>,
+    );
+    const destructive = screen.getByRole("button", { name: "Delete" });
+    const neutral = screen.getByRole("button", { name: "Edit" });
+    const destructiveClasses = destructive.className.split(/\s+/);
+    const neutralClasses = neutral.className.split(/\s+/);
+    expect(destructiveClasses).toEqual(expect.arrayContaining(["text-destructive", "border-destructive"]));
+    expect(destructiveClasses).not.toContain("text-rx-ink");
+    expect(neutralClasses).toContain("text-rx-ink");
+    expect(neutralClasses).not.toContain("text-destructive");
+    expect(neutralClasses).not.toContain("border-destructive");
+  });
 });

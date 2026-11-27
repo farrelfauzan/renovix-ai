@@ -35,7 +35,7 @@ export function UserSessionsTable({ sessions, onRevoke }: UserSessionsTableProps
               <td className={`${CELL} break-all`}>{session.userAgent ?? "not sent"}</td>
               {onRevoke && (
                 <td className={CELL}>
-                  <IconActionButton title="Revoke" label={`Revoke session ${session.id}`} icon={LogOut} onClick={() => onRevoke(session)} />
+                  <IconActionButton title="Revoke" tone="destructive" label={`Revoke session ${session.id}`} icon={LogOut} onClick={() => onRevoke(session)} />
                 </td>
               )}
             </tr>

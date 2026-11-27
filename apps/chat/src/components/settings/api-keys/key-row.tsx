@@ -31,7 +31,7 @@ export function KeyRow({ apiKey, onRevokeAction }: KeyRowProps) {
           <Badge variant="outline">revoked</Badge>
         ) : (
           <>
-            <IconActionButton title="Revoke" label={`Revoke key ${apiKey.name}`} icon={CircleX} onClick={() => setIsConfirming(true)} />
+            <IconActionButton title="Revoke" tone="destructive" label={`Revoke key ${apiKey.name}`} icon={CircleX} onClick={() => setIsConfirming(true)} />
             <RevokeKeyDialog
               keyName={apiKey.name}
               open={isConfirming}

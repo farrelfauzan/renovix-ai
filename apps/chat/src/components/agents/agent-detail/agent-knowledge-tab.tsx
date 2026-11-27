@@ -96,6 +96,7 @@ export function AgentKnowledgeTab({ agent, agentId }: AgentKnowledgeTabProps) {
             </div>
             <IconActionButton
               title="Remove"
+              tone="destructive"
               label={`Remove ${akb.knowledgeBase?.name || akb.knowledgeBaseId}`}
               icon={X}
               onClick={() =>

@@ -23,7 +23,7 @@ export function RoleRow({ role, canWrite, onEdit, onDelete }: RoleRowProps) {
       <td className={CELL}>{role.permissions.join(", ")}</td>
       <td className={`${CELL} flex gap-1`}>
         {canChange && <IconActionButton title="Edit" label={`Edit role ${role.name}`} icon={Pencil} onClick={onEdit} />}
-        {canChange && <IconActionButton title="Delete" label={`Delete role ${role.name}`} icon={Trash2} onClick={onDelete} />}
+        {canChange && <IconActionButton title="Delete" tone="destructive" label={`Delete role ${role.name}`} icon={Trash2} onClick={onDelete} />}
       </td>
     </tr>
   );

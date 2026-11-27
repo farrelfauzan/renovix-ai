@@ -48,7 +48,7 @@ export function AccountMcpProviderCard({
           </div>
         </div>
         {credential ? (
-          <IconActionButton title="Disconnect" label={`Disconnect ${entry.displayName}`} icon={Unlink} onClick={onDisconnectAction} />
+          <IconActionButton title="Disconnect" tone="destructive" label={`Disconnect ${entry.displayName}`} icon={Unlink} onClick={onDisconnectAction} />
         ) : (
           <IconActionButton title="Connect" label={`Connect ${entry.displayName}`} icon={Link} onClick={onConnectAction} />
         )}

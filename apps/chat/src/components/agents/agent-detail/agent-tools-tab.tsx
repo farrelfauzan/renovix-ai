@@ -270,6 +270,7 @@ export function AgentToolsTab({ agent, agentId }: AgentToolsTabProps) {
             </div>
             <IconActionButton
               title={isActive ? "Remove" : "Add"}
+              tone={isActive ? "destructive" : "default"}
               label={`${isActive ? "Remove" : "Add"} ${tool.name}`}
               icon={isActive ? X : Plus}
               onClick={() => void handleToggleTool(tool.type, isActive)}

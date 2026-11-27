@@ -119,7 +119,7 @@ export default function KnowledgePage() {
                       {kb._count.chunks} chunks
                     </span>
                   </button>
-                  <IconActionButton title="Delete" label={`Delete ${kb.name}`} icon={Trash2} onClick={() => deleteMutation.mutate(kb.id)} />
+                  <IconActionButton title="Delete" tone="destructive" label={`Delete ${kb.name}`} icon={Trash2} onClick={() => deleteMutation.mutate(kb.id)} />
                 </div>
 
                 <AnimatePresence>
@@ -179,6 +179,7 @@ function KBChunksSection({ knowledgeBaseId }: { knowledgeBaseId: string }) {
           <IconActionButton
             title="Delete"
             label="Delete chunk"
+            tone="destructive"
             icon={Trash2}
             onClick={() =>
               deleteMutation.mutate({ knowledgeBaseId, chunkId: chunk.id })

@@ -97,7 +97,7 @@ export function WorkspaceMembersTab({ workspaceId, members }: Props) {
                     <option value="member">Member</option>
                   </select>
 
-                  <IconActionButton title="Remove" label={`Remove ${member.user.email}`} icon={UserMinus} onClick={() => setMemberToRemove(member)} />
+                  <IconActionButton title="Remove" tone="destructive" label={`Remove ${member.user.email}`} icon={UserMinus} onClick={() => setMemberToRemove(member)} />
                 </div>
               )}
             </div>
