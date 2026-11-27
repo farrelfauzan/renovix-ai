@@ -12,13 +12,17 @@ type AssignRoleControlProps = {
   readonly onAssign: (role: string) => void;
 };
 
-/** The role select and its button on an admin row (`roles:write`; never rendered on the signed-in admin's own row). */
+/**
+ * The role change of an admin's detail (`roles:write`; never rendered on the signed-in admin's own detail): picking
+ * a role changes nothing until Save (D436).
+ */
 export function AssignRoleControl({ email, currentRole, roles, onAssign }: AssignRoleControlProps) {
   const [role, setRole] = useState(currentRole);
   return (
-    <span className="inline-flex gap-1">
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-rx-muted">Change role</span>
       <Select value={role} onValueChange={setRole}>
-        <SelectTrigger aria-label={`Role for ${email}`} className="rounded-rx border-rx-line px-1 py-1 data-[size=default]:h-auto">
+        <SelectTrigger aria-label={`Role for ${email}`} className="rounded-rx border-rx-line px-2 py-1 data-[size=default]:h-auto">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -27,7 +31,7 @@ export function AssignRoleControl({ email, currentRole, roles, onAssign }: Assig
           ))}
         </SelectContent>
       </Select>
-      <Button variant="outline" type="button" aria-label={`Assign role to ${email}`} onClick={() => onAssign(role)} className="rounded-rx border border-rx-line px-2 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Assign</Button>
-    </span>
+      <Button variant="outline" type="button" aria-label={`Save role for ${email}`} onClick={() => onAssign(role)} className="rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Save</Button>
+    </div>
   );
 }

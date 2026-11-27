@@ -14,24 +14,20 @@ type AdminsPanelProps = {
   readonly admins: readonly AdminListEntry[];
   readonly roles: readonly AdminRole[];
   readonly api: AdminsApi;
-  readonly currentAdminId: string;
   readonly canWriteAdmins: boolean;
-  readonly canWriteRoles: boolean;
   readonly run: <T>(action: () => Promise<T>) => Promise<ActionOutcome<T>>;
-  readonly onAct: (action: () => Promise<unknown>) => void;
   readonly onIssued: (issued: IssuedInvitation) => void;
-  readonly onResend: (id: string) => void;
 };
 
-/** The admin list with its invite dialog (`admins:read`; the write controls follow `admins:write` and `roles:write`). */
-export function AdminsPanel({ admins, roles, api, currentAdminId, canWriteAdmins, canWriteRoles, run, onAct, onIssued, onResend }: AdminsPanelProps) {
+/** The admin list with its invite dialog (`admins:read`; inviting follows `admins:write`). A row opens the admin's page. */
+export function AdminsPanel({ admins, roles, api, canWriteAdmins, run, onIssued }: AdminsPanelProps) {
   const [isInviting, setIsInviting] = useState(false);
   return (
     <section aria-label="Admins" className="mt-4">
       <h2 className="text-lg font-semibold">Admins</h2>
       {canWriteAdmins && <Button variant="outline" type="button" onClick={() => setIsInviting(true)} className="mt-2 rounded-rx border border-rx-line px-3 py-1 text-sm h-auto bg-transparent font-normal whitespace-normal">Invite admin</Button>}
       {isInviting && <InviteDialog api={api} roles={roles} admins={admins} run={run} onIssued={onIssued} onClose={() => setIsInviting(false)} />}
-      <AdminsTable admins={admins} api={api} roles={roles} currentAdminId={currentAdminId} canWriteAdmins={canWriteAdmins} canWriteRoles={canWriteRoles} onAct={onAct} onResend={onResend} />
+      <AdminsTable admins={admins} />
     </section>
   );
 }

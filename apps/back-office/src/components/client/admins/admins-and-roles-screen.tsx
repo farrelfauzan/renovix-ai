@@ -23,7 +23,7 @@ type AdminsAndRolesScreenProps = {
 };
 
 /**
- * The admins and roles screen (RNX-189, PRD 09 F5): admin list, invitations, role assignment, roles. Controls
+ * The admins and roles screen (RNX-189, PRD 09 F5): admin list, invitations, roles; a row opens the admin's page. Controls
  * follow the signed-in admin's permissions (visibility only: the API enforces them and audits every write).
  * Every write goes through the re-authentication gate and refetches the lists after the API answers.
  */
@@ -68,11 +68,6 @@ export function AdminsAndRolesScreen({ api = defaultAdminsApi, sessionApi = defa
     const outcome = await run(action);
     if (!outcome.ok) setActionError(outcome.message);
   };
-  const resend = async (id: string) => {
-    const outcome = await run(() => api.resendInvitation(id));
-    if (outcome.ok) setIssued(outcome.value);
-    else setActionError(outcome.message);
-  };
   if (loadError) return <p role="alert" className="mt-4 text-sm text-rx-red-bar">{loadError}</p>;
   if (!profile) return <p className="mt-4 text-sm text-rx-muted">Loading…</p>;
   return (
@@ -81,7 +76,7 @@ export function AdminsAndRolesScreen({ api = defaultAdminsApi, sessionApi = defa
       {prompt && <ReauthPrompt prompt={prompt} />}
       {issued && <InvitationLinkDialog issued={issued} onClose={() => setIssued(null)} />}
       {admins && (
-        <AdminsPanel admins={admins} roles={roles ?? []} api={api} currentAdminId={profile.id} canWriteAdmins={has("admins:write")} canWriteRoles={has("roles:write")} run={run} onAct={act} onIssued={setIssued} onResend={resend} />
+        <AdminsPanel admins={admins} roles={roles ?? []} api={api} canWriteAdmins={has("admins:write")} run={run} onIssued={setIssued} />
       )}
       {roles && <RolesPanel roles={roles} api={api} canWrite={has("roles:write")} run={run} onAct={act} />}
     </div>

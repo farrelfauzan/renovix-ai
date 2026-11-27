@@ -3,7 +3,8 @@ import type { AdminProfile } from "@/lib/session/admin-profile";
 import { SignedInAdminContext } from "@/lib/session/signed-in-admin-context";
 import { SideNavigation } from "./side-navigation";
 
-jest.mock("next/navigation", () => ({ usePathname: () => "/companies" }));
+let mockPathname = "/companies";
+jest.mock("next/navigation", () => ({ usePathname: () => mockPathname }));
 
 const profile = (permissions: string[]): AdminProfile => ({
   id: "a", email: "a@example.com", name: "a", role: "r", permissions, scope: "full", mustChangePassword: false, mfaEnrolled: true,
@@ -63,5 +64,17 @@ describe("SideNavigation", () => {
     renderNavigation(["providers:read", "packages:read"]);
     const current = screen.getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page");
     expect(current.map((a) => a.textContent)).toEqual(["Companies"]);
+  });
+
+  it("marks an item current on its own route and on a page under it (RNX-373: the page of one admin)", () => {
+    mockPathname = "/admins-and-roles/admin-1";
+    try {
+      renderNavigation(["users:read"]);
+
+      const current = screen.getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page").map((a) => a.textContent);
+      expect(current).toEqual(["Admins and roles"]);
+    } finally {
+      mockPathname = "/companies";
+    }
   });
 });
