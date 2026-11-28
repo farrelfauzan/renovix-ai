@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { refuseDeleted } from "../../../common/utils/refuse-deleted";
 import { ensureDefaultWorkspace } from "./ensure-default-workspace";
 
 /**
@@ -80,11 +81,12 @@ export class WorkspaceRepository {
     data: Pick<Prisma.WorkspaceUncheckedUpdateInput, "name" | "description" | "avatar">,
     tx?: DbTransaction,
   ) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).workspace.update({
         where: { id: workspaceId, deletedAt: null },
         data,
       }),
+      "Workspace not found",
     );
   }
 
@@ -111,12 +113,13 @@ export class WorkspaceRepository {
    * it); one conditional write. A default workspace is never deleted, so never restored. 404 when there is none.
    */
   restoreWorkspace(workspaceId: string, ownerId: string, tx?: DbTransaction) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).workspace.update({
         where: { id: workspaceId, ownerId, deletedAt: { not: null }, isDefault: false },
         data: { deletedAt: null, deletedById: null },
         select: { id: true, name: true },
       }),
+      "Workspace not found",
     );
   }
 
@@ -125,11 +128,12 @@ export class WorkspaceRepository {
    * workspace is never deleted. Returns the workspace; 404 when it is already deleted or a default one.
    */
   softDeleteWorkspace(workspaceId: string, deletedById: string, tx?: DbTransaction) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).workspace.update({
         where: { id: workspaceId, deletedAt: null, isDefault: false },
         data: { deletedAt: new Date(), deletedById },
       }),
+      "Workspace not found",
     );
   }
 
@@ -168,17 +172,5 @@ export class WorkspaceRepository {
   /** This owner's default workspace, created with its owner member row when there is none (RNX-117; race-safe). */
   ensureDefaultWorkspace(ownerId: string, tx?: DbTransaction) {
     return ensureDefaultWorkspace(tx ?? this.prisma, ownerId);
-  }
-
-  /** Runs a write on one workspace; Prisma's "no such row" (P2025: deleted, or deleted meanwhile) becomes a 404. */
-  private async refuseDeleted<T>(write: () => Promise<T>): Promise<T> {
-    try {
-      return await write();
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
-        throw new NotFoundException("Workspace not found");
-      }
-      throw err;
-    }
   }
 }

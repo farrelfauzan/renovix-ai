@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@generated/prisma/client.js";
+import { Injectable } from "@nestjs/common";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { refuseDeleted } from "../../../common/utils/refuse-deleted";
 
 /**
  * The queries on `conversations` (RX-136). Every method takes the transaction as its optional last argument.
@@ -90,11 +90,12 @@ export class ConversationRepository {
     title: string,
     tx?: DbTransaction,
   ) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).conversation.update({
         where: { id: conversationId, deletedAt: null },
         data: { title },
       }),
+      "Conversation not found",
     );
   }
 
@@ -103,11 +104,12 @@ export class ConversationRepository {
    * the conversation; 404 when it is already deleted.
    */
   softDeleteConversation(conversationId: string, deletedById: string, tx?: DbTransaction) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).conversation.update({
         where: { id: conversationId, deletedAt: null },
         data: { deletedAt: new Date(), deletedById },
       }),
+      "Conversation not found",
     );
   }
 
@@ -123,12 +125,13 @@ export class ConversationRepository {
 
   /** RNX-126: restores this user's deleted conversation with this id; one conditional write, 404 when there is none. */
   restoreUserConversation(conversationId: string, userId: string, tx?: DbTransaction) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).conversation.update({
         where: { id: conversationId, userId, deletedAt: { not: null } },
         data: { deletedAt: null, deletedById: null },
         select: { id: true, title: true },
       }),
+      "Conversation not found",
     );
   }
 
@@ -147,17 +150,5 @@ export class ConversationRepository {
         _count: { select: { messages: { where: { role: "user" } } } },
       },
     });
-  }
-
-  /** Runs a write on one live conversation; Prisma's "no such row" (P2025: deleted, or deleted meanwhile) becomes a 404. */
-  private async refuseDeleted<T>(write: () => Promise<T>): Promise<T> {
-    try {
-      return await write();
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
-        throw new NotFoundException("Conversation not found");
-      }
-      throw err;
-    }
   }
 }
