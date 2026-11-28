@@ -152,7 +152,7 @@ export default function MemoryPage() {
                         }`}
                       />
                     </Button>
-                    <IconActionButton title="Delete" icon={Trash2} onClick={() => deleteMutation.mutate(mem.id)} />
+                    <IconActionButton title="Delete" tone="destructive" icon={Trash2} onClick={() => deleteMutation.mutate(mem.id)} />
                   </div>
                 </div>
               </div>

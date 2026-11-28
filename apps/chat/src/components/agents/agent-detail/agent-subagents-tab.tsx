@@ -154,6 +154,7 @@ export function AgentSubAgentsTab({
               <IconActionButton title="View" label={`View ${sub.name}`} icon={Eye} onClick={() => onViewAgentAction(sub.id)} />
               <IconActionButton
                 title="Remove"
+                tone="destructive"
                 label={`Remove ${sub.name}`}
                 icon={X}
                 onClick={() =>

@@ -25,7 +25,7 @@ export function LinkedProviderRow({ provider, label, isLinked, isOnlyMethod }: L
       detail={detail}
       action={
         isLinked ? (
-          <IconActionButton title="Disconnect" icon={Unlink} isDisabled={isOnlyMethod || unlinkAccount.isPending} onClick={() => unlinkAccount.mutate(provider)} />
+          <IconActionButton title="Disconnect" tone="destructive" icon={Unlink} isDisabled={isOnlyMethod || unlinkAccount.isPending} onClick={() => unlinkAccount.mutate(provider)} />
         ) : (
           <IconActionButton title="Connect" icon={Link} isDisabled={linkAccount.isPending} onClick={() => linkAccount.mutate(provider)} />
         )

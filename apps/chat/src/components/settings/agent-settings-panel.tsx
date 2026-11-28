@@ -164,7 +164,7 @@ export function AgentSettingsPanel({ channelId }: { channelId: string | null }) 
                         {server.status.replace(/^\w/, (c) => c.toUpperCase())}
                       </Badge>
                       <IconActionButton title="Test connection" label={`Test connection ${server.displayName}`} icon={TestTube} isDisabled={testConn.isPending} onClick={() => handleTest(server.id, server.displayName)} />
-                      <IconActionButton title="Disconnect" label={`Disconnect ${server.displayName}`} icon={Unlink} isDisabled={deleteMcp.isPending} onClick={() => handleDisconnect(server.id, server.displayName)} />
+                      <IconActionButton title="Disconnect" tone="destructive" label={`Disconnect ${server.displayName}`} icon={Unlink} isDisabled={deleteMcp.isPending} onClick={() => handleDisconnect(server.id, server.displayName)} />
                     </div>
                   </div>
                 </div>

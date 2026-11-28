@@ -76,7 +76,7 @@ export function WorkspaceInvitesTab({ workspaceId, invites }: Props) {
               </div>
               <div className="flex items-center gap-1">
                 <IconActionButton title="Resend" label={`Resend invite ${invite.email}`} icon={Send} isDisabled={resendInvite.isPending} onClick={() => handleResend(invite.id)} />
-                <IconActionButton title="Revoke" label={`Revoke invite ${invite.email}`} icon={CircleX} isDisabled={revokeInvite.isPending} onClick={() => handleRevoke(invite.id)} />
+                <IconActionButton title="Revoke" tone="destructive" label={`Revoke invite ${invite.email}`} icon={CircleX} isDisabled={revokeInvite.isPending} onClick={() => handleRevoke(invite.id)} />
               </div>
             </div>
           ))}
