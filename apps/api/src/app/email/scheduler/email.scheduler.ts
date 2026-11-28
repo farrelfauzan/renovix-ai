@@ -34,6 +34,7 @@ export class EmailScheduler {
           const { subject, html, text } = this.buildEmail(
             job.type,
             job.payload as Record<string, unknown>,
+            job.recipientEmail,
           );
 
           const result = await this.emailService.send({
@@ -56,7 +57,7 @@ export class EmailScheduler {
     }
   }
 
-  private buildEmail(type: string, payload: Record<string, unknown>) {
+  private buildEmail(type: string, payload: Record<string, unknown>, jobRecipientEmail: string) {
     switch (type) {
       case "workspace_invite": {
         const token = payload.token as string;
@@ -68,7 +69,7 @@ export class EmailScheduler {
           role: payload.role as string,
           expiresAt: payload.expiresAt as string,
           acceptUrl,
-          recipientEmail: (payload.recipientEmail as string) || "",
+          recipientEmail: jobRecipientEmail,
         });
       }
       case EMAIL_CHANGE_VERIFICATION:
