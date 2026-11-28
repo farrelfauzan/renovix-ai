@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { OWNER_ONLY_PERMISSIONS } from "../config/owner-only-permissions";
 import { STAFF_PERMISSIONS } from "../config/staff-permissions";
-import { PiiRevealReasonDto } from "./pii-reveal-reason.dto";
+import { AuditReasonDto } from "./audit-reason.dto";
 
 /**
  * POST /admin/roles: a custom role (RNX-187). The name is lowercase (letters, digits, `_`, `-`); the
@@ -16,6 +16,6 @@ export const CreateRoleDto = z.object({
     .refine((permissions) => !permissions.some((permission) => OWNER_ONLY_PERMISSIONS.includes(permission)), {
       message: `A custom role cannot hold ${OWNER_ONLY_PERMISSIONS.join(" or ")}`,
     }),
-  reason: PiiRevealReasonDto,
+  reason: AuditReasonDto,
 });
 export type CreateRoleDto = z.infer<typeof CreateRoleDto>;

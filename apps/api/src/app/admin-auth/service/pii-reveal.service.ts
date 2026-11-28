@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 import { BUILT_IN_ROLES } from "../config/built-in-roles";
-import { PiiRevealReasonDto } from "../dto/pii-reveal-reason.dto";
+import { AuditReasonDto } from "../dto/audit-reason.dto";
 import { AdminAuditLogRepository } from "../repository/admin-audit-log.repository";
 import { AdminPiiGrantRepository } from "../repository/admin-pii-grant.repository";
 import { AdminRoleRepository } from "../repository/admin-role.repository";
@@ -44,7 +44,7 @@ export class PiiRevealService {
    * anything is revealed.
    */
   async authorizeReveal(admin: AdminIdentity, subjectUserId: string, reason: unknown, requestId: string): Promise<void> {
-    const parsed = PiiRevealReasonDto.safeParse(reason);
+    const parsed = AuditReasonDto.safeParse(reason);
     if (!parsed.success) throw new BadRequestException(parsed.error.flatten().formErrors);
     if (!(await this.canRevealPii(admin, subjectUserId))) throw new ForbiddenException();
     await this.auditLog.create({
