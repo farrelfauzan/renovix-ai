@@ -1,7 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
 import { Prisma } from "@generated/prisma/client.js";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { refuseDeleted } from "../../../common/utils/refuse-deleted";
 import { LIVE_KNOWLEDGE_BASE } from "../../knowledge/config/live-knowledge-base";
 
 /** The relations an agent is returned with after a create, an update and a template clone; live knowledge bases only (RNX-145). */
@@ -158,22 +159,24 @@ export class AgentRepository {
     data: Prisma.AgentUncheckedUpdateInput,
     tx?: DbTransaction,
   ) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).agent.update({
         where: { id: agentId, deletedAt: null },
         data,
         include: AGENT_RELATIONS,
       }),
+      "Agent not found",
     );
   }
 
   /** Sets the status of the live agent with this id and returns the agent; 404 when it is deleted (RNX-124). */
   updateAgentStatus(agentId: string, status: string, tx?: DbTransaction) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).agent.update({
         where: { id: agentId, deletedAt: null },
         data: { status },
       }),
+      "Agent not found",
     );
   }
 
@@ -240,12 +243,13 @@ export class AgentRepository {
    */
   async restoreAgent(agentId: string, ownerId: string, slug: string, tx?: DbTransaction) {
     try {
-      return await this.refuseDeleted(() =>
+      return await refuseDeleted(() =>
         (tx ?? this.prisma).agent.update({
           where: { id: agentId, deletedAt: { not: null }, workspace: { ownerId, deletedAt: null } },
           data: { deletedAt: null, deletedById: null, slug },
           select: { id: true, name: true, slug: true },
         }),
+        "Agent not found",
       );
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -261,17 +265,5 @@ export class AgentRepository {
       where: { id: agentId },
       select: { workspaceId: true, workspace: { select: { isDefault: true } } },
     });
-  }
-
-  /** Runs a write on one live agent; Prisma's "no such row" (P2025: the agent was deleted meanwhile) becomes a 404. */
-  private async refuseDeleted<T>(write: () => Promise<T>): Promise<T> {
-    try {
-      return await write();
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
-        throw new NotFoundException("Agent not found");
-      }
-      throw err;
-    }
   }
 }

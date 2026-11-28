@@ -1,10 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@generated/prisma/client.js";
-// The runtime's class, not the generated client's re-export: `bun run seed` (prisma/seed-system-knowledge.ts) loads
-// this file without the `@generated` path alias, so only type imports may name it.
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/client";
 import type { DbTransaction } from "../../prisma/db-transaction";
 import { PrismaService } from "../../prisma/prisma.service";
+import { refuseDeleted } from "../../../common/utils/refuse-deleted";
 
 /**
  * The queries on `knowledge_bases` (RX-137, RX-133). Every method takes the transaction as its optional last argument.
@@ -64,11 +62,12 @@ export class KnowledgeBaseRepository {
     data: Prisma.KnowledgeBaseUpdateInput,
     tx?: DbTransaction,
   ) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).knowledgeBase.update({
         where: { id, deletedAt: null },
         data,
       }),
+      "Knowledge base not found",
     );
   }
 
@@ -77,11 +76,12 @@ export class KnowledgeBaseRepository {
    * stay. Returns the knowledge base; 404 when it is already deleted.
    */
   softDeleteKnowledgeBase(id: string, deletedById: string, tx?: DbTransaction) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).knowledgeBase.update({
         where: { id, deletedAt: null },
         data: { deletedAt: new Date(), deletedById },
       }),
+      "Knowledge base not found",
     );
   }
 
@@ -97,12 +97,13 @@ export class KnowledgeBaseRepository {
 
   /** RNX-126: restores this user's deleted personal knowledge base with this id; one conditional write, 404 when there is none. */
   restorePersonalKnowledgeBase(id: string, userId: string, tx?: DbTransaction) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).knowledgeBase.update({
         where: { id, userId, workspaceId: null, deletedAt: { not: null } },
         data: { deletedAt: null, deletedById: null },
         select: { id: true, name: true },
       }),
+      "Knowledge base not found",
     );
   }
 
@@ -118,12 +119,13 @@ export class KnowledgeBaseRepository {
 
   /** RNX-126: restores the deleted knowledge base with this id of this workspace; one conditional write, 404 when there is none. */
   restoreWorkspaceKnowledgeBase(id: string, workspaceId: string, tx?: DbTransaction) {
-    return this.refuseDeleted(() =>
+    return refuseDeleted(() =>
       (tx ?? this.prisma).knowledgeBase.update({
         where: { id, workspaceId, deletedAt: { not: null } },
         data: { deletedAt: null, deletedById: null },
         select: { id: true, name: true },
       }),
+      "Knowledge base not found",
     );
   }
 
@@ -155,17 +157,5 @@ export class KnowledgeBaseRepository {
         active: true,
       },
     });
-  }
-
-  /** Runs a write on one live knowledge base; Prisma's "no such row" (P2025: deleted, or deleted meanwhile) becomes a 404. */
-  private async refuseDeleted<T>(write: () => Promise<T>): Promise<T> {
-    try {
-      return await write();
-    } catch (err) {
-      if (err instanceof PrismaClientKnownRequestError && err.code === "P2025") {
-        throw new NotFoundException("Knowledge base not found");
-      }
-      throw err;
-    }
   }
 }
