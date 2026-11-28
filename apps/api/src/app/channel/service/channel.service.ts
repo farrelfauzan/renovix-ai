@@ -66,7 +66,8 @@ export class ChannelService {
    */
   async delete(userId: string, channelId: string) {
     return this.transactions.run(async (tx) => {
-      await this.channels.lockLiveChannel(channelId, tx);
+      const isLocked = await this.channels.lockLiveChannel(channelId, tx);
+      if (!isLocked) throw new NotFoundException("Channel not found");
       const channel = await this.channels.findUserChannelWorkspace(
         channelId,
         userId,

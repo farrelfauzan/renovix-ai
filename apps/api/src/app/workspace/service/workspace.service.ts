@@ -75,7 +75,8 @@ export class WorkspaceService {
    */
   async createChannelWorkspace(channelId: string, userId: string) {
     return this.transactions.run(async (tx) => {
-      await this.channels.lockLiveChannel(channelId, tx);
+      const isLocked = await this.channels.lockLiveChannel(channelId, tx);
+      if (!isLocked) throw new NotFoundException("Server not found");
       const channel = await this.channels.findChannelWithWorkspace(channelId, tx);
       if (!channel) throw new NotFoundException("Server not found");
       if (channel.workspace?.deletedAt) throw new NotFoundException("Workspace not found");
