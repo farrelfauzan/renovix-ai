@@ -21,18 +21,10 @@ export interface AccountMcpCredential extends UserMcpCredential {
 
 export const userMcpKeys = {
   all: ["user-mcp"] as const,
-  credentials: (workspaceId: string | null) =>
-    [...userMcpKeys.all, "credentials", workspaceId] as const,
   account: () => [...userMcpKeys.all, "account"] as const,
 };
 
 // ─── API Functions ───
-
-async function fetchUserCredentials(
-  workspaceId: string,
-): Promise<UserMcpCredential[]> {
-  return apiClient.get(`/mcp/user/credentials?workspaceId=${workspaceId}`);
-}
 
 async function fetchAccountCredentials(): Promise<AccountMcpCredential[]> {
   return apiClient.get("/mcp/user/credentials");
@@ -74,16 +66,6 @@ async function connectWithToken(
 }
 
 // ─── Hooks ───
-
-export function useUserMcpCredentials(workspaceId: string | null) {
-  const { isLoggedIn } = useAuthStore();
-  return useQuery({
-    queryKey: userMcpKeys.credentials(workspaceId),
-    queryFn: () => fetchUserCredentials(workspaceId!),
-    enabled: isLoggedIn() && !!workspaceId,
-    staleTime: 30_000,
-  });
-}
 
 /** RNX-293: every account connection with the workspaces it is switched on in (no workspace needed). */
 export function useAccountMcpCredentials() {
