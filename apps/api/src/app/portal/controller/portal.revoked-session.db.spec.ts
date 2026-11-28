@@ -128,7 +128,7 @@ describe("RNX-342: the portal guard drops a revoked session at once (Fastify, te
     await fundPaidWallet(started.prisma, user.id, FUNDED_CREDITS);
     const deviceA = await signIn();
     const deviceB = await signIn();
-    expect(deviceB).toContain("better-auth.session_data=");
+    expect(deviceB).not.toContain("better-auth.session_data="); // RNX-379: the cookie cache is off, so sign-in sets no cache cookie
     // AC2: a session that is not revoked resolves the user and the paid tier, and its chat spends the paid wallet
     expect(await usage(deviceB)).toMatchObject({ tier: "paid", balance: "5.000000" });
     const walletAtStart = await paidWallet(user.id);

@@ -76,9 +76,12 @@ export const auth = betterAuth({
   session: {
     expiresIn: 7 * 24 * 60 * 60, // 7 days
     updateAge: 24 * 60 * 60, // Refresh session if older than 1 day
+    // RNX-379: no session cookie cache. With it on, Better Auth's own endpoints (get-session, update-user,
+    // change-password, revoke-session...) trusted the signed session_data cookie for up to its maxAge, so a revoked
+    // or suspended session kept working there. Off, every call reads the session row (one database read per call).
+    // Explicitly false rather than removed: Better Auth turns the cache on by default when there is no database.
     cookieCache: {
-      enabled: true,
-      maxAge: 5 * 60, // 5 minutes
+      enabled: false,
     },
   },
   advanced: {
