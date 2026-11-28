@@ -5,6 +5,7 @@ import type { CreditWallet } from "@generated/prisma/client.js";
 import { UserRepository } from "../../auth/repository/user.repository";
 import { PlatformSettingsService } from "../../offers/service/platform-settings.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { CreditAccountRepository } from "../repository/credit-account.repository";
 import type { UsageRecord } from "../types/usage-record";
 import { CreditLedgerService } from "./credit-ledger.service";
 import { CreditService } from "./credit.service";
@@ -272,6 +273,30 @@ describe("RNX-321: weekly free reset (test database)", () => {
     expect(await walletOf(suspended.id, "weekly_free")).toEqual({ balance: "0.500000", held: "0.000000" });
     expect(await walletOf(deleted.id, "weekly_free")).toEqual({ balance: "0.500000", held: "0.000000" });
     expect(await walletOf(deletedWithoutWallet.id, "weekly_free")).toBeNull();
+  });
+
+  it("one wallet failing does not end the run: the others are reset, the failed one is left as it was and the failures are logged as a count", async () => {
+    await setAllowance(2);
+    const failing = await createUser(prisma);
+    const later = await createUser(prisma);
+    await fundWeeklyFreeWallet(prisma, failing.id, "0.5");
+    const accounts = moduleRef.get(CreditAccountRepository);
+    const lockOrCreateAccount = accounts.lockOrCreateAccount.bind(accounts);
+    jest.spyOn(accounts, "lockOrCreateAccount").mockImplementation((owner, wallet, tx) =>
+      "userId" in owner && owner.userId === failing.id ? Promise.reject(new Error("transaction timed out")) : lockOrCreateAccount(owner, wallet, tx),
+    );
+    const { lines } = captureLogLines();
+
+    const actualWritten = await service.resetWeeklyFreeWallets(NOW);
+
+    expect(actualWritten).toBe(2);
+    expect(await walletOf(userId, "weekly_free")).toEqual({ balance: "2.000000", held: "0.000000" });
+    expect(await walletOf(later.id, "weekly_free")).toEqual({ balance: "2.000000", held: "0.000000" });
+    expect(await walletOf(failing.id, "weekly_free")).toEqual({ balance: "0.500000", held: "0.000000" });
+    expect(await resetEntriesOf(failing.id)).toEqual([]);
+    const failureLines = lines.filter((line) => line.includes("1 wallet(s) failed"));
+    expect(failureLines).toHaveLength(1);
+    expect(failureLines[0]).not.toContain(failing.id);
   });
 
   it("pages through more users than one batch holds, resetting each exactly once", async () => {

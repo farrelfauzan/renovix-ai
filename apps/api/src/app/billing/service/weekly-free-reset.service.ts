@@ -37,7 +37,8 @@ export class WeeklyFreeResetService {
   /**
    * Resets every active user's weekly_free wallet for the ISO week (Asia/Jakarta) that contains `now`, and returns how
    * many entries this call wrote. A wallet already reset this week, by an earlier run or by another instance at the same
-   * time, is left as it is. When the allowance setting is not set, nothing is read or written and a log line names it;
+   * time, is left as it is. A wallet whose reset fails is left as it was and the run goes on to the next one; the
+   * failures are counted in one log line. When the allowance setting is not set, nothing is read or written and a log line names it;
    * an invalid stored value fails the run (PlatformSettingsService.getSetting) before any wallet is touched.
    */
   async resetWeeklyFreeWallets(now: Date): Promise<number> {
@@ -50,22 +51,38 @@ export class WeeklyFreeResetService {
     return this.resetEveryActiveUser(plan);
   }
 
-  /** Pages through the active users by id (keyset) and resets each one's wallet; returns the entries written. */
+  /**
+   * Pages through the active users by id (keyset) and resets each one's wallet; returns the entries written. One wallet
+   * failing (a transaction timeout, a dropped connection) does not end the run for the users after it: it is counted,
+   * and the count is logged once at the end with the first error's name, and no user id.
+   */
   private async resetEveryActiveUser(plan: WeeklyResetPlan): Promise<number> {
     let written = 0;
+    let failed = 0;
+    let firstErrorName = "";
     let afterId: string | undefined;
     for (;;) {
       const userIds = await this.users.findActiveUserIdsAfter(afterId, WEEKLY_RESET_BATCH_SIZE);
-      for (const userId of userIds) if (await this.resetWallet(userId, plan)) written += 1;
-      if (userIds.length < WEEKLY_RESET_BATCH_SIZE) return written;
+      for (const userId of userIds) {
+        const isWritten = await this.resetWallet(userId, plan).catch((err: unknown) => {
+          firstErrorName ||= err instanceof Error ? err.name : "unknown error";
+          return null;
+        });
+        if (isWritten === null) failed += 1;
+        else if (isWritten) written += 1;
+      }
+      if (userIds.length < WEEKLY_RESET_BATCH_SIZE) break;
       afterId = userIds[userIds.length - 1];
     }
+    if (failed > 0) this.logger.error(`Weekly free reset: ${failed} wallet(s) failed and were not reset this week (first error: ${firstErrorName})`);
+    return written;
   }
 
   /**
    * Resets one user's wallet in its own transaction; true when this call wrote the entry. A 409 means a concurrent run
    * wrote this week's entry first (the unique (account, idempotency key) or seq refused this one, and its transaction
-   * rolled back): that wallet is skipped and the run goes on.
+   * rolled back): that wallet is skipped and the run goes on. The append's other 409, the key already on the account
+   * with another amount or type, cannot happen here: the lookup under the same lock returns first.
    */
   private async resetWallet(userId: string, plan: WeeklyResetPlan): Promise<boolean> {
     try {
