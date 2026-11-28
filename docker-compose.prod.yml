@@ -119,6 +119,25 @@ services:
   #   networks:
   #     - web
 
+  # ─── Back office ───
+  # NEXT_PUBLIC_* values are baked into the bundle at build time (change one, rebuild with --build).
+  # The browser calls the API at API_PUBLIC_URL; the API accepts this app only when ADMIN_ORIGIN
+  # equals the origin the browser loads it from (e.g. http://localhost:4400).
+  back-office:
+    build:
+      context: .
+      dockerfile: apps/back-office/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${API_PUBLIC_URL:?}
+        NEXT_PUBLIC_ADMIN_ENV_LABEL: ${NEXT_PUBLIC_ADMIN_ENV_LABEL:-}
+    restart: always
+    environment:
+      NODE_ENV: production
+    ports:
+      - "4400:4400"
+    networks:
+      - web
+
   # ─── Migrate (run once) ───
   migrate:
     build:
