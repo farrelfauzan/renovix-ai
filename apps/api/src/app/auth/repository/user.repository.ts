@@ -154,6 +154,20 @@ export class UserRepository {
   }
 
   /**
+   * RNX-321: the ids of up to `limit` active users (not suspended, not deleted) after `afterId`, in id order: one keyset
+   * page through the primary key (no offset), so a caller pages through every active user in bounded batches.
+   */
+  async findActiveUserIdsAfter(afterId: string | undefined, limit: number, tx?: DbTransaction): Promise<string[]> {
+    const users = await (tx ?? this.prisma).user.findMany({
+      where: { status: "active", id: afterId === undefined ? undefined : { gt: afterId } },
+      orderBy: { id: "asc" },
+      take: limit,
+      select: { id: true },
+    });
+    return users.map((user) => user.id);
+  }
+
+  /**
    * RNX-100: sets this user's status to `to` only while it is `from`, in one conditional UPDATE (of two concurrent
    * changes only one can pass); returns how many rows changed (0 or 1).
    */
