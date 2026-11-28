@@ -137,10 +137,12 @@ export class ChannelRepository {
   /**
    * RNX-295: locks the live channel with this id until the transaction ends, so its workspace create and its delete run
    * one at a time: the second waits, and its next read sees what the first committed. Locks nothing when the channel is
-   * missing or deleted. Raw SQL: Prisma has no SELECT ... FOR UPDATE.
+   * missing or deleted. Returns true when it locked a live row, false when it locked nothing (RNX-299: the caller
+   * answers 404 at once and reads nothing else). Raw SQL: Prisma has no SELECT ... FOR UPDATE.
    */
-  async lockLiveChannel(channelId: string, tx: DbTransaction): Promise<void> {
-    await tx.$queryRaw`SELECT "id" FROM "channels" WHERE "id" = ${channelId} AND "deleted_at" IS NULL FOR UPDATE`;
+  async lockLiveChannel(channelId: string, tx: DbTransaction): Promise<boolean> {
+    const lockedRows = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "channels" WHERE "id" = ${channelId} AND "deleted_at" IS NULL FOR UPDATE`;
+    return lockedRows.length > 0;
   }
 
   /** Updates the live channel with this id and returns it with its agents; 404 when it is deleted (RNX-145). */
