@@ -9,6 +9,9 @@ const { composePlugins, withNx } = require('@nx/next');
 const nextConfig = {
   nx: {},
 
+  // The Docker image runs the standalone server (apps/back-office/Dockerfile).
+  output: 'standalone',
+
   async headers() {
     return [
       {
